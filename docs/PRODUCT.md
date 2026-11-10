@@ -81,6 +81,8 @@ The agreement list should show a real metric such as **Revenue received**, with 
 5. **Review the proposed rules.** Do this before asking people to activate them. Invitations can be drafted during setup; sending one is a distinct action.
 6. **Connect payment capability when needed.** The organizer’s merchant setup and collaborators’ recipient details are different tasks. Do not imply that every participant needs to supply merchant API keys. Provider-specific onboarding depends on the integration chosen and verified.
 
+The workspace-name field begins with the saved name. Background refreshes may update an untouched field, but must not replace a name someone is currently editing; a failed save leaves that local change available to retry.
+
 ## Invitee journey
 
 The invitation identifies the collaboration and inviter, without exposing the full agreement to an unauthenticated visitor. After the invitee authenticates with the intended identity, show their role, proposed share, recoupment effect and the exact version awaiting review.
