@@ -36,10 +36,41 @@ export class MfaService {
   constructor(
     private store: IdentityStore,
     private encryptionKey?: string,
+    private simulation = false,
   ) {
+    if (
+      simulation &&
+      (store.mode !== "SANDBOX" ||
+        process.env.NODE_ENV === "production" ||
+        process.env.PAYPAL_ENV === "live")
+    )
+      throw new Error(
+        "Hackathon MFA simulation requires non-production SANDBOX.",
+      );
+    store.db.exec(
+      "CREATE TABLE IF NOT EXISTS hackathon_mfa(user_id TEXT PRIMARY KEY REFERENCES users(id),enabled INTEGER NOT NULL DEFAULT 0,expires_at INTEGER NOT NULL)",
+    );
     store.db.exec(
       "CREATE TABLE IF NOT EXISTS mfa(user_id TEXT PRIMARY KEY REFERENCES users(id),secret TEXT NOT NULL,enabled INTEGER NOT NULL DEFAULT 0,expires_at INTEGER NOT NULL,last_counter INTEGER NOT NULL DEFAULT -1,recovery TEXT NOT NULL DEFAULT '[]')",
     );
+  }
+  // Never bypass an existing real authenticator, even when simulation is opted in.
+  private simulated(userId: string) {
+    return (
+      this.simulation &&
+      this.store.mode === "SANDBOX" &&
+      process.env.NODE_ENV !== "production" &&
+      process.env.PAYPAL_ENV !== "live" &&
+      !this.store.db.prepare("SELECT 1 FROM mfa WHERE user_id=?").get(userId)
+    );
+  }
+  private simulationCode(code: unknown) {
+    if (typeof code !== "string" || !code.trim() || code.length > 80)
+      throw new ApiError(
+        401,
+        "MFA_REQUIRED",
+        "Hackathon simulation: enter any nonempty value (up to 80 characters). This is not account protection.",
+      );
   }
   private key() {
     const key = this.encryptionKey
@@ -82,6 +113,17 @@ export class MfaService {
     }
   }
   status(userId: string) {
+    if (this.simulated(userId)) {
+      const row = this.store.db
+        .prepare("SELECT enabled FROM hackathon_mfa WHERE user_id=?")
+        .get(userId) as any;
+      return {
+        available: true,
+        enabled: row?.enabled === 1,
+        simulated: true,
+        recoveryCodesRemaining: 0,
+      };
+    }
     const row = this.store.db
       .prepare("SELECT enabled,recovery FROM mfa WHERE user_id=?")
       .get(userId) as any;
@@ -101,6 +143,21 @@ export class MfaService {
   start(userId: string, password: unknown) {
     this.store.limit(`mfa-setup:${userId}`, 5, 30 * 60000);
     this.store.verifyPassword(userId, password);
+    if (this.simulated(userId)) {
+      if (this.status(userId).enabled)
+        throw new ApiError(
+          409,
+          "MFA_ALREADY_ENABLED",
+          "Simulated MFA is already enabled.",
+        );
+      const expiresAt = this.store.now() + 10 * 60000;
+      this.store.db
+        .prepare(
+          "INSERT INTO hackathon_mfa(user_id,enabled,expires_at) VALUES(?,0,?) ON CONFLICT(user_id) DO UPDATE SET expires_at=excluded.expires_at",
+        )
+        .run(userId, expiresAt);
+      return { simulated: true, secret: "", uri: "", expiresAt };
+    }
     this.key();
     return this.store.tx(() => {
       if (this.status(userId).enabled)
@@ -129,6 +186,32 @@ export class MfaService {
   }
   /** Must execute inside the caller's transaction when consuming a login factor. */
   verify(userId: string, code: unknown, allowPending = false) {
+    const simulatedRow = this.store.db
+      .prepare("SELECT * FROM hackathon_mfa WHERE user_id=?")
+      .get(userId) as any;
+    if (
+      simulatedRow &&
+      !this.simulated(userId) &&
+      !this.store.db.prepare("SELECT 1 FROM mfa WHERE user_id=?").get(userId)
+    ) {
+      if (simulatedRow.enabled)
+        throw new ApiError(
+          503,
+          "MFA_UNAVAILABLE",
+          "Hackathon MFA simulation is disabled. Contact the operator to reset this test account.",
+        );
+    }
+    if (this.simulated(userId)) {
+      if (!simulatedRow || (!simulatedRow.enabled && !allowPending)) return;
+      if (!simulatedRow.enabled && simulatedRow.expires_at <= this.store.now())
+        throw new ApiError(
+          400,
+          "MFA_SETUP_EXPIRED",
+          "Simulation setup expired. Start again.",
+        );
+      this.simulationCode(code);
+      return;
+    }
     const row = this.store.db
       .prepare("SELECT * FROM mfa WHERE user_id=?")
       .get(userId) as any;
@@ -182,12 +265,41 @@ export class MfaService {
   }
   cancel(userId: string) {
     this.store.db
+      .prepare("DELETE FROM hackathon_mfa WHERE user_id=? AND enabled=0")
+      .run(userId);
+    this.store.db
       .prepare("DELETE FROM mfa WHERE user_id=? AND enabled=0")
       .run(userId);
     return { cancelled: true };
   }
   activate(userId: string, code: unknown) {
     this.store.limit(`mfa-activate:${userId}`, 10, 30 * 60000);
+    if (this.simulated(userId))
+      return this.store.tx(() => {
+        const row = this.store.db
+          .prepare("SELECT enabled FROM hackathon_mfa WHERE user_id=?")
+          .get(userId) as any;
+        if (!row || row.enabled)
+          throw new ApiError(
+            409,
+            "MFA_SETUP_REQUIRED",
+            "Start simulation setup first.",
+          );
+        this.verify(userId, code, true);
+        this.store.db
+          .prepare("UPDATE hackathon_mfa SET enabled=1 WHERE user_id=?")
+          .run(userId);
+        this.store.db
+          .prepare("DELETE FROM sessions WHERE user_id=?")
+          .run(userId);
+        this.store.audit(userId, null, "HACKATHON_MFA_SIMULATED_ENABLED");
+        return {
+          enabled: true,
+          simulated: true,
+          recoveryCodes: [] as string[],
+          signInRequired: true,
+        };
+      });
     return this.store.tx(() => {
       const row = this.store.db
         .prepare("SELECT enabled FROM mfa WHERE user_id=?")
@@ -221,9 +333,18 @@ export class MfaService {
           "No authenticator is enabled.",
         );
       this.verify(userId, code);
-      this.store.db.prepare("DELETE FROM mfa WHERE user_id=?").run(userId);
+      const simulated = this.simulated(userId);
+      if (simulated)
+        this.store.db
+          .prepare("DELETE FROM hackathon_mfa WHERE user_id=?")
+          .run(userId);
+      else this.store.db.prepare("DELETE FROM mfa WHERE user_id=?").run(userId);
       this.store.db.prepare("DELETE FROM sessions WHERE user_id=?").run(userId);
-      this.store.audit(userId, null, "MFA_DISABLED");
+      this.store.audit(
+        userId,
+        null,
+        simulated ? "HACKATHON_MFA_SIMULATED_DISABLED" : "MFA_DISABLED",
+      );
       return { enabled: false, signInRequired: true };
     });
   }

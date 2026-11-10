@@ -69,6 +69,7 @@ export class IdentityStore {
     public mode: DataMode = DataMode.SANDBOX,
     public now: () => number = Date.now,
     mfaEncryptionKey = process.env.FAIRSHARE_MFA_ENCRYPTION_KEY,
+    hackathonMfaSimulation = false,
   ) {
     if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
     this.db = new DatabaseSync(path);
@@ -100,7 +101,7 @@ export class IdentityStore {
       this.db.exec(
         "ALTER TABLE invitations ADD COLUMN delivery TEXT NOT NULL DEFAULT 'EMAIL'",
       );
-    this.mfa = new MfaService(this, mfaEncryptionKey);
+    this.mfa = new MfaService(this, mfaEncryptionKey, hackathonMfaSimulation);
     try {
       this.tx(() => {
         const row = this.db

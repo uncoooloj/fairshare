@@ -132,6 +132,15 @@ nav {
   padding: var(--space-3);
   overflow-wrap: anywhere;
 }
+.identity > div {
+  min-width: 0;
+  flex: 1;
+}
+.identity small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .identity strong,
 .identity small {
   display: block;

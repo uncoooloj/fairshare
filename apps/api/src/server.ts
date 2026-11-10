@@ -24,6 +24,7 @@ const app = await buildApp({
   publicAppOrigin: process.env.PUBLIC_APP_ORIGIN,
   demo: process.env.DEMO_MODE === "true",
   logger: false,
+  hackathonMfaSimulation: process.env.HACKATHON_MFA_SIMULATION === "true",
   localOcrEnabled: process.env.LOCAL_OCR_ENABLED === "true",
   payment: {
     provider,
