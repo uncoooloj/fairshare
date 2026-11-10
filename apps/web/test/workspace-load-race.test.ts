@@ -8,6 +8,7 @@ const source = readFileSync(
 );
 
 test("workspace changes fence in-flight reads and clear workspace-scoped state", () => {
+  assert.equal((source.match(/setWorkspace\(/g) || []).length, 1);
   const commit = source
     .split("function commitWorkspace(id: string) {")[1]
     .split("async function run")[0];
