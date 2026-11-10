@@ -1,3 +1,5 @@
+import { ClarificationDecisions } from "./clarification-decisions";
+import { proposalQuestions } from "../lib/clarification-draft";
 import { suggestedShares } from "../lib/ai-draft";
 import { useState, useRef, type ReactNode } from "react";
 import {
@@ -438,10 +440,7 @@ export function RulesEditor({
                 }
               : {}),
             source: ref,
-            unresolvedQuestions: String(f.get("questions"))
-              .split("\n")
-              .map((s) => s.trim())
-              .filter(Boolean),
+            unresolvedQuestions: proposalQuestions(String(f.get("questions") || ""), extraction, documentId, new Set(f.getAll("resolvedAiQuestion").map(String))),
           };
           if (advance)
             rules.advance = {
@@ -604,6 +603,7 @@ export function RulesEditor({
           defaultValue={old?.source.excerpt || ""}
         />
       </Field>
+      <ClarificationDecisions extraction={extraction} documentId={documentId} />
       <Field
         label="Unresolved questions"
         hint="One per line. Any unresolved question blocks sending for approval."

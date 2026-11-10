@@ -18,6 +18,7 @@ import {
 } from "./agreement-widgets";
 import { useEffect, useState } from "react";
 import {
+  ApiError,
   AgreementTab,
   Section,
   api,
@@ -31,6 +32,7 @@ import {
   type Rules,
   type Revenue,
 } from "../lib/model";
+import { AgreementDocument } from "./agreement-document";
 import { ContractReviewPanel, ContractSourceGuidance } from "./contract-review-guidance";
 import { NewAgreement, AgreementSetup } from "./agreement-setup";
 import { WorkspaceOnboarding, AccessPrompt } from "./designer-auth";
@@ -186,12 +188,21 @@ export default function FairshareApp() {
     setNotice("");
   }
   async function mutate(action: string, extra: Record<string, unknown> = {}) {
-    const a = await api<Agreement>(base + action, "POST", {
-      expectedRevision: selected!.revision,
-      ...extra,
-    });
-    setSelected(a);
-    await loadWorkspace(workspace);
+    try {
+      const a = await api<Agreement>(base + action, "POST", {
+        expectedRevision: selected!.revision,
+        ...extra,
+      });
+      setSelected(a);
+      await loadWorkspace(workspace);
+    } catch (cause) {
+      if (cause instanceof ApiError && cause.code === "REVISION_CONFLICT") {
+        const current = await api<Agreement>(base);
+        setSelected(current);
+        throw new Error("Agreement changed. Latest version loaded; review before trying again.");
+      }
+      throw cause;
+    }
   }
   if (!ready)
     return (
@@ -875,6 +886,7 @@ export default function FairshareApp() {
                               onClick={() => {
                                 setSource(sampleAgreement);
                                 setDocumentId("");
+                                setExtraction(null);
                               }}
                             >
                               Use sample text
@@ -901,7 +913,7 @@ export default function FairshareApp() {
                         </section>
                         {documentId && (
                           <>
-                            <AIReview
+                            <AIReview key={documentId}
                               busy={busy}
                               extraction={extraction}
                               onExtract={() =>
@@ -939,6 +951,7 @@ export default function FairshareApp() {
                     )}
                   </>
                 )}
+                {tab === AgreementTab.Document && <AgreementDocument key={selected.id} agreement={selected} base={base} />}
                 {tab === AgreementTab.Payments && (
                   <>
                     <Heading
