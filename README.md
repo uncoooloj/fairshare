@@ -1,27 +1,92 @@
 # Fairshare
 
-The money follows the agreement.
+Fairshare turns a collaboration agreement into reviewable allocation rules. People approve an exact rule version; deterministic code calculates an allocation from confirmed revenue; payout records remain separate from the allocation itself.
 
-Private development monorepo for agreement-driven revenue allocation. Web design is owned by the product designer; the web application is a functional integration UI, not yet the designer-approved dashboard.
+The repository is a sandbox-focused implementation. It has no live-money mode, and a checkout return or a payout batch acceptance is not proof that money moved.
 
-## Structure
+## Repository map
 
-- `apps/web`: Next.js web client.
-- `apps/api`: separate Node/Fastify API with identity, workspace isolation, agreement lifecycle and sandbox orchestration.
-- `packages/domain`: deterministic agreement versions, approvals and allocation.
-- `packages/payments`: sandbox-only PayPal provider and webhook processing primitives.
-- `packages/contract-ai`: source-bound AI proposals, not legal advice or payment authority.
+| Path                   | Purpose                                                                                                        |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `apps/web`             | Next.js web application and same-origin API proxy.                                                             |
+| `apps/api`             | Fastify API, identity, workspace isolation, agreement lifecycle, SQLite persistence, and sandbox integrations. |
+| `packages/domain`      | Deterministic agreement versions, approvals, allocation, and recoupment.                                       |
+| `packages/payments`    | Server-only PayPal sandbox adapter and reconciliation primitives.                                              |
+| `packages/contract-ai` | Source-bound, non-executable AI observations and proposal helpers.                                             |
+| `docs`                 | Product intent, operational boundaries, and release evidence.                                                  |
 
-## Development
+## Local demo
 
-Node 22.16+ and npm are required. Run `npm ci`, `npm test`, `npm run typecheck`, then `npm run dev:web` and `npm run dev:api` in separate terminals. Web runs locally at http://localhost:3000. No secret belongs in a NEXT_PUBLIC variable. Copy backend environment templates only locally; never commit credentials or a runtime database.
+Use Node `>=22.16` and npm. The commands below create only a local synthetic DEMO database; they make no PayPal, Cloudflare, or email calls.
 
-## Honest status
+```sh
+npm ci
+node --import tsx scripts/seed-demo.mjs ./data/fairshare-demo.db
 
-The web workflow is implemented and production-build tested, but this is not yet a fully verified product. See docs/WEB-FLOW.md for the HTTP journey and remaining browser/provider checks. Cloudflare extraction was live-verified using three synthetic agreements; this is not a broad accuracy certification. Package tests are not proof of actual provider operations. Only PayPal sandbox OAuth has previously been verified in the Kept prototype; Fairshare checkout, capture, payout, refunds and webhooks require their own evidence. No live money is enabled.
+export HOST=127.0.0.1
+export PORT=3001
+export DEMO_MODE=true
+export DATABASE_PATH=./data/fairshare-demo.db
+export PUBLIC_APP_ORIGIN=http://localhost:3000
+export PUBLIC_API_URL=http://localhost:3001
+export PAYPAL_ENV=sandbox
+npm run dev:api
+```
 
-Rules require all required collaborators to approve the same version before activation. AI proposes; deterministic code calculates; allocation and completed payout are separate facts. Refunds/reversals require reconciliation, not guessed clawbacks. No claim of escrow, legal enforcement or live partner eligibility.
+In a second terminal:
 
-## Reuse
+```sh
+export FAIRSHARE_API_URL=http://127.0.0.1:3001
+export FAIRSHARE_WEB_ORIGIN=http://localhost:3000
+npm run dev:web
+```
 
-Selected PayPal safety patterns derive from the user's private Kept prototype (`uncoooloj/paypal-hackathon`). No secret, data file, mobile app or unrelated asset was copied. Dependencies retain their upstream licences; project licence/public release remains an owner decision.
+Open <http://localhost:3000>. Use one of the synthetic accounts in [the demo guide](docs/DEMO-QUICKSTART.md). The seed script refuses to overwrite an existing database. DEMO and SANDBOX must use different databases.
+
+The API process does not load dotenv files automatically. `apps/api/.env.example` and `apps/web/.env.example` document variable names; use explicit environment exports for the API. Do not put credentials in `NEXT_PUBLIC_*` variables or commit them.
+
+## Checks
+
+```sh
+npm run format:check
+npm test
+npm run typecheck
+npm run build
+```
+
+These checks provide source-level and build evidence. They do not prove browser behavior, provider delivery, payment completion, payout receipt, or production readiness.
+
+## Evidence boundaries
+
+- DEMO uses synthetic identities, approvals, and an already-recorded advance. They are fixtures, not evidence of real approvals or funds.
+- AI observations require human review and cannot activate rules or move money.
+- The payment adapter is sandbox-only. Provider acceptance, capture, webhook delivery, refunds, and recipient payout outcomes each need their own evidence.
+- The reconciliation worker exists but is disabled by default and performs reads/reconciliation only; it does not issue money-moving retries.
+- New PDF and DOCX uploads retain an authenticated original alongside extracted text. That private SQLite data is not encrypted at rest by this application.
+- Password recovery needs an authorized email transport; the synthetic DEMO does not provide a reset-link echo.
+- Private workspace invitation links are single-use, 48-hour bearer secrets. They are returned only when an owner creates them, remain in page memory and a URL fragment, and are not proof of mailbox ownership; share and revoke them deliberately.
+- Review discussion records comments without changing rules or approvals.
+- Checkout payment-source labels are organizer-entered metadata, not evidence of external revenue or a confirmed payment.
+- Local scanned-PDF OCR is disabled by default, runs only after a user selects it, and needs host-installed Poppler and Tesseract. The optional Cloudflare API sends documents to its private parser Container instead; the upload UI discloses hosted processing. OCR is not a correctness guarantee.
+- Authenticator MFA needs a separately managed server encryption key; it is not enabled by the synthetic DEMO alone.
+- `HACKATHON_MFA_SIMULATION=true` is a separate, explicitly labeled SANDBOX-only synthetic-account mode. It rejects DEMO, production, and live-PayPal configuration; it applies process-wide to accounts without an existing real authenticator, so use a dedicated synthetic-only database. It does not replace normal authenticator-key requirements or protect real accounts.
+
+## Documentation
+
+- [Architecture](docs/ARCHITECTURE.md)
+- [Demo quickstart](docs/DEMO-QUICKSTART.md)
+- [API flows](docs/API-FLOWS.md)
+- [Payment flow and boundaries](docs/PAYMENTS.md)
+- [Reconciliation worker](docs/RECONCILIATION-WORKER.md)
+- [Authentication and persistence](docs/AUTH-PERSISTENCE.md)
+- [Source-document storage and downloads](docs/security/source-documents.md)
+- [Password recovery](docs/password-recovery.md)
+- [Local OCR](docs/LOCAL-OCR.md)
+- [Authenticator MFA](docs/mfa.md)
+- [Hackathon MFA simulation](docs/HACKATHON-MFA.md)
+- [Release readiness](docs/RELEASE-READINESS.md)
+- [Contributing](CONTRIBUTING.md)
+
+## License
+
+Fairshare is available under the [MIT License](LICENSE). Dependency and bundled-asset notices, including the bundled Onest font's OFL notice, remain subject to their own terms.

@@ -10,14 +10,14 @@
   "durable_objects": {
     "bindings": [
       { "name": "AUTHORITY", "class_name": "FairshareAuthority" },
-      { "name": "DOCUMENT_PARSER", "class_name": "FairshareDocumentParser" },
-    ],
+      { "name": "DOCUMENT_PARSER", "class_name": "FairshareDocumentParser" }
+    ]
   },
   "migrations": [
     {
       "tag": "v1",
-      "new_sqlite_classes": ["FairshareAuthority", "FairshareDocumentParser"],
-    },
+      "new_sqlite_classes": ["FairshareAuthority", "FairshareDocumentParser"]
+    }
   ],
   "containers": [
     {
@@ -25,15 +25,15 @@
       "image": "./parser-container/Dockerfile",
       "image_build_context": "../..",
       "max_instances": 1,
-      "instance_type": "basic",
-    },
+      "instance_type": "basic"
+    }
   ],
   "vars": {
     "OCR_ENABLED": "false",
     "HACKATHON_MFA_SIMULATION": "false",
     "PAYPAL_PAYOUTS_ENABLED": "false",
     "PAYPAL_PAYOUTS_ELIGIBILITY_CONFIRMED": "false",
-    "PAYPAL_RECONCILIATION_ENABLED": "false",
+    "PAYPAL_RECONCILIATION_ENABLED": "false"
   },
-  "observability": { "enabled": false },
+  "observability": { "enabled": false }
 }

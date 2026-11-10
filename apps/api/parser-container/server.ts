@@ -4,6 +4,13 @@ import { localDocumentReaders } from "../src/documentReaders.js";
 import { verifyLocalOcrTools } from "../src/ocr.js";
 
 const MAX_BYTES = 5 * 1024 * 1024;
+const parserKinds = ["pdf", "docx", "ocr"] as const;
+type ParserKind = (typeof parserKinds)[number];
+
+function isParserKind(kind: string | undefined): kind is ParserKind {
+  return parserKinds.includes(kind as ParserKind);
+}
+
 async function readBody(request: IncomingMessage): Promise<Buffer> {
   const chunks: Buffer[] = [];
   let size = 0;
@@ -30,10 +37,7 @@ export function createParserServer(readers = localDocumentReaders) {
         response.end(JSON.stringify(body));
       };
       const kind = request.url?.slice(1);
-      if (
-        request.method !== "POST" ||
-        !["pdf", "docx", "ocr"].includes(kind ?? "")
-      )
+      if (request.method !== "POST" || !isParserKind(kind))
         return send(404, { error: "NOT_FOUND" });
       if (request.headers["content-type"] !== "application/octet-stream")
         return send(415, { error: "INVALID_CONTENT_TYPE" });
@@ -43,7 +47,7 @@ export function createParserServer(readers = localDocumentReaders) {
       active = true;
       try {
         const bytes = await readBody(request);
-        const parsed = await readers[kind as "pdf" | "docx" | "ocr"](bytes);
+        const parsed = await readers[kind](bytes);
         send(200, parsed);
       } catch (error) {
         // No logs, stack traces, paths, source-bearing diagnostics or arbitrary messages.
