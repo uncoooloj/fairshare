@@ -38,10 +38,21 @@ function validateInput(raw: unknown): Intake {
   return { ...value, requestId: value.requestId.toLowerCase() } as Intake;
 }
 
-function initialTitle(filename?: string): string {
+function initialTitle(filename: string | undefined, text: string): string {
   const name = filename?.split(/[\\/]/).pop()?.replace(/\.(pdf|docx|txt)$/i, '')
     .replace(/[\u0000-\u001f\u007f]/g, '').replace(/[_-]+/g, ' ').trim();
-  return name?.slice(0, 100) || 'Untitled agreement';
+  if (name) return name.slice(0, 100);
+  // A pasted document has no filename. Use only its first nonempty line when it
+  // looks like a heading, never generate a title from payment terms or party names.
+  // This local fallback does not send the document to an AI provider.
+  const heading = text.split(/\r?\n/).find(line => line.trim())?.trim();
+  if (heading && heading.length <= 100 && heading.split(/\s+/).length <= 12
+    && /\b(agreement|contract|memorandum)\b/i.test(heading)
+    && !/[\u0000-\u001f\u007f<>@%$€£.!?;:=]/.test(heading)
+    && !/\b(shall|must|will|receives?|pays?|send|ignore|instructions?|approved|signed)\b/i.test(heading)) {
+    return heading;
+  }
+  return 'Untitled agreement';
 }
 
 /** Parsing finishes before durable writes. A user-scoped retry key commits alongside
@@ -103,7 +114,7 @@ export function registerAgreementIntake(app: FairshareApp, aggregates: Aggregate
     return app.store.tx(() => {
       const concurrent = replay();
       if (concurrent) return concurrent;
-      const title = initialTitle(input.filename);
+      const title = initialTitle(input.filename, text);
       const workspace = input.workspaceId
         ? app.requireWorkspace(request, input.workspaceId, [Role.OWNER, Role.MEMBER]).workspace
         : app.store.createWorkspaceInsideTransaction(user.id, title);
