@@ -226,6 +226,23 @@ test("invoice creation publishes without duplicate writes; key binds all immutab
     await s.app.close();
   }
 });
+test("publish readback never presents a cancelled invoice link as payable", async () => {
+  const s = await setup(),
+    p = install(s);
+  s.provider.publishInvoice = async () => {
+    p.evidence.status = "CANCELLED";
+    p.evidence.shareUrl = "https://www.sandbox.paypal.com/invoice/p/#INV1";
+    return { ...p.evidence };
+  };
+  try {
+    assert.equal(
+      (await s.post("/invoices", invoiceInput)).json().invoice.status,
+      "PAYMENT_PENDING",
+    );
+  } finally {
+    await s.app.close();
+  }
+});
 test("manual and buyer-paid invoices remain pending without settlement allocation", async () => {
   const s = await setup(),
     p = install(s);

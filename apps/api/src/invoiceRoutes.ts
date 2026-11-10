@@ -143,6 +143,13 @@ export function registerInvoiceRoutes(
         fail("INVOICE_MISMATCH", "Invalid sandbox invoice link");
     }
   }
+  function localStatus(evidence: InvoiceEvidence) {
+    if (evidence.status === "DRAFT") return "DRAFT";
+    return ["SENT", "SCHEDULED", "UNPAID"].includes(evidence.status) &&
+      evidence.shareUrl
+      ? "SHARED"
+      : "PAYMENT_PENDING";
+  }
   async function reconcile(id: string, assertLease: () => void = () => {}) {
     const op = read(id);
     if (!op.provider_id || op.status === "PAID") return { invoice: dto(op) };
@@ -151,12 +158,7 @@ export function registerInvoiceRoutes(
     assertLease();
     // A manually marked invoice or an external payment is never money evidence.
     if (evidence.status !== "PAID") {
-      const status =
-        evidence.status === "DRAFT"
-          ? "DRAFT"
-          : ["SENT", "SCHEDULED", "UNPAID"].includes(evidence.status)
-            ? "SHARED"
-            : "PAYMENT_PENDING";
+      const status = localStatus(evidence);
       db.prepare(
         "UPDATE fairshare_invoices SET status=?,share_url=? WHERE id=? AND status!='PAID'",
       ).run(status, evidence.shareUrl, id);
@@ -256,7 +258,7 @@ export function registerInvoiceRoutes(
       db.prepare(
         "UPDATE fairshare_invoices SET status=?,share_url=? WHERE id=?",
       ).run(
-        published.shareUrl ? "SHARED" : "PAYMENT_PENDING",
+        localStatus(published),
         published.shareUrl,
         op.id,
       );
