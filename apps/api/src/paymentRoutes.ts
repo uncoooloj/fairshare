@@ -677,10 +677,13 @@ export function registerPaymentRoutes(
                 .get(op.id) as any;
               if (fresh.provider_refund_id !== result.id)
                 fail("RECOVERY_CONFLICT", "Refund evidence changed");
-              if (fresh.status === "COMPLETED" && result.status !== "COMPLETED")
+              if (
+                ["COMPLETED", "FAILED", "CANCELLED"].includes(fresh.status) &&
+                fresh.status !== result.status
+              )
                 fail(
                   "REFUND_STATUS_CONFLICT",
-                  "Completed refund status cannot regress",
+                  "Terminal refund status cannot regress",
                 );
               db.prepare(
                 "UPDATE fairshare_refund_ops SET status=? WHERE id=?",

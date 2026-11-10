@@ -409,6 +409,20 @@ async function refundable(reconciliation = false) {
   });
   return { ...s, paymentId: id, refundCount: () => refunds };
 }
+async function pendingRefund() {
+  const s = await refundable(true);
+  const original = s.provider.getRefund!;
+  s.provider.getRefund = async (id) => ({
+    ...(await original(id)),
+    status: "PENDING",
+  });
+  const response = await s.post(`/payments/${s.paymentId}/refund`, {
+    confirmFullRefund: true,
+  });
+  assert.equal(response.statusCode, 200, response.body);
+  assert.equal(response.json().status, "PENDING");
+  return { ...s, original, refundId: response.json().id as string };
+}
 test("full original refund is durable exactly-once and holds liabilities without editing agreed split", async () => {
   const s = await refundable();
   try {
@@ -560,6 +574,76 @@ test("refund reservation blocks concurrent payout while provider write is in fli
     assert.equal(s.counts().payoutWrites, 0);
   } finally {
     await s.app.close();
+  }
+});
+test("worker stale pending refund evidence cannot overwrite manual terminal recovery", async () => {
+  for (const status of ["FAILED", "CANCELLED"]) {
+    const s = await pendingRefund();
+    try {
+      let release!: () => void, started!: () => void;
+      const waiting = new Promise<void>((resolve) => (release = resolve));
+      const began = new Promise<void>((resolve) => (started = resolve));
+      s.provider.getRefund = async (id) => {
+        started();
+        await waiting;
+        return { ...(await s.original(id)), status: "PENDING" };
+      };
+      const worker = (s.app as any).paymentReconciliation.tick();
+      await began;
+      s.provider.getRefund = async (id) => ({
+        ...(await s.original(id)),
+        status,
+      });
+      const recovered = await s.post(`/refunds/${s.refundId}/reconcile`);
+      assert.equal(recovered.statusCode, 200, recovered.body);
+      assert.equal(recovered.json().status, status);
+      release();
+      await worker;
+      assert.equal(
+        (
+          s.app.store.db
+            .prepare("SELECT status FROM fairshare_refund_ops WHERE id=?")
+            .get(s.refundId) as any
+        ).status,
+        status,
+      );
+    } finally {
+      await s.app.close();
+    }
+  }
+});
+test("manual stale pending refund evidence cannot overwrite worker terminal recovery", async () => {
+  for (const status of ["FAILED", "CANCELLED"]) {
+    const s = await pendingRefund();
+    try {
+      let release!: () => void, started!: () => void;
+      const waiting = new Promise<void>((resolve) => (release = resolve));
+      const began = new Promise<void>((resolve) => (started = resolve));
+      s.provider.getRefund = async (id) => {
+        started();
+        await waiting;
+        return { ...(await s.original(id)), status: "PENDING" };
+      };
+      const recovery = s.post(`/refunds/${s.refundId}/reconcile`);
+      await began;
+      s.provider.getRefund = async (id) => ({
+        ...(await s.original(id)),
+        status,
+      });
+      await (s.app as any).paymentReconciliation.tick();
+      release();
+      assert.equal((await recovery).statusCode, 400);
+      assert.equal(
+        (
+          s.app.store.db
+            .prepare("SELECT status FROM fairshare_refund_ops WHERE id=?")
+            .get(s.refundId) as any
+        ).status,
+        status,
+      );
+    } finally {
+      await s.app.close();
+    }
   }
 });
 test("unknown payout recovery is read-only, adapter verifies frozen operation and status", async () => {
