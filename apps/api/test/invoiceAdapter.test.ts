@@ -72,19 +72,6 @@ async function setupAdapter() {
               : [],
         },
       });
-    if (path === "/v2/payments/captures/CAPTURE123" && method === "GET")
-      return json({
-        id: "CAPTURE123",
-        status: "COMPLETED",
-        invoice_id: id,
-        payee: { merchant_id: "MERCHANT123" },
-        amount: { currency_code: "USD", value: "100.00" },
-        seller_receivable_breakdown: {
-          gross_amount: { currency_code: "USD", value: "100.00" },
-          paypal_fee: { currency_code: "USD", value: "3.00" },
-          net_amount: { currency_code: "USD", value: "97.00" },
-        },
-      });
     throw Error(`Unexpected provider request ${method} ${path}`);
   }) as typeof fetch;
   const provider = new PayPalSandbox(
@@ -203,11 +190,6 @@ test("invoice API integrates real PayPal adapter create, suppressed-email publis
       "PAYMENT_PENDING",
     );
     assert.equal(s.agg.read(s.w.id, "collab").value.revenue.length, 0);
-    assert.equal(
-      s.requests.filter((r) => r.path === "/v2/payments/captures/CAPTURE123")
-        .length,
-      0,
-    );
     assert.equal(
       s.requests.filter(
         (r) => r.method === "POST" && r.path !== "/v1/oauth2/token",

@@ -202,28 +202,6 @@ export class PayPalSandbox {
     );
     return this.getInvoice(id);
   }
-  /** Read-only capture lookup; invoice transaction IDs are NOT assumed to be capture IDs. */
-  async getCapture(id: string) {
-    if (!/^[A-Za-z0-9]{1,64}$/.test(id))
-      throw new PayPalError("INVALID_CAPTURE_ID", 400);
-    const capture = await this.call(`/v2/payments/captures/${id}`, undefined);
-    if (capture.id !== id) throw new PayPalError("CAPTURE_MISMATCH");
-    // Reuse strict currency, fee and net accounting validation.
-    return {
-      ...this.parseCapture("", {
-        id: "",
-        purchase_units: [
-          {
-            custom_id: capture.custom_id,
-            payee: capture.payee,
-            payments: { captures: [capture] },
-          },
-        ],
-      }),
-      invoiceId:
-        typeof capture.invoice_id === "string" ? capture.invoice_id : undefined,
-    };
-  }
   async createOrder(input: CreateOrder) {
     if (!input.reference || input.reference.length > 127)
       throw new PayPalError("INVALID_REFERENCE", 400);
