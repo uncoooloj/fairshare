@@ -40,6 +40,7 @@ export function filterPayouts(
   const terms = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
   return rows.filter((row) => {
     if (status && row.status !== status) return false;
+    if (!terms.length) return true;
     const searchText = payoutSearchText(row);
     return terms.every((term) => searchText.includes(term));
   });
