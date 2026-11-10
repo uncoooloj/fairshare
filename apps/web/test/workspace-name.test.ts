@@ -57,7 +57,7 @@ test("workspace form receives server name and resets only when workspace identit
   );
   assert.match(
     app,
-    /WorkspaceNameForm key=\{workspace\} name=\{workspaces.find\(w => w.id === workspace\)\?\.name/,
+    /WorkspaceNameForm\s+key=\{workspace\}\s+name=\{\s*workspaces\.find\(\(w\)\s*=>\s*w\.id\s*===\s*workspace\)\?\.name/,
   );
   const form = readFileSync(
     new URL("../components/workspace-name-form.tsx", import.meta.url),
@@ -65,9 +65,9 @@ test("workspace form receives server name and resets only when workspace identit
   );
   assert.match(
     form,
-    /useReducer\(workspaceNameDraft, name, initialWorkspaceName\)/,
+    /useReducer\(\s*workspaceNameDraft,\s*name,\s*initialWorkspaceName\s*,?\s*\)/,
   );
-  assert.match(form, /pending.current \|\| busy/);
+  assert.match(form, /pending\.current\s*\|\|\s*busy/);
   assert.match(form, /maxLength=\{100\}/);
   assert.match(form, /value=\{state.draft\}/);
 });
