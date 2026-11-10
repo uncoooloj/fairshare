@@ -31,6 +31,7 @@ import {
   type Rules,
   type Revenue,
 } from "../lib/model";
+import { ContractReviewPanel, ContractSourceGuidance } from "./contract-review-guidance";
 import { NewAgreement, AgreementSetup } from "./agreement-setup";
 import { WorkspaceOnboarding, AccessPrompt } from "./designer-auth";
 import { PaymentRecovery } from "./payment-recovery";
@@ -756,71 +757,11 @@ export default function FairshareApp() {
                           {latest.rules.source.excerpt}
                           <footer>{latest.rules.source.clause}</footer>
                         </blockquote>
-                        {latest.rules.unresolvedQuestions.map((q, i) => (
-                          <Notice key={i} warning>
-                            {q}
-                          </Notice>
-                        ))}
-                        <div className="actions">
-                          {latest.status === "DRAFT" && (
-                            <Button
-                              disabled={busy}
-                              onClick={() =>
-                                run(() => mutate(`/versions/${latest.id}/send`))
-                              }
-                            >
-                              Send for everyone’s review
-                            </Button>
-                          )}
-                          {latest.status === "AWAITING_APPROVAL" && (
-                            <>
-                              <Button
-                                disabled={busy || !!latest.approvals[user.id]}
-                                onClick={() =>
-                                  run(() =>
-                                    mutate(`/versions/${latest.id}/approve`),
-                                  )
-                                }
-                              >
-                                {latest.approvals[user.id]
-                                  ? "You approved"
-                                  : "Approve this version"}
-                              </Button>
-                              {organizer && (
-                                <Button
-                                  disabled={
-                                    busy ||
-                                    !selected.value.members.every(
-                                      (m) => latest.approvals[m.userId],
-                                    )
-                                  }
-                                  onClick={() =>
-                                    run(() =>
-                                      mutate(`/versions/${latest.id}/activate`),
-                                    )
-                                  }
-                                >
-                                  Activate agreed rules
-                                </Button>
-                              )}
-                            </>
-                          )}
-                        </div>
-                        {latest.status === "AWAITING_APPROVAL" && (
-                          <SimpleForm
-                            label="Request a change"
-                            button="Send change request"
-                            busy={busy}
-                            onSubmit={(reason) =>
-                              run(() =>
-                                mutate(
-                                  `/versions/${latest.id}/request-change`,
-                                  { reason },
-                                ),
-                              )
-                            }
-                          />
-                        )}
+                        <ContractReviewPanel key={latest.id} agreement={selected} version={latest} userId={user.id} busy={busy} onAction={async (action, payload) => {
+                          setBusy(true); setError(""); setNotice("");
+                          try { await mutate(`/versions/${latest.id}/${action}`, payload); }
+                          finally { setBusy(false); }
+                        }} />
                         <section className="section">
                           <h3>Preview an incoming payment</h3>
                           <p className="muted">
@@ -847,21 +788,12 @@ export default function FairshareApp() {
                             />
                           )}
                         </section>
-                        {latest.changeRequests.map((c, i) => (
-                          <Notice key={i}>
-                            {
-                              selected.value.members.find(
-                                (m) => m.userId === c.userId,
-                              )?.displayName
-                            }{" "}
-                            requested: {c.reason}
-                          </Notice>
-                        ))}
                       </>
                     ) : (
                       <>
                         <section className="panel">
                           <h3>Source agreement</h3>
+                          <ContractSourceGuidance replacement={!!selected.value.versions.length} />
                           <Field
                             label="Agreement text"
                             hint="Use synthetic or authorized documents only. Text is stored privately in this workspace."

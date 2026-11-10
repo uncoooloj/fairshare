@@ -17,6 +17,8 @@ import {
 } from "./paymentGridModel";
 
 import { summarizePayouts } from "./payoutSummary";
+import { filterPayouts, payoutCsv } from "./payoutPresentation";
+import { PayoutDetails } from "./PayoutDetails";
 import styles from "./payouts.module.css";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
@@ -48,6 +50,7 @@ export function PaymentGrid({
   onOpenAgreement,
 }: PaymentGridProps) {
   const [query, setQuery] = useState("");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const searchId = useId();
   const statusId = useId();
   const [status, setStatus] = useState<PaymentGridStatus | "">("");
@@ -58,7 +61,13 @@ export function PaymentGrid({
       return { rows: [] as PaymentGridRow[], summary: summarizePayouts([]), invalid: true };
     }
   }, [rows]);
-  const filteredRows = useMemo(() => data.rows.filter(row => !status || row.status === status), [data.rows, status]);
+  const filteredRows = useMemo(() => filterPayouts(data.rows, status, query), [data.rows, status, query]);
+  const selected = !loading ? data.rows.find(row => row.id === selectedId) : undefined;
+  function exportCsv() {
+    const url = URL.createObjectURL(new Blob([payoutCsv(filteredRows)], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a'); link.href = url; link.download = 'fairshare-payouts.csv'; link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
   const columns = useMemo<ColDef<PaymentGridRow>[]>(
     () => [
       {
@@ -98,7 +107,7 @@ export function PaymentGrid({
         headerName: "Amount (USD)",
         minWidth: 150,
         type: "numericColumn",
-        filter: "agNumberColumnFilter",
+
         valueGetter: (p) => (p.data ? p.data.amountCents / 100 : null),
         valueFormatter: (p) =>
           p.data
@@ -130,6 +139,8 @@ export function PaymentGrid({
               })
             : "Not recorded",
       },
+      { headerName: "Details", minWidth: 100, width: 110, sortable: false, filter: false,
+        cellRenderer: ({ data: row }: { data?: PaymentGridRow }) => row ? <button type="button" className={styles.control} aria-label={`View payout to ${row.recipientName}`} onClick={() => setSelectedId(row.id)}>View</button> : null },
       {
         field: "providerReference",
         headerName: "Provider reference",
@@ -167,16 +178,17 @@ export function PaymentGrid({
             {Object.values(PaymentGridStatus).map(value => <option key={value} value={value}>{paymentStatusLabels[value]}</option>)}
           </select>
         </label>
-        <span className={styles.count} aria-live="polite">{loading ? 'Loading payouts…' : `${data.rows.length} recorded payouts`}</span>
+        <span className={styles.count} aria-live="polite">{loading ? 'Loading payouts…' : `${filteredRows.length} of ${data.rows.length} payouts`}</span>
+        {(query || status) && <button className={styles.control} type="button" onClick={() => { setQuery(''); setStatus(''); }}>Clear filters</button>}
+        <button className={styles.control} type="button" onClick={exportCsv} disabled={loading || !filteredRows.length}>Export CSV</button>
       </div>
-      <div style={{ height: 460, width: "100%" }}>
+      {!loading && !data.rows.length ? <div className={styles.empty}><h3>No payouts yet</h3><p>Payouts appear here after an allocation is submitted under an approved agreement.</p></div> : <div style={{ height: 460, width: "100%" }}>
         <AgGridReact<PaymentGridRow>
           theme={theme}
           rowData={filteredRows}
           columnDefs={columns}
-          defaultColDef={{ sortable: true, filter: true, resizable: true }}
+          defaultColDef={{ sortable: true, filter: false, resizable: true }}
           getRowId={(p) => p.data.id}
-          quickFilterText={query}
           loading={loading}
           pagination
           paginationPageSize={20}
@@ -188,7 +200,8 @@ export function PaymentGrid({
             event.api.setGridAriaProperty("label", "Agreement payout history")
           }
         />
-      </div>
+      </div>}
+      {selected && <PayoutDetails row={selected} onClose={() => setSelectedId(null)} onOpenAgreement={onOpenAgreement} />}
       <p style={{ fontSize: 12, color: "var(--color-muted)" }}>
         Totals cover all recorded payouts, not a monthly period. Amounts follow the approved agreement. On-hold and pending entries are
         not completed transfers.
