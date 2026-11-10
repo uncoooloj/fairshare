@@ -1,1 +1,17 @@
-{"name":"@fairshare/contract-ai","version":"0.1.0","private":true,"type":"module","exports":"./src/index.ts","scripts":{"test":"node --import tsx --test test/*.test.ts","typecheck":"tsc --noEmit -p tsconfig.json"},"devDependencies":{"@types/node":"^24.10.0","tsx":"^4.20.6","typescript":"^5.9.3"}}
+{
+  "name": "@fairshare/contract-ai",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "scripts": {
+    "test": "node --import tsx --test test/*.test.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  },
+  "license": "MIT"
+}

@@ -15,6 +15,7 @@ Newest upload first, at most 100 results. Pass `?before=<nextCursor>` for older 
 Fixed: extraction revalidated membership before outbound processing but not after the asynchronous provider call. A revoked session could receive and persist the completed extraction. The route now checks session/workspace/agreement membership again before any persistence or response; regression test revokes the session during a deferred extraction.
 
 Verified via routes/tests and code inspection:
+
 - Source reads/list use both tenant and agreement predicates; workspace members outside an agreement cannot inspect it.
 - Missing authentication, foreign tenants, foreign agreement IDs and guessed document IDs do not return confidential text.
 - List bounded to 100 metadata records; cursor is validated and cannot replace the scoped predicates.
