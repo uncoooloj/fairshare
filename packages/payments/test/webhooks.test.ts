@@ -1,0 +1,163 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import {
+  verifyAndPlanWebhook,
+  enqueueVerifiedWebhook,
+  reconcileCapture,
+  WebhookActionKind,
+} from "../src/webhooks.js";
+const client = { verifyWebhook: async () => true };
+const event = {
+  id: "evt1",
+  event_type: "PAYMENT.CAPTURE.COMPLETED",
+  resource: {
+    id: "cap1",
+    supplementary_data: { related_ids: { order_id: "order1" } },
+  },
+};
+test("signed completion only schedules provider reconciliation, never credits directly", async () => {
+  const e = await verifyAndPlanWebhook(client, {}, event);
+  assert.equal(e.action.kind, WebhookActionKind.ReconcileCapture);
+  assert.equal(e.action.orderId, "order1");
+});
+test("invalid signature cannot enqueue", async () => {
+  await assert.rejects(
+    verifyAndPlanWebhook({ verifyWebhook: async () => false }, {}, event),
+    { code: "INVALID_WEBHOOK_SIGNATURE" },
+  );
+});
+test("duplicate events are processed once even with reordered JSON keys", async () => {
+  const a = await verifyAndPlanWebhook(client, {}, event);
+  const b = await verifyAndPlanWebhook(
+    client,
+    {},
+    { resource: event.resource, event_type: event.event_type, id: event.id },
+  );
+  const one = enqueueVerifiedWebhook({ events: {}, pending: [] }, a);
+  const two = enqueueVerifiedWebhook(one.state, b);
+  assert.equal(two.duplicate, true);
+  assert.equal(two.state.pending.length, 1);
+});
+test("same id with altered payload fails closed", async () => {
+  const a = await verifyAndPlanWebhook(client, {}, event);
+  const b = await verifyAndPlanWebhook(
+    client,
+    {},
+    { ...event, resource: { id: "another" } },
+  );
+  assert.throws(
+    () =>
+      enqueueVerifiedWebhook(
+        enqueueVerifiedWebhook({ events: {}, pending: [] }, a).state,
+        b,
+      ),
+    { code: "WEBHOOK_EVENT_ID_CONFLICT" },
+  );
+});
+test("unknown IDs are retained for investigation not silently discarded", async () => {
+  const a = await verifyAndPlanWebhook(
+    client,
+    {},
+    { ...event, resource: { id: "cap1" } },
+  );
+  assert.equal(a.action.kind, WebhookActionKind.RecordUnmatched);
+});
+test("reversals and dispute resolutions hold, never guess automatic release", async () => {
+  for (const event_type of [
+    "PAYMENT.CAPTURE.REVERSED",
+    "PAYMENT.CAPTURE.REFUNDED",
+    "CUSTOMER.DISPUTE.RESOLVED",
+  ]) {
+    const a = await verifyAndPlanWebhook(
+      client,
+      {},
+      {
+        id: event_type,
+        event_type,
+        resource: {
+          id: "cap",
+          disputed_transactions: [{ seller_transaction_id: "cap" }],
+        },
+      },
+    );
+    assert.equal(a.action.kind, WebhookActionKind.HoldCapture);
+  }
+});
+test("capture reconciliation checks amount reference order capture and status", async () => {
+  const capture = {
+    id: "cap",
+    orderId: "order",
+    reference: "payment",
+    amountCents: 100,
+    currency: "USD",
+    status: "COMPLETED",
+  };
+  const expected = {
+    orderId: "order",
+    captureId: "cap",
+    reference: "payment",
+    amountCents: 100,
+    currency: "USD" as const,
+  };
+  assert.equal(
+    (
+      await reconcileCapture(
+        { getOrder: async () => ({ status: "COMPLETED", capture }) },
+        expected,
+      )
+    ).confirmed,
+    true,
+  );
+  for (const changed of [
+    { amountCents: 101 },
+    { reference: "other" },
+    { id: "wrong" },
+    { currency: "EUR" },
+  ])
+    await assert.rejects(
+      reconcileCapture(
+        {
+          getOrder: async () => ({
+            status: "COMPLETED",
+            capture: { ...capture, ...changed },
+          }),
+        },
+        expected,
+      ),
+      { code: "CAPTURE_MISMATCH" },
+    );
+  assert.equal(
+    (
+      await reconcileCapture(
+        {
+          getOrder: async () => ({
+            status: "COMPLETED",
+            capture: { ...capture, status: "PENDING" },
+          }),
+        },
+        expected,
+      )
+    ).confirmed,
+    false,
+  );
+});
+test("provider failure leaves persisted inbox available to retry", async () => {
+  const a = await verifyAndPlanWebhook(client, {}, event);
+  const state = enqueueVerifiedWebhook({ events: {}, pending: [] }, a).state;
+  await assert.rejects(
+    reconcileCapture(
+      {
+        getOrder: async () => {
+          throw new Error("temporary");
+        },
+      },
+      {
+        orderId: "order",
+        reference: "payment",
+        amountCents: 100,
+        currency: "USD",
+      },
+    ),
+  );
+  assert.equal(state.pending.length, 1);
+});

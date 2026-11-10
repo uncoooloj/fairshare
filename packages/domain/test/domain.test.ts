@@ -1,0 +1,426 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import {
+  createCollaboration,
+  proposeVersion,
+  sendForReview,
+  approveVersion,
+  activateVersion,
+  requestChange,
+  allocateConfirmedRevenue,
+  holdReversedRevenue,
+  splitCents,
+  MemberRole,
+  RuleOrigin,
+  FeePolicy,
+  VersionStatus,
+  RevenueStatus,
+  AllocationStatus,
+  DomainError,
+  type Rules,
+  type Collaboration,
+} from "../src/index.ts";
+const at = "2026-11-10T12:00:00.000Z";
+const source = {
+  origin: RuleOrigin.SOURCE_CLAUSE,
+  documentId: "doc1",
+  clause: "4.2",
+  excerpt:
+    "Recoup A’s verified $2,000 advance, then share remaining eligible revenue 50/30/20.",
+};
+const rules = (): Rules => ({
+  currency: "USD",
+  shares: [
+    { userId: "a", basisPoints: 5000 },
+    { userId: "b", basisPoints: 3000 },
+    { userId: "c", basisPoints: 2000 },
+  ],
+  feePolicy: FeePolicy.BEFORE_SPLIT,
+  advance: {
+    id: "advance-1",
+    recipientId: "a",
+    amountCents: 200000,
+    verified: true,
+    source,
+  },
+  source,
+  unresolvedQuestions: [],
+});
+function fresh(): Collaboration {
+  return createCollaboration(
+    {
+      id: "collab",
+      name: "Midnight",
+      members: [
+        { userId: "a", displayName: "Maya", role: MemberRole.ORGANIZER },
+        { userId: "b", displayName: "Jordan", role: MemberRole.COLLABORATOR },
+        { userId: "c", displayName: "Riley", role: MemberRole.COLLABORATOR },
+      ],
+    },
+    "a",
+    at,
+  );
+}
+function active(r = rules()): Collaboration {
+  let c = sendForReview(proposeVersion(fresh(), r, "a", at), 1, "a", at);
+  for (const id of ["a", "b", "c"]) c = approveVersion(c, 1, id, at);
+  return activateVersion(c, 1, "a", at);
+}
+const code = (expected: string) => (err: unknown) =>
+  err instanceof DomainError && err.code === expected;
+test("rules require unanimous current-version approval, organizer activation and immutable transitions", () => {
+  const original = fresh();
+  let c = proposeVersion(original, rules(), "a", at);
+  assert.equal(original.versions.length, 0);
+  c = sendForReview(c, 1, "a", at);
+  c = approveVersion(c, 1, "a", at);
+  assert.throws(
+    () => activateVersion(c, 1, "a", at),
+    code("APPROVALS_REQUIRED"),
+  );
+  assert.throws(() => approveVersion(c, 1, "outsider", at), code("FORBIDDEN"));
+  for (const id of ["b", "c"]) c = approveVersion(c, 1, id, at);
+  assert.throws(() => activateVersion(c, 1, "b", at), code("FORBIDDEN"));
+  assert.equal(activateVersion(c, 1, "a", at).activeVersionId, 1);
+});
+test("new proposals reset approvals and stale approvals cannot activate", () => {
+  let c = active();
+  c = proposeVersion(c, rules(), "b", at);
+  assert.equal(c.versions[1].status, VersionStatus.DRAFT);
+  assert.deepEqual(c.versions[1].approvals, {});
+  assert.throws(() => approveVersion(c, 1, "c", at), code("STALE_VERSION"));
+  assert.equal(c.activeVersionId, 1);
+});
+test("questions and unverified advances block sending rules for review", () => {
+  for (const r of [
+    { ...rules(), unresolvedQuestions: ["Gross or net?"] },
+    { ...rules(), advance: { ...rules().advance!, verified: false } },
+  ])
+    assert.throws(
+      () => sendForReview(proposeVersion(fresh(), r, "a", at), 1, "a", at),
+      code("UNRESOLVED_RULES"),
+    );
+});
+test("shares need 100% and one entry for every participant", () => {
+  for (const shares of [
+    [{ userId: "a", basisPoints: 10000 }],
+    [
+      { userId: "a", basisPoints: 5000 },
+      { userId: "b", basisPoints: 3000 },
+      { userId: "b", basisPoints: 2000 },
+    ],
+    rules().shares.map((s) => ({ ...s, basisPoints: s.basisPoints - 1 })),
+  ])
+    assert.throws(
+      () => proposeVersion(fresh(), { ...rules(), shares }, "a", at),
+      code("INVALID_SHARES"),
+    );
+});
+test("existing advance cannot silently change amount or recipient", () => {
+  const c = active();
+  for (const patch of [{ amountCents: 200001 }, { recipientId: "b" }])
+    assert.throws(
+      () =>
+        proposeVersion(
+          c,
+          { ...rules(), advance: { ...rules().advance!, ...patch } },
+          "a",
+          at,
+        ),
+      code("ADVANCE_CHANGED"),
+    );
+});
+test("two sales correctly recoup once and conserve entire eligible amount", () => {
+  let c = active();
+  c = allocateConfirmedRevenue(
+    c,
+    {
+      providerCaptureId: "cap1",
+      currency: "USD",
+      grossCents: 300000,
+      feeCents: 0,
+    },
+    at,
+  );
+  assert.deepEqual(
+    c.revenue[0].allocations.map((a) => a.totalCents),
+    [250000, 30000, 20000],
+  );
+  assert.equal(c.recoupedByAdvance["advance-1"], 200000);
+  c = allocateConfirmedRevenue(
+    c,
+    {
+      providerCaptureId: "cap2",
+      currency: "USD",
+      grossCents: 100000,
+      feeCents: 0,
+    },
+    at,
+  );
+  assert.deepEqual(
+    c.revenue[1].allocations.map((a) => a.totalCents),
+    [50000, 30000, 20000],
+  );
+});
+test("partial advance recoupment spans revenue events without over-recoup", () => {
+  let c = active();
+  c = allocateConfirmedRevenue(
+    c,
+    {
+      providerCaptureId: "p1",
+      currency: "USD",
+      grossCents: 120000,
+      feeCents: 1000,
+    },
+    at,
+  );
+  assert.deepEqual(
+    c.revenue[0].allocations.map((a) => a.totalCents),
+    [119000, 0, 0],
+  );
+  c = allocateConfirmedRevenue(
+    c,
+    {
+      providerCaptureId: "p2",
+      currency: "USD",
+      grossCents: 100000,
+      feeCents: 0,
+    },
+    at,
+  );
+  assert.deepEqual(
+    c.revenue[1].allocations.map((a) => a.totalCents),
+    [90500, 5700, 3800],
+  );
+  assert.equal(c.recoupedByAdvance["advance-1"], 200000);
+});
+test("duplicate capture is idempotent, changed amounts are rejected", () => {
+  const input = {
+    providerCaptureId: "cap1",
+    currency: "USD" as const,
+    grossCents: 300000,
+    feeCents: 0,
+  };
+  const c = allocateConfirmedRevenue(active(), input, at);
+  assert.deepEqual(allocateConfirmedRevenue(c, input, at), c);
+  assert.throws(
+    () => allocateConfirmedRevenue(c, { ...input, feeCents: 1 }, at),
+    code("IDEMPOTENCY_CONFLICT"),
+  );
+});
+test("old events retain rule version and values after a new agreement activates", () => {
+  let c = allocateConfirmedRevenue(
+    active(),
+    {
+      providerCaptureId: "old",
+      currency: "USD",
+      grossCents: 300000,
+      feeCents: 0,
+    },
+    at,
+  );
+  const old = structuredClone(c.revenue[0]);
+  const r = {
+    ...rules(),
+    shares: [
+      { userId: "a", basisPoints: 2000 },
+      { userId: "b", basisPoints: 3000 },
+      { userId: "c", basisPoints: 5000 },
+    ],
+  };
+  c = sendForReview(proposeVersion(c, r, "a", at), 2, "a", at);
+  for (const id of ["a", "b", "c"]) c = approveVersion(c, 2, id, at);
+  c = activateVersion(c, 2, "a", at);
+  c = allocateConfirmedRevenue(
+    c,
+    {
+      providerCaptureId: "new",
+      currency: "USD",
+      grossCents: 100000,
+      feeCents: 0,
+    },
+    at,
+  );
+  assert.deepEqual(c.revenue[0], old);
+  assert.equal(c.revenue[1].versionId, 2);
+  assert.deepEqual(
+    c.revenue[1].allocations.map((a) => a.totalCents),
+    [20000, 30000, 50000],
+  );
+});
+test("fee policies conserve actual net and organizer fee cannot create negative share", () => {
+  const r = rules();
+  delete r.advance;
+  let c = allocateConfirmedRevenue(
+    active(r),
+    {
+      providerCaptureId: "p",
+      currency: "USD",
+      grossCents: 100000,
+      feeCents: 3000,
+    },
+    at,
+  );
+  assert.deepEqual(
+    c.revenue[0].allocations.map((a) => a.totalCents),
+    [48500, 29100, 19400],
+  );
+  r.feePolicy = FeePolicy.ORGANIZER_SHARE;
+  r.feeBearerId = "a";
+  c = allocateConfirmedRevenue(
+    active(r),
+    {
+      providerCaptureId: "p",
+      currency: "USD",
+      grossCents: 100000,
+      feeCents: 3000,
+    },
+    at,
+  );
+  assert.deepEqual(
+    c.revenue[0].allocations.map((a) => a.totalCents),
+    [47000, 30000, 20000],
+  );
+  assert.throws(
+    () =>
+      allocateConfirmedRevenue(
+        active(r),
+        {
+          providerCaptureId: "p",
+          currency: "USD",
+          grossCents: 100,
+          feeCents: 60,
+        },
+        at,
+      ),
+    code("FEE_EXCEEDS_SHARE"),
+  );
+});
+test("reversal holds payouts without rewriting original amounts or recoupment", () => {
+  const c = allocateConfirmedRevenue(
+    active(),
+    {
+      providerCaptureId: "p",
+      currency: "USD",
+      grossCents: 300000,
+      feeCents: 0,
+    },
+    at,
+  );
+  const held = holdReversedRevenue(c, "p", "Provider reversal", at);
+  assert.equal(held.revenue[0].status, RevenueStatus.REVIEW_REQUIRED);
+  assert.ok(
+    held.revenue[0].allocations.every(
+      (a) => a.status === AllocationStatus.HELD,
+    ),
+  );
+  assert.equal(held.recoupedByAdvance["advance-1"], 200000);
+  assert.deepEqual(
+    held.revenue[0].allocations.map((a) => a.totalCents),
+    c.revenue[0].allocations.map((a) => a.totalCents),
+  );
+  assert.deepEqual(holdReversedRevenue(held, "p", "duplicate", at), held);
+  assert.throws(
+    () =>
+      allocateConfirmedRevenue(
+        held,
+        {
+          providerCaptureId: "new",
+          currency: "USD",
+          grossCents: 100,
+          feeCents: 0,
+        },
+        at,
+      ),
+    code("PAYMENT_HOLD"),
+  );
+  assert.throws(
+    () => holdReversedRevenue(c, "unknown", "reversal", at),
+    code("UNKNOWN_CAPTURE"),
+  );
+});
+test("change request clears approvals; double approval has no duplicate audit entry", () => {
+  let c = sendForReview(proposeVersion(fresh(), rules(), "a", at), 1, "a", at);
+  c = approveVersion(c, 1, "a", at);
+  assert.deepEqual(approveVersion(c, 1, "a", at), c);
+  c = requestChange(c, 1, "Clarify fees", "b", at);
+  assert.equal(c.versions[0].status, VersionStatus.DRAFT);
+  assert.deepEqual(c.versions[0].approvals, {});
+});
+test("invalid money and missing active rules rejected", () => {
+  for (const amount of [NaN, Infinity, -1, 0.5, Number.MAX_SAFE_INTEGER])
+    assert.throws(
+      () => splitCents(amount, rules().shares),
+      code("INVALID_MONEY"),
+    );
+  assert.throws(
+    () =>
+      allocateConfirmedRevenue(
+        fresh(),
+        {
+          providerCaptureId: "p",
+          currency: "USD",
+          grossCents: 100,
+          feeCents: 0,
+        },
+        at,
+      ),
+    code("NO_ACTIVE_RULES"),
+  );
+});
+test("largest-remainder rounding stable regardless input ordering", () => {
+  const shares = [
+    { userId: "c", basisPoints: 3333 },
+    { userId: "a", basisPoints: 3334 },
+    { userId: "b", basisPoints: 3333 },
+  ];
+  assert.deepEqual(splitCents(2, shares), { a: 1, b: 1, c: 0 });
+  assert.deepEqual(splitCents(2, shares.reverse()), { a: 1, b: 1, c: 0 });
+});
+test("1000 deterministic allocation scenarios conserve gross less fees without negative amounts", () => {
+  for (let i = 1; i <= 1000; i++) {
+    const r = rules();
+    r.advance!.amountCents = (i * 37) % 20000;
+    const gross = i * 997;
+    const fee = i % 101;
+    const c = allocateConfirmedRevenue(
+      active(r),
+      {
+        providerCaptureId: `p${i}`,
+        currency: "USD",
+        grossCents: gross,
+        feeCents: fee,
+      },
+      at,
+    );
+    const rows = c.revenue[0].allocations;
+    assert.equal(
+      rows.reduce((s, a) => s + a.totalCents, 0),
+      gross - fee,
+    );
+    assert.ok(
+      rows.every(
+        (a) => Number.isSafeInteger(a.totalCents) && a.totalCents >= 0,
+      ),
+    );
+  }
+});
+test("preview draft rules without activation or money mutation", async () => {
+  const { previewVersion } = await import("../src/index.ts");
+  const c = proposeVersion(
+    fresh(),
+    { ...rules(), unresolvedQuestions: ["Confirm basis"] },
+    "a",
+    at,
+  );
+  const p = previewVersion(c, 1, { grossCents: 300000, feeCents: 0 }, "b");
+  assert.equal(p.previewOnly, true);
+  assert.equal(p.requiresClarification, true);
+  assert.deepEqual(
+    p.allocations.map((a) => a.totalCents),
+    [250000, 30000, 20000],
+  );
+  assert.equal(c.revenue.length, 0);
+  assert.equal(c.activeVersionId, undefined);
+  assert.equal(c.versions[0].status, VersionStatus.DRAFT);
+});
