@@ -521,6 +521,11 @@ export function AIReview({
       >
         Suggest terms
       </Button>
+      <p className="visually-hidden" role="status">
+        {extraction
+          ? "Suggestions ready. Review the extracted terms before using them."
+          : ""}
+      </p>
       {extraction && (
         <div className="panel">
           <Badge value={extraction.status || "REVIEW_REQUIRED"} />
@@ -695,7 +700,11 @@ export function RulesEditor({
           )}
         </Notice>
       )}
-      {error && <Notice warning>{error}</Notice>}
+      {error && (
+        <Notice warning announcement="assertive">
+          {error}
+        </Notice>
+      )}
       <div className="form-grid">
         {agreement.value.members.map((m) => (
           <Field key={m.userId} label={`${m.displayName} · share %`}>

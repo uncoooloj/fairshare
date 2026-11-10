@@ -1,7 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { Notice } from "../components/ui";
 import { tabDestination } from "../lib/tab-navigation";
+const require = createRequire(import.meta.url);
+require.extensions[".css"] = () => {};
+const { AIReview } = require("../components/agreement-widgets.tsx");
 const source = (path: string) =>
   readFileSync(new URL(path, import.meta.url), "utf8");
 
@@ -33,14 +40,45 @@ test("tab markup and panel have connected names, roving tab stop and manual acti
   );
   assert.match(tabs, /buttons.current\[next\]\?\.focus\(\)/);
 });
-test("keyboard skip target and shared notice announcements are present", () => {
+test("keyboard skip target is present", () => {
   const app = source("../components/fairshare-app.tsx");
   assert.match(app, /href="#main-content"/);
   assert.match(app, /id="main-content"\s*tabIndex=\{-1\}/);
-  assert.match(
-    source("../components/ui.tsx"),
-    /role=\{warning \? "alert" : "status"\}/,
+});
+test("notices announce only when a dynamic caller explicitly opts in", () => {
+  const staticNotice = renderToStaticMarkup(
+    createElement(Notice, { warning: true, children: "Static guidance" }),
   );
+  const assertedNotice = renderToStaticMarkup(
+    createElement(Notice, {
+      warning: true,
+      announcement: "assertive",
+      children: "Action failed",
+    }),
+  );
+  const politeNotice = renderToStaticMarkup(
+    createElement(Notice, {
+      announcement: "polite",
+      children: "Action completed",
+    }),
+  );
+  assert.doesNotMatch(staticNotice, /\srole=|aria-live=/);
+  assert.match(assertedNotice, /role="alert"/);
+  assert.match(politeNotice, /role="status"/);
+});
+test("AI extraction adds one concise polite result announcement", () => {
+  const markup = renderToStaticMarkup(
+    createElement(AIReview, {
+      busy: false,
+      extraction: { status: "REVIEW_REQUIRED", reason: "Needs review" },
+      onExtract: () => {},
+    }),
+  );
+  assert.match(
+    markup,
+    /role="status">Suggestions ready\. Review the extracted terms before using them\.<\/p>/,
+  );
+  assert.equal((markup.match(/\srole="(?:alert|status)"/g) || []).length, 1);
 });
 test("small screens retain sign out and overflowing dialog content can scroll", () => {
   const css = source("../app/globals.css");
