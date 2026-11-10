@@ -159,14 +159,12 @@ export function registerAccountSettings(
       )
       .sort((a, b) => b.createdAt - a.createdAt || a.id.localeCompare(b.id));
     return {
-      events: filtered
-        .slice(offset, offset + 50)
-        .map((e) => ({
-          ...e,
-          actorName:
-            names.get(e.actorId) ??
-            (e.actorId === "provider" ? "PayPal" : "System"),
-        })),
+      events: filtered.slice(offset, offset + 50).map((e) => ({
+        ...e,
+        actorName:
+          names.get(e.actorId) ??
+          (e.actorId === "provider" ? "PayPal" : "System"),
+      })),
       total: filtered.length,
       nextOffset: offset + 50 < filtered.length ? offset + 50 : null,
       actors: [...new Set(events.map((e) => e.actorId))].map((id) => ({
