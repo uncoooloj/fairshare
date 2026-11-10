@@ -45,23 +45,22 @@ The hackathon implementation uses PayPal sandbox, not live money. PayPal authent
 
 ## Main navigation
 
-| Destination    | Why it exists                  | Primary content                                                               |
-| -------------- | ------------------------------ | ----------------------------------------------------------------------------- |
-| Overview       | Know what needs attention      | Pending reviews, payment exceptions, recent activity and concise totals       |
-| Collaborations | Manage the shared work         | Collaboration list and each collaboration’s workspace                         |
-| Revenue        | Inspect incoming money         | Individual payment events, provider status, allocation basis and rule version |
-| Payouts        | Inspect outgoing money         | Recipient amounts, payment status, schedule and exceptions                    |
-| Settings       | Manage account and connections | Profile, merchant connection and relevant preferences                         |
+| Destination | Why it exists                     | Primary content                                                             |
+| ----------- | --------------------------------- | --------------------------------------------------------------------------- |
+| Overview    | Know what needs attention         | Pending reviews, payment exceptions, recent activity and concise totals     |
+| Agreements  | Manage agreements and shared work | Agreement list and each agreement’s workspace, including people and revenue |
+| Payouts     | Inspect outgoing money            | Recipient amounts, payment status, schedule and exceptions                  |
+| Settings    | Manage account and connections    | Profile, merchant connection and relevant preferences                       |
 
-Agreements, documents, people and rule versions live inside each collaboration. A separate global Collaborators directory and Library are not needed for the first version. A future cross-collaboration search does not require creating empty menu items now.
+The primary product object is an agreement. Documents, people, clarifications, rule versions and incoming revenue live inside its workspace. Backend collaboration aggregates may retain their internal names. A separate global Collaborators directory and Library are not needed for the first version. A future cross-collaboration search does not require creating empty menu items now.
 
-## Collaboration workspace
+## Agreement workspace
 
 The workspace should answer: What did we agree? Who has approved? What money has arrived? What is each person owed? Has it been paid?
 
-Use contextual sections such as Summary, Agreement, People and Activity. Revenue and payout links may open global views pre-filtered to this collaboration. Do not create duplicate sources of truth.
+Use contextual sections such as Summary, Agreement, People and Activity. Revenue stays contextual to the agreement. Payout links may open the global payouts view filtered to this agreement. Do not create duplicate sources of truth.
 
-The collaboration list should show a real metric such as **Revenue received**, with currency and period, not a column that repeats “Revenue share” on every row. Until reliable values exist, omit the metric. Do not combine different currencies into an unlabeled total.
+The agreement list should show a real metric such as **Revenue received**, with currency and period, not a column that repeats “Revenue share” on every row. Until reliable values exist, omit the metric. Do not combine different currencies into an unlabeled total.
 
 ---PAGE---
 
@@ -94,7 +93,7 @@ Empty collaboration; saved draft; file selected; upload in progress; unsupported
 
 ## Review proposed interpretation
 
-The signature screen places a source clause beside the structured rule it supports. Selecting a rule reveals its citation and exact excerpt. The document need not occupy half the screen permanently; a source drawer can preserve a calmer working view.
+The rule-review screen places a source clause beside the structured rule it supports. Selecting a rule reveals its citation and exact excerpt. The document need not occupy half the screen permanently; a source drawer can preserve a calmer working view.
 
 Extract only what is supported. If the agreement does not specify a percentage, advance amount or recipient, show a missing value. Do not turn a plausible guess into a “found” term. Separate source-derived rules, AI suggestions and human clarifications visually.
 
@@ -125,7 +124,7 @@ Once approved and valid, the rules become active for their stated scope. Previou
 
 ## Three distinct concepts
 
-**Revenue** is incoming money for the collaboration. A payment event has its own provider status. Returning from checkout is not enough to prove payment succeeded.
+**Revenue** is incoming money for the agreement, shown within its workspace rather than a standalone global tab. A payment event has its own provider status. Returning from checkout is not enough to prove payment succeeded.
 
 **Allocation** is a calculated entitlement under an approved rule version. It is a ledger result, not proof that money was sent. The calculation uses exact minor currency units and an explicit rounding policy, not model-generated arithmetic.
 
@@ -245,7 +244,7 @@ Use the accepted Apollo and Relevance AI references for professional information
 
 Use the existing Onest-inspired typography and blue #1F4EE8 as a starting point. Avoid the earlier serif, beige, large photographic collage and dense multi-panel promotional layouts. Show one clear primary action per step. Expose source clauses and detailed calculations in contextual drawers where that reduces clutter.
 
-Keep sidebar labels and positions consistent across every frame. Use Overview, Collaborations, Revenue, Payouts and Settings. Do not add Clarifications, Library or a global Collaborators screen merely to fill navigation.
+Keep sidebar labels and positions consistent across every frame. Use Overview, Agreements, Payouts and Settings. Do not add Clarifications, Library or a global Collaborators screen merely to fill navigation.
 
 ## Consistency rules
 

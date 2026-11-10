@@ -1,0 +1,342 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { buildApp } from "../src/app.js";
+import { Role } from "../src/identity.js";
+import { FeePolicy, RuleOrigin } from "@fairshare/domain";
+import { sourceHash, ExtractionStatus } from "@fairshare/contract-ai";
+const password = "Correct-Horse-123";
+const auth = (token: string) => ({ authorization: `Bearer ${token}` });
+async function setup() {
+  const app = await buildApp({ dbPath: ":memory:" });
+  const owner = app.store.register({
+    name: "Maya",
+    email: "maya@example.test",
+    password,
+  });
+  const peer = app.store.register({
+    name: "Jordan",
+    email: "jordan@example.test",
+    password,
+  });
+  const outsider = app.store.register({
+    name: "Other",
+    email: "other@example.test",
+    password,
+  });
+  const w = app.store.createWorkspace(owner.user.id, "Team");
+  app.store.accept(
+    peer.user,
+    app.store.invite(owner.user, w.id, peer.user.email, Role.MEMBER).token,
+  );
+  const base = `/api/workspaces/${w.id}/collaborations`;
+  const created = await app.inject({
+    method: "POST",
+    url: base,
+    headers: auth(owner.token),
+    payload: { name: "Campaign" },
+  });
+  assert.equal(created.statusCode, 201, created.body);
+  return { app, owner, peer, outsider, w, base, c: created.json() };
+}
+test("complete authenticated contract flow including source, preview, unanimous approval, stale writes and tenant isolation", async () => {
+  const { app, owner, peer, outsider, w, base, c } = await setup();
+  try {
+    const path = `${base}/${c.id}`;
+    let rev = c.revision;
+    let r = await app.inject({
+      method: "POST",
+      url: path + "/members",
+      headers: auth(owner.token),
+      payload: {
+        expectedRevision: rev,
+        userId: peer.user.id,
+        displayName: "Injected name",
+      },
+    });
+    assert.equal(r.statusCode, 200, r.body);
+    rev = r.json().revision;
+    assert.equal(r.json().value.members[1].displayName, "Jordan");
+    r = await app.inject({
+      method: "POST",
+      url: path + "/documents",
+      headers: auth(owner.token),
+      payload: {
+        text: "Revenue splits 60% to Maya and 40% to Jordan after fees.",
+      },
+    });
+    assert.equal(r.statusCode, 201, r.body);
+    const documentId = r.json().documentId;
+    const rules = {
+      currency: "USD",
+      feePolicy: FeePolicy.BEFORE_SPLIT,
+      shares: [
+        { userId: owner.user.id, basisPoints: 6000 },
+        { userId: peer.user.id, basisPoints: 4000 },
+      ],
+      source: {
+        origin: RuleOrigin.SOURCE_CLAUSE,
+        documentId,
+        clause: "1",
+        excerpt: "Revenue splits 60% to Maya and 40% to Jordan after fees.",
+      },
+      unresolvedQuestions: [],
+    };
+    r = await app.inject({
+      method: "POST",
+      url: path + "/versions",
+      headers: auth(owner.token),
+      payload: { expectedRevision: rev, rules },
+    });
+    assert.equal(r.statusCode, 200, r.body);
+    rev = r.json().revision;
+    assert.equal(
+      (
+        await app.inject({
+          method: "POST",
+          url: path + "/versions",
+          headers: auth(owner.token),
+          payload: { expectedRevision: rev - 1, rules },
+        })
+      ).statusCode,
+      409,
+    );
+    r = await app.inject({
+      method: "POST",
+      url: path + "/versions/1/preview",
+      headers: auth(peer.token),
+      payload: { grossCents: 100000, feeCents: 3000 },
+    });
+    assert.equal(r.statusCode, 200, r.body);
+    assert.equal(r.json().previewOnly, true);
+    assert.deepEqual(
+      r.json().allocations.map((a: any) => a.totalCents),
+      [58200, 38800],
+    );
+    for (const [action, actor] of [
+      ["send", owner],
+      ["approve", owner],
+      ["approve", peer],
+      ["activate", owner],
+    ] as const) {
+      r = await app.inject({
+        method: "POST",
+        url: path + "/versions/1/" + action,
+        headers: auth(actor.token),
+        payload: { expectedRevision: rev },
+      });
+      assert.equal(r.statusCode, 200, r.body);
+      rev = r.json().revision;
+    }
+    assert.equal(r.json().value.activeVersionId, 1);
+    assert.equal(r.json().value.revenue.length, 0);
+    assert.equal(
+      (await app.inject({ url: path, headers: auth(outsider.token) }))
+        .statusCode,
+      404,
+    );
+    assert.equal(
+      (
+        await app.inject({
+          url: path + "/documents/" + documentId,
+          headers: auth(outsider.token),
+        })
+      ).statusCode,
+      404,
+    );
+    assert.equal(
+      (
+        await app.inject({
+          method: "DELETE",
+          url: `/api/workspaces/${w.id}/members/${peer.user.id}`,
+          headers: auth(owner.token),
+        })
+      ).statusCode,
+      409,
+    );
+    assert.equal(
+      (
+        await app.inject({
+          method: "POST",
+          url: path + "/members",
+          headers: auth(owner.token),
+          payload: { expectedRevision: rev, userId: outsider.user.id },
+        })
+      ).statusCode,
+      409,
+    );
+  } finally {
+    await app.close();
+  }
+});
+test("rules cannot cite invented quotes or foreign documents and viewer mutation is blocked", async () => {
+  const { app, owner, peer, outsider, w, base, c } = await setup();
+  try {
+    const path = `${base}/${c.id}`;
+    const doc = await app.inject({
+      method: "POST",
+      url: path + "/documents",
+      headers: auth(owner.token),
+      payload: { text: "Actual clause" },
+    });
+    const rules = {
+      currency: "USD",
+      feePolicy: FeePolicy.BEFORE_SPLIT,
+      shares: [{ userId: owner.user.id, basisPoints: 10000 }],
+      source: {
+        origin: RuleOrigin.SOURCE_CLAUSE,
+        documentId: doc.json().documentId,
+        clause: "1",
+        excerpt: "Imaginary advance",
+      },
+      unresolvedQuestions: [],
+    };
+    const bad = await app.inject({
+      method: "POST",
+      url: path + "/versions",
+      headers: auth(owner.token),
+      payload: { expectedRevision: 1, rules },
+    });
+    assert.equal(bad.statusCode, 400, bad.body);
+    app.store.accept(
+      outsider.user,
+      app.store.invite(owner.user, w.id, outsider.user.email, Role.VIEWER)
+        .token,
+    );
+    const r = await app.inject({
+      method: "POST",
+      url: base,
+      headers: auth(outsider.token),
+      payload: { name: "Forbidden" },
+    });
+    assert.equal(r.statusCode, 403, r.body);
+    assert.equal(
+      (await app.inject({ url: path, headers: auth(peer.token) })).statusCode,
+      403,
+    );
+  } finally {
+    await app.close();
+  }
+});
+test("AI is consent gated, source bound and cannot activate rules", async () => {
+  let calls = 0;
+  const app = await buildApp({
+    dbPath: ":memory:",
+    extract: async (d) => {
+      calls++;
+      return {
+        status: ExtractionStatus.REVIEW_REQUIRED,
+        documentId: d.documentId,
+        revision: d.revision,
+        sourceHash: sourceHash(d.text),
+        requiresHumanReview: true,
+        executable: false,
+        facts: [],
+        issues: [
+          { kind: "OTHER" as any, question: "Clarify terms", citation: null },
+        ],
+        provider: "cloudflare",
+        model: "test",
+        promptVersion: "test",
+        reason: null,
+      };
+    },
+  });
+  try {
+    const user = app.store.register({
+      name: "Maya",
+      email: "m@example.test",
+      password,
+    });
+    const w = app.store.createWorkspace(user.user.id, "Team");
+    const base = `/api/workspaces/${w.id}/collaborations`;
+    const c = (
+      await app.inject({
+        method: "POST",
+        url: base,
+        headers: auth(user.token),
+        payload: { name: "Campaign" },
+      })
+    ).json();
+    const path = base + "/" + c.id;
+    const d = (
+      await app.inject({
+        method: "POST",
+        url: path + "/documents",
+        headers: auth(user.token),
+        payload: { text: "Agreement sample" },
+      })
+    ).json();
+    const url = path + "/documents/" + d.documentId + "/extract";
+    assert.equal(
+      (
+        await app.inject({
+          method: "POST",
+          url,
+          headers: auth(user.token),
+          payload: {},
+        })
+      ).statusCode,
+      400,
+    );
+    assert.equal(calls, 0);
+    const r = await app.inject({
+      method: "POST",
+      url,
+      headers: auth(user.token),
+      payload: { consentToCloudflare: true },
+    });
+    assert.equal(r.statusCode, 200, r.body);
+    assert.equal(r.json().executable, false);
+    assert.equal(calls, 1);
+    const stored = (
+      await app.inject({ url: path, headers: auth(user.token) })
+    ).json();
+    assert.equal(stored.value.versions.length, 0);
+  } finally {
+    await app.close();
+  }
+});
+test("concurrent same-revision updates commit one proposal only", async () => {
+  const { app, owner, base, c } = await setup();
+  try {
+    const path = `${base}/${c.id}`;
+    const doc = (
+      await app.inject({
+        method: "POST",
+        url: path + "/documents",
+        headers: auth(owner.token),
+        payload: { text: "Maya receives 100%." },
+      })
+    ).json();
+    const rules = {
+      currency: "USD",
+      feePolicy: FeePolicy.BEFORE_SPLIT,
+      shares: [{ userId: owner.user.id, basisPoints: 10000 }],
+      source: {
+        origin: RuleOrigin.SOURCE_CLAUSE,
+        documentId: doc.documentId,
+        clause: "1",
+        excerpt: "Maya receives 100%.",
+      },
+      unresolvedQuestions: [],
+    };
+    const results = await Promise.all(
+      [1, 2].map(() =>
+        app.inject({
+          method: "POST",
+          url: path + "/versions",
+          headers: auth(owner.token),
+          payload: { expectedRevision: 1, rules },
+        }),
+      ),
+    );
+    assert.deepEqual(results.map((r) => r.statusCode).sort(), [200, 409]);
+    const final = (
+      await app.inject({ url: path, headers: auth(owner.token) })
+    ).json();
+    assert.equal(final.value.versions.length, 1);
+    assert.equal(final.revision, 2);
+  } finally {
+    await app.close();
+  }
+});

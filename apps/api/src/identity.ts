@@ -1,0 +1,458 @@
+import { DatabaseSync } from "node:sqlite";
+import {
+  createHash,
+  randomBytes,
+  randomUUID,
+  scryptSync,
+  timingSafeEqual,
+} from "node:crypto";
+import { mkdirSync, chmodSync } from "node:fs";
+import { dirname } from "node:path";
+export enum Role {
+  OWNER = "OWNER",
+  MEMBER = "MEMBER",
+  VIEWER = "VIEWER",
+}
+export enum DataMode {
+  SANDBOX = "SANDBOX",
+  DEMO = "DEMO",
+}
+export class ApiError extends Error {
+  constructor(
+    public statusCode: number,
+    public code: string,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+export type User = { id: string; name: string; email: string };
+export const digest = (value: string) =>
+  createHash("sha256").update(value).digest("hex");
+const opaque = () => randomBytes(32).toString("base64url");
+const cleanUser = (u: any): User => ({
+  id: u.id,
+  name: u.name,
+  email: u.email,
+});
+const normalizeEmail = (v: unknown) => {
+  if (
+    typeof v !== "string" ||
+    v.length > 254 ||
+    !/^\S+@\S+\.\S+$/.test(v.trim())
+  )
+    throw new ApiError(400, "INVALID_EMAIL", "Enter a valid email.");
+  return v.trim().toLowerCase();
+};
+function passwordHash(password: string, salt = opaque()) {
+  return `${salt}:${scryptSync(password, salt, 64).toString("hex")}`;
+}
+const dummyHash = passwordHash("not-a-real-user-password");
+function matches(password: string, encoded: string) {
+  const [salt, hash] = encoded.split(":");
+  const actual = scryptSync(password, salt!, 64);
+  const expected = Buffer.from(hash!, "hex");
+  return expected.length === actual.length && timingSafeEqual(actual, expected);
+}
+export class IdentityStore {
+  readonly db: DatabaseSync;
+  constructor(
+    path: string,
+    public mode: DataMode = DataMode.SANDBOX,
+    public now: () => number = Date.now,
+  ) {
+    if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
+    this.db = new DatabaseSync(path);
+    if (path !== ":memory:") chmodSync(path, 0o600);
+    this.db
+      .exec(`PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL;
+   CREATE TABLE IF NOT EXISTS metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL);
+   CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY,name TEXT NOT NULL,email TEXT UNIQUE NOT NULL,password_hash TEXT NOT NULL,created_at INTEGER NOT NULL);
+   CREATE TABLE IF NOT EXISTS sessions(hash TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),expires_at INTEGER NOT NULL);
+   CREATE TABLE IF NOT EXISTS workspaces(id TEXT PRIMARY KEY,name TEXT NOT NULL,mode TEXT NOT NULL,created_at INTEGER NOT NULL);
+   CREATE TABLE IF NOT EXISTS memberships(workspace_id TEXT REFERENCES workspaces(id),user_id TEXT REFERENCES users(id),role TEXT NOT NULL CHECK(role IN ('OWNER','MEMBER','VIEWER')),PRIMARY KEY(workspace_id,user_id));
+   CREATE TABLE IF NOT EXISTS invitations(id TEXT PRIMARY KEY,hash TEXT UNIQUE NOT NULL,workspace_id TEXT NOT NULL REFERENCES workspaces(id),email TEXT NOT NULL,role TEXT NOT NULL CHECK(role IN ('MEMBER','VIEWER')),expires_at INTEGER NOT NULL,accepted_at INTEGER,revoked_at INTEGER,created_by TEXT NOT NULL REFERENCES users(id));
+   CREATE TABLE IF NOT EXISTS audit(id TEXT PRIMARY KEY,workspace_id TEXT,actor_id TEXT,action TEXT NOT NULL,detail TEXT NOT NULL,created_at INTEGER NOT NULL);
+   CREATE TABLE IF NOT EXISTS rate_limits(key TEXT PRIMARY KEY,count INTEGER NOT NULL,reset_at INTEGER NOT NULL);
+   CREATE TABLE IF NOT EXISTS workspace_records(workspace_id TEXT NOT NULL REFERENCES workspaces(id),key TEXT NOT NULL,value TEXT NOT NULL,version INTEGER NOT NULL,PRIMARY KEY(workspace_id,key));`);
+    try {
+      this.tx(() => {
+        const row = this.db
+          .prepare("SELECT value FROM metadata WHERE key=?")
+          .get("mode") as any;
+        if (row && row.value !== mode)
+          throw new Error(
+            "Database mode mismatch. Use a separate database for DEMO and SANDBOX.",
+          );
+        this.db
+          .prepare("INSERT OR IGNORE INTO metadata VALUES(?,?)")
+          .run("mode", mode);
+      });
+    } catch (error) {
+      this.db.close();
+      throw error;
+    }
+  }
+  close() {
+    this.db.close();
+  }
+  tx<T>(fn: () => T): T {
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const v = fn();
+      this.db.exec("COMMIT");
+      return v;
+    } catch (e) {
+      this.db.exec("ROLLBACK");
+      throw e;
+    }
+  }
+  audit(
+    actor: string,
+    workspace: string | null,
+    action: string,
+    detail: unknown = {},
+  ) {
+    this.db
+      .prepare("INSERT INTO audit VALUES(?,?,?,?,?,?)")
+      .run(
+        randomUUID(),
+        workspace,
+        actor,
+        action,
+        JSON.stringify(detail),
+        this.now(),
+      );
+  }
+  limit(key: string, max: number, windowMs = 15 * 60 * 1000) {
+    this.tx(() => {
+      const now = this.now();
+      this.db.prepare("DELETE FROM rate_limits WHERE reset_at<=?").run(now);
+      const row = this.db
+        .prepare("SELECT count FROM rate_limits WHERE key=?")
+        .get(key) as any;
+      if (row?.count >= max)
+        throw new ApiError(
+          429,
+          "RATE_LIMITED",
+          "Too many attempts. Try again later.",
+        );
+      this.db
+        .prepare(
+          "INSERT INTO rate_limits VALUES(?,1,?) ON CONFLICT(key) DO UPDATE SET count=count+1",
+        )
+        .run(key, now + windowMs);
+    });
+  }
+  register(input: { email: unknown; name: unknown; password: unknown }) {
+    const email = normalizeEmail(input.email);
+    if (
+      typeof input.name !== "string" ||
+      !input.name.trim() ||
+      input.name.trim().length > 80
+    )
+      throw new ApiError(
+        400,
+        "INVALID_NAME",
+        "Name must contain 1–80 characters.",
+      );
+    if (
+      typeof input.password !== "string" ||
+      input.password.length < 12 ||
+      input.password.length > 256
+    )
+      throw new ApiError(
+        400,
+        "INVALID_PASSWORD",
+        "Password must contain 12–256 characters.",
+      );
+    const user = { id: randomUUID(), email, name: input.name.trim() },
+      hash = passwordHash(input.password);
+    return this.tx(() => {
+      if (this.db.prepare("SELECT id FROM users WHERE email=?").get(email))
+        throw new ApiError(
+          409,
+          "ACCOUNT_EXISTS",
+          "An account already exists. Sign in instead.",
+        );
+      this.db
+        .prepare("INSERT INTO users VALUES(?,?,?,?,?)")
+        .run(user.id, user.name, email, hash, this.now());
+      this.audit(user.id, null, "USER_REGISTERED");
+      return { user, ...this.session(user.id) };
+    });
+  }
+  private session(userId: string) {
+    const token = opaque(),
+      expiresAt = this.now() + 7 * 24 * 3600000;
+    this.db.prepare("DELETE FROM sessions WHERE expires_at<=?").run(this.now());
+    this.db
+      .prepare("INSERT INTO sessions VALUES(?,?,?)")
+      .run(digest(token), userId, expiresAt);
+    return { token, expiresAt };
+  }
+  login(emailInput: unknown, password: unknown) {
+    const email = normalizeEmail(emailInput);
+    if (typeof password !== "string" || password.length > 256)
+      throw new ApiError(
+        401,
+        "INVALID_CREDENTIALS",
+        "Email or password is incorrect.",
+      );
+    const row = this.db
+      .prepare("SELECT * FROM users WHERE email=?")
+      .get(email) as any;
+    const ok = matches(password, row?.password_hash ?? dummyHash);
+    if (!row || !ok)
+      throw new ApiError(
+        401,
+        "INVALID_CREDENTIALS",
+        "Email or password is incorrect.",
+      );
+    return this.tx(() => ({ user: cleanUser(row), ...this.session(row.id) }));
+  }
+  userForToken(token: string) {
+    if (!/^[A-Za-z0-9_-]{43}$/.test(token))
+      throw new ApiError(401, "UNAUTHORIZED", "Sign in to continue.");
+    const row = this.db
+      .prepare(
+        "SELECT u.* FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.hash=? AND s.expires_at>?",
+      )
+      .get(digest(token), this.now()) as any;
+    if (!row) throw new ApiError(401, "UNAUTHORIZED", "Sign in to continue.");
+    return cleanUser(row);
+  }
+  logout(token: string) {
+    this.db.prepare("DELETE FROM sessions WHERE hash=?").run(digest(token));
+  }
+  changePassword(userId: string, current: unknown, next: unknown) {
+    if (
+      typeof current !== "string" ||
+      current.length > 256 ||
+      typeof next !== "string" ||
+      next.length < 12 ||
+      next.length > 256
+    )
+      throw new ApiError(
+        400,
+        "INVALID_PASSWORD",
+        "Check the current password and use 12–256 characters for the new password.",
+      );
+    const row = this.db
+      .prepare("SELECT password_hash FROM users WHERE id=?")
+      .get(userId) as any;
+    if (!row || !matches(current, row.password_hash))
+      throw new ApiError(
+        401,
+        "INVALID_CREDENTIALS",
+        "Current password is incorrect.",
+      );
+    const hash = passwordHash(next);
+    this.tx(() => {
+      this.db
+        .prepare("UPDATE users SET password_hash=? WHERE id=?")
+        .run(hash, userId);
+      this.db.prepare("DELETE FROM sessions WHERE user_id=?").run(userId);
+      this.audit(userId, null, "PASSWORD_CHANGED");
+    });
+  }
+  createWorkspace(userId: string, name: unknown) {
+    if (typeof name !== "string" || !name.trim() || name.trim().length > 100)
+      throw new ApiError(
+        400,
+        "INVALID_NAME",
+        "Workspace name must contain 1–100 characters.",
+      );
+    const workspace = {
+      id: randomUUID(),
+      name: name.trim(),
+      mode: this.mode,
+      role: Role.OWNER,
+    };
+    return this.tx(() => {
+      this.db
+        .prepare("INSERT INTO workspaces VALUES(?,?,?,?)")
+        .run(workspace.id, workspace.name, this.mode, this.now());
+      this.db
+        .prepare("INSERT INTO memberships VALUES(?,?,?)")
+        .run(workspace.id, userId, Role.OWNER);
+      this.audit(userId, workspace.id, "WORKSPACE_CREATED");
+      return workspace;
+    });
+  }
+  workspaces(userId: string) {
+    return this.db
+      .prepare(
+        "SELECT w.*,m.role FROM workspaces w JOIN memberships m ON w.id=m.workspace_id WHERE m.user_id=? ORDER BY w.created_at",
+      )
+      .all(userId);
+  }
+  membership(
+    userId: string,
+    workspaceId: string,
+    roles: Role[] = [Role.OWNER, Role.MEMBER, Role.VIEWER],
+  ) {
+    const row = this.db
+      .prepare(
+        "SELECT w.id,w.name,w.mode,m.role FROM workspaces w JOIN memberships m ON m.workspace_id=w.id WHERE w.id=? AND m.user_id=?",
+      )
+      .get(workspaceId, userId) as any;
+    if (!row) throw new ApiError(404, "NOT_FOUND", "Workspace not found.");
+    if (!roles.includes(row.role))
+      throw new ApiError(
+        403,
+        "FORBIDDEN",
+        "Your role does not allow this action.",
+      );
+    return row;
+  }
+  invite(user: User, workspaceId: string, emailInput: unknown, role: unknown) {
+    this.membership(user.id, workspaceId, [Role.OWNER]);
+    const email = normalizeEmail(emailInput);
+    if (role !== Role.MEMBER && role !== Role.VIEWER)
+      throw new ApiError(400, "INVALID_ROLE", "Invite a member or viewer.");
+    const id = randomUUID(),
+      token = opaque(),
+      expiresAt = this.now() + 48 * 3600000;
+    return this.tx(() => {
+      this.db
+        .prepare(
+          "UPDATE invitations SET revoked_at=? WHERE workspace_id=? AND email=? AND accepted_at IS NULL AND revoked_at IS NULL",
+        )
+        .run(this.now(), workspaceId, email);
+      this.db
+        .prepare("INSERT INTO invitations VALUES(?,?,?,?,?,?,NULL,NULL,?)")
+        .run(id, digest(token), workspaceId, email, role, expiresAt, user.id);
+      this.audit(user.id, workspaceId, "INVITATION_CREATED", { id, role });
+      return { id, token, email, role, expiresAt };
+    });
+  }
+  accept(user: User, token: unknown) {
+    if (typeof token !== "string" || token.length !== 43)
+      throw new ApiError(
+        400,
+        "INVALID_INVITATION",
+        "Invitation is invalid or expired.",
+      );
+    return this.tx(() => {
+      const row = this.db
+        .prepare(
+          "SELECT * FROM invitations WHERE hash=? AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at>?",
+        )
+        .get(digest(token), this.now()) as any;
+      if (!row || row.email !== user.email)
+        throw new ApiError(
+          400,
+          "INVALID_INVITATION",
+          "Invitation is invalid, expired, or belongs to another email.",
+        );
+      const existing = this.db
+        .prepare(
+          "SELECT role FROM memberships WHERE workspace_id=? AND user_id=?",
+        )
+        .get(row.workspace_id, user.id);
+      if (existing)
+        throw new ApiError(
+          409,
+          "ALREADY_MEMBER",
+          "You already belong to this workspace.",
+        );
+      this.db
+        .prepare("INSERT INTO memberships VALUES(?,?,?)")
+        .run(row.workspace_id, user.id, row.role);
+      this.db
+        .prepare("UPDATE invitations SET accepted_at=? WHERE id=?")
+        .run(this.now(), row.id);
+      this.audit(user.id, row.workspace_id, "INVITATION_ACCEPTED", {
+        id: row.id,
+        role: row.role,
+      });
+      return this.membership(user.id, row.workspace_id);
+    });
+  }
+  revoke(userId: string, workspaceId: string, id: string) {
+    this.membership(userId, workspaceId, [Role.OWNER]);
+    const result = this.db
+      .prepare(
+        "UPDATE invitations SET revoked_at=? WHERE id=? AND workspace_id=? AND accepted_at IS NULL",
+      )
+      .run(this.now(), id, workspaceId);
+    if (!result.changes)
+      throw new ApiError(404, "NOT_FOUND", "Invitation not found.");
+    this.audit(userId, workspaceId, "INVITATION_REVOKED", { id });
+  }
+  changeMemberRole(
+    actorId: string,
+    workspaceId: string,
+    userId: string,
+    role: unknown,
+  ) {
+    return this.tx(() => {
+      this.membership(actorId, workspaceId, [Role.OWNER]);
+      if (role !== Role.MEMBER && role !== Role.VIEWER)
+        throw new ApiError(400, "INVALID_ROLE", "Choose member or viewer.");
+      const target = this.membership(userId, workspaceId);
+      if (target.role === Role.OWNER)
+        throw new ApiError(
+          409,
+          "OWNER_PROTECTED",
+          "Workspace owner cannot be changed here.",
+        );
+      this.db
+        .prepare(
+          "UPDATE memberships SET role=? WHERE workspace_id=? AND user_id=?",
+        )
+        .run(role, workspaceId, userId);
+      this.audit(actorId, workspaceId, "MEMBER_ROLE_CHANGED", { userId, role });
+      return this.membership(userId, workspaceId);
+    });
+  }
+  removeMember(actorId: string, workspaceId: string, userId: string) {
+    this.tx(() => {
+      this.membership(actorId, workspaceId, [Role.OWNER]);
+      const target = this.membership(userId, workspaceId);
+      if (target.role === Role.OWNER)
+        throw new ApiError(
+          409,
+          "OWNER_PROTECTED",
+          "Workspace owner cannot be removed.",
+        );
+      this.db
+        .prepare("DELETE FROM memberships WHERE workspace_id=? AND user_id=?")
+        .run(workspaceId, userId);
+      this.audit(actorId, workspaceId, "MEMBER_REMOVED", { userId });
+    });
+  }
+  // Internal domain storage: callers must check membership and domain-specific permissions first.
+  getRecord(workspaceId: string, key: string) {
+    const row = this.db
+      .prepare(
+        "SELECT value,version FROM workspace_records WHERE workspace_id=? AND key=?",
+      )
+      .get(workspaceId, key) as any;
+    return row ? { value: JSON.parse(row.value), version: row.version } : null;
+  }
+  putRecord(
+    workspaceId: string,
+    key: string,
+    value: unknown,
+    expectedVersion: number,
+  ) {
+    return this.tx(() => {
+      const current = this.getRecord(workspaceId, key);
+      if ((current?.version ?? 0) !== expectedVersion)
+        throw new ApiError(
+          409,
+          "VERSION_CONFLICT",
+          "This record changed. Refresh before saving.",
+        );
+      const version = expectedVersion + 1;
+      this.db
+        .prepare(
+          "INSERT INTO workspace_records VALUES(?,?,?,?) ON CONFLICT(workspace_id,key) DO UPDATE SET value=excluded.value,version=excluded.version",
+        )
+        .run(workspaceId, key, JSON.stringify(value), version);
+      return version;
+    });
+  }
+}

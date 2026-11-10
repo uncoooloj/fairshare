@@ -7,14 +7,14 @@ Private development monorepo for agreement-driven revenue allocation. Web design
 ## Structure
 
 - `apps/web`: Next.js web client.
-- `apps/api`: separate Node/Fastify API (being integrated).
+- `apps/api`: separate Node/Fastify API with identity, workspace isolation, agreement lifecycle and sandbox orchestration.
 - `packages/domain`: deterministic agreement versions, approvals and allocation.
 - `packages/payments`: sandbox-only PayPal provider and webhook processing primitives.
 - `packages/contract-ai`: source-bound AI proposals, not legal advice or payment authority.
 
 ## Development
 
-Node 22.16+ and npm are required. Run `npm ci`, `npm test`, `npm run typecheck`, then `npm run dev:web`. Web runs locally at http://localhost:3000. No secret belongs in a NEXT_PUBLIC variable. Copy backend environment templates only locally; never commit credentials or a runtime database.
+Node 22.16+ and npm are required. Run `npm ci`, `npm test`, `npm run typecheck`, then `npm run dev:web` and `npm run dev:api` in separate terminals. Web runs locally at http://localhost:3000. No secret belongs in a NEXT_PUBLIC variable. Copy backend environment templates only locally; never commit credentials or a runtime database.
 
 ## Honest status
 
