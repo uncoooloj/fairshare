@@ -45,6 +45,7 @@ import { WorkspaceOnboarding, AccessPrompt } from "./designer-auth";
 import { PaymentRecovery } from "./payment-recovery";
 import { ProfileForm } from "./profile-form";
 import { recoverSourceDocument } from "../lib/source-recovery";
+import { createSandboxCheckout } from "../lib/checkout-retry";
 import dynamic from "next/dynamic";
 const PaymentGrid = dynamic(
   () => import("../src/components/PaymentGrid").then((m) => m.PaymentGrid),
@@ -419,9 +420,7 @@ export default function FairshareApp() {
               return run(async () => {
                 await api("auth/logout", "POST", {});
                 setUser(null);
-                setWorkspace("");
-                setSelected(null);
-                setAgreements([]);
+                commitWorkspace("");
               });
             }}
           >
@@ -438,9 +437,7 @@ export default function FairshareApp() {
               value={workspace}
               onChange={(e) => {
                 if (!mayLeaveDraft()) return;
-                openRequest.current++;
-                setSelected(null);
-                setWorkspace(e.target.value);
+                commitWorkspace(e.target.value);
               }}
             >
               {workspaces.map((w) => (
@@ -1248,18 +1245,18 @@ export default function FairshareApp() {
                             run(async () => {
                               const amountCents = parseCents(amount);
                               const storageKey = `fairshare-checkout:${user.id}:${selected.id}:${amountCents}`;
-                              const requestKey =
-                                sessionStorage.getItem(storageKey) ||
-                                crypto.randomUUID();
-                              sessionStorage.setItem(storageKey, requestKey);
-                              const r = await api(`${base}/payments`, "POST", {
-                                requestKey,
+                              const r = await createSandboxCheckout({
+                                storage: sessionStorage,
+                                storageKey,
                                 amountCents,
+                                createRequestKey: () => crypto.randomUUID(),
+                                createPayment: (requestKey, cents) =>
+                                  api(`${base}/payments`, "POST", {
+                                    requestKey,
+                                    amountCents: cents,
+                                  }),
+                                refresh,
                               });
-                              // Preserve uncertain requests across refreshes; never blindly issue a new provider write.
-                              if (r.approval_url)
-                                sessionStorage.removeItem(storageKey);
-                              await refresh();
                               setNotice(
                                 r.approval_url
                                   ? "Sandbox checkout created. Use the approval link below."
@@ -1559,7 +1556,7 @@ export default function FairshareApp() {
                             newPassword,
                           });
                           setUser(null);
-                          setWorkspace("");
+                          commitWorkspace("");
                         })
                       }
                     />
