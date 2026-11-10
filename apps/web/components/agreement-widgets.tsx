@@ -1,3 +1,4 @@
+import { agreementEmptyState } from "../lib/agreement-empty-state";
 import {formatDate} from "../lib/preferences";
 import { ClarificationDecisions } from "./clarification-decisions";
 import { proposalQuestions } from "../lib/clarification-draft";
@@ -103,14 +104,16 @@ function agreementStatus(a: Agreement) {
   const status = a.value.versions.at(-1)?.status || "DRAFT";
   return status === "DRAFT" ? "Draft" : "In review";
 }
-export function AgreementList({ agreements, onOpen }: {
+export function AgreementList({ agreements, onOpen, workspaceRole }: {
+  workspaceRole?: string;
   agreements: Agreement[];
   onOpen: (a: Agreement) => void;
 }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("All");
   const filtered = agreements.filter(a => a.value.name.toLowerCase().includes(query.toLowerCase()) && (filter === "All" || agreementStatus(a) === filter));
-  if (!agreements.length) return <Empty title="Your first agreement starts here">Create an agreement, bring in your collaborators and make the split clear before money comes in.</Empty>;
+  const empty = agreementEmptyState(workspaceRole);
+  if (!agreements.length) return <Empty title={empty.title}>{empty.description}</Empty>;
   return <section className="agreement-list" aria-label="Agreements">
     <div className="list-toolbar">
       <label className="search-field"><span className="sr-only">Search agreements</span><input type="search" placeholder="Search agreements" value={query} onChange={e => setQuery(e.target.value)} /></label>

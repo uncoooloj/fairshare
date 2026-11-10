@@ -101,13 +101,14 @@ function Step({ number, title, children }: { number: string; title: string; chil
 }
 
 /** Confirmation only. The parent owns token validation, API errors and success. */
-export function AccessPrompt({ kind, email, busy, onContinue }: {
-  kind: "verification" | "invitation"; email: string; busy: boolean; onContinue: () => void;
+export function AccessPrompt({ kind, email, busy, onContinue, onCancel }: {
+  kind: "verification" | "invitation"; email: string; busy: boolean; onContinue: () => void; onCancel?: () => void;
 }) {
   return <section className={styles.access} aria-busy={busy}>
     <h2>{kind === "verification" ? "Verify your email" : "You’ve been invited"}</h2>
     <p>{kind === "verification" ? "Confirm this verification link for" : "You will join using your signed-in account:"} <strong>{email}</strong>.</p>
     {kind === "invitation" && <p className={styles.hint}>Joining adds you to the workspace. The organizer must also add you to the agreement before you can review and approve its rules. It does not approve an agreement or change anyone’s share.</p>}
     <button className={styles.primary} disabled={busy} onClick={() => { if (!busy) onContinue(); }}>{busy ? "Please wait…" : kind === "verification" ? "Verify email" : "Accept invitation"}</button>
+    {kind === "invitation" && onCancel && <button type="button" disabled={busy} onClick={onCancel}>Not now</button>}
   </section>;
 }
