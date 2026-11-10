@@ -2,7 +2,11 @@
 
 Status: prepared blueprint, **not deployed**. No hosting account, charge, terms acceptance, DNS change, public tunnel or secret upload is performed by these files. Docker image build is not yet verified. The passing workspace build does not establish deployed readiness.
 
-## Recommended topology
+## Deployment target
+
+The owner selected **Cloudflare**. See [CLOUDFLARE.md](CLOUDFLARE.md) for current compatibility work and migration gates. The two-service persistent-host topology below is a fallback reference, not permission to deploy to a different provider.
+
+## Original persistent-host topology
 
 Use two services from the same commit: Next.js web and one long-running Node API. Put the API's SQLite database on an attached persistent disk. Render is a candidate because it is a hackathon sponsor; select a paid persistent-disk-capable plan only after the owner approves current pricing, region, data location and billing. Do not assume a free service provides persistence or availability. Hosting elsewhere is acceptable; avoid migration solely for a sponsor badge.
 
