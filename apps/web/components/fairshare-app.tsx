@@ -1,4 +1,13 @@
 "use client";
+import {
+  useDisplayPreferences,
+  NotificationsSettings,
+  CurrencyDisplaySettings,
+} from "./settings-preferences";
+import { ProfileContact } from "./profile-contact";
+import { PaymentAccountsSettings } from "./payment-account-settings";
+import { ActivityLogSettings } from "./activity-log-settings";
+import { formatDate } from "../lib/preferences";
 import { LocalOcrChoice } from "./local-ocr-choice";
 import { SandboxCheckoutForm } from "./sandbox-checkout-form";
 import { ReviewDiscussion, ReviewReminder } from "./review-discussion";
@@ -43,8 +52,9 @@ import {
   ContractReviewPanel,
   ContractSourceGuidance,
 } from "./contract-review-guidance";
-import { NewAgreement, AgreementSetup } from "./agreement-setup";
+import { AgreementName } from "./agreement-name";
 import { AgreementIntake, type AgreementIntakeInput } from "./agreement-intake";
+import { AgreementSetup } from "./agreement-setup";
 import { AccessPrompt } from "./designer-auth";
 import { PaymentRecovery } from "./payment-recovery";
 import { MfaSettings } from "./mfa-settings";
@@ -60,12 +70,14 @@ import { PaymentGridStatus } from "../src/components/paymentGridModel";
 import { Badge, Button, Empty, Field, Icon, Notice } from "./ui";
 const workspaceBase = (id: string) => `workspaces/${id}`;
 export default function FairshareApp() {
+  const [settingsTab, setSettingsTab] = useState("Profile");
   const [useLocalOcr, setUseLocalOcr] = useState(false);
   const [user, setUser] = useState<User | null>(null),
     [ready, setReady] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [notice, setNotice] = useState("");
+  useDisplayPreferences(user?.id);
   const [workspaces, setWorkspaces] = useState<any[]>([]),
     [workspace, setWorkspace] = useState(""),
     [agreements, setAgreements] = useState<Agreement[]>([]),
@@ -182,10 +194,7 @@ export default function FairshareApp() {
   async function acceptInvitation(token: string) {
     const result = await api("invitations/accept", "POST", { token });
     setSelected(null);
-    setCreating(false);
     setAgreements([]);
-    setMembers([]);
-    setPayouts([]);
     setWorkspaces((current) => [
       ...current.filter((item) => item.id !== result.workspace.id),
       result.workspace,
@@ -346,8 +355,6 @@ export default function FairshareApp() {
     if (token && ["/verify-email", "/invitation"].includes(location.pathname)) {
       setFlowKind(location.pathname);
       setFlowToken(decodeURIComponent(token));
-      // Keep the fragment until acceptance succeeds so refresh during sign-in
-      // does not lose this one-use link. Fragments are not sent to the server.
     }
     Promise.all([
       api("auth/me")
@@ -470,6 +477,8 @@ export default function FairshareApp() {
                 await api("auth/logout", "POST", {});
                 setUser(null);
                 commitWorkspace("");
+                setSelected(null);
+                setAgreements([]);
               });
             }}
           >
@@ -486,6 +495,8 @@ export default function FairshareApp() {
               value={workspace}
               onChange={(e) => {
                 if (!mayLeaveDraft()) return;
+                openRequest.current++;
+                setSelected(null);
                 commitWorkspace(e.target.value);
               }}
             >
@@ -543,10 +554,8 @@ export default function FairshareApp() {
                 } else {
                   await acceptInvitation(flowToken);
                 }
-                if (flowKind === "/verify-email") {
-                  setFlowToken("");
-                  history.replaceState(null, "", "/");
-                }
+                setFlowToken("");
+                history.replaceState(null, "", "/");
               })
             }
           />
@@ -629,21 +638,10 @@ export default function FairshareApp() {
                   }
                 />
                 {creating ? (
-                  <NewAgreement
+                  <AgreementIntake
                     busy={busy}
                     onCancel={() => setCreating(false)}
-                    onCreate={(name) =>
-                      run(async () => {
-                        const a = await api<Agreement>(
-                          `${workspaceBase(workspace)}/collaborations`,
-                          "POST",
-                          { name },
-                        );
-                        await openAgreement(a);
-                        setTab(AgreementTab.People);
-                        await loadWorkspace(workspace);
-                      })
-                    }
+                    onCreate={createFromAgreement}
                   />
                 ) : (
                   <AgreementList
@@ -683,6 +681,15 @@ export default function FairshareApp() {
                     </Button>
                   }
                 />
+                {organizer && (
+                  <AgreementName
+                    key={`${selected.id}:${selected.value.name}:${extraction?.suggestedTitle || ""}`}
+                    name={selected.value.name}
+                    suggestion={extraction?.suggestedTitle}
+                    busy={busy}
+                    onSave={(name) => run(() => mutate("/name", { name }))}
+                  />
+                )}
                 <AgreementSetup
                   agreement={selected}
                   tab={tab}
@@ -817,7 +824,7 @@ export default function FairshareApp() {
                             .map((e) => (
                               <li key={e.sequence}>
                                 <span>{title(e.type)}</span>
-                                <time>{new Date(e.at).toLocaleString()}</time>
+                                <time>{formatDate(e.at)}</time>
                               </li>
                             ))}
                         </ul>
@@ -1541,109 +1548,189 @@ export default function FairshareApp() {
                   title="Settings"
                   description="Your account and test environment."
                 />
-                <div className="settings-grid">
-                  <section className="panel settings-profile">
-                    <span className="eyebrow">PROFILE</span>
-                    <div className="settings-identity">
-                      <span className="avatar">{user.name.slice(0, 1)}</span>
-                      <h3>{user.name}</h3>
-                    </div>
-                    <p>{user.email}</p>
-                    <ProfileForm
-                      key={user.id}
-                      name={user.name}
-                      busy={busy}
-                      onSave={async (name) => {
-                        const result = await api("auth/profile", "POST", {
-                          name,
-                        });
-                        setUser(result.user);
-                        setNotice(
-                          "Display name saved. Existing agreement names are unchanged.",
-                        );
-                      }}
-                    />
-                    <p className="muted">
-                      Current environment: {mode}. Live money is disabled.
-                    </p>
+                <nav className="settings-tabs" aria-label="Settings sections">
+                  {[
+                    "Profile",
+                    "Payment accounts",
+                    "Notifications",
+                    "Currency & display",
+                    "Activity log",
+                  ].map((tab) => (
                     <Button
-                      variant="secondary"
-                      disabled={busy}
-                      onClick={() =>
-                        run(async () => {
-                          const r = await api(
-                            "auth/verification/request",
-                            "POST",
-                            {},
-                          );
-                          setNotice(
-                            r.notice ||
-                              "Verification email requested. Check your inbox.",
-                          );
-                          if (r.demoVerificationLink)
-                            setInviteLink(r.demoVerificationLink);
-                        })
-                      }
+                      key={tab}
+                      variant={settingsTab === tab ? "primary" : "secondary"}
+                      aria-pressed={settingsTab === tab}
+                      onClick={() => setSettingsTab(tab)}
                     >
-                      Verify email
+                      {tab}
                     </Button>
-                    {inviteLink && (
-                      <a className="block-link" href={inviteLink}>
-                        Open demo verification/invitation link
-                      </a>
-                    )}
-                  </section>
-                  <section className="panel">
-                    <h2>Security</h2>
-                    <p className="muted">
-                      Changing your password signs you out so you can reconnect
-                      securely.
-                    </p>
-                    <PasswordForm
-                      busy={busy}
-                      onSubmit={(currentPassword, newPassword) =>
-                        run(async () => {
-                          await api("auth/password", "POST", {
-                            currentPassword,
-                            newPassword,
-                          });
-                          setUser(null);
-                          commitWorkspace("");
-                        })
+                  ))}
+                </nav>
+                {settingsTab === "Payment accounts" &&
+                  (workspace ? (
+                    <PaymentAccountsSettings
+                      key={workspace}
+                      workspace={workspace}
+                      canEdit={
+                        workspaces.find((w) => w.id === workspace)?.role !==
+                        "VIEWER"
                       }
                     />
-                  </section>
-                  <MfaSettings
-                    onSignOut={() => {
-                      setUser(null);
-                      commitWorkspace("");
-                    }}
+                  ) : (
+                    <Empty title="Start an agreement first">
+                      Payment accounts are scoped to a workspace. Create your
+                      first agreement to set up a payout destination.
+                    </Empty>
+                  ))}
+                {settingsTab === "Notifications" && (
+                  <NotificationsSettings key={user.id} />
+                )}
+                {settingsTab === "Currency & display" && (
+                  <CurrencyDisplaySettings key={user.id} />
+                )}
+                {settingsTab === "Activity log" && (
+                  <ActivityLogSettings
+                    key={`${user.id}:${workspace}`}
+                    workspace={workspace}
                   />
-                  <section className="panel">
-                    <h2>Workspace invitations</h2>
+                )}
+                {settingsTab === "Profile" && (
+                  <div className="settings-grid">
+                    <section className="panel settings-profile">
+                      <span className="eyebrow">PROFILE</span>
+                      <ProfileContact
+                        key={user.id}
+                        name={user.name}
+                        email={user.email}
+                      />
+                      <ProfileForm
+                        key={user.id}
+                        name={user.name}
+                        busy={busy}
+                        onSave={async (name) => {
+                          const result = await api("auth/profile", "POST", {
+                            name,
+                          });
+                          setUser(result.user);
+                          setNotice(
+                            "Display name saved. Existing agreement names are unchanged.",
+                          );
+                        }}
+                      />
+                      <p className="muted">
+                        Current environment: {mode}. Live money is disabled.
+                      </p>
+                      <Button
+                        variant="secondary"
+                        disabled={busy}
+                        onClick={() =>
+                          run(async () => {
+                            const r = await api(
+                              "auth/verification/request",
+                              "POST",
+                              {},
+                            );
+                            setNotice(
+                              r.notice ||
+                                "Verification email requested. Check your inbox.",
+                            );
+                            if (r.demoVerificationLink)
+                              setInviteLink(r.demoVerificationLink);
+                          })
+                        }
+                      >
+                        Verify email
+                      </Button>
+                      {inviteLink && (
+                        <a className="block-link" href={inviteLink}>
+                          Open demo verification/invitation link
+                        </a>
+                      )}
+                    </section>
+                    <section className="panel">
+                      <h2>Security</h2>
+                      <p className="muted">
+                        Changing your password signs you out so you can
+                        reconnect securely.
+                      </p>
+                      <PasswordForm
+                        busy={busy}
+                        onSubmit={(currentPassword, newPassword) =>
+                          run(async () => {
+                            await api("auth/password", "POST", {
+                              currentPassword,
+                              newPassword,
+                            });
+                            setUser(null);
+                            commitWorkspace("");
+                          })
+                        }
+                      />
+                    </section>
                     {workspaces.find((w) => w.id === workspace)?.role ===
                       "OWNER" && (
-                      <PrivateInvitation
-                        key={workspace}
-                        workspace={workspace}
-                      />
+                      <section className="panel">
+                        <h2>Workspace</h2>
+                        <p className="muted">
+                          Rename your workspace without changing its agreements
+                          or access.
+                        </p>
+                        <SimpleForm
+                          label="Workspace name"
+                          button="Save workspace name"
+                          busy={busy}
+                          onSubmit={(name) =>
+                            run(async () => {
+                              const result = await api(
+                                `${workspaceBase(workspace)}/name`,
+                                "POST",
+                                { name },
+                              );
+                              setWorkspaces((current) =>
+                                current.map((item) =>
+                                  item.id === workspace
+                                    ? { ...item, name: result.workspace.name }
+                                    : item,
+                                ),
+                              );
+                              setNotice("Workspace name updated.");
+                            })
+                          }
+                        />
+                      </section>
                     )}
-                    <p className="muted">
-                      Join a workspace using a private invitation shared with
-                      your account.
-                    </p>
-                    <SimpleForm
-                      label="Invitation token (if shared manually)"
-                      button="Accept invitation"
-                      busy={busy}
-                      onSubmit={(token) =>
-                        run(async () => {
-                          await acceptInvitation(token);
-                        })
-                      }
+                    <MfaSettings
+                      onSignOut={() => {
+                        setUser(null);
+                        commitWorkspace("");
+                      }}
                     />
-                  </section>
-                </div>
+                    <section className="panel">
+                      <h2>Workspace invitations</h2>
+                      {workspaces.find((w) => w.id === workspace)?.role ===
+                        "OWNER" && (
+                        <PrivateInvitation
+                          key={workspace}
+                          workspace={workspace}
+                        />
+                      )}
+                      <p className="muted">
+                        Join a workspace using a private invitation shared with
+                        your account.
+                      </p>
+                      <SimpleForm
+                        label="Invitation token (if shared manually)"
+                        button="Accept invitation"
+                        busy={busy}
+                        onSubmit={(token) =>
+                          run(async () => {
+                            await acceptInvitation(token);
+                          })
+                        }
+                      />
+                    </section>
+                  </div>
+                )}
               </>
             )}
           </>

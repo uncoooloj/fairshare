@@ -1,3 +1,4 @@
+import { requireApprovalEmail } from "./preferences.js";
 import { randomUUID } from "node:crypto";
 import type { FastifyRequest } from "fastify";
 import type { FairshareApp } from "./app.js";
@@ -319,6 +320,7 @@ export function registerReviewCollaboration(
           "INVALID_RECIPIENT",
           "Choose a participant who has not approved this version.",
         );
+      requireApprovalEmail(app.store, recipientId);
       if (
         app.store.mode === DataMode.DEMO ||
         !options.mailTransport ||

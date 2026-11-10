@@ -37,6 +37,13 @@ Immutable documents remain server-side. New PDF/DOCX originals are private authe
 
 SQLite uses serialized transactions, revision guards and a separate capture uniqueness table for payment integration. Do not invoke allocation directly from browser-reported amounts/statuses. Only verified provider data with actual fee accounting may be allocated.
 
+## Account settings
+
+- `GET` and `PUT /api/auth/preferences` read and replace the full display and notification preference object. USD remains the only supported currency; number and date formats affect display only and never convert amounts or change amount-entry syntax. Account-security email is outside these preferences.
+- In-app notifications are built from accessible agreement audit events and provider-confirmed sandbox payout states. A notification preference can hide those items from the in-app feed. Email preference currently gates configured approval-request email; other saved email choices do not establish delivery.
+- `GET /api/settings/activity` returns a read-only, paged activity log. It accepts optional `workspaceId`, `actorId`, `action`, `agreementId`, `days` (`0`, `7`, `30`, or `90`) and `offset`. A workspace query includes only agreements visible to the current user.
+- `GET /api/workspaces/:workspaceId/payment-accounts` shows masked payout-destination hints and their saved/unverified state. A member or owner can `PUT` or `DELETE .../payment-accounts/mine` for their own 13-character sandbox merchant ID. This stores a destination only: it is neither OAuth nor proof of account ownership, and does not alter payouts already submitted.
+
 ## Provider runtime configuration
 
 Server only constructs the sandbox payment provider when PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET **and PAYPAL_MERCHANT_ID** are present, and DEMO_MODE is not true. PUBLIC_API_URL must be approved HTTPS callback origin. PAYPAL_WEBHOOK_ID is required for signed webhook verification. Payouts remain off until PAYPAL_PAYOUTS_ENABLED and PAYPAL_PAYOUTS_ELIGIBILITY_CONFIRMED are both true. Those flags are not evidence that eligibility has actually been verified.

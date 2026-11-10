@@ -16,7 +16,8 @@ import {
   reconcileCapture,
   WebhookActionKind,
 } from "@fairshare/payments";
-import { AggregateStore, type FairshareApp } from "./fairshare.js";
+import { AggregateStore } from "./fairshare.js";
+import type { FairshareApp } from "./app.js";
 import { Role } from "./identity.js";
 import { registerPaymentRecovery } from "./paymentRecovery.js";
 export type PaymentProvider = Pick<
@@ -355,6 +356,7 @@ export function registerPaymentRoutes(
     db.prepare(
       "INSERT INTO fairshare_recipients VALUES(?,?,?) ON CONFLICT(workspace_id,user_id) DO UPDATE SET paypal_id=excluded.paypal_id",
     ).run(p.workspaceId, user.id, id);
+    app.store.audit(user.id, p.workspaceId, "PAYOUT_ACCOUNT_SAVED");
     return { configured: true };
   });
   app.get(`${base}/payouts`, async (req) => {
@@ -393,6 +395,12 @@ export function registerPaymentRoutes(
     db.prepare(
       "UPDATE fairshare_payout_ops SET status=?,item_id=? WHERE id=?",
     ).run(r!.status, r!.itemId, op.id);
+    if (r!.status !== fresh.status)
+      app.store.audit("provider", op.workspace_id, "PAYOUT_STATUS_CHANGED", {
+        agreementId: op.collaboration_id,
+        payoutId: op.id,
+        status: r!.status,
+      });
     return { id: op.id, status: r!.status, itemId: r!.itemId };
   }
   // Dispatch exact immutable allocations, not an approval/override of anyone's share.
@@ -497,6 +505,10 @@ export function registerPaymentRoutes(
         db.prepare(
           "UPDATE fairshare_payout_ops SET batch_id=?,status='PENDING' WHERE id=?",
         ).run(result.batchId, op.id);
+        app.store.audit("provider", op.workspace_id, "PAYOUT_SUBMITTED", {
+          agreementId: op.collaboration_id,
+          payoutId: op.id,
+        });
         results.push({ id: op.id, status: "PENDING" });
       } catch (e) {
         if (e instanceof PayPalError && e.code === "PAYOUT_NOT_CONFIGURED") {
@@ -510,6 +522,10 @@ export function registerPaymentRoutes(
         db.prepare(
           "UPDATE fairshare_payout_ops SET status='OUTCOME_UNKNOWN' WHERE id=?",
         ).run(op.id);
+        app.store.audit("provider", op.workspace_id, "PAYOUT_OUTCOME_UNKNOWN", {
+          agreementId: op.collaboration_id,
+          payoutId: op.id,
+        });
         results.push({ id: op.id, status: "OUTCOME_UNKNOWN" });
       }
     }

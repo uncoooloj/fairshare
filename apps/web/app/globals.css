@@ -1294,3 +1294,10 @@ td:last-child {
   outline-offset: 4px;
   border-radius: 4px;
 }
+
+.settings-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 20px 0;
+}

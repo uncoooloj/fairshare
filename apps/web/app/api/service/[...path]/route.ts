@@ -17,9 +17,14 @@ async function handler(
       { status: 400 },
     );
   if (
-    !["auth", "workspaces", "invitations", "agreements", "health"].includes(
-      parts[0],
-    )
+    ![
+      "auth",
+      "workspaces",
+      "invitations",
+      "agreements",
+      "health",
+      "settings",
+    ].includes(parts[0])
   )
     return NextResponse.json(
       { error: { message: "Unknown API route" } },
@@ -65,7 +70,9 @@ async function handler(
         (["pdf", "docx"].includes(parts.at(-1) || "") ||
         parts.join("/") === "agreements/intake"
           ? 7 * 1024 * 1024
-          : 100000)
+          : parts.join("/") === "auth/profile/photo"
+            ? 360000
+            : 100000)
     )
       return NextResponse.json(
         { error: { message: "Request too large" } },
@@ -119,6 +126,7 @@ async function handler(
     if (
       parts.join("/") === "auth/logout" ||
       ([
+        "auth/email-change/confirm",
         "auth/password",
         "auth/password-reset/confirm",
         "auth/mfa/activate",

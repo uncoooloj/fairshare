@@ -1,3 +1,6 @@
+import { registerProfileRoutes } from "./profileRoutes.js";
+import { registerPreferences } from "./preferences.js";
+import { registerAccountSettings } from "./accountSettings.js";
 import { registerAgreementIntake } from "./agreementIntake.js";
 import { verifyLocalOcrTools } from "./ocr.js";
 import { registerReviewCollaboration } from "./reviewCollaboration.js";
@@ -436,7 +439,9 @@ export async function buildApp(
       };
     },
   );
+  registerPreferences(app);
   registerEmailRoutes(app, options);
+  registerProfileRoutes(app, options);
   const domainRoutes = registerFairshareRoutes(app, {
     ai: options.ai,
     extract: options.extract,
@@ -447,5 +452,6 @@ export async function buildApp(
   });
   registerPaymentRoutes(app, domainRoutes.store, options.payment);
   registerReviewCollaboration(app, domainRoutes.store, options);
+  registerAccountSettings(app, !!options.payment?.provider);
   return app;
 }

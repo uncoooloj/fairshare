@@ -82,10 +82,7 @@ export interface User {
   name: string;
   email: string;
 }
-export const money = (cents: number) =>
-  new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(
-    cents / 100,
-  );
+export { formatMoney as money } from "./preferences";
 export function parseCents(value: string) {
   if (!/^\d+(\.\d{1,2})?$/.test(value.trim()))
     throw new Error("Enter an amount with at most two decimal places.");

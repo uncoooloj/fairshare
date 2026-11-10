@@ -291,3 +291,42 @@ test("concurrent reminder requests reserve exactly one send; demo cannot deliver
     await demo.app.close();
   }
 });
+
+test("approval email opt-out blocks the transport without reserving a reminder", async () => {
+  let sends = 0;
+  const f = await fixture({
+    publicAppOrigin: "https://fairshare.example",
+    mailTransport: {
+      async send() {
+        sends++;
+        return { providerId: "none" };
+      },
+    },
+  });
+  try {
+    const { defaultPreferences } = await import("../src/preferences.js");
+    const preferences = defaultPreferences();
+    preferences.notifications.approvalRequests.email = false;
+    const saved = await f.app.inject({
+      method: "PUT",
+      url: "/api/auth/preferences",
+      headers: { authorization: `Bearer ${f.b.token}` },
+      payload: preferences,
+    });
+    assert.equal(saved.statusCode, 200);
+    const response = await f.call("/reminders", { recipientId: f.b.user.id });
+    assert.equal(response.statusCode, 409);
+    assert.equal(response.json().error.code, "NOTIFICATIONS_DISABLED");
+    assert.equal(sends, 0);
+    assert.equal(
+      (
+        f.app.store.db
+          .prepare("SELECT count(*) AS n FROM agreement_reminders")
+          .get() as any
+      ).n,
+      0,
+    );
+  } finally {
+    await f.app.close();
+  }
+});
