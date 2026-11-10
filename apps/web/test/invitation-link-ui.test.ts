@@ -32,6 +32,10 @@ test("acceptance adopts the returned workspace and consumes the link before back
   assert.match(accept, /setAgreements\(\[\]\)/);
   assert.match(accept, /setFlowToken\(""\)/);
   assert.match(accept, /setSection\(Section.Agreements\)/);
+  assert.match(
+    accept,
+    /Workspace joined\. The organizer must add you to the agreement before you can review and approve its rules\./,
+  );
   assert.doesNotMatch(accept, /await loadWorkspaces/);
   assert.equal((source.match(/await acceptInvitation\(/g) || []).length, 2);
 });

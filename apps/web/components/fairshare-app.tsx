@@ -205,7 +205,9 @@ export default function FairshareApp() {
     setSection(Section.Agreements);
     setFlowToken("");
     history.replaceState(null, "", "/");
-    setNotice("Invitation accepted.");
+    setNotice(
+      "Workspace joined. The organizer must add you to the agreement before you can review and approve its rules.",
+    );
   }
   async function loadWorkspace(id: string) {
     if (!id || id !== currentWorkspace.current) return;
