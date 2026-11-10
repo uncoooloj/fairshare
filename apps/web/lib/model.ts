@@ -1,0 +1,125 @@
+export enum Section {
+  Overview = "Overview",
+  Agreements = "Agreements",
+  Payouts = "Payouts",
+  Settings = "Settings",
+}
+export enum AgreementTab {
+  Overview = "Overview",
+  Terms = "Terms",
+  People = "People",
+  Payments = "Payments",
+}
+export interface Member {
+  userId: string;
+  displayName: string;
+  role: string;
+}
+export interface Allocation {
+  userId: string;
+  recoupmentCents: number;
+  shareCents: number;
+  feeCents: number;
+  totalCents: number;
+  status: string;
+}
+export interface Rules {
+  currency: "USD";
+  shares: { userId: string; basisPoints: number }[];
+  feePolicy: string;
+  feeBearerId?: string;
+  advance?: {
+    id: string;
+    recipientId: string;
+    amountCents: number;
+    verified: boolean;
+    source: Source;
+  };
+  source: Source;
+  unresolvedQuestions: string[];
+}
+export interface Source {
+  origin: string;
+  documentId: string;
+  clause: string;
+  excerpt: string;
+}
+export interface Version {
+  id: number;
+  status: string;
+  rules: Rules;
+  approvals: Record<string, string>;
+  changeRequests: { userId: string; reason: string; at: string }[];
+}
+export interface Revenue {
+  providerCaptureId: string;
+  grossCents: number;
+  feeCents: number;
+  netCents: number;
+  at: string;
+  versionId: number;
+  status: string;
+  allocations: Allocation[];
+}
+export interface Agreement {
+  workspaceId: string;
+  id: string;
+  revision: number;
+  value: {
+    name: string;
+    members: Member[];
+    versions: Version[];
+    activeVersionId?: number;
+    revenue: Revenue[];
+    recoupedByAdvance: Record<string, number>;
+    reviewHold: boolean;
+    audit: { sequence: number; type: string; at: string; actorId: string }[];
+  };
+}
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+}
+export const money = (cents: number) =>
+  new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(
+    cents / 100,
+  );
+export function parseCents(value: string) {
+  if (!/^\d+(\.\d{1,2})?$/.test(value.trim()))
+    throw new Error("Enter an amount with at most two decimal places.");
+  const [whole, fraction = ""] = value.trim().split(".");
+  const cents = Number(whole) * 100 + Number(fraction.padEnd(2, "0"));
+  if (!Number.isSafeInteger(cents) || cents > 1e12)
+    throw new Error("Amount is outside the supported range.");
+  return cents;
+}
+export function parseShare(value: string) {
+  const n = parseCents(value);
+  if (n > 10000) throw new Error("A share cannot exceed 100%.");
+  return n;
+}
+export const title = (s: string) =>
+  s
+    .toLowerCase()
+    .replaceAll("_", " ")
+    .replace(/^./, (c) => c.toUpperCase());
+export async function api<T = any>(
+  path: string,
+  method = "GET",
+  body?: unknown,
+): Promise<T> {
+  const res = await fetch("/api/service/" + path, {
+    method,
+    credentials: "same-origin",
+    headers: body === undefined ? {} : { "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+    cache: "no-store",
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok)
+    throw new Error(data.error?.message || `Request failed (${res.status}).`);
+  return data;
+}
+export const sampleAgreement =
+  "Maya, Jordan and Riley agree that eligible revenue is split 50% to Maya, 30% to Jordan and 20% to Riley, after recouping a previously paid $2,000 advance to Maya. Processing fees are to be agreed by all participants before activation.";
