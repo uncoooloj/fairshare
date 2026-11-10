@@ -108,6 +108,25 @@ export default function FairshareApp() {
     setWorkspace(id);
     return id;
   }
+  async function acceptInvitation(token: string) {
+    const result = await api("invitations/accept", "POST", { token });
+    // Adopt the committed membership immediately. Do not make a consumed
+    // one-use invitation look unsuccessful if a later workspace fetch fails.
+    setSelected(null);
+    setCreating(false);
+    setAgreements([]);
+    setMembers([]);
+    setPayouts([]);
+    setWorkspaces((current) => [
+      ...current.filter((item) => item.id !== result.workspace.id),
+      result.workspace,
+    ]);
+    setWorkspace(result.workspace.id);
+    setSection(Section.Agreements);
+    setFlowToken("");
+    history.replaceState(null, "", "/");
+    setNotice("Invitation accepted.");
+  }
   async function loadWorkspace(id: string) {
     if (!id) return;
     const [r, m] = await Promise.all([
@@ -168,7 +187,8 @@ export default function FairshareApp() {
     if (token && ["/verify-email", "/invitation"].includes(location.pathname)) {
       setFlowKind(location.pathname);
       setFlowToken(decodeURIComponent(token));
-      history.replaceState(null, "", location.pathname);
+      // Keep the fragment until acceptance succeeds so refresh during sign-in
+      // does not lose this one-use link. Fragments are not sent to the server.
     }
     Promise.all([
       api("auth/me")
@@ -336,11 +356,7 @@ export default function FairshareApp() {
                       : "Email verified.",
                   );
                 } else {
-                  await api("invitations/accept", "POST", {
-                    token: flowToken,
-                  });
-                  await loadWorkspaces();
-                  setNotice("Invitation accepted.");
+                  await acceptInvitation(flowToken);
                 }
                 setFlowToken("");
                 history.replaceState(null, "", "/");
@@ -1327,9 +1343,7 @@ export default function FairshareApp() {
                       busy={busy}
                       onSubmit={(token) =>
                         run(async () => {
-                          await api("invitations/accept", "POST", { token });
-                          await loadWorkspaces();
-                          setNotice("Invitation accepted.");
+                          await acceptInvitation(token);
                         })
                       }
                     />
