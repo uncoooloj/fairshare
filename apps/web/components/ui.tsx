@@ -69,13 +69,21 @@ export function Empty({
 export function Notice({
   children,
   warning = false,
+  announcement = "none",
 }: {
   children: ReactNode;
   warning?: boolean;
+  announcement?: "none" | "polite" | "assertive";
 }) {
   return (
     <div
-      role={warning ? "alert" : "status"}
+      role={
+        announcement === "assertive"
+          ? "alert"
+          : announcement === "polite"
+            ? "status"
+            : undefined
+      }
       className={`notice ${warning ? "warning" : ""}`}
     >
       {children}
