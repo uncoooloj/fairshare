@@ -388,6 +388,7 @@ export function RulesEditor({
   busy,
   extraction,
   onSave,
+  onDirty,
 }: {
   agreement: Agreement;
   source: string;
@@ -395,6 +396,7 @@ export function RulesEditor({
   busy: boolean;
   extraction?: unknown;
   onSave: (r: Rules) => void;
+  onDirty?: () => void;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const [prefilled, setPrefilled] = useState(false);
@@ -407,6 +409,8 @@ export function RulesEditor({
   return (
     <form
       ref={formRef}
+      inert={busy}
+      onChange={onDirty}
       className="section rules-editor"
       onSubmit={(e) => {
         e.preventDefault();
@@ -469,6 +473,7 @@ export function RulesEditor({
               const input = formRef.current?.elements.namedItem(id);
               if (input instanceof HTMLInputElement) input.value = value;
             }
+            onDirty?.();
             setPrefilled(true);
           }}>Use suggested shares</Button>
           {prefilled && <p role="status">Shares copied into the draft. Nothing has been saved or approved. Review them before saving.</p>}

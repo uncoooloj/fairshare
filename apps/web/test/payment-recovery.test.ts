@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { recoveryRequest, refundBlocked, refundMessage } from '../lib/payment-recovery';
+import { recoveryRequest, refundBlocked, refundMessage, createSingleFlight } from '../lib/payment-recovery';
 const payment = { id: 'p1', status: 'ALLOCATED', provider_capture_id: 'cap1' };
 test('recovery only constructs evidence-link endpoints and exact provider keys', () => {
   assert.deepEqual(recoveryRequest('payment', 'p1', ' ORDER1 '), { path: 'payments/p1/recover', body: { providerOrderId: 'ORDER1' } });
@@ -21,4 +21,33 @@ test('refund wording never confuses request acceptance with verified completion'
   assert.match(refundMessage('COMPLETED'), /verified.*completed.*hold/);
   assert.match(refundMessage('OUTCOME_UNKNOWN'), /Do not retry/);
   for (const status of ['SUBMITTING', 'PENDING', 'FAILED', 'CANCELLED']) assert.match(refundMessage(status), /not confirmed complete/);
+});
+
+test('rapid repeated actions are ignored while a provider request is pending', async () => {
+  const run = createSingleFlight();
+  let count = 0;
+  let finish!: () => void;
+  const pending = run(async () => { count++; await new Promise<void>(resolve => { finish = resolve; }); });
+  await run(async () => { count++; });
+  assert.equal(count, 1);
+  finish(); await pending;
+  await run(async () => { count++; });
+  assert.equal(count, 2);
+});
+test('a rejected action releases the submission lock without replaying it', async () => {
+  const run = createSingleFlight();
+  let count = 0;
+  await assert.rejects(run(async () => { count++; throw new Error('unknown provider outcome'); }));
+  assert.equal(count, 1);
+  await run(async () => { count++; });
+  assert.equal(count, 2);
+});
+
+test('failed recovery refresh hides stale refund actions and clears success notice', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const source = await readFile(new URL('../components/payment-recovery.tsx', import.meta.url), 'utf8');
+  assert.match(source, /await flight\.current/);
+  assert.match(source, /setData\(null\); setNotice\(''\);/);
+  assert.match(source, /Do not resubmit an uncertain transfer/);
+  assert.match(source, /setConfirmed\(false\); setError\(''\); setNotice\(''\)/);
 });

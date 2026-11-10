@@ -1,15 +1,33 @@
 "use client";
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, money } from '../lib/model';
-import { recoveryRequest, refundBlocked, refundMessage } from '../lib/payment-recovery';
+import { recoveryRequest, refundBlocked, refundMessage, createSingleFlight } from '../lib/payment-recovery';
 import styles from './payment-recovery.module.css';
 import { Badge, Button, Field, Notice } from './ui';
 export function PaymentRecovery({ base, payments, payouts, held, refresh }: { base: string; payments: any[]; payouts: any[]; held: boolean; refresh: () => Promise<void> }) {
   const [data, setData] = useState<any>(null), [busy, setBusy] = useState(false), [error, setError] = useState(''), [notice, setNotice] = useState('');
   const [chosen, setChosen] = useState(''), [confirmed, setConfirmed] = useState(false);
+  const flight = useRef(createSingleFlight());
   async function load() { const result = await api(`${base}/recovery`); setData(result); }
-  useEffect(() => { let active = true; setData(null); setConfirmed(false); api(`${base}/recovery`).then(r => { if (active) setData(r); }).catch(e => { if (active) setError(e.message); }); return () => { active = false; }; }, [base, payments]);
-  async function run(action: () => Promise<void>) { setBusy(true); setError(''); setNotice(''); try { await action(); } catch (e) { setError(e instanceof Error ? e.message : 'Unable to verify provider status.'); } finally { try { await load(); await refresh(); } catch { setError('Unable to refresh. Reload before taking another action.'); } setBusy(false); } }
+  useEffect(() => { let active = true; setData(null); setError(''); setNotice(''); setConfirmed(false); api(`${base}/recovery`).then(r => { if (active) setData(r); }).catch(e => { if (active) setError(e.message); }); return () => { active = false; }; }, [base, payments]);
+  async function run(action: () => Promise<void>) {
+    // A synchronous lock also catches rapid clicks before React renders disabled controls.
+    await flight.current(async () => {
+      setBusy(true); setConfirmed(false); setError(''); setNotice('');
+      let actionError = '';
+      try { await action(); }
+      catch (e) { actionError = e instanceof Error ? e.message : 'Unable to verify provider status.'; }
+      finally {
+        try { await load(); await refresh(); }
+        catch {
+          // Never offer a refund from stale evidence after a failed refresh.
+          setData(null); setNotice('');
+          actionError = `${actionError ? `${actionError} ` : ''}Unable to refresh. Refresh recovery information before taking another action. Do not resubmit an uncertain transfer.`;
+        }
+        setError(actionError); setBusy(false);
+      }
+    });
+  }
   const payment = payments.find(p => p.id === chosen);
   return <section className={styles.root} aria-label="Recovery and refunds" aria-busy={busy}>
     <div className={styles.header}><div><h3>Recovery & refunds</h3>
@@ -30,6 +48,7 @@ export function PaymentRecovery({ base, payments, payouts, held, refresh }: { ba
           <Button disabled={busy || !confirmed} onClick={() => run(async () => { setConfirmed(false); const result = await api(`${base}/payments/${payment.id}/refund`, 'POST', { confirmFullRefund: true }); setNotice(refundMessage(result.status)); })}>Submit full sandbox refund</Button>
         </>)}
       </details>
+      {busy && <p role="status">Checking payment information… Do not submit another transfer.</p>}
       <h4>Refund status</h4>
       {!data.refunds.length && <p>No refunds recorded.</p>}
       {data.refunds.map((r: any) => <div className={styles.evidence} key={r.id}><p>{money(r.amount)} · <code>{r.id}</code> <Badge value={r.status} /></p><p>{refundMessage(r.status)}</p>{r.provider_refund_id ? <Button variant="secondary" disabled={busy} onClick={() => run(async () => { const result = await api(`${base}/refunds/${r.id}/reconcile`, 'POST', {}); setNotice(refundMessage(result.status)); })}>Check refund status</Button> : <Evidence kind="refund" op={r} base={base} busy={busy} run={run} onResult={r => setNotice(refundMessage(r.status))} />}</div>)}

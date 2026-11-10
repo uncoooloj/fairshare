@@ -30,3 +30,11 @@
 .drawerNote {padding:18px;background:var(--color-surface,#fafbf9);border-radius:12px;}
 .drawerNote h3 {font-size:14px;margin:0 0 10px;}
 .drawerNote p {font-size:13px;line-height:1.6;color:var(--color-muted,#66736d);}
+.drawer { overflow-y:auto; overscroll-behavior:contain; }
+.facts div { grid-template-columns: minmax(0,120px) minmax(0,1fr); }
+@media(max-width:400px) {
+  .drawer { padding:20px 16px; }
+  .facts div { grid-template-columns:1fr; gap:4px; }
+  .field { max-width:100%; }
+  .field input,.field select { max-width:100%; }
+}

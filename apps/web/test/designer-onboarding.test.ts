@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 const source = readFileSync(new URL("../components/designer-auth.tsx", import.meta.url), "utf8");
 
 test("designer auth retains real login/register payloads and registration password policy", () => {
-  assert.match(source, /onSubmit\(login \? "login" : "register", Object\.fromEntries\(new FormData/);
+  assert.ok(source.includes('onSubmit(login ? "login" : "register", prepared.data)'));
   for (const name of ["email", "password", "name"]) assert.ok(source.includes(`name="${name}"`));
   assert.ok(source.includes('minLength={login ? 1 : 12}'));
   assert.ok(source.includes('if (busy) return;'));

@@ -152,11 +152,11 @@ export function PaymentGrid({
   if (error || data.invalid)
     return (
       <div role="alert">
-        Payments could not be displayed. Refresh to try again.
+        Payouts could not be displayed. Refresh the page to load verified records; do not resubmit any transfers.
       </div>
     );
   return (
-    <section aria-label="Payout history">
+    <section aria-label="Payout history" aria-busy={loading}>
       <div className={styles.summary} aria-label="Recorded payout totals">
         {([
           ['Paid out', data.summary.paid, data.summary.paidCount, 'Provider-confirmed payouts'],
@@ -182,10 +182,10 @@ export function PaymentGrid({
         {(query || status) && <button className={styles.control} type="button" onClick={() => { setQuery(''); setStatus(''); }}>Clear filters</button>}
         <button className={styles.control} type="button" onClick={exportCsv} disabled={loading || !filteredRows.length}>Export CSV</button>
       </div>
-      {!loading && !data.rows.length ? <div className={styles.empty}><h3>No payouts yet</h3><p>Payouts appear here after an allocation is submitted under an approved agreement.</p></div> : <div style={{ height: 460, width: "100%" }}>
+      {!loading && !data.rows.length ? <div className={styles.empty}><h3>No payouts yet</h3><p>Payouts appear here after a transfer is submitted under an approved agreement. An allocation alone does not move money.</p></div> : !loading && !filteredRows.length ? <div className={styles.empty} role="status"><h3>No matching payouts</h3><p>Try another person, agreement or provider reference, or clear your filters.</p><button className={styles.control} type="button" onClick={() => { setQuery(''); setStatus(''); }}>Clear filters</button></div> : <div style={{ height: 460, width: "100%" }}>
         <AgGridReact<PaymentGridRow>
           theme={theme}
-          rowData={filteredRows}
+          rowData={loading ? [] : filteredRows}
           columnDefs={columns}
           defaultColDef={{ sortable: true, filter: false, resizable: true }}
           getRowId={(p) => p.data.id}

@@ -16,7 +16,8 @@ import {
   safePayPalUrl,
   payoutStatus,
 } from "./agreement-widgets";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { AgreementTabs } from "./agreement-tabs";
 import {
   ApiError,
   AgreementTab,
@@ -72,6 +73,27 @@ export default function FairshareApp() {
     [inviteLink, setInviteLink] = useState(""),
     [flowToken, setFlowToken] = useState(""),
     [flowKind, setFlowKind] = useState("");
+  const [draftDirty, setDraftDirty] = useState(false);
+  const openRequest = useRef(0);
+  const rulesDirty = useRef(false);
+  function mayLeaveDraft() {
+    if (busy) return false;
+    if (draftDirty && !window.confirm("Discard unsaved agreement changes? Saved source documents and proposals will remain.")) return false;
+    setDraftDirty(false);
+    rulesDirty.current = false;
+    return true;
+  }
+  function changeAgreementTab(next: AgreementTab) {
+    if (next === tab || !mayLeaveDraft()) return;
+    setTab(next);
+    setBreakdown(null);
+  }
+  useEffect(() => {
+    if (!draftDirty) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [draftDirty]);
   const base = selected
     ? `${workspaceBase(selected.workspaceId)}/collaborations/${selected.id}`
     : "";
@@ -123,11 +145,16 @@ export default function FairshareApp() {
     setPayouts(all.flat());
   }
   async function openAgreement(a: Agreement) {
+    const request = ++openRequest.current;
     const root = `${workspaceBase(a.workspaceId)}/collaborations/${a.id}`;
     const [fresh, p] = await Promise.all([
       api<Agreement>(root),
       api(`${root}/payments`),
     ]);
+    if (request !== openRequest.current) return;
+    setDraftDirty(false);
+    rulesDirty.current = false;
+    setTab(AgreementTab.Overview);
     setSelected(fresh);
     setPayments(p.payments);
     setSection(Section.Agreements);
@@ -140,6 +167,7 @@ export default function FairshareApp() {
     setExtraction(null);
     const v = fresh.value.versions.at(-1);
     const doc = await recoverSourceDocument(root, v?.rules.source.documentId, api);
+    if (request !== openRequest.current) return;
     if (doc) {
       setDocumentId(doc.documentId);
       setSource(doc.text);
@@ -181,6 +209,8 @@ export default function FairshareApp() {
     if (workspace && user) run(() => loadWorkspace(workspace));
   }, [workspace]);
   function navigate(s: Section) {
+    if (!mayLeaveDraft()) return;
+    openRequest.current++;
     setSection(s);
     setSelected(null);
     setCreating(false);
@@ -226,6 +256,7 @@ export default function FairshareApp() {
     );
   return (
     <div className="app-shell">
+      <a className="skip-link" href="#main-content">Skip to main content</a>
       <aside className="sidebar">
         <Logo />
         <nav aria-label="Main navigation">
@@ -252,27 +283,30 @@ export default function FairshareApp() {
           </div>
           <button
             className="text-button"
-            onClick={() =>
-              run(async () => {
+            onClick={() => {
+              if (!mayLeaveDraft()) return;
+              return run(async () => {
                 await api("auth/logout", "POST", {});
                 setUser(null);
                 setWorkspace("");
                 setSelected(null);
                 setAgreements([]);
-              })
-            }
+              });
+            }}
           >
             Sign out
           </button>
         </div>
       </aside>
-      <main className="main">
+      <main className="main" id="main-content" tabIndex={-1}>
         <div className="workspace-bar">
           <span>Workspace</span>
           <select
             aria-label="Workspace"
             value={workspace}
             onChange={(e) => {
+              if (!mayLeaveDraft()) return;
+              openRequest.current++;
               setSelected(null);
               setWorkspace(e.target.value);
             }}
@@ -431,7 +465,7 @@ export default function FairshareApp() {
               <>
                 <button
                   className="breadcrumb text-button"
-                  onClick={() => setSelected(null)}
+                  onClick={() => navigate(Section.Agreements)}
                 >
                   Agreements <span>/</span> {selected.value.name}
                 </button>
@@ -457,23 +491,11 @@ export default function FairshareApp() {
                     </Button>
                   }
                 />
-                <AgreementSetup agreement={selected} tab={tab} onNavigate={setTab} />
-                <div className="tabs" role="tablist">
-                  {Object.values(AgreementTab).map((t) => (
-                    <button
-                      role="tab"
-                      aria-selected={tab === t}
-                      key={t}
-                      className={tab === t ? "active" : ""}
-                      onClick={() => {
-                        setTab(t);
-                        setBreakdown(null);
-                      }}
-                    >
-                      {t}
-                    </button>
-                  ))}
-                </div>
+                <AgreementSetup agreement={selected} tab={tab} onNavigate={changeAgreementTab} />
+                <AgreementTabs value={tab} onChange={(next) => {
+                  changeAgreementTab(next);
+                }} />
+                <div role="tabpanel" id="agreement-panel" aria-labelledby={`agreement-tab-${tab}`} tabIndex={0}>
                 {selected.value.reviewHold && (
                   <Notice warning>
                     Payments need review. Allocations remain recorded; outgoing
@@ -500,7 +522,7 @@ export default function FairshareApp() {
                             title="Agree on the rules first"
                             action={
                               <Button
-                                onClick={() => setTab(AgreementTab.Terms)}
+                                onClick={() => changeAgreementTab(AgreementTab.Terms)}
                               >
                                 Set up terms
                               </Button>
@@ -748,7 +770,8 @@ export default function FairshareApp() {
                           <Badge value={latest.status} />
                           <Button
                             variant="secondary"
-                            onClick={() => setEditing(true)}
+                            disabled={busy}
+                            onClick={() => { setPreview(null); setEditing(true); }}
                           >
                             Propose revised terms
                           </Button>
@@ -802,6 +825,7 @@ export default function FairshareApp() {
                       </>
                     ) : (
                       <>
+                        {editing && <Button variant="secondary" disabled={busy} onClick={() => { if (mayLeaveDraft()) setEditing(false); }}>Back to proposed terms</Button>}
                         <section className="panel">
                           <h3>Source agreement</h3>
                           <ContractSourceGuidance replacement={!!selected.value.versions.length} />
@@ -811,9 +835,13 @@ export default function FairshareApp() {
                           >
                             <textarea
                               rows={8}
+                              disabled={busy}
                               value={source}
                               maxLength={40000}
                               onChange={(e) => {
+                                if (rulesDirty.current && !window.confirm("Changing the source resets your unsaved rules draft. Continue?")) return;
+                                rulesDirty.current = false;
+                                setDraftDirty(true);
                                 setSource(e.target.value);
                                 setDocumentId("");
                                 setExtraction(null);
@@ -826,11 +854,14 @@ export default function FairshareApp() {
                               <input
                                 className="visually-hidden"
                                 type="file"
+                                disabled={busy}
                                 accept=".txt,.pdf,text/plain,application/pdf"
                                 onChange={(e) =>
                                   run(async () => {
                                     const f = e.target.files?.[0];
+                                    e.target.value = "";
                                     if (!f) return;
+                                    if (draftDirty && !window.confirm("Replace your unsaved source and rules draft?")) return;
                                     if (f.name.toLowerCase().endsWith(".pdf")) {
                                       if (f.size > 5 * 1024 * 1024)
                                         throw new Error(
@@ -876,14 +907,19 @@ export default function FairshareApp() {
                                       setSource(await f.text());
                                       setDocumentId("");
                                     }
+                                    rulesDirty.current = false;
                                     setExtraction(null);
+                                    setDraftDirty(true);
                                   })
                                 }
                               />
                             </label>
                             <Button
                               variant="quiet"
+                              disabled={busy}
                               onClick={() => {
+                                if (!mayLeaveDraft()) return;
+                                setDraftDirty(true);
                                 setSource(sampleAgreement);
                                 setDocumentId("");
                                 setExtraction(null);
@@ -935,9 +971,13 @@ export default function FairshareApp() {
                               source={source}
                               documentId={documentId}
                               busy={busy}
+                              onDirty={() => { rulesDirty.current = true; setDraftDirty(true); }}
                               onSave={(rules) =>
                                 run(async () => {
                                   await mutate("/versions", { rules });
+                                  setDraftDirty(false);
+                                  rulesDirty.current = false;
+                                  setPreview(null);
                                   setEditing(false);
                                   setNotice(
                                     "New proposal saved. No rules were activated.",
@@ -1135,6 +1175,7 @@ export default function FairshareApp() {
                     </p>
                   </section>
                 )}
+                </div>
               </>
             )}
             {section === Section.Payouts && !selected && (
