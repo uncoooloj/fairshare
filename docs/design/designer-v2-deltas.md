@@ -72,6 +72,6 @@ Compared decoded templates by screen title, not regenerated UUIDs. Old: 48 state
 - Export removes inline payout error reasons; existing actionable recovery/evidence must remain until equivalent detail view exists.
 - Export says Download original; new PDF/DOCX uploads support a private authenticated original download, while text-only and legacy uploads retain only extracted text.
 - Added read-only version timeline and side-by-side rule comparison, amended-agreement upload language, and a payout header/export action with an empty-state link to Agreements.
-- Other-payment Source name, invite acceptance presentation and People row actions still require focused integration. No blanket HTML replacement.
+- Invite acceptance presentation and People row actions still require focused integration. No blanket HTML replacement.
 - Some label changes remove § from sample clause references. Do not mutate authoritative contract citations to match fixture copy.
 - Repeated global header changes are layout-only; keep functional app routing, identity and guards.
