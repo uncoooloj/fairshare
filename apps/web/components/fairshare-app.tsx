@@ -55,6 +55,7 @@ import {
   ContractSourceGuidance,
 } from "./contract-review-guidance";
 import { AgreementName } from "./agreement-name";
+import { AgreementCreationWizard } from "./agreement-creation-wizard";
 import { AgreementIntake, type AgreementIntakeInput } from "./agreement-intake";
 import { AgreementSetup } from "./agreement-setup";
 import { AccessPrompt } from "./designer-auth";
@@ -90,6 +91,7 @@ export default function FairshareApp() {
     [payments, setPayments] = useState<any[]>([]),
     [payouts, setPayouts] = useState<any[]>([]),
     [mode, setMode] = useState("Unavailable");
+  const [creationAgreementId, setCreationAgreementId] = useState("");
   const [creating, setCreating] = useState(false),
     [source, setSource] = useState(""),
     [documentId, setDocumentId] = useState(""),
@@ -219,6 +221,12 @@ export default function FairshareApp() {
     rulesDirty.current = false;
     setTab(AgreementTab.Overview);
     setSelected(fresh);
+    setCreationAgreementId(
+      !fresh.value.versions.length &&
+        sessionStorage.getItem(`fairshare:creation:${fresh.id}`)
+        ? fresh.id
+        : "",
+    );
     setPayments(p.payments);
     setSection(Section.Agreements);
     setCreating(false);
@@ -266,6 +274,15 @@ export default function FairshareApp() {
       ]);
       openRequest.current++;
       setSelected(result.agreement);
+      setCreationAgreementId(result.agreement.id);
+      sessionStorage.setItem(
+        `fairshare:creation:${result.agreement.id}`,
+        "pending",
+      );
+      // Member refresh must not make a committed upload appear to fail.
+      api(`${workspaceBase(result.workspace.id)}/members`)
+        .then((result) => setMembers(result.members))
+        .catch(() => setMembers([]));
       setCreating(false);
       setSection(Section.Agreements);
       setTab(AgreementTab.Terms);
@@ -590,838 +607,897 @@ export default function FairshareApp() {
             )}
             {selected && section === Section.Agreements && (
               <>
-                <button
-                  className="breadcrumb text-button"
-                  onClick={() => navigate(Section.Agreements)}
-                >
-                  Agreements <span>/</span> {selected.value.name}
-                </button>
-                <Heading
-                  title={selected.value.name}
-                  badge={
-                    <Badge
-                      value={
-                        selected.value.reviewHold
-                          ? "REVIEW_REQUIRED"
-                          : active
-                            ? "ACTIVE"
-                            : latest?.status || "DRAFT"
-                      }
-                    />
-                  }
-                  action={
-                    <Button
-                      variant="secondary"
-                      onClick={() => navigate(Section.Payouts)}
-                    >
-                      View payouts
-                    </Button>
-                  }
-                />
-                {organizer && (
-                  <AgreementName
-                    key={`${selected.id}:${selected.value.name}:${extraction?.suggestedTitle || ""}`}
-                    name={selected.value.name}
-                    suggestion={extraction?.suggestedTitle}
-                    busy={busy}
-                    onSave={(name) => run(() => mutate("/name", { name }))}
-                  />
-                )}
-                <AgreementSetup
-                  agreement={selected}
-                  tab={tab}
-                  onNavigate={changeAgreementTab}
-                />
-                <AgreementTabs
-                  value={tab}
-                  onChange={(next) => {
-                    changeAgreementTab(next);
-                  }}
-                />
-                <div
-                  role="tabpanel"
-                  id="agreement-panel"
-                  aria-labelledby={`agreement-tab-${tab}`}
-                  tabIndex={0}
-                >
-                  {selected.value.reviewHold && (
-                    <Notice warning>
-                      Payments need review. Allocations remain recorded;
-                      outgoing payouts are paused. No automatic clawback is
-                      assumed.
-                    </Notice>
-                  )}
-                  {tab === AgreementTab.Overview && (
-                    <>
-                      <div className="detail-columns">
-                        <section className="panel">
-                          {!active && (
-                            <>
-                              <h2>Revenue rules</h2>
-                              <p className="muted">
-                                No active rules yet. Review and approve a
-                                version to begin.
-                              </p>
-                            </>
-                          )}
-                          {active ? (
-                            <RevenueRules key={`${selected.id}:${active.id}`}>
-                              <SplitTable
-                                agreement={selected}
-                                rules={active.rules}
-                              />
-                            </RevenueRules>
-                          ) : (
-                            <Empty
-                              title="Agree on the rules first"
-                              action={
-                                <Button
-                                  onClick={() =>
-                                    changeAgreementTab(AgreementTab.Terms)
-                                  }
-                                >
-                                  Set up terms
-                                </Button>
-                              }
-                            >
-                              Add your people, upload the agreement and review a
-                              proposed split together.
-                            </Empty>
-                          )}
-                          {active?.rules.advance && (
-                            <section className="section">
-                              <h2>Recoupment</h2>
-                              <p>
-                                {money(active.rules.advance.amountCents)}{" "}
-                                advance to{" "}
-                                {
-                                  selected.value.members.find(
-                                    (m) =>
-                                      m.userId ===
-                                      active.rules.advance!.recipientId,
-                                  )?.displayName
-                                }
-                                .
-                              </p>
-                              <progress
-                                max={active.rules.advance.amountCents || 1}
-                                value={
-                                  selected.value.recoupedByAdvance[
-                                    active.rules.advance.id
-                                  ] || 0
-                                }
-                              />
-                              <p className="muted">
-                                {money(
-                                  selected.value.recoupedByAdvance[
-                                    active.rules.advance.id
-                                  ] || 0,
-                                )}{" "}
-                                allocated toward recoupment. This is not proof
-                                of a completed payout.
-                              </p>
-                            </section>
-                          )}
-                        </section>
-                        <aside className="panel">
-                          <h2>Payout status</h2>
-                          <p className="muted">
-                            An allocation records who is owed what. A payout
-                            records money sent to a recipient.
-                          </p>
-                          <p>
-                            {
-                              payouts.filter(
-                                (p) => p.agreement.id === selected.id,
-                              ).length
-                            }{" "}
-                            payout items recorded
-                          </p>
-                          <Button
-                            variant="secondary"
-                            onClick={() => navigate(Section.Payouts)}
-                          >
-                            Open payouts
-                          </Button>
-                        </aside>
-                      </div>
-                      <section className="section">
-                        <h2>Incoming payments</h2>
-                        <RevenueTable
-                          agreement={selected}
-                          onOpen={setBreakdown}
+                {creationAgreementId === selected.id &&
+                !selected.value.versions.length ? (
+                  <AgreementCreationWizard
+                    key={selected.id}
+                    agreement={selected}
+                    source={source}
+                    members={members}
+                    userId={user.id}
+                    invitation={
+                      workspaces.find((w) => w.id === workspace)?.role ===
+                      "OWNER" ? (
+                        <PrivateInvitation
+                          key={workspace}
+                          workspace={workspace}
                         />
-                      </section>
-                      <section className="section">
-                        <h2>Activity</h2>
-                        <ul className="activity">
-                          {selected.value.audit
-                            .slice(-6)
-                            .reverse()
-                            .map((e) => (
-                              <li key={e.sequence}>
-                                <span>{title(e.type)}</span>
-                                <time>{formatDate(e.at)}</time>
-                              </li>
-                            ))}
-                        </ul>
-                      </section>
-                    </>
-                  )}
-                  {tab === AgreementTab.People && (
-                    <>
-                      <Heading
-                        small
-                        title="People in this agreement"
-                        description="Add everyone before drafting rules. Each person approves their own account’s decision."
-                      />
-                      <table>
-                        <thead>
-                          <tr>
-                            <th>Name</th>
-                            <th>Role</th>
-                            <th>Latest approval</th>
-                            <th>Review reminder</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {selected.value.members.map((m) => (
-                            <tr key={m.userId}>
-                              <td>
-                                <span className="avatar small">
-                                  {m.displayName[0]}
-                                </span>
-                                {m.displayName}
-                                {m.userId === user.id ? " (you)" : ""}
-                              </td>
-                              <td>{title(m.role)}</td>
-                              <td>
-                                <Badge
-                                  value={
-                                    latest?.approvals[m.userId]
-                                      ? "APPROVED"
-                                      : "PENDING"
-                                  }
-                                />
-                              </td>
-                              <td>
-                                {latest && (
-                                  <ReviewReminder
-                                    key={`${selected.id}:${latest.id}:${m.userId}`}
-                                    base={base}
-                                    agreement={selected}
-                                    version={latest}
-                                    userId={user.id}
-                                    recipientId={m.userId}
-                                  />
-                                )}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                      {organizer && !selected.value.versions.length && (
-                        <section className="section">
-                          <h3>Add an existing workspace member</h3>
-                          {members
-                            .filter(
-                              (m) =>
-                                !selected.value.members.some(
-                                  (s) => s.userId === m.id,
-                                ),
-                            )
-                            .map((m) => (
-                              <div className="row" key={m.id}>
-                                <span>
-                                  {m.name} <small>{m.email}</small>
-                                </span>
-                                <Button
-                                  disabled={busy}
-                                  variant="secondary"
-                                  onClick={() =>
-                                    run(() =>
-                                      mutate("/members", { userId: m.id }),
-                                    )
-                                  }
-                                >
-                                  Add to agreement
-                                </Button>
-                              </div>
-                            ))}
-                          {workspaces.find((w) => w.id === workspace)?.role ===
-                            "OWNER" && (
-                            <PrivateInvitation
-                              key={workspace}
-                              workspace={workspace}
-                            />
-                          )}
-                        </section>
-                      )}
-                      <section className="section">
-                        <h3>Your payout destination</h3>
-                        <p className="muted">
-                          Only you can set your destination. This is a PayPal
-                          sandbox merchant ID, not an email.
-                        </p>
-                        <SimpleForm
-                          label="Your sandbox PayPal recipient ID"
-                          button="Save destination"
-                          busy={busy}
-                          onSubmit={(paypalId) =>
-                            run(async () => {
-                              await api(`${base}/recipient`, "PUT", {
-                                paypalId,
-                              });
-                              setNotice(
-                                "Your sandbox payout destination was saved.",
-                              );
-                            })
+                      ) : undefined
+                    }
+                    onSaveName={(name) => mutate("/name", { name })}
+                    onAddMember={(userId) => mutate("/members", { userId })}
+                    onRefresh={() => loadWorkspace(workspace)}
+                    onDirtyChange={setDraftDirty}
+                    onBusyChange={setBusy}
+                    onClose={() => {
+                      setDraftDirty(false);
+                      setCreationAgreementId("");
+                      setSelected(null);
+                      setSection(Section.Agreements);
+                    }}
+                    onComplete={() => {
+                      sessionStorage.removeItem(
+                        `fairshare:creation:${selected.id}`,
+                      );
+                      setCreationAgreementId("");
+                      setTab(AgreementTab.Terms);
+                      setNotice(
+                        "Draft ready. Review the saved source and choose whether AI may interpret it before proposing rules.",
+                      );
+                    }}
+                  />
+                ) : (
+                  <>
+                    <button
+                      className="breadcrumb text-button"
+                      onClick={() => navigate(Section.Agreements)}
+                    >
+                      Agreements <span>/</span> {selected.value.name}
+                    </button>
+                    <Heading
+                      title={selected.value.name}
+                      badge={
+                        <Badge
+                          value={
+                            selected.value.reviewHold
+                              ? "REVIEW_REQUIRED"
+                              : active
+                                ? "ACTIVE"
+                                : latest?.status || "DRAFT"
                           }
                         />
-                      </section>
-                    </>
-                  )}
-                  {tab === AgreementTab.Terms && (
-                    <>
-                      <Heading
-                        small
-                        title="Terms everyone can understand"
-                        description="AI suggests an interpretation. People agree on the rules. The engine calculates the money."
+                      }
+                      action={
+                        <Button
+                          variant="secondary"
+                          onClick={() => navigate(Section.Payouts)}
+                        >
+                          View payouts
+                        </Button>
+                      }
+                    />
+                    {organizer && (
+                      <AgreementName
+                        key={`${selected.id}:${selected.value.name}:${extraction?.suggestedTitle || ""}`}
+                        name={selected.value.name}
+                        suggestion={extraction?.suggestedTitle}
+                        busy={busy}
+                        onSave={(name) => run(() => mutate("/name", { name }))}
                       />
-                      {!editing && latest ? (
+                    )}
+                    <AgreementSetup
+                      agreement={selected}
+                      tab={tab}
+                      onNavigate={changeAgreementTab}
+                    />
+                    <AgreementTabs
+                      value={tab}
+                      onChange={(next) => {
+                        changeAgreementTab(next);
+                      }}
+                    />
+                    <div
+                      role="tabpanel"
+                      id="agreement-panel"
+                      aria-labelledby={`agreement-tab-${tab}`}
+                      tabIndex={0}
+                    >
+                      {selected.value.reviewHold && (
+                        <Notice warning>
+                          Payments need review. Allocations remain recorded;
+                          outgoing payouts are paused. No automatic clawback is
+                          assumed.
+                        </Notice>
+                      )}
+                      {tab === AgreementTab.Overview && (
                         <>
-                          <div className="row">
-                            <h3 id="agreement-proposal-review" tabIndex={-1}>
-                              Version {latest.id}
-                            </h3>
-                            <Badge value={latest.status} />
-                            <Button
-                              variant="secondary"
-                              disabled={busy}
-                              onClick={() => {
-                                setPreview(null);
-                                setEditing(true);
-                              }}
-                            >
-                              Propose revised terms
-                            </Button>
+                          <div className="detail-columns">
+                            <section className="panel">
+                              {!active && (
+                                <>
+                                  <h2>Revenue rules</h2>
+                                  <p className="muted">
+                                    No active rules yet. Review and approve a
+                                    version to begin.
+                                  </p>
+                                </>
+                              )}
+                              {active ? (
+                                <RevenueRules
+                                  key={`${selected.id}:${active.id}`}
+                                >
+                                  <SplitTable
+                                    agreement={selected}
+                                    rules={active.rules}
+                                  />
+                                </RevenueRules>
+                              ) : (
+                                <Empty
+                                  title="Agree on the rules first"
+                                  action={
+                                    <Button
+                                      onClick={() =>
+                                        changeAgreementTab(AgreementTab.Terms)
+                                      }
+                                    >
+                                      Set up terms
+                                    </Button>
+                                  }
+                                >
+                                  Add your people, upload the agreement and
+                                  review a proposed split together.
+                                </Empty>
+                              )}
+                              {active?.rules.advance && (
+                                <section className="section">
+                                  <h2>Recoupment</h2>
+                                  <p>
+                                    {money(active.rules.advance.amountCents)}{" "}
+                                    advance to{" "}
+                                    {
+                                      selected.value.members.find(
+                                        (m) =>
+                                          m.userId ===
+                                          active.rules.advance!.recipientId,
+                                      )?.displayName
+                                    }
+                                    .
+                                  </p>
+                                  <progress
+                                    max={active.rules.advance.amountCents || 1}
+                                    value={
+                                      selected.value.recoupedByAdvance[
+                                        active.rules.advance.id
+                                      ] || 0
+                                    }
+                                  />
+                                  <p className="muted">
+                                    {money(
+                                      selected.value.recoupedByAdvance[
+                                        active.rules.advance.id
+                                      ] || 0,
+                                    )}{" "}
+                                    allocated toward recoupment. This is not
+                                    proof of a completed payout.
+                                  </p>
+                                </section>
+                              )}
+                            </section>
+                            <aside className="panel">
+                              <h2>Payout status</h2>
+                              <p className="muted">
+                                An allocation records who is owed what. A payout
+                                records money sent to a recipient.
+                              </p>
+                              <p>
+                                {
+                                  payouts.filter(
+                                    (p) => p.agreement.id === selected.id,
+                                  ).length
+                                }{" "}
+                                payout items recorded
+                              </p>
+                              <Button
+                                variant="secondary"
+                                onClick={() => navigate(Section.Payouts)}
+                              >
+                                Open payouts
+                              </Button>
+                            </aside>
                           </div>
-                          <SplitTable
-                            agreement={selected}
-                            rules={latest.rules}
-                          />
-                          <Notice>
-                            Fee policy:{" "}
-                            {latest.rules.feePolicy === "BEFORE_SPLIT"
-                              ? "Fees deducted before the split"
-                              : "Organizer covers fees from their share"}
-                            .{" "}
-                            {latest.rules.source.origin === "HUMAN_PROPOSAL"
-                              ? "These terms include a human proposal."
-                              : "These terms cite a source clause."}
-                          </Notice>
-                          <blockquote>
-                            {latest.rules.source.excerpt}
-                            <footer>{latest.rules.source.clause}</footer>
-                          </blockquote>
-                          <ContractReviewPanel
-                            key={latest.id}
-                            agreement={selected}
-                            version={latest}
-                            userId={user.id}
-                            busy={busy}
-                            onAction={async (action, payload) => {
-                              setBusy(true);
-                              setError("");
-                              setNotice("");
-                              try {
-                                await mutate(
-                                  `/versions/${latest.id}/${action}`,
-                                  payload,
-                                );
-                              } finally {
-                                setBusy(false);
-                              }
-                            }}
-                          />
-                          <ReviewDiscussion
-                            key={`${selected.id}:${latest.id}`}
-                            base={base}
-                            agreement={selected}
-                            version={latest}
-                            canWrite={
-                              workspaces.find((w) => w.id === workspace)
-                                ?.role !== "VIEWER"
-                            }
-                            onDirtyChange={setDraftDirty}
-                          />
-                          <AgreementVersions agreement={selected} />
                           <section className="section">
-                            <h3>Preview an incoming payment</h3>
-                            <p className="muted">
-                              Illustrative only. No payment or payout is
-                              created.
-                            </p>
-                            <PreviewForm
-                              busy={busy}
-                              onSubmit={(grossCents, feeCents) =>
-                                run(async () =>
-                                  setPreview(
-                                    await api(
-                                      `${base}/versions/${latest.id}/preview`,
-                                      "POST",
-                                      { grossCents, feeCents },
-                                    ),
-                                  ),
-                                )
-                              }
+                            <h2>Incoming payments</h2>
+                            <RevenueTable
+                              agreement={selected}
+                              onOpen={setBreakdown}
                             />
-                            {preview && (
-                              <AllocationTable
-                                allocations={preview.allocations}
-                                agreement={selected}
-                              />
-                            )}
+                          </section>
+                          <section className="section">
+                            <h2>Activity</h2>
+                            <ul className="activity">
+                              {selected.value.audit
+                                .slice(-6)
+                                .reverse()
+                                .map((e) => (
+                                  <li key={e.sequence}>
+                                    <span>{title(e.type)}</span>
+                                    <time>{formatDate(e.at)}</time>
+                                  </li>
+                                ))}
+                            </ul>
                           </section>
                         </>
-                      ) : (
+                      )}
+                      {tab === AgreementTab.People && (
                         <>
-                          {editing && (
-                            <Button
-                              variant="secondary"
-                              disabled={busy}
-                              onClick={() => {
-                                if (mayLeaveDraft()) setEditing(false);
-                              }}
-                            >
-                              Back to proposed terms
-                            </Button>
-                          )}
-                          <AgreementTermsFlow
-                            key={selected.id}
-                            documentId={documentId}
-                            busy={busy}
-                            sourceText={source}
-                            source={
-                              <section className="panel">
-                                <h3>
-                                  {selected.value.versions.length
-                                    ? "Upload amended agreement"
-                                    : "Source agreement"}
-                                </h3>
-                                <ContractSourceGuidance
-                                  replacement={!!selected.value.versions.length}
-                                />
-                                <Field
-                                  label="Agreement text"
-                                  hint="Use synthetic or authorized documents only. Text is stored privately in this workspace."
-                                >
-                                  <textarea
-                                    rows={8}
-                                    disabled={busy}
-                                    value={source}
-                                    maxLength={40000}
-                                    onChange={(e) => {
-                                      if (
-                                        rulesDirty.current &&
-                                        !window.confirm(
-                                          "Changing the source resets your unsaved rules draft. Continue?",
-                                        )
-                                      )
-                                        return;
-                                      rulesDirty.current = false;
-                                      setDraftDirty(true);
-                                      setSource(e.target.value);
-                                      setDocumentId("");
-                                      setExtraction(null);
-                                    }}
-                                  />
-                                </Field>
-                                <LocalOcrChoice
-                                  base={base}
-                                  value={useLocalOcr}
-                                  onChange={setUseLocalOcr}
-                                  disabled={busy}
-                                />
-                                <div className="actions">
-                                  <label className="button secondary">
-                                    Choose PDF, DOCX or text file
-                                    <input
-                                      className="visually-hidden"
-                                      type="file"
-                                      disabled={busy}
-                                      accept=".txt,.pdf,.docx,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                                      onChange={(e) =>
-                                        run(async () => {
-                                          const f = e.target.files?.[0];
-                                          e.target.value = "";
-                                          if (!f) return;
-                                          if (
-                                            draftDirty &&
-                                            !window.confirm(
-                                              "Replace your unsaved source and rules draft?",
-                                            )
-                                          )
-                                            return;
-                                          if (/\.(pdf|docx)$/i.test(f.name)) {
-                                            const isDocx = f.name
-                                              .toLowerCase()
-                                              .endsWith(".docx");
-                                            if (f.size > 5 * 1024 * 1024)
-                                              throw new Error(
-                                                "Document must be no larger than 5 MB.",
-                                              );
-                                            const data =
-                                              await new Promise<string>(
-                                                (resolve, reject) => {
-                                                  const reader =
-                                                    new FileReader();
-                                                  reader.onload = () =>
-                                                    resolve(
-                                                      String(
-                                                        reader.result,
-                                                      ).split(",")[1],
-                                                    );
-                                                  reader.onerror = () =>
-                                                    reject(
-                                                      new Error(
-                                                        "Unable to read file.",
-                                                      ),
-                                                    );
-                                                  reader.readAsDataURL(f);
-                                                },
-                                              );
-                                            const doc = await api(
-                                              `${base}/documents/${isDocx ? "docx" : "pdf"}`,
-                                              "POST",
-                                              {
-                                                mimeType: isDocx
-                                                  ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                                                  : "application/pdf",
-                                                base64: data,
-                                                ...(!isDocx && useLocalOcr
-                                                  ? { useLocalOcr: true }
-                                                  : {}),
-                                              },
-                                            );
-                                            const saved = await api(
-                                              `${base}/documents/${doc.documentId}`,
-                                            );
-                                            setSource(saved.text);
-                                            setDocumentId(doc.documentId);
-                                            setNotice(
-                                              "Document text extracted locally. Review every amount and name against the saved original before AI processing; OCR can misread characters.",
-                                            );
-                                          } else {
-                                            if (
-                                              !f.name
-                                                .toLowerCase()
-                                                .endsWith(".txt") &&
-                                              f.type !== "text/plain"
-                                            )
-                                              throw new Error(
-                                                "Choose a PDF, DOCX or plain text file.",
-                                              );
-                                            if (f.size > 40000)
-                                              throw new Error(
-                                                "Text file is too large. Limit: 40 KB.",
-                                              );
-                                            setSource(await f.text());
-                                            setDocumentId("");
-                                          }
-                                          rulesDirty.current = false;
-                                          setExtraction(null);
-                                          setDraftDirty(
-                                            !/\.(pdf|docx)$/i.test(f.name),
-                                          );
-                                        })
+                          <Heading
+                            small
+                            title="People in this agreement"
+                            description="Add everyone before drafting rules. Each person approves their own account’s decision."
+                          />
+                          <table>
+                            <thead>
+                              <tr>
+                                <th>Name</th>
+                                <th>Role</th>
+                                <th>Latest approval</th>
+                                <th>Review reminder</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {selected.value.members.map((m) => (
+                                <tr key={m.userId}>
+                                  <td>
+                                    <span className="avatar small">
+                                      {m.displayName[0]}
+                                    </span>
+                                    {m.displayName}
+                                    {m.userId === user.id ? " (you)" : ""}
+                                  </td>
+                                  <td>{title(m.role)}</td>
+                                  <td>
+                                    <Badge
+                                      value={
+                                        latest?.approvals[m.userId]
+                                          ? "APPROVED"
+                                          : "PENDING"
                                       }
                                     />
-                                  </label>
-                                  <Button
-                                    variant="quiet"
-                                    disabled={busy}
-                                    onClick={() => {
-                                      if (!mayLeaveDraft()) return;
-                                      setDraftDirty(true);
-                                      setSource(sampleAgreement);
-                                      setDocumentId("");
-                                      setExtraction(null);
-                                    }}
-                                  >
-                                    Use sample text
-                                  </Button>
-                                  <Button
-                                    disabled={
-                                      busy || !source.trim() || !!documentId
-                                    }
-                                    onClick={() =>
-                                      run(async () => {
-                                        const doc = await api(
-                                          `${base}/documents`,
-                                          "POST",
-                                          { text: source },
-                                        );
-                                        setDocumentId(doc.documentId);
-                                        setDraftDirty(rulesDirty.current);
-                                        setNotice(
-                                          "Source saved. You can review rules manually or ask AI for suggestions.",
-                                        );
-                                      })
-                                    }
-                                  >
-                                    {documentId
-                                      ? "Source saved"
-                                      : "Save source"}
-                                  </Button>
-                                </div>
-                              </section>
-                            }
-                            interpretation={
-                              documentId ? (
-                                <AIReview
-                                  key={documentId}
+                                  </td>
+                                  <td>
+                                    {latest && (
+                                      <ReviewReminder
+                                        key={`${selected.id}:${latest.id}:${m.userId}`}
+                                        base={base}
+                                        agreement={selected}
+                                        version={latest}
+                                        userId={user.id}
+                                        recipientId={m.userId}
+                                      />
+                                    )}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                          {organizer && !selected.value.versions.length && (
+                            <section className="section">
+                              <h3>Add an existing workspace member</h3>
+                              {members
+                                .filter(
+                                  (m) =>
+                                    !selected.value.members.some(
+                                      (s) => s.userId === m.id,
+                                    ),
+                                )
+                                .map((m) => (
+                                  <div className="row" key={m.id}>
+                                    <span>
+                                      {m.name} <small>{m.email}</small>
+                                    </span>
+                                    <Button
+                                      disabled={busy}
+                                      variant="secondary"
+                                      onClick={() =>
+                                        run(() =>
+                                          mutate("/members", { userId: m.id }),
+                                        )
+                                      }
+                                    >
+                                      Add to agreement
+                                    </Button>
+                                  </div>
+                                ))}
+                              {workspaces.find((w) => w.id === workspace)
+                                ?.role === "OWNER" && (
+                                <PrivateInvitation
+                                  key={workspace}
+                                  workspace={workspace}
+                                />
+                              )}
+                            </section>
+                          )}
+                          <section className="section">
+                            <h3>Your payout destination</h3>
+                            <p className="muted">
+                              Only you can set your destination. This is a
+                              PayPal sandbox merchant ID, not an email.
+                            </p>
+                            <SimpleForm
+                              label="Your sandbox PayPal recipient ID"
+                              button="Save destination"
+                              busy={busy}
+                              onSubmit={(paypalId) =>
+                                run(async () => {
+                                  await api(`${base}/recipient`, "PUT", {
+                                    paypalId,
+                                  });
+                                  setNotice(
+                                    "Your sandbox payout destination was saved.",
+                                  );
+                                })
+                              }
+                            />
+                          </section>
+                        </>
+                      )}
+                      {tab === AgreementTab.Terms && (
+                        <>
+                          <Heading
+                            small
+                            title="Terms everyone can understand"
+                            description="AI suggests an interpretation. People agree on the rules. The engine calculates the money."
+                          />
+                          {!editing && latest ? (
+                            <>
+                              <div className="row">
+                                <h3
+                                  id="agreement-proposal-review"
+                                  tabIndex={-1}
+                                >
+                                  Version {latest.id}
+                                </h3>
+                                <Badge value={latest.status} />
+                                <Button
+                                  variant="secondary"
+                                  disabled={busy}
+                                  onClick={() => {
+                                    setPreview(null);
+                                    setEditing(true);
+                                  }}
+                                >
+                                  Propose revised terms
+                                </Button>
+                              </div>
+                              <SplitTable
+                                agreement={selected}
+                                rules={latest.rules}
+                              />
+                              <Notice>
+                                Fee policy:{" "}
+                                {latest.rules.feePolicy === "BEFORE_SPLIT"
+                                  ? "Fees deducted before the split"
+                                  : "Organizer covers fees from their share"}
+                                .{" "}
+                                {latest.rules.source.origin === "HUMAN_PROPOSAL"
+                                  ? "These terms include a human proposal."
+                                  : "These terms cite a source clause."}
+                              </Notice>
+                              <blockquote>
+                                {latest.rules.source.excerpt}
+                                <footer>{latest.rules.source.clause}</footer>
+                              </blockquote>
+                              <ContractReviewPanel
+                                key={latest.id}
+                                agreement={selected}
+                                version={latest}
+                                userId={user.id}
+                                busy={busy}
+                                onAction={async (action, payload) => {
+                                  setBusy(true);
+                                  setError("");
+                                  setNotice("");
+                                  try {
+                                    await mutate(
+                                      `/versions/${latest.id}/${action}`,
+                                      payload,
+                                    );
+                                  } finally {
+                                    setBusy(false);
+                                  }
+                                }}
+                              />
+                              <ReviewDiscussion
+                                key={`${selected.id}:${latest.id}`}
+                                base={base}
+                                agreement={selected}
+                                version={latest}
+                                canWrite={
+                                  workspaces.find((w) => w.id === workspace)
+                                    ?.role !== "VIEWER"
+                                }
+                                onDirtyChange={setDraftDirty}
+                              />
+                              <AgreementVersions agreement={selected} />
+                              <section className="section">
+                                <h3>Preview an incoming payment</h3>
+                                <p className="muted">
+                                  Illustrative only. No payment or payout is
+                                  created.
+                                </p>
+                                <PreviewForm
                                   busy={busy}
-                                  extraction={extraction}
-                                  onExtract={() =>
+                                  onSubmit={(grossCents, feeCents) =>
                                     run(async () =>
-                                      setExtraction(
+                                      setPreview(
                                         await api(
-                                          `${base}/documents/${documentId}/extract`,
+                                          `${base}/versions/${latest.id}/preview`,
                                           "POST",
-                                          { consentToCloudflare: true },
+                                          { grossCents, feeCents },
                                         ),
                                       ),
                                     )
                                   }
                                 />
-                              ) : null
-                            }
-                            rules={
-                              documentId ? (
-                                <RulesEditor
-                                  onReviewPeople={() =>
-                                    changeAgreementTab(AgreementTab.People)
-                                  }
-                                  extraction={extraction}
-                                  key={documentId}
-                                  agreement={selected}
-                                  source={source}
-                                  documentId={documentId}
-                                  busy={busy}
-                                  onDirty={() => {
-                                    rulesDirty.current = true;
-                                    setDraftDirty(true);
+                                {preview && (
+                                  <AllocationTable
+                                    allocations={preview.allocations}
+                                    agreement={selected}
+                                  />
+                                )}
+                              </section>
+                            </>
+                          ) : (
+                            <>
+                              {editing && (
+                                <Button
+                                  variant="secondary"
+                                  disabled={busy}
+                                  onClick={() => {
+                                    if (mayLeaveDraft()) setEditing(false);
                                   }}
-                                  onSave={(rules) =>
-                                    run(async () => {
-                                      await mutate("/versions", { rules });
-                                      setDraftDirty(false);
-                                      rulesDirty.current = false;
-                                      setPreview(null);
-                                      setEditing(false);
-                                      setNotice(
-                                        "New proposal saved. No rules were activated.",
-                                      );
-                                      requestAnimationFrame(() => {
-                                        const review = document.getElementById(
-                                          "agreement-proposal-review",
-                                        );
-                                        review?.focus({ preventScroll: true });
-                                        review?.scrollIntoView({
-                                          block: "start",
-                                          behavior: "auto",
-                                        });
-                                      });
-                                    })
-                                  }
-                                />
-                              ) : null
-                            }
-                          />
-                        </>
-                      )}
-                    </>
-                  )}
-                  {tab === AgreementTab.Document && (
-                    <AgreementDocument
-                      key={selected.id}
-                      agreement={selected}
-                      base={base}
-                    />
-                  )}
-                  {tab === AgreementTab.Payments && (
-                    <>
-                      <Heading
-                        small
-                        title="Incoming payments"
-                        description="Confirmed provider data is used to calculate each allocation. Browser returns are not proof of payment."
-                      />
-                      <AgreementInvoices
-                        key={selected.id}
-                        base={base}
-                        agreementName={selected.value.name}
-                        userId={user.id}
-                        canCreate={organizer && !!active}
-                      />
-                      <table>
-                        <thead>
-                          <tr>
-                            <th>Payment</th>
-                            <th>Source label</th>
-                            <th>Amount</th>
-                            <th>Status</th>
-                            <th>Action</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {payments.map((p) => (
-                            <tr key={p.id}>
-                              <td>
-                                <code>{p.id.slice(0, 8)}</code>
-                              </td>
-                              <td>{p.source_name || "PayPal"}</td>
-                              <td>{money(p.amount)}</td>
-                              <td>
-                                <Badge value={p.status} />
-                              </td>
-                              <td>
-                                <div className="actions">
-                                  {p.approval_url &&
-                                    safePayPalUrl(p.approval_url) && (
-                                      <a
-                                        href={p.approval_url}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                      >
-                                        Open PayPal sandbox ↗
-                                      </a>
-                                    )}
-                                  {organizer &&
-                                    p.status === "AWAITING_BUYER" && (
+                                >
+                                  Back to proposed terms
+                                </Button>
+                              )}
+                              <AgreementTermsFlow
+                                key={selected.id}
+                                documentId={documentId}
+                                busy={busy}
+                                sourceText={source}
+                                source={
+                                  <section className="panel">
+                                    <h3>
+                                      {selected.value.versions.length
+                                        ? "Upload amended agreement"
+                                        : "Source agreement"}
+                                    </h3>
+                                    <ContractSourceGuidance
+                                      replacement={
+                                        !!selected.value.versions.length
+                                      }
+                                    />
+                                    <Field
+                                      label="Agreement text"
+                                      hint="Use synthetic or authorized documents only. Text is stored privately in this workspace."
+                                    >
+                                      <textarea
+                                        rows={8}
+                                        disabled={busy}
+                                        value={source}
+                                        maxLength={40000}
+                                        onChange={(e) => {
+                                          if (
+                                            rulesDirty.current &&
+                                            !window.confirm(
+                                              "Changing the source resets your unsaved rules draft. Continue?",
+                                            )
+                                          )
+                                            return;
+                                          rulesDirty.current = false;
+                                          setDraftDirty(true);
+                                          setSource(e.target.value);
+                                          setDocumentId("");
+                                          setExtraction(null);
+                                        }}
+                                      />
+                                    </Field>
+                                    <LocalOcrChoice
+                                      base={base}
+                                      value={useLocalOcr}
+                                      onChange={setUseLocalOcr}
+                                      disabled={busy}
+                                    />
+                                    <div className="actions">
+                                      <label className="button secondary">
+                                        Choose PDF, DOCX or text file
+                                        <input
+                                          className="visually-hidden"
+                                          type="file"
+                                          disabled={busy}
+                                          accept=".txt,.pdf,.docx,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                                          onChange={(e) =>
+                                            run(async () => {
+                                              const f = e.target.files?.[0];
+                                              e.target.value = "";
+                                              if (!f) return;
+                                              if (
+                                                draftDirty &&
+                                                !window.confirm(
+                                                  "Replace your unsaved source and rules draft?",
+                                                )
+                                              )
+                                                return;
+                                              if (
+                                                /\.(pdf|docx)$/i.test(f.name)
+                                              ) {
+                                                const isDocx = f.name
+                                                  .toLowerCase()
+                                                  .endsWith(".docx");
+                                                if (f.size > 5 * 1024 * 1024)
+                                                  throw new Error(
+                                                    "Document must be no larger than 5 MB.",
+                                                  );
+                                                const data =
+                                                  await new Promise<string>(
+                                                    (resolve, reject) => {
+                                                      const reader =
+                                                        new FileReader();
+                                                      reader.onload = () =>
+                                                        resolve(
+                                                          String(
+                                                            reader.result,
+                                                          ).split(",")[1],
+                                                        );
+                                                      reader.onerror = () =>
+                                                        reject(
+                                                          new Error(
+                                                            "Unable to read file.",
+                                                          ),
+                                                        );
+                                                      reader.readAsDataURL(f);
+                                                    },
+                                                  );
+                                                const doc = await api(
+                                                  `${base}/documents/${isDocx ? "docx" : "pdf"}`,
+                                                  "POST",
+                                                  {
+                                                    mimeType: isDocx
+                                                      ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                                                      : "application/pdf",
+                                                    base64: data,
+                                                    ...(!isDocx && useLocalOcr
+                                                      ? { useLocalOcr: true }
+                                                      : {}),
+                                                  },
+                                                );
+                                                const saved = await api(
+                                                  `${base}/documents/${doc.documentId}`,
+                                                );
+                                                setSource(saved.text);
+                                                setDocumentId(doc.documentId);
+                                                setNotice(
+                                                  "Document text extracted locally. Review every amount and name against the saved original before AI processing; OCR can misread characters.",
+                                                );
+                                              } else {
+                                                if (
+                                                  !f.name
+                                                    .toLowerCase()
+                                                    .endsWith(".txt") &&
+                                                  f.type !== "text/plain"
+                                                )
+                                                  throw new Error(
+                                                    "Choose a PDF, DOCX or plain text file.",
+                                                  );
+                                                if (f.size > 40000)
+                                                  throw new Error(
+                                                    "Text file is too large. Limit: 40 KB.",
+                                                  );
+                                                setSource(await f.text());
+                                                setDocumentId("");
+                                              }
+                                              rulesDirty.current = false;
+                                              setExtraction(null);
+                                              setDraftDirty(
+                                                !/\.(pdf|docx)$/i.test(f.name),
+                                              );
+                                            })
+                                          }
+                                        />
+                                      </label>
                                       <Button
                                         variant="quiet"
                                         disabled={busy}
+                                        onClick={() => {
+                                          if (!mayLeaveDraft()) return;
+                                          setDraftDirty(true);
+                                          setSource(sampleAgreement);
+                                          setDocumentId("");
+                                          setExtraction(null);
+                                        }}
+                                      >
+                                        Use sample text
+                                      </Button>
+                                      <Button
+                                        disabled={
+                                          busy || !source.trim() || !!documentId
+                                        }
                                         onClick={() =>
                                           run(async () => {
-                                            await api(
-                                              `${base}/payments/${p.id}/capture`,
+                                            const doc = await api(
+                                              `${base}/documents`,
                                               "POST",
-                                              {},
+                                              { text: source },
                                             );
-                                            await refresh();
+                                            setDocumentId(doc.documentId);
+                                            setDraftDirty(rulesDirty.current);
+                                            setNotice(
+                                              "Source saved. You can review rules manually or ask AI for suggestions.",
+                                            );
                                           })
                                         }
                                       >
-                                        Confirm approved payment
+                                        {documentId
+                                          ? "Source saved"
+                                          : "Save source"}
                                       </Button>
-                                    )}
-                                  {organizer && (
-                                    <Button
-                                      variant="quiet"
-                                      disabled={busy}
-                                      onClick={() =>
+                                    </div>
+                                  </section>
+                                }
+                                interpretation={
+                                  documentId ? (
+                                    <AIReview
+                                      key={documentId}
+                                      busy={busy}
+                                      extraction={extraction}
+                                      onExtract={() =>
+                                        run(async () =>
+                                          setExtraction(
+                                            await api(
+                                              `${base}/documents/${documentId}/extract`,
+                                              "POST",
+                                              { consentToCloudflare: true },
+                                            ),
+                                          ),
+                                        )
+                                      }
+                                    />
+                                  ) : null
+                                }
+                                rules={
+                                  documentId ? (
+                                    <RulesEditor
+                                      onReviewPeople={() =>
+                                        changeAgreementTab(AgreementTab.People)
+                                      }
+                                      extraction={extraction}
+                                      key={documentId}
+                                      agreement={selected}
+                                      source={source}
+                                      documentId={documentId}
+                                      busy={busy}
+                                      onDirty={() => {
+                                        rulesDirty.current = true;
+                                        setDraftDirty(true);
+                                      }}
+                                      onSave={(rules) =>
                                         run(async () => {
-                                          await api(
-                                            `${base}/payments/${p.id}/reconcile`,
-                                            "POST",
-                                            {},
+                                          await mutate("/versions", { rules });
+                                          setDraftDirty(false);
+                                          rulesDirty.current = false;
+                                          setPreview(null);
+                                          setEditing(false);
+                                          setNotice(
+                                            "New proposal saved. No rules were activated.",
                                           );
-                                          await refresh();
+                                          requestAnimationFrame(() => {
+                                            const review =
+                                              document.getElementById(
+                                                "agreement-proposal-review",
+                                              );
+                                            review?.focus({
+                                              preventScroll: true,
+                                            });
+                                            review?.scrollIntoView({
+                                              block: "start",
+                                              behavior: "auto",
+                                            });
+                                          });
                                         })
                                       }
-                                    >
-                                      Check status
-                                    </Button>
-                                  )}
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                      {!payments.length && (
-                        <Empty title="No incoming payments yet">
-                          An active, unanimously approved version and a
-                          configured sandbox provider are required.
-                        </Empty>
+                                    />
+                                  ) : null
+                                }
+                              />
+                            </>
+                          )}
+                        </>
                       )}
-                      {organizer && (
-                        <PaymentRecovery
-                          key={base}
-                          base={base}
-                          payments={payments}
-                          payouts={payouts}
-                          held={!!selected.value.reviewHold}
-                          refresh={refresh}
-                        />
-                      )}
-                      <section className="section">
-                        <h3>Verified allocations</h3>
-                        <RevenueTable
+                      {tab === AgreementTab.Document && (
+                        <AgreementDocument
+                          key={selected.id}
                           agreement={selected}
-                          onOpen={setBreakdown}
+                          base={base}
                         />
-                      </section>
-                    </>
-                  )}
-                  {breakdown && (
-                    <section className="panel breakdown">
-                      <div className="row">
-                        <h2>How this payment was allocated</h2>
-                        <Button
-                          variant="quiet"
-                          onClick={() => setBreakdown(null)}
-                        >
-                          Close
-                        </Button>
-                      </div>
-                      <p>
-                        Gross {money(breakdown.grossCents)} − fees{" "}
-                        {money(breakdown.feeCents)} ={" "}
-                        {money(breakdown.netCents)} available.
-                      </p>
-                      <AllocationTable
-                        allocations={breakdown.allocations}
-                        agreement={selected}
-                      />
-                      <p className="muted">
-                        Applied version {breakdown.versionId}. Recoupment is
-                        included in each recipient’s total. An allocation is not
-                        proof of payout.
-                      </p>
-                      <blockquote>
-                        {
-                          selected.value.versions.find(
-                            (v) => v.id === breakdown.versionId,
-                          )?.rules.source.excerpt
-                        }
-                      </blockquote>
-                      {organizer && (
-                        <Button
-                          disabled={busy || selected.value.reviewHold}
-                          onClick={() =>
-                            run(async () => {
-                              await api(`${base}/payouts/dispatch`, "POST", {
-                                captureId: breakdown.providerCaptureId,
-                              });
-                              await refresh();
-                              setNotice(
-                                "Sandbox payout dispatch recorded. Check each item’s status; submission does not mean completion.",
-                              );
-                            })
-                          }
-                        >
-                          Send fixed allocations in sandbox
-                        </Button>
                       )}
-                      <p className="muted">
-                        Technical sandbox dispatch, not a vote on the shares.
-                        Automatic scheduling is not enabled yet.
-                      </p>
-                    </section>
-                  )}
-                </div>
+                      {tab === AgreementTab.Payments && (
+                        <>
+                          <Heading
+                            small
+                            title="Incoming payments"
+                            description="Confirmed provider data is used to calculate each allocation. Browser returns are not proof of payment."
+                          />
+                          <AgreementInvoices
+                            key={selected.id}
+                            base={base}
+                            agreementName={selected.value.name}
+                            userId={user.id}
+                            canCreate={organizer && !!active}
+                          />
+                          <table>
+                            <thead>
+                              <tr>
+                                <th>Payment</th>
+                                <th>Source label</th>
+                                <th>Amount</th>
+                                <th>Status</th>
+                                <th>Action</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {payments.map((p) => (
+                                <tr key={p.id}>
+                                  <td>
+                                    <code>{p.id.slice(0, 8)}</code>
+                                  </td>
+                                  <td>{p.source_name || "PayPal"}</td>
+                                  <td>{money(p.amount)}</td>
+                                  <td>
+                                    <Badge value={p.status} />
+                                  </td>
+                                  <td>
+                                    <div className="actions">
+                                      {p.approval_url &&
+                                        safePayPalUrl(p.approval_url) && (
+                                          <a
+                                            href={p.approval_url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                          >
+                                            Open PayPal sandbox ↗
+                                          </a>
+                                        )}
+                                      {organizer &&
+                                        p.status === "AWAITING_BUYER" && (
+                                          <Button
+                                            variant="quiet"
+                                            disabled={busy}
+                                            onClick={() =>
+                                              run(async () => {
+                                                await api(
+                                                  `${base}/payments/${p.id}/capture`,
+                                                  "POST",
+                                                  {},
+                                                );
+                                                await refresh();
+                                              })
+                                            }
+                                          >
+                                            Confirm approved payment
+                                          </Button>
+                                        )}
+                                      {organizer && (
+                                        <Button
+                                          variant="quiet"
+                                          disabled={busy}
+                                          onClick={() =>
+                                            run(async () => {
+                                              await api(
+                                                `${base}/payments/${p.id}/reconcile`,
+                                                "POST",
+                                                {},
+                                              );
+                                              await refresh();
+                                            })
+                                          }
+                                        >
+                                          Check status
+                                        </Button>
+                                      )}
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                          {!payments.length && (
+                            <Empty title="No incoming payments yet">
+                              An active, unanimously approved version and a
+                              configured sandbox provider are required.
+                            </Empty>
+                          )}
+                          {organizer && (
+                            <PaymentRecovery
+                              key={base}
+                              base={base}
+                              payments={payments}
+                              payouts={payouts}
+                              held={!!selected.value.reviewHold}
+                              refresh={refresh}
+                            />
+                          )}
+                          <section className="section">
+                            <h3>Verified allocations</h3>
+                            <RevenueTable
+                              agreement={selected}
+                              onOpen={setBreakdown}
+                            />
+                          </section>
+                        </>
+                      )}
+                      {breakdown && (
+                        <section className="panel breakdown">
+                          <div className="row">
+                            <h2>How this payment was allocated</h2>
+                            <Button
+                              variant="quiet"
+                              onClick={() => setBreakdown(null)}
+                            >
+                              Close
+                            </Button>
+                          </div>
+                          <p>
+                            Gross {money(breakdown.grossCents)} − fees{" "}
+                            {money(breakdown.feeCents)} ={" "}
+                            {money(breakdown.netCents)} available.
+                          </p>
+                          <AllocationTable
+                            allocations={breakdown.allocations}
+                            agreement={selected}
+                          />
+                          <p className="muted">
+                            Applied version {breakdown.versionId}. Recoupment is
+                            included in each recipient’s total. An allocation is
+                            not proof of payout.
+                          </p>
+                          <blockquote>
+                            {
+                              selected.value.versions.find(
+                                (v) => v.id === breakdown.versionId,
+                              )?.rules.source.excerpt
+                            }
+                          </blockquote>
+                          {organizer && (
+                            <Button
+                              disabled={busy || selected.value.reviewHold}
+                              onClick={() =>
+                                run(async () => {
+                                  await api(
+                                    `${base}/payouts/dispatch`,
+                                    "POST",
+                                    {
+                                      captureId: breakdown.providerCaptureId,
+                                    },
+                                  );
+                                  await refresh();
+                                  setNotice(
+                                    "Sandbox payout dispatch recorded. Check each item’s status; submission does not mean completion.",
+                                  );
+                                })
+                              }
+                            >
+                              Send fixed allocations in sandbox
+                            </Button>
+                          )}
+                          <p className="muted">
+                            Technical sandbox dispatch, not a vote on the
+                            shares. Automatic scheduling is not enabled yet.
+                          </p>
+                        </section>
+                      )}
+                    </div>
+                  </>
+                )}
               </>
             )}
             {section === Section.Payouts && !selected && (

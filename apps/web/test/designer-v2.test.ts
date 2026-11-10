@@ -34,9 +34,12 @@ test("only active rules collapse, leaving setup and recoupment actions outside",
   assert.match(disclosure, /<summary>Revenue rules<\/summary>/);
   assert.match(
     app,
-    /<RevenueRules\s+key=\{\x60\$\{selected\.id\}:\$\{active\.id\}\x60\}>/,
+    /<RevenueRules\s+key=\{\x60\$\{selected\.id\}:\$\{active\.id\}\x60\}\s*>/,
   );
   assert.match(app, /<\/RevenueRules>\s*\)\s*:\s*\(\s*<Empty/);
   assert.match(app, /Set up terms/);
-  assert.match(app, /allocated toward recoupment\.\s+This is not proof\s+of/);
+  assert.match(
+    app,
+    /allocated\s+toward\s+recoupment\.\s+This\s+is\s+not\s+proof\s+of/,
+  );
 });
