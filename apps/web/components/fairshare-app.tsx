@@ -31,6 +31,7 @@ import {
   type Rules,
   type Revenue,
 } from "../lib/model";
+import { WorkspaceOnboarding, AccessPrompt } from "./designer-auth";
 import { PaymentRecovery } from "./payment-recovery";
 import { recoverSourceDocument } from "../lib/source-recovery";
 import dynamic from "next/dynamic";
@@ -219,6 +220,7 @@ export default function FairshareApp() {
           {Object.values(Section).map((s) => (
             <button
               key={s}
+              aria-current={section === s ? "page" : undefined}
               className={section === s ? "nav-item selected" : "nav-item"}
               onClick={() => navigate(s)}
             >
@@ -295,19 +297,8 @@ export default function FairshareApp() {
           </div>
         )}
         {flowToken && (
-          <Notice>
-            <h3>
-              {flowKind === "/verify-email"
-                ? "Verify your email"
-                : "Accept your invitation"}
-            </h3>
-            <p>
-              You are signed in as {user.email}. Use the account the invitation
-              was sent to.
-            </p>
-            <Button
-              disabled={busy}
-              onClick={() =>
+          <AccessPrompt kind={flowKind === "/verify-email" ? "verification" : "invitation"} email={user.email} busy={busy}
+              onContinue={() =>
                 run(async () => {
                   if (flowKind === "/verify-email") {
                     const r = await api("auth/verification/confirm", "POST", {
@@ -330,29 +321,17 @@ export default function FairshareApp() {
                   history.replaceState(null, "", "/");
                 })
               }
-            >
-              Continue
-            </Button>
-          </Notice>
+          />
         )}
         {!workspace ? (
-          <>
-            <Heading
-              title="Welcome to Fairshare"
-              description="Create a workspace to start your first agreement."
-            />
-            <SimpleForm
-              label="Workspace name"
-              button="Create workspace"
-              busy={busy}
-              onSubmit={(name) =>
+          <WorkspaceOnboarding busy={busy}
+              onCreate={(name) =>
                 run(async () => {
                   await api("workspaces", "POST", { name });
                   await loadWorkspaces();
                 })
               }
-            />
-          </>
+          />
         ) : (
           <>
             {section === Section.Overview && !selected && (
@@ -515,8 +494,8 @@ export default function FairshareApp() {
                 {tab === AgreementTab.Overview && (
                   <>
                     <div className="detail-columns">
-                      <section>
-                        <h2>Agreed split</h2>
+                      <section className="panel">
+                        <h2>Revenue rules</h2>
                         <p className="muted">
                           {active
                             ? "The active rules for this agreement."

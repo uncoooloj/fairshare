@@ -8,6 +8,7 @@ import {
   type Agreement,
   type Rules,
   type Revenue,
+  type Allocation,
 } from "../lib/model";
 import { Badge, Button, Empty, Field, Notice } from "./ui";
 import { PaymentGridStatus } from "../src/components/paymentGridModel";
@@ -46,7 +47,7 @@ export function Heading({
 }
 export function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div>
+    <div className="metric">
       <span>{label}</span>
       <strong>{value}</strong>
     </div>
@@ -86,142 +87,50 @@ export function SimpleForm({
     </form>
   );
 }
-export function Auth({
-  busy,
-  error,
-  onSubmit,
-}: {
-  busy: boolean;
-  error: string;
-  onSubmit: (type: string, data: Record<string, string>) => void;
-}) {
-  const [login, setLogin] = useState(true);
-  return (
-    <main className="auth">
-      <Logo />
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          const data = Object.fromEntries(
-            new FormData(e.currentTarget),
-          ) as Record<string, string>;
-          onSubmit(login ? "login" : "register", data);
-        }}
-      >
-        <span className="eyebrow">THE MONEY FOLLOWS THE AGREEMENT</span>
-        <h1>{login ? "Welcome back" : "Create your account"}</h1>
-        <p>Clear agreements. Shared understanding. Traceable payouts.</p>
-        {error && (
-          <div className="message error" role="alert">
-            {error}
-          </div>
-        )}
-        {!login && (
-          <Field label="Full name">
-            <input name="name" autoComplete="name" required maxLength={80} />
-          </Field>
-        )}
-        <Field label="Email">
-          <input name="email" type="email" autoComplete="email" required />
-        </Field>
-        <Field label="Password">
-          <input
-            name="password"
-            type="password"
-            autoComplete={login ? "current-password" : "new-password"}
-            required
-            minLength={login ? 1 : 12}
-          />
-        </Field>
-        {!login && (
-          <small>
-            Use at least 12 characters. Use a synthetic account for sandbox
-            testing.
-          </small>
-        )}
-        <Button disabled={busy}>
-          {busy ? "Please wait…" : login ? "Sign in" : "Create account"}
-        </Button>
-        <button
-          type="button"
-          className="text-button"
-          onClick={() => setLogin(!login)}
-        >
-          {login
-            ? "New to Fairshare? Create an account"
-            : "Already have an account? Sign in"}
-        </button>
-        <p className="fineprint">
-          Sandbox build. No live money. Password recovery is not available in
-          this build.
-        </p>
-      </form>
-    </main>
-  );
+export { Auth } from "./designer-auth";
+
+function PersonAvatar({ name }: { name: string }) {
+  const initials = name.trim().split(/\s+/).slice(0, 2).map(part => part[0]).join("").toUpperCase();
+  return <span className="person-avatar" title={name} aria-label={name}>{initials || "?"}</span>;
 }
-export function AgreementList({
-  agreements,
-  onOpen,
-}: {
+function agreementStatus(a: Agreement) {
+  if (a.value.reviewHold) return "Needs attention";
+  if (a.value.activeVersionId) return "Approved";
+  const status = a.value.versions.at(-1)?.status || "DRAFT";
+  return status === "DRAFT" ? "Draft" : "In review";
+}
+export function AgreementList({ agreements, onOpen }: {
   agreements: Agreement[];
   onOpen: (a: Agreement) => void;
 }) {
-  return agreements.length ? (
-    <table>
-      <thead>
-        <tr>
-          <th>Agreement</th>
-          <th>People</th>
-          <th>Net revenue received</th>
-          <th>Status</th>
-          <th />
-        </tr>
-      </thead>
-      <tbody>
-        {agreements.map((a) => (
-          <tr key={a.id}>
-            <td>
-              <button className="text-button strong" onClick={() => onOpen(a)}>
-                {a.value.name}
-              </button>
-            </td>
-            <td>
-              {a.value.members.length}{" "}
-              {a.value.members.length === 1 ? "person" : "people"}
-            </td>
-            <td>
-              {money(a.value.revenue.reduce((s, r) => s + r.netCents, 0))}
-            </td>
-            <td>
-              <Badge
-                value={
-                  a.value.reviewHold
-                    ? "REVIEW_REQUIRED"
-                    : a.value.activeVersionId
-                      ? "ACTIVE"
-                      : a.value.versions.at(-1)?.status || "DRAFT"
-                }
-              />
-            </td>
-            <td>
-              <button
-                className="text-button"
-                aria-label={`Open ${a.value.name}`}
-                onClick={() => onOpen(a)}
-              >
-                ↗
-              </button>
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  ) : (
-    <Empty title="Your first agreement starts here">
-      Create an agreement, bring in your collaborators and make the split clear
-      before money comes in.
-    </Empty>
-  );
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState("All");
+  const filtered = agreements.filter(a => a.value.name.toLowerCase().includes(query.toLowerCase()) && (filter === "All" || agreementStatus(a) === filter));
+  if (!agreements.length) return <Empty title="Your first agreement starts here">Create an agreement, bring in your collaborators and make the split clear before money comes in.</Empty>;
+  return <section className="agreement-list" aria-label="Agreements">
+    <div className="list-toolbar">
+      <label className="search-field"><span className="sr-only">Search agreements</span><input type="search" placeholder="Search agreements" value={query} onChange={e => setQuery(e.target.value)} /></label>
+      <div className="filter-tabs" role="group" aria-label="Filter agreements by status">
+        {["All", "Draft", "In review", "Approved", "Needs attention"].map(value => <button key={value} type="button" className={filter === value ? "selected" : ""} aria-pressed={filter === value} onClick={() => setFilter(value)}>{value}</button>)}
+      </div>
+    </div>
+    {filtered.length ? <div className="table-scroll"><table>
+      <thead><tr><th>Agreement</th><th>Status</th><th>People</th><th>Split</th><th className="numeric">Received</th><th><span className="sr-only">Open agreement</span></th></tr></thead>
+      <tbody>{filtered.map(a => {
+        const latest = a.value.versions.at(-1);
+        const active = a.value.versions.find(v => v.id === a.value.activeVersionId);
+        const shares = (active || latest)?.rules.shares;
+        return <tr key={a.id}>
+          <td><button className="text-button strong agreement-name" onClick={() => onOpen(a)}>{a.value.name}</button><div className="agreement-meta">{active ? `v${active.id} active` : latest ? `v${latest.id}` : "No proposed terms"}{active && latest && active.id !== latest.id ? ` · v${latest.id} ${title(latest.status)}` : ""}</div></td>
+          <td><Badge value={a.value.reviewHold ? "REVIEW_REQUIRED" : active ? "APPROVED" : latest?.status || "DRAFT"} /></td>
+          <td><div className="avatar-stack">{a.value.members.slice(0, 3).map(m => <PersonAvatar key={m.userId} name={m.displayName} />)}{a.value.members.length > 3 && <span className="person-avatar" aria-label={`${a.value.members.length - 3} more people`}>+{a.value.members.length - 3}</span>}</div></td>
+          <td><span className="split-summary" title={shares?.map(share => `${a.value.members.find(m => m.userId === share.userId)?.displayName || "Participant"}: ${share.basisPoints / 100}%`).join(", ")}>{shares?.length ? shares.map(share => `${share.basisPoints / 100}%`).join(" / ") : "Not set"}</span></td>
+          <td className="numeric">{money(a.value.revenue.reduce((sum, revenue) => sum + revenue.netCents, 0))}</td>
+          <td><button className="text-button" aria-label={`Open ${a.value.name}`} onClick={() => onOpen(a)}>→</button></td>
+        </tr>;
+      })}</tbody>
+    </table></div> : <Empty title="No matching agreements">Try another name or status filter.</Empty>}
+  </section>;
 }
 export function SplitTable({
   agreement,
@@ -232,19 +141,18 @@ export function SplitTable({
 }) {
   return (
     <table>
+      <thead><tr><th>Person</th><th className="numeric">Share</th></tr></thead>
       <tbody>
         {rules.shares.map((s) => (
           <tr key={s.userId}>
             <td>
-              {
-                agreement.value.members.find((m) => m.userId === s.userId)
-                  ?.displayName
-              }
+              <span className="person-cell"><PersonAvatar name={agreement.value.members.find(m => m.userId === s.userId)?.displayName || "Participant"} />{agreement.value.members.find(m => m.userId === s.userId)?.displayName || "Participant"}</span>
             </td>
             <td className="numeric strong">{s.basisPoints / 100}%</td>
           </tr>
         ))}
       </tbody>
+      <tfoot><tr><th>Total</th><td className="numeric strong">{rules.shares.reduce((total, share) => total + share.basisPoints, 0) / 100}%</td></tr></tfoot>
     </table>
   );
 }
@@ -260,7 +168,7 @@ export function RevenueTable({
       <thead>
         <tr>
           <th>Received</th>
-          <th>Net amount</th>
+          <th className="numeric">Net amount</th>
           <th>Status</th>
           <th />
         </tr>
@@ -269,7 +177,7 @@ export function RevenueTable({
         {agreement.value.revenue.map((r) => (
           <tr key={r.providerCaptureId}>
             <td>{new Date(r.at).toLocaleDateString()}</td>
-            <td>{money(r.netCents)}</td>
+            <td className="numeric">{money(r.netCents)}</td>
             <td>
               <Badge value={r.status} />
             </td>
@@ -293,7 +201,7 @@ export function AllocationTable({
   allocations,
   agreement,
 }: {
-  allocations: any[];
+  allocations: Allocation[];
   agreement: Agreement;
 }) {
   return (
@@ -301,25 +209,22 @@ export function AllocationTable({
       <thead>
         <tr>
           <th>Person</th>
-          <th>Recoupment</th>
-          <th>Share</th>
-          <th>Fee</th>
-          <th>Total allocated</th>
+          <th className="numeric">Recoupment</th>
+          <th className="numeric">Share</th>
+          <th className="numeric">Fee</th>
+          <th className="numeric">Total allocated</th>
         </tr>
       </thead>
       <tbody>
         {allocations.map((a) => (
           <tr key={a.userId}>
             <td>
-              {
-                agreement.value.members.find((m) => m.userId === a.userId)
-                  ?.displayName
-              }
+              <span className="person-cell"><PersonAvatar name={agreement.value.members.find(m => m.userId === a.userId)?.displayName || "Participant"} />{agreement.value.members.find(m => m.userId === a.userId)?.displayName || "Participant"}</span>
             </td>
-            <td>{money(a.recoupmentCents)}</td>
-            <td>{money(a.shareCents)}</td>
-            <td>{money(a.feeCents)}</td>
-            <td className="strong">{money(a.totalCents)}</td>
+            <td className="numeric">{money(a.recoupmentCents)}</td>
+            <td className="numeric">{money(a.shareCents)}</td>
+            <td className="numeric">{money(a.feeCents)}</td>
+            <td className="numeric strong">{money(a.totalCents)}</td>
           </tr>
         ))}
       </tbody>
@@ -414,7 +319,7 @@ export function AIReview({
   const [consent, setConsent] = useState(false);
   return (
     <section className="section">
-      <h3>Read the agreement with AI</h3>
+      <h3>Read the agreement</h3>
       <p className="muted">
         Suggestions are not active rules. Confirm every interpretation against
         the original text.
@@ -437,7 +342,7 @@ export function AIReview({
       {extraction && (
         <div className="panel">
           <Badge value={extraction.status || "REVIEW_REQUIRED"} />
-          <h4>Source-bound observations</h4>
+          <h4>Suggested terms</h4>
           {extraction.reason && (
             <Notice warning>
               {title(extraction.reason)}. Continue with manual review; no
@@ -445,12 +350,10 @@ export function AIReview({
             </Notice>
           )}
           {extraction.facts?.map((fact: any, i: number) => (
-            <div className="observation" key={i}>
-              <strong>
-                {fact.subject} · {title(fact.kind)}
-              </strong>
+            <div className="observation rule-card" key={i}>
+              <div className="rule-card-heading"><span className="rule-number">{i + 1}</span><strong>{fact.subject} · {title(fact.kind)}</strong></div>
               <p>{fact.rawValue}</p>
-              <blockquote>{fact.citation?.quote}</blockquote>
+              {fact.citation?.quote && <blockquote className="source-quote"><span>Source clause</span><p>{fact.citation.quote}</p></blockquote>}
             </div>
           ))}
           {extraction.issues?.map((issue: any, i: number) => (
@@ -502,7 +405,7 @@ export function RulesEditor({
   return (
     <form
       ref={formRef}
-      className="section"
+      className="section rules-editor"
       onSubmit={(e) => {
         e.preventDefault();
         try {
@@ -554,7 +457,7 @@ export function RulesEditor({
         }
       }}
     >
-      <h3>Propose the rules</h3>
+      <h3>Proposed rules</h3>
       <p className="muted">
         All participants review this version. Add people first; membership is
         locked once a proposal exists.

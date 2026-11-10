@@ -9,11 +9,15 @@ import {
   type ColDef,
 } from "ag-grid-community";
 import {
+  PaymentGridStatus,
   formatPaymentAmount,
   paymentStatusLabels,
   validatePaymentRows,
   type PaymentGridRow,
 } from "./paymentGridModel";
+
+import { summarizePayouts } from "./payoutSummary";
+import styles from "./payouts.module.css";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 const theme = themeQuartz.withParams({
@@ -45,13 +49,16 @@ export function PaymentGrid({
 }: PaymentGridProps) {
   const [query, setQuery] = useState("");
   const searchId = useId();
+  const statusId = useId();
+  const [status, setStatus] = useState<PaymentGridStatus | "">("");
   const data = useMemo(() => {
     try {
-      return { rows: validatePaymentRows(rows), invalid: false };
+      return { rows: validatePaymentRows(rows), summary: summarizePayouts(rows), invalid: false };
     } catch {
-      return { rows: [] as PaymentGridRow[], invalid: true };
+      return { rows: [] as PaymentGridRow[], summary: summarizePayouts([]), invalid: true };
     }
   }, [rows]);
+  const filteredRows = useMemo(() => data.rows.filter(row => !status || row.status === status), [data.rows, status]);
   const columns = useMemo<ColDef<PaymentGridRow>[]>(
     () => [
       {
@@ -82,7 +89,7 @@ export function PaymentGrid({
       },
       {
         field: "recipientName",
-        headerName: "Recipient",
+        headerName: "Person",
         minWidth: 180,
         flex: 1,
       },
@@ -102,6 +109,7 @@ export function PaymentGrid({
         field: "status",
         headerName: "Status",
         minWidth: 185,
+        cellRenderer: ({ data: row }: { data?: PaymentGridRow }) => row ? <span className={styles.status} data-status={row.status}>{paymentStatusLabels[row.status]}</span> : null,
         valueFormatter: (p) =>
           p.data ? paymentStatusLabels[p.data.status] : "",
         filterValueGetter: (p) =>
@@ -138,40 +146,33 @@ export function PaymentGrid({
     );
   return (
     <section aria-label="Payout history">
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          alignItems: "center",
-          gap: 12,
-          marginBottom: 16,
-        }}
-      >
-        <label htmlFor={searchId}>Search payouts</label>
-        <input
-          id={searchId}
-          type="search"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Agreement, recipient or reference"
-          style={{
-            minWidth: 260,
-            padding: "10px 12px",
-            border: "1px solid var(--color-line)",
-            borderRadius: 8,
-          }}
-        />
-        <span
-          aria-live="polite"
-          style={{ color: "var(--color-muted)", fontSize: 13 }}
-        >
-          {loading ? "Loading payouts…" : `${data.rows.length} payouts`}
-        </span>
+      <div className={styles.summary} aria-label="Recorded payout totals">
+        {([
+          ['Paid out', data.summary.paid, data.summary.paidCount, 'Provider-confirmed payouts'],
+          ['Pending or processing', data.summary.processing, data.summary.processingCount, 'Not yet completed transfers'],
+          ['Needs attention', data.summary.attention, data.summary.attentionCount, 'Failed, held, unclaimed or uncertain'],
+        ] as const).map(([label, amount, count, detail]) => <div className={styles.card} key={label}>
+          <span className={styles.label}>{label}</span>
+          <strong className={styles.amount}>{loading ? '—' : formatPaymentAmount(amount, 'USD')}</strong>
+          <span className={styles.caption}>{loading ? 'Loading…' : `${count} payouts · ${detail}`}</span>
+        </div>)}
+      </div>
+      <div className={styles.toolbar}>
+        <label className={styles.field} htmlFor={searchId}>Search payouts
+          <input id={searchId} type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Agreement, person or reference" />
+        </label>
+        <label className={styles.field} htmlFor={statusId}>Status
+          <select id={statusId} value={status} onChange={event => setStatus(event.target.value as PaymentGridStatus | '')}>
+            <option value="">All statuses</option>
+            {Object.values(PaymentGridStatus).map(value => <option key={value} value={value}>{paymentStatusLabels[value]}</option>)}
+          </select>
+        </label>
+        <span className={styles.count} aria-live="polite">{loading ? 'Loading payouts…' : `${data.rows.length} recorded payouts`}</span>
       </div>
       <div style={{ height: 460, width: "100%" }}>
         <AgGridReact<PaymentGridRow>
           theme={theme}
-          rowData={data.rows}
+          rowData={filteredRows}
           columnDefs={columns}
           defaultColDef={{ sortable: true, filter: true, resizable: true }}
           getRowId={(p) => p.data.id}
@@ -180,7 +181,7 @@ export function PaymentGrid({
           pagination
           paginationPageSize={20}
           paginationPageSizeSelector={[20, 50, 100]}
-          overlayNoRowsTemplate="<span>No payouts yet. They will appear here after an allocation is submitted for payout.</span>"
+          overlayNoRowsTemplate="<span>No payouts to display. Payouts appear after submission; try clearing your filters.</span>"
           suppressCellFocus={false}
           ensureDomOrder
           onGridReady={(event) =>
@@ -189,7 +190,7 @@ export function PaymentGrid({
         />
       </div>
       <p style={{ fontSize: 12, color: "var(--color-muted)" }}>
-        Amounts follow the approved agreement. On-hold and pending entries are
+        Totals cover all recorded payouts, not a monthly period. Amounts follow the approved agreement. On-hold and pending entries are
         not completed transfers.
       </p>
     </section>
