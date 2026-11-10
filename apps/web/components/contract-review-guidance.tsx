@@ -178,9 +178,10 @@ export function ContractSourceGuidance({
   return (
     <div className="section">
       <p className="muted">
-        Text-based PDF, up to 5 MB and 20 pages, or paste agreement text.
-        Maximum extracted text: 40,000 characters. Scanned PDFs and DOCX are not
-        supported.
+        Text-based PDF (up to 20 pages) or DOCX, up to 5 MB, or paste agreement
+        text. Maximum extracted text: 40,000 characters. File text is extracted
+        locally; originals are saved privately for agreement members. Scanned
+        PDFs need manual text; OCR is not enabled.
       </p>
       {replacement && (
         <Notice>
@@ -207,8 +208,9 @@ export function ContractSourceGuidance({
           Agree which costs apply; do not substitute one definition for another.
         </p>
         <p>
-          The source view contains extracted text and provenance, not a stored
-          original PDF. Refunds can place allocations on hold for
+          The source view contains extracted text and provenance. New PDF and
+          DOCX uploads also have an authenticated original download; older
+          uploads may have text only. Refunds can place allocations on hold for
           reconciliation; they do not automatically claw back someone’s payout.
         </p>
       </details>

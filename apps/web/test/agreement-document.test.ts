@@ -24,5 +24,5 @@ test("document content is rendered as plain text and download accurately labelle
   assert.match(source, /Download extracted text/);
   assert.match(source, /text\/plain;charset=utf-8/);
   assert.match(source, /URL.revokeObjectURL/);
-  assert.match(source, /not the original PDF or a signature verification/);
+  assert.match(source, /not a signature verification/);
 });

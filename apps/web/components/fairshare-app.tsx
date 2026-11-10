@@ -1,4 +1,5 @@
 "use client";
+import { ReviewDiscussion, ReviewReminder } from "./review-discussion";
 import { RevenueRules } from "./revenue-rules";
 import {
   Logo,
@@ -794,6 +795,7 @@ export default function FairshareApp() {
                             <th>Name</th>
                             <th>Role</th>
                             <th>Latest approval</th>
+                            <th>Review reminder</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -815,6 +817,18 @@ export default function FairshareApp() {
                                       : "PENDING"
                                   }
                                 />
+                              </td>
+                              <td>
+                                {latest && (
+                                  <ReviewReminder
+                                    key={`${selected.id}:${latest.id}:${m.userId}`}
+                                    base={base}
+                                    agreement={selected}
+                                    version={latest}
+                                    userId={user.id}
+                                    recipientId={m.userId}
+                                  />
+                                )}
                               </td>
                             </tr>
                           ))}
@@ -988,6 +1002,17 @@ export default function FairshareApp() {
                               }
                             }}
                           />
+                          <ReviewDiscussion
+                            key={`${selected.id}:${latest.id}`}
+                            base={base}
+                            agreement={selected}
+                            version={latest}
+                            canWrite={
+                              workspaces.find((w) => w.id === workspace)
+                                ?.role !== "VIEWER"
+                            }
+                            onDirtyChange={setDraftDirty}
+                          />
                           <AgreementVersions agreement={selected} />
                           <section className="section">
                             <h3>Preview an incoming payment</h3>
@@ -1066,12 +1091,12 @@ export default function FairshareApp() {
                             </Field>
                             <div className="actions">
                               <label className="button secondary">
-                                Choose PDF or text file
+                                Choose PDF, DOCX or text file
                                 <input
                                   className="visually-hidden"
                                   type="file"
                                   disabled={busy}
-                                  accept=".txt,.pdf,text/plain,application/pdf"
+                                  accept=".txt,.pdf,.docx,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                                   onChange={(e) =>
                                     run(async () => {
                                       const f = e.target.files?.[0];
@@ -1084,12 +1109,13 @@ export default function FairshareApp() {
                                         )
                                       )
                                         return;
-                                      if (
-                                        f.name.toLowerCase().endsWith(".pdf")
-                                      ) {
+                                      if (/\.(pdf|docx)$/i.test(f.name)) {
+                                        const isDocx = f.name
+                                          .toLowerCase()
+                                          .endsWith(".docx");
                                         if (f.size > 5 * 1024 * 1024)
                                           throw new Error(
-                                            "PDF must be no larger than 5 MB.",
+                                            "Document must be no larger than 5 MB.",
                                           );
                                         const data = await new Promise<string>(
                                           (resolve, reject) => {
@@ -1110,10 +1136,12 @@ export default function FairshareApp() {
                                           },
                                         );
                                         const doc = await api(
-                                          `${base}/documents/pdf`,
+                                          `${base}/documents/${isDocx ? "docx" : "pdf"}`,
                                           "POST",
                                           {
-                                            mimeType: "application/pdf",
+                                            mimeType: isDocx
+                                              ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                                              : "application/pdf",
                                             base64: data,
                                           },
                                         );
@@ -1123,9 +1151,18 @@ export default function FairshareApp() {
                                         setSource(saved.text);
                                         setDocumentId(doc.documentId);
                                         setNotice(
-                                          "PDF text extracted. Review it carefully: reading order may differ from the original. Scanned images are not supported.",
+                                          "Document text extracted locally. Review it against the saved original before AI processing. Scanned images are not supported.",
                                         );
                                       } else {
+                                        if (
+                                          !f.name
+                                            .toLowerCase()
+                                            .endsWith(".txt") &&
+                                          f.type !== "text/plain"
+                                        )
+                                          throw new Error(
+                                            "Choose a PDF, DOCX or plain text file.",
+                                          );
                                         if (f.size > 40000)
                                           throw new Error(
                                             "Text file is too large. Limit: 40 KB.",

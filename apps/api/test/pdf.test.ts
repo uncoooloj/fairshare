@@ -88,7 +88,7 @@ test("parser subprocess bounded by timeout without leaking document text", async
       !e.message.includes("private contract"),
   );
 });
-test("PDF route is authenticated, persists extracted source not binary, no automatic AI send", async () => {
+test("PDF route is authenticated, retains private original alongside extracted source, no automatic AI send", async () => {
   const app = await buildApp({ dbPath: ":memory:" });
   try {
     const owner = app.store.register({
@@ -141,6 +141,15 @@ test("PDF route is authenticated, persists extracted source not binary, no autom
     assert.equal(row.provenance.inputType, "PDF");
     assert.equal(row.provenance.ocr, false);
     assert.equal(row.extraction, null);
+    assert.equal(row.hasOriginal, true);
+    const original = await app.inject({
+      url:
+        base + "/" + c.id + "/documents/" + res.json().documentId + "/original",
+      headers,
+    });
+    assert.equal(original.statusCode, 200);
+    assert.deepEqual(original.rawPayload, pdf());
+    assert.equal(original.headers["content-type"], "application/pdf");
     assert.equal(
       row.sourceHash,
       createHash("sha256").update(row.text).digest("hex"),

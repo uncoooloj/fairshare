@@ -8,7 +8,7 @@ Requires a live authenticated session, workspace membership and agreement member
 { documents: [{ documentId, revision, sourceHash, hasExtraction, provenance }], nextCursor: string | null }
 ```
 
-Newest upload first, at most 100 results. Pass `?before=<nextCursor>` for older results. Treat the cursor as opaque; it conveys neither access nor document identity. Pick `documents[0]` to recover the latest uploaded draft before any rule proposal exists. Then GET `/documents/:documentId` to recover exact source text and saved extraction. No text or extracted facts appear in the list. Empty history returns an empty array, not a synthetic agreement. PDF provenance includes original-file hash and exact text-layer page ranges; plain text marks UTF16 code units. Selecting a historical source must not silently change the source of an existing proposed version.
+Newest upload first, at most 100 results. Pass `?before=<nextCursor>` for older results. Treat the cursor as opaque; it conveys neither access nor document identity. Pick `documents[0]` to recover the latest uploaded draft before any rule proposal exists. Then GET `/documents/:documentId` to recover exact source text and saved extraction. The single-document response reports `hasOriginal`; when true, authorized members can request `/documents/:documentId/original` as a private attachment. No text or extracted facts appear in the list. Empty history returns an empty array, not a synthetic agreement. PDF provenance includes original-file hash and exact text-layer page ranges; plain text marks UTF16 code units. Selecting a historical source must not silently change the source of an existing proposed version.
 
 ## Targeted security review (not a full security certification)
 

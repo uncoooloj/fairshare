@@ -4,6 +4,7 @@ import { api, type Agreement } from "../lib/model";
 import { recoverSourceDocument } from "../lib/source-recovery";
 import { Button, Empty } from "./ui";
 interface DocumentRecord {
+  hasOriginal?: boolean;
   documentId: string;
   text: string;
   sourceHash?: string;
@@ -91,6 +92,14 @@ export function AgreementDocument({
               </select>
             </label>
           )}
+          {!loading && document?.hasOriginal && (
+            <a
+              className="button secondary"
+              href={`/api/service/${base}/documents/${encodeURIComponent(document.documentId)}/original`}
+            >
+              Download original
+            </a>
+          )}
           <Button
             variant="secondary"
             onClick={downloadText}
@@ -101,8 +110,9 @@ export function AgreementDocument({
         </div>
       </div>
       <p className="document-disclaimer">
-        This is saved text, not the original PDF or a signature verification. A
-        newer upload does not replace a version’s source.
+        This view shows extracted text, not a signature verification. Original
+        downloads are available for new PDF and DOCX uploads. A newer upload
+        does not replace a version’s source.
       </p>
       {loading ? (
         <div className="panel" role="status">
@@ -120,7 +130,8 @@ export function AgreementDocument({
         </div>
       ) : !document ? (
         <Empty title="No source document yet">
-          Add a PDF or text source in Terms. Saved source text will appear here.
+          Add a PDF, DOCX or text source in Terms. Saved source text will appear
+          here.
         </Empty>
       ) : (
         <div className="document-layout">
@@ -128,7 +139,9 @@ export function AgreementDocument({
             <span className="eyebrow">
               {document.provenance?.inputType === "PDF"
                 ? "EXTRACTED PDF TEXT"
-                : "SAVED AGREEMENT TEXT"}
+                : document.provenance?.inputType === "DOCX"
+                  ? "EXTRACTED DOCX TEXT"
+                  : "SAVED AGREEMENT TEXT"}
             </span>
             <pre>{document.text}</pre>
           </article>

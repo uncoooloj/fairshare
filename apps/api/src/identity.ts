@@ -75,6 +75,7 @@ export class IdentityStore {
    CREATE TABLE IF NOT EXISTS metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL);
    CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY,name TEXT NOT NULL,email TEXT UNIQUE NOT NULL,password_hash TEXT NOT NULL,created_at INTEGER NOT NULL);
    CREATE TABLE IF NOT EXISTS email_verifications(hash TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),email TEXT NOT NULL,expires_at INTEGER NOT NULL,used_at INTEGER);
+   CREATE TABLE IF NOT EXISTS password_resets(hash TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),email TEXT NOT NULL,expires_at INTEGER NOT NULL);
    CREATE TABLE IF NOT EXISTS sessions(hash TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),expires_at INTEGER NOT NULL);
    CREATE TABLE IF NOT EXISTS workspaces(id TEXT PRIMARY KEY,name TEXT NOT NULL,mode TEXT NOT NULL,created_at INTEGER NOT NULL);
    CREATE TABLE IF NOT EXISTS memberships(workspace_id TEXT REFERENCES workspaces(id),user_id TEXT REFERENCES users(id),role TEXT NOT NULL CHECK(role IN ('OWNER','MEMBER','VIEWER')),PRIMARY KEY(workspace_id,user_id));
@@ -245,6 +246,71 @@ export class IdentityStore {
   logout(token: string) {
     this.db.prepare("DELETE FROM sessions WHERE hash=?").run(digest(token));
   }
+  createPasswordReset(emailInput: unknown) {
+    const email = normalizeEmail(emailInput);
+    return this.tx(() => {
+      const user = this.db
+        .prepare("SELECT id,email,email_verified_at FROM users WHERE email=?")
+        .get(email) as any;
+      if (!user || typeof user.email_verified_at !== "number") return null;
+      const token = opaque(),
+        expiresAt = this.now() + 15 * 60000;
+      this.db
+        .prepare("DELETE FROM password_resets WHERE user_id=? OR expires_at<=?")
+        .run(user.id, this.now());
+      this.db
+        .prepare("INSERT INTO password_resets VALUES(?,?,?,?)")
+        .run(digest(token), user.id, user.email, expiresAt);
+      return { token, email: user.email, expiresAt };
+    });
+  }
+  invalidatePasswordReset(token: string) {
+    this.db
+      .prepare("DELETE FROM password_resets WHERE hash=?")
+      .run(digest(token));
+  }
+  resetPassword(token: unknown, password: unknown) {
+    if (typeof token !== "string" || !/^[-A-Za-z0-9_]{43}$/.test(token))
+      throw new ApiError(
+        400,
+        "INVALID_RESET",
+        "Reset link is invalid or expired.",
+      );
+    if (
+      typeof password !== "string" ||
+      password.length < 12 ||
+      password.length > 256
+    )
+      throw new ApiError(
+        400,
+        "INVALID_PASSWORD",
+        "Password must contain 12–256 characters.",
+      );
+    return this.tx(() => {
+      const row = this.db
+        .prepare(
+          "SELECT p.user_id,p.email,u.email AS current_email FROM password_resets p JOIN users u ON u.id=p.user_id WHERE p.hash=? AND p.expires_at>?",
+        )
+        .get(digest(token), this.now()) as any;
+      if (!row || row.email !== row.current_email)
+        throw new ApiError(
+          400,
+          "INVALID_RESET",
+          "Reset link is invalid or expired.",
+        );
+      this.db
+        .prepare("UPDATE users SET password_hash=? WHERE id=?")
+        .run(passwordHash(password), row.user_id);
+      this.db.prepare("DELETE FROM sessions WHERE user_id=?").run(row.user_id);
+      this.db
+        .prepare("DELETE FROM password_resets WHERE user_id=?")
+        .run(row.user_id);
+      this.db
+        .prepare("DELETE FROM email_verifications WHERE user_id=?")
+        .run(row.user_id);
+      this.audit(row.user_id, null, "PASSWORD_RESET");
+    });
+  }
   updateProfile(userId: string, name: unknown) {
     if (
       typeof name !== "string" ||
@@ -297,6 +363,9 @@ export class IdentityStore {
         .prepare("UPDATE users SET password_hash=? WHERE id=?")
         .run(hash, userId);
       this.db.prepare("DELETE FROM sessions WHERE user_id=?").run(userId);
+      this.db
+        .prepare("DELETE FROM password_resets WHERE user_id=?")
+        .run(userId);
       this.audit(userId, null, "PASSWORD_CHANGED");
     });
   }
