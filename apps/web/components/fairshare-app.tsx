@@ -1617,7 +1617,7 @@ export default function FairshareApp() {
                   <MfaSettings
                     onSignOut={() => {
                       setUser(null);
-                      setWorkspace("");
+                      commitWorkspace("");
                     }}
                   />
                   <section className="panel">
