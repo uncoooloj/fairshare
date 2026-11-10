@@ -201,11 +201,29 @@ export function registerPreferences(app: FairshareApp) {
             : notificationMessage(kind),
       });
     }
-    return {
-      events: events
-        .sort((a, b) => (b.at ?? "").localeCompare(a.at ?? ""))
-        .slice(0, 100),
-    };
+    const datedEvents = events
+      .filter((event) => event.at !== null)
+      .sort((a, b) => b.at!.localeCompare(a.at!) || a.id.localeCompare(b.id));
+    const undatedEvents = events
+      .filter((event) => event.at === null)
+      .sort(
+        (a, b) =>
+          Number(a.kind !== "payoutFailed") -
+            Number(b.kind !== "payoutFailed") || a.id.localeCompare(b.id),
+      );
+    const visible = [] as typeof events;
+    let datedIndex = 0,
+      undatedIndex = 0;
+    while (
+      visible.length < 100 &&
+      (datedIndex < datedEvents.length || undatedIndex < undatedEvents.length)
+    ) {
+      if (datedIndex < datedEvents.length)
+        visible.push(datedEvents[datedIndex++]!);
+      if (visible.length < 100 && undatedIndex < undatedEvents.length)
+        visible.push(undatedEvents[undatedIndex++]!);
+    }
+    return { events: visible };
   });
 }
 export function requireApprovalEmail(store: IdentityStore, userId: string) {
