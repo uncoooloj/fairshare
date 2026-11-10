@@ -261,3 +261,22 @@
     line-height: 32px;
   }
 }
+
+.reveal {
+  align-self: flex-end;
+  border: 0;
+  background: none;
+  padding: 4px;
+  color: var(--auth-blue);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.reveal:focus-visible {
+  outline: 3px solid #bfdbfe;
+  outline-offset: 2px;
+}
+.reveal:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}

@@ -7,9 +7,8 @@ const source = readFileSync(
 );
 
 test("designer auth retains real login/register payloads and registration password policy", () => {
-  assert.match(
-    source,
-    /onSubmit\(\s*login\s*\?\s*"login"\s*:\s*"register",\s*Object\.fromEntries\(\s*new FormData/,
+  assert.ok(
+    source.includes('onSubmit(login ? "login" : "register", prepared.data)'),
   );
   for (const name of ["email", "password", "name"])
     assert.ok(source.includes(`name="${name}"`));
@@ -21,7 +20,7 @@ test("onboarding never claims provider success or adds unsupported OAuth links",
   assert.ok(source.includes("Illustrative amounts, not account activity."));
   assert.match(
     source,
-    /It does not approve an agreement\s+or change anyone’s share\./,
+    /It does not approve an agreement\s+or\s+change anyone’s share\./,
   );
   assert.match(
     source,

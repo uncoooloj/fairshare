@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import { prepareAuthForm } from "../lib/auth-form";
 import styles from "./designer-auth.module.css";
 
 function Brand() {
@@ -26,6 +27,10 @@ export function Auth({
   onSubmit: (type: string, data: Record<string, string>) => void;
 }) {
   const [login, setLogin] = useState(true);
+  const [localError, setLocalError] = useState("");
+  const [showServerError, setShowServerError] = useState(true);
+  const [showPassword, setShowPassword] = useState(false);
+  const visibleError = localError || (showServerError ? error : "");
   return (
     <main className={styles.page}>
       <Brand />
@@ -41,21 +46,37 @@ export function Auth({
         <form
           className={styles.form}
           aria-busy={busy}
+          aria-describedby={visibleError ? "auth-error" : undefined}
+          onChange={() => setLocalError("")}
           onSubmit={(event) => {
             event.preventDefault();
             if (busy) return;
-            onSubmit(
-              login ? "login" : "register",
+            const prepared = prepareAuthForm(
+              login,
               Object.fromEntries(new FormData(event.currentTarget)) as Record<
                 string,
                 string
               >,
             );
+            setLocalError(prepared.error);
+            setShowServerError(true);
+            if (prepared.error) {
+              const field = event.currentTarget.elements.namedItem(
+                !login && !prepared.data.name
+                  ? "name"
+                  : prepared.data.email.length > 254
+                    ? "email"
+                    : "password",
+              );
+              if (field instanceof HTMLInputElement) field.focus();
+              return;
+            }
+            onSubmit(login ? "login" : "register", prepared.data);
           }}
         >
-          {error && (
-            <p className={styles.error} role="alert">
-              {error}
+          {visibleError && (
+            <p id="auth-error" className={styles.error} role="alert">
+              {visibleError}
             </p>
           )}
           {!login && (
@@ -76,6 +97,9 @@ export function Auth({
               name="email"
               type="email"
               autoComplete="email"
+              autoCapitalize="none"
+              spellCheck={false}
+              maxLength={254}
               required
               disabled={busy}
             />
@@ -84,7 +108,8 @@ export function Auth({
             Password
             <input
               name="password"
-              type="password"
+              type={showPassword ? "text" : "password"}
+              maxLength={256}
               autoComplete={login ? "current-password" : "new-password"}
               minLength={login ? 1 : 12}
               required
@@ -92,6 +117,15 @@ export function Auth({
               aria-describedby={!login ? "password-hint" : undefined}
             />
           </label>
+          <button
+            className={styles.reveal}
+            type="button"
+            disabled={busy}
+            aria-pressed={showPassword}
+            onClick={() => setShowPassword(!showPassword)}
+          >
+            {showPassword ? "Hide password" : "Show password"}
+          </button>
           {!login && (
             <p id="password-hint" className={styles.hint}>
               Use at least 12 characters. Use a synthetic account for sandbox
@@ -107,7 +141,12 @@ export function Auth({
           <button
             type="button"
             disabled={busy}
-            onClick={() => setLogin(!login)}
+            onClick={() => {
+              setLogin(!login);
+              setLocalError("");
+              setShowServerError(false);
+              setShowPassword(false);
+            }}
           >
             {login ? "Create an account" : "Sign in"}
           </button>
@@ -184,7 +223,7 @@ export function WorkspaceOnboarding({
             value={name}
             onChange={(event) => setName(event.target.value)}
             required
-            maxLength={120}
+            maxLength={100}
             disabled={busy}
             placeholder="Your team or studio"
           />

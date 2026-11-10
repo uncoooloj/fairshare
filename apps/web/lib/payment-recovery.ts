@@ -38,5 +38,21 @@ export function refundMessage(status: string) {
     return "PayPal verified the refund as completed. The agreement remains on hold and liabilities are retained for review.";
   if (status === "OUTCOME_UNKNOWN")
     return "The refund outcome is unknown. Do not retry. Check provider evidence below. The agreement remains on hold.";
+  if (status === "FAILED" || status === "CANCELLED")
+    return "Refund not confirmed complete. Review the provider record; do not submit another refund from this screen. The agreement remains on hold.";
   return "Refund recorded, not confirmed complete. Check the provider status below. The agreement remains on hold.";
+}
+
+/** Ignore repeat submissions synchronously; release the lock even after failure. */
+export function createSingleFlight() {
+  let inFlight = false;
+  return async (action: () => Promise<void>) => {
+    if (inFlight) return;
+    inFlight = true;
+    try {
+      await action();
+    } finally {
+      inFlight = false;
+    }
+  };
 }

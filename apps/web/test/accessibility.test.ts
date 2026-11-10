@@ -1,0 +1,91 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { Notice } from "../components/ui";
+import { tabDestination } from "../lib/tab-navigation";
+const require = createRequire(import.meta.url);
+require.extensions[".css"] = () => {};
+const { AIReview } = require("../components/agreement-widgets.tsx");
+const source = (path: string) =>
+  readFileSync(new URL(path, import.meta.url), "utf8");
+
+test("horizontal tabs wrap in both directions and support Home/End", () => {
+  assert.equal(tabDestination("ArrowRight", 4, 5), 0);
+  assert.equal(tabDestination("ArrowLeft", 0, 5), 4);
+  assert.equal(tabDestination("ArrowRight", 1, 5), 2);
+  assert.equal(tabDestination("Home", 3, 5), 0);
+  assert.equal(tabDestination("End", 1, 5), 4);
+});
+test("tab exploration does not consume native activation or vertical scrolling", () => {
+  for (const key of ["Enter", " ", "Tab", "ArrowDown", "ArrowUp", "Escape"]) {
+    assert.equal(tabDestination(key, 1, 5), null);
+  }
+  assert.equal(tabDestination("ArrowRight", 0, 0), null);
+});
+test("tab markup and panel have connected names, roving tab stop and manual activation", () => {
+  const tabs = source("../components/agreement-tabs.tsx");
+  const app = source("../components/fairshare-app.tsx");
+  assert.match(tabs, /role="tablist"\s*aria-label="Agreement sections"/);
+  assert.match(tabs, /tabIndex=\{value === tab \? 0 : -1\}/);
+  assert.match(
+    tabs,
+    /aria-controls=\{value\s*===\s*tab\s*\?\s*"agreement-panel"/,
+  );
+  assert.match(
+    app,
+    /role="tabpanel"\s*id="agreement-panel"\s*aria-labelledby=\{`agreement-tab-\$\{tab\}`\}/,
+  );
+  assert.match(tabs, /buttons.current\[next\]\?\.focus\(\)/);
+});
+test("keyboard skip target is present", () => {
+  const app = source("../components/fairshare-app.tsx");
+  assert.match(app, /href="#main-content"/);
+  assert.match(app, /id="main-content"\s*tabIndex=\{-1\}/);
+});
+test("notices announce only when a dynamic caller explicitly opts in", () => {
+  const staticNotice = renderToStaticMarkup(
+    createElement(Notice, { warning: true, children: "Static guidance" }),
+  );
+  const assertedNotice = renderToStaticMarkup(
+    createElement(Notice, {
+      warning: true,
+      announcement: "assertive",
+      children: "Action failed",
+    }),
+  );
+  const politeNotice = renderToStaticMarkup(
+    createElement(Notice, {
+      announcement: "polite",
+      children: "Action completed",
+    }),
+  );
+  assert.doesNotMatch(staticNotice, /\srole=|aria-live=/);
+  assert.match(assertedNotice, /role="alert"/);
+  assert.match(politeNotice, /role="status"/);
+});
+test("AI extraction adds one concise polite result announcement", () => {
+  const markup = renderToStaticMarkup(
+    createElement(AIReview, {
+      busy: false,
+      extraction: { status: "REVIEW_REQUIRED", reason: "Needs review" },
+      onExtract: () => {},
+    }),
+  );
+  assert.match(
+    markup,
+    /role="status">Suggestions ready\. Review the extracted terms before using them\.<\/p>/,
+  );
+  assert.equal((markup.match(/\srole="(?:alert|status)"/g) || []).length, 1);
+});
+test("small screens retain sign out and overflowing dialog content can scroll", () => {
+  const css = source("../app/globals.css");
+  assert.match(css, /\.sidebar-bottom\s*\{\s*display:\s*flex;/);
+  assert.match(css, /prefers-reduced-motion: reduce/);
+  assert.match(
+    source("../src/components/payouts.module.css"),
+    /\.drawer\s*\{\s*overflow-y:\s*auto;/,
+  );
+});

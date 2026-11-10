@@ -521,6 +521,11 @@ export function AIReview({
       >
         Suggest terms
       </Button>
+      <p className="visually-hidden" role="status">
+        {extraction
+          ? "Suggestions ready. Review the extracted terms before using them."
+          : ""}
+      </p>
       {extraction && (
         <div className="panel">
           <Badge value={extraction.status || "REVIEW_REQUIRED"} />
@@ -578,6 +583,7 @@ export function RulesEditor({
   busy,
   extraction,
   onSave,
+  onDirty,
 }: {
   agreement: Agreement;
   source: string;
@@ -585,6 +591,7 @@ export function RulesEditor({
   busy: boolean;
   extraction?: unknown;
   onSave: (r: Rules) => void;
+  onDirty?: () => void;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const [prefilled, setPrefilled] = useState(false);
@@ -602,6 +609,8 @@ export function RulesEditor({
   return (
     <form
       ref={formRef}
+      inert={busy}
+      onChange={onDirty}
       className="section rules-editor"
       onSubmit={(e) => {
         e.preventDefault();
@@ -677,6 +686,7 @@ export function RulesEditor({
                 const input = formRef.current?.elements.namedItem(id);
                 if (input instanceof HTMLInputElement) input.value = value;
               }
+              onDirty?.();
               setPrefilled(true);
             }}
           >
@@ -690,7 +700,11 @@ export function RulesEditor({
           )}
         </Notice>
       )}
-      {error && <Notice warning>{error}</Notice>}
+      {error && (
+        <Notice warning announcement="assertive">
+          {error}
+        </Notice>
+      )}
       <div className="form-grid">
         {agreement.value.members.map((m) => (
           <Field key={m.userId} label={`${m.displayName} · share %`}>

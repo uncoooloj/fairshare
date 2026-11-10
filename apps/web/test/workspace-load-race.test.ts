@@ -8,6 +8,7 @@ const source = readFileSync(
 );
 
 test("workspace changes fence in-flight reads and clear workspace-scoped state", () => {
+  assert.equal((source.match(/setWorkspace\(/g) || []).length, 1);
   const commit = source
     .split("function commitWorkspace(id: string) {")[1]
     .split("async function run")[0];
@@ -67,9 +68,10 @@ test("workspace changes fence in-flight reads and clear workspace-scoped state",
     agreement,
     /catch \(error\) \{\s*if \(request !== openRequest\.current\) return/,
   );
-  assert.match(
-    source,
-    /function navigate\(s: Section\) \{\s*openRequest\.current\+\+/,
+  assert.ok(
+    source.includes(
+      "function navigate(s: Section) {\n    if (!mayLeaveDraft()) return;\n    openRequest.current++;",
+    ),
   );
 
   const refresh = source
@@ -96,5 +98,12 @@ test("workspace changes fence in-flight reads and clear workspace-scoped state",
   assert.ok(
     (mutate.match(/workspaceRequestId !== workspaceRequest\.current/g) || [])
       .length >= 3,
+  );
+});
+
+test("an old-render refresh cannot adopt the newly selected workspace", () => {
+  assert.match(
+    source,
+    /async function refresh\(\)\s*\{[\s\S]*?if \(workspace !== currentWorkspace\.current\) return;/,
   );
 });
