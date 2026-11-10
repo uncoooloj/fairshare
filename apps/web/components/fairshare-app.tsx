@@ -1,4 +1,5 @@
 "use client";
+import { WorkspaceNameForm } from "./workspace-name-form";
 import {useDisplayPreferences, NotificationsSettings, CurrencyDisplaySettings} from "./settings-preferences";
 import {ProfileContact} from "./profile-contact";
 import {PaymentAccountsSettings} from "./payment-account-settings";
@@ -1282,7 +1283,7 @@ export default function FairshareApp() {
                     }
                   />
                   </section>
-                  {workspaces.find(w => w.id === workspace)?.role === "OWNER" && <section className="panel"><h2>Workspace</h2><p className="muted">Rename your workspace without changing its agreements or access.</p><SimpleForm label="Workspace name" button="Save workspace name" busy={busy} onSubmit={name => run(async () => {
+                  {workspaces.find(w => w.id === workspace)?.role === "OWNER" && <section className="panel"><h2>Workspace</h2><p className="muted">Rename your workspace without changing its agreements or access.</p><WorkspaceNameForm key={workspace} name={workspaces.find(w => w.id === workspace)?.name ?? ""} busy={busy} onSave={name => run(async () => {
                     const result = await api(`${workspaceBase(workspace)}/name`, "POST", { name });
                     setWorkspaces(current => current.map(item => item.id === workspace ? {...item, name: result.workspace.name} : item));
                     setNotice("Workspace name updated.");
