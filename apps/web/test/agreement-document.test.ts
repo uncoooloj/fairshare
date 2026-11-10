@@ -7,7 +7,10 @@ const source = readFileSync(
 );
 test("document view uses version-pinned API source and clears stale content", () => {
   assert.match(source, /version\?\.rules.source.documentId/);
-  assert.match(source, /recoverSourceDocument\(\s*base,\s*sourceId,\s*api,?\s*\)/);
+  assert.match(
+    source,
+    /recoverSourceDocument\(\s*base,\s*sourceId,\s*api,?\s*\)/,
+  );
   assert.match(source, /setDocument\(\s*null\s*\)/);
   assert.match(source, /if\s*\(\s*!stale\s*\)/);
   assert.match(source, /stale\s*=\s*true/);

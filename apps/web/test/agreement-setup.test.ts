@@ -6,7 +6,10 @@ const source = readFileSync(
   "utf8",
 );
 test("setup does not guess completion or mutate financial state", () => {
-  assert.match(source, /if\s*\(\s*agreement\.value\.activeVersionId\s*\)\s*return null/);
+  assert.match(
+    source,
+    /if\s*\(\s*agreement\.value\.activeVersionId\s*\)\s*return null/,
+  );
   assert.match(source, /latest.approvals\[m.userId\]/);
   assert.match(
     source,
