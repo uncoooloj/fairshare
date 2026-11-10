@@ -135,7 +135,11 @@ export default function FairshareApp() {
     setDocumentId("");
     setExtraction(null);
     const v = fresh.value.versions.at(-1);
-    const doc = await recoverSourceDocument(root, v?.rules.source.documentId, api);
+    const doc = await recoverSourceDocument(
+      root,
+      v?.rules.source.documentId,
+      api,
+    );
     if (doc) {
       setDocumentId(doc.documentId);
       setSource(doc.text);
@@ -1168,7 +1172,16 @@ export default function FairshareApp() {
                         sandbox provider are required.
                       </Empty>
                     )}
-                    {organizer && <PaymentRecovery key={base} base={base} payments={payments} payouts={payouts} held={!!selected.value.reviewHold} refresh={refresh} />}
+                    {organizer && (
+                      <PaymentRecovery
+                        key={base}
+                        base={base}
+                        payments={payments}
+                        payouts={payouts}
+                        held={!!selected.value.reviewHold}
+                        refresh={refresh}
+                      />
+                    )}
                     <section className="section">
                       <h3>Verified allocations</h3>
                       <RevenueTable
