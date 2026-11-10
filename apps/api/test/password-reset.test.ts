@@ -23,7 +23,7 @@ test("reset uses hashed one-use email-bound credentials and revokes all sessions
   const messages: MailMessage[] = [];
   const app = await buildApp({
     dbPath: ":memory:",
-    publicOrigin: "https://app.example.test",
+    publicAppOrigin: "https://app.example.test",
     mailTransport: {
       async send(m) {
         messages.push(m);
@@ -99,7 +99,7 @@ test("expiry, replacement, password change and email mismatch invalidate reset c
 test("unverified accounts cannot reset; delivery failures never expose account existence or leave usable tokens", async () => {
   const app = await buildApp({
     dbPath: ":memory:",
-    publicOrigin: "https://app.example.test",
+    publicAppOrigin: "https://app.example.test",
     mailTransport: {
       async send() {
         throw new Error("private-provider-detail");
