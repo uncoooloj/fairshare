@@ -301,7 +301,7 @@ export default function FairshareApp() {
       <main className="main" id="main-content" tabIndex={-1}>
         <div className="workspace-bar">
           <span>Workspace</span>
-          <select
+          {workspaces.length > 1 ? <select
             aria-label="Workspace"
             value={workspace}
             onChange={(e) => {
@@ -316,7 +316,7 @@ export default function FairshareApp() {
                 {w.name}
               </option>
             ))}
-          </select>
+          </select> : <strong>{workspaces[0]?.name || "No workspace yet"}</strong>}
           <span className="spacer" />
           <Button variant="quiet" disabled={busy} onClick={() => run(refresh)}>
             ↻ Refresh
@@ -369,12 +369,14 @@ export default function FairshareApp() {
               }
           />
         )}
-        {!workspace ? (
-          <WorkspaceOnboarding busy={busy}
+        {!workspace && section !== Section.Settings ? (
+          <WorkspaceOnboarding section={section} busy={busy}
               onCreate={(name) =>
                 run(async () => {
-                  await api("workspaces", "POST", { name });
-                  await loadWorkspaces();
+                  const result = await api("workspaces", "POST", { name });
+                  setWorkspaces((current) => [...current.filter((item) => item.id !== result.workspace.id), result.workspace]);
+                  setWorkspace(result.workspace.id);
+                  setNotice("Workspace created. You’re ready to add your first agreement.");
                 })
               }
           />
