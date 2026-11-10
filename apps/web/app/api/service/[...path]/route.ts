@@ -1,3 +1,4 @@
+import { getCloudflareContext } from '@opennextjs/cloudflare';
 import { NextRequest, NextResponse } from "next/server";
 export const runtime = "nodejs";
 const COOKIE = "fairshare_session";
@@ -63,14 +64,24 @@ async function handler(
         { error: { message: "Request too large" } },
         { status: 413 },
       );
-    const result = await fetch(url, {
+    let boundApi: { fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> } | undefined;
+    try {
+      boundApi = (getCloudflareContext().env as unknown as { FAIRSHARE_API?: typeof boundApi }).FAIRSHARE_API;
+    } catch {
+      // Local Node development has no Workers request context.
+    }
+    const upstreamFetch: typeof fetch = boundApi
+      ? (input, init) => boundApi!.fetch(input, init)
+      : fetch;
+    const result = await upstreamFetch(url, {
       method: req.method,
       headers,
       body,
       cache: "no-store",
       signal: AbortSignal.timeout(65000),
-      redirect: "error",
+      redirect: "manual",
     });
+    if (result.status >= 300 && result.status < 400) throw new Error("Unexpected API redirect");
     if (result.ok && req.method === "GET" && parts.at(-1) === "original") {
       const mime = result.headers.get("content-type")?.split(";")[0];
       if (mime !== "application/pdf" && mime !== "application/vnd.openxmlformats-officedocument.wordprocessingml.document") throw new Error("Unexpected file type");
@@ -105,7 +116,8 @@ async function handler(
     )
       response.cookies.delete(COOKIE);
     return response;
-  } catch {
+  } catch (error) {
+    console.error("Fairshare API proxy failed", error instanceof Error ? { name: error.name, message: error.message.replace(/https?:\/\/[^ ]+/g, "[url]").slice(0, 200) } : { name: "UnknownError" });
     return NextResponse.json(
       {
         error: {
