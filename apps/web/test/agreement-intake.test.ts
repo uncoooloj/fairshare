@@ -36,3 +36,10 @@ test('title can be edited after upload; AI naming never changes the agreement au
   const nameSource = readFileSync(new URL('../components/agreement-name.tsx',import.meta.url),'utf8');
   assert.doesNotMatch(nameSource,/useEffect|api\(|fetch\(/);
 });
+
+test('native picker advertises bounded supported extensions and MIME types', () => {
+  const html = renderToStaticMarkup(createElement(AgreementIntake, {busy:false,first:true,onCreate:async()=>{}}));
+  const accept = /type="file"[^>]*accept="([^"]+)"/.exec(html)?.[1];
+  assert.deepEqual(accept?.split(','), ['.pdf','.docx','.txt','application/pdf','application/vnd.openxmlformats-officedocument.wordprocessingml.document','text/plain']);
+  assert.doesNotMatch(accept ?? '', /\*/);
+});

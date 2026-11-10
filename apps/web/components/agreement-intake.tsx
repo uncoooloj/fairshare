@@ -70,7 +70,7 @@ export function AgreementIntake({ busy, first = false, onCreate, onCancel }: {
     </fieldset>
     <div hidden={method !== "upload"}>
     <Field label="Upload agreement" hint="PDF, DOCX or TXT · up to 5 MB. Use only documents you’re authorized to upload.">
-      <input type="file" accept=".pdf,.docx,.txt" disabled={busy} onChange={event => { changed(); setFile(event.target.files?.[0] || null); }} />
+      <input type="file" accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" disabled={busy} onChange={event => { changed(); setFile(event.target.files?.[0] || null); }} />
     </Field>
     {file && <p className="muted">Selected: {file.name}. Your document is ready to read.</p>}
     {file && /\.pdf$/i.test(file.name) && <label className="check"><input type="checkbox" checked={ocr} disabled={busy} onChange={event => { changed(); setOcr(event.target.checked); }} />Use OCR for a scanned PDF (English, up to 5 pages). Processed on Fairshare’s servers (Cloudflare when hosted); review all extracted names and amounts.</label>}
