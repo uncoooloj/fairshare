@@ -256,6 +256,29 @@ test("manual and buyer-paid invoices remain pending without settlement allocatio
     await s.app.close();
   }
 });
+test("only provider statuses that remain payable are presented as ready to share", async () => {
+  const s = await setup(),
+    p = install(s);
+  try {
+    const id = (await s.post("/invoices", invoiceInput)).json().invoice.id;
+    for (const [providerStatus, localStatus] of [
+      ["SENT", "SHARED"],
+      ["UNPAID", "SHARED"],
+      ["PAYMENT_PENDING", "PAYMENT_PENDING"],
+      ["PARTIALLY_PAID", "PAYMENT_PENDING"],
+      ["PARTIALLY_REFUNDED", "PAYMENT_PENDING"],
+      ["MARKED_AS_REFUNDED", "PAYMENT_PENDING"],
+    ]) {
+      p.evidence.status = providerStatus;
+      assert.equal(
+        (await s.post(`/invoices/${id}/reconcile`)).json().invoice.status,
+        localStatus,
+      );
+    }
+  } finally {
+    await s.app.close();
+  }
+});
 test("unknown creation is durable and cannot generate a second invoice", async () => {
   const s = await setup(),
     p = install(s);

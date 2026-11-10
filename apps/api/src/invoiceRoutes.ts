@@ -154,11 +154,9 @@ export function registerInvoiceRoutes(
       const status =
         evidence.status === "DRAFT"
           ? "DRAFT"
-          : ["CANCELLED", "REFUNDED", "MARKED_AS_PAID"].includes(
-                evidence.status,
-              )
-            ? "PAYMENT_PENDING"
-            : "SHARED";
+          : ["SENT", "SCHEDULED", "UNPAID"].includes(evidence.status)
+            ? "SHARED"
+            : "PAYMENT_PENDING";
       db.prepare(
         "UPDATE fairshare_invoices SET status=?,share_url=? WHERE id=? AND status!='PAID'",
       ).run(status, evidence.shareUrl, id);
