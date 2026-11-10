@@ -1,8 +1,8 @@
 # Cloudflare deployment
 
-Hosted sandbox snapshot, November 10, 2026: web and API are deployed at https://fairshare-web.udaleamehoj.workers.dev and https://fairshare-api-sandbox.udaleamehoj.workers.dev. Deployment verification reported sign-in/secure cookies, CSRF rejection, intake replay, activation/stale revision, DOCX/original-byte preservation, real scanned-PDF OCR and Workers AI returning review-required output.
+Hosted sandbox snapshot, November 10, 2026: the primary web URL is https://usefairshare.app; https://fairshare-web.udaleamehoj.workers.dev remains an allowed same-host entry point. The API is https://fairshare-api-sandbox.udaleamehoj.workers.dev. Deployment verification reported sign-in/secure cookies, CSRF rejection, intake replay, activation/stale revision, DOCX/original-byte preservation, real scanned-PDF OCR and Workers AI returning review-required output.
 
-The verified deployed source is `deploy/cloudflare-hackathon` at `679fe6865352546e71e1cf5281867c7004495842` (older PR29 base plus hosted/mobile fixes). Web version: `e94ea5c8-d612-4783-952e-72f231f2559b`. This checkpoint ports those fixes onto the current upstream stack; **exact deployed/checkpoint parity requires redeploying this checkpoint**. Real PayPal capture/payout/refund and signed-webhook acceptance remain separate, not implied by these checks.
+The custom-domain verification used commit `d64e7e0631fba24c28d88cf38029869e16d0eba1` atop PR31. Web version: `d9024d5d-b029-44f2-81a5-1c73a7bd8ef1`; API version: `ede36713-1e8b-447a-abe0-57d74daef905`. The API deploy reused the verified existing parser registry image through a temporary manifest override; repository source retains the Dockerfile. This checkpoint ports those fixes onto the current upstream stack; **exact deployed/checkpoint parity requires redeploying this checkpoint**. Real PayPal capture/payout/refund and signed-webhook acceptance remain separate, not implied by these checks.
 
 ## What ships where
 

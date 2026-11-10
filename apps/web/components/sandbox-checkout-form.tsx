@@ -46,7 +46,7 @@ export function SandboxCheckoutForm({
         try {
           const cents = parseCents(amount);
           if (cents < 1 || cents > 1_000_000)
-            throw new Error("Enter a sandbox amount from $0.01 to $10,000.00.");
+            throw new Error("Enter an amount from $0.01 to $10,000.00.");
           if (name.length > 100 || /[\x00-\x1f\x7f]/.test(name))
             throw new Error("Use a source name of 1–100 printable characters.");
         } catch (cause) {
@@ -86,7 +86,7 @@ export function SandboxCheckoutForm({
         {!reviewing ? (
           <>
             <label>
-              Sandbox checkout amount (USD)
+              Payment amount (USD)
               <input
                 ref={amountInput}
                 name="amount"
@@ -157,7 +157,7 @@ export function SandboxCheckoutForm({
           {submitting
             ? "Creating checkout…"
             : reviewing
-              ? "Create sandbox checkout"
+              ? "Create payment link"
               : "Review checkout"}
         </Button>
       </fieldset>

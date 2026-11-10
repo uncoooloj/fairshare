@@ -55,11 +55,12 @@
 }
 .root select {
   width: 100%;
-  min-height: 44px;
-  background: white;
+  min-height: var(--control-min-height);
+  background-color: white;
   border: 1px solid var(--color-line, #e6e9e7);
   border-radius: 8px;
-  padding: 10px;
+  padding: var(--control-padding-y) 36px var(--control-padding-y)
+    var(--control-padding-x);
 }
 .root code {
   overflow-wrap: anywhere;

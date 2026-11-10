@@ -43,7 +43,7 @@
     "PAYPAL_PAYOUTS_ELIGIBILITY_CONFIRMED": "false",
     "PAYPAL_RECONCILIATION_ENABLED": "false",
     "PUBLIC_API_URL": "https://fairshare-api-sandbox.udaleamehoj.workers.dev",
-    "PUBLIC_APP_ORIGIN": "https://fairshare-web.udaleamehoj.workers.dev"
+    "PUBLIC_APP_ORIGIN": "https://usefairshare.app"
   },
   "observability": {
     "enabled": false

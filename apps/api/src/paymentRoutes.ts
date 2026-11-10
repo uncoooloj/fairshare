@@ -1,3 +1,7 @@
+import {
+  registerInvoiceRoutes,
+  type InvoiceProvider,
+} from "./invoiceRoutes.js";
 import { paymentSource } from "./paymentSource.js";
 import { createReconciliationWorker } from "./reconciliationWorker.js";
 import { randomUUID, createHash } from "node:crypto";
@@ -29,7 +33,8 @@ export type PaymentProvider = Pick<
   | "getPayout"
   | "verifyWebhook"
 > &
-  Partial<Pick<PayPalSandbox, "refundCapture" | "getRefund">>;
+  Partial<Pick<PayPalSandbox, "refundCapture" | "getRefund">> &
+  Partial<InvoiceProvider>;
 export interface PaymentOptions {
   provider?: PaymentProvider;
   publicOrigin?: string;
@@ -636,11 +641,13 @@ export function registerPaymentRoutes(
     ownPayment,
     applyCapture,
   });
+  const invoices = registerInvoiceRoutes(app, aggregates, provider);
   const worker = options.reconciliation?.enabled
     ? createReconciliationWorker({
         db,
         intervalMs: options.reconciliation.intervalMs,
         discover: () => [
+          ...invoices.discover(),
           ...(
             db
               .prepare(
@@ -671,6 +678,10 @@ export function registerPaymentRoutes(
           ).map((r) => ({ kind: "WEBHOOK", id: r.id })),
         ],
         reconcile: async (job, assertLease) => {
+          if (job.kind === "INVOICE") {
+            await invoices.reconcile(job.id, assertLease);
+            return;
+          }
           if (job.kind === "PAYMENT") {
             await applyCapture(payment(job.id), assertLease);
             return;

@@ -66,5 +66,5 @@ test("checkout review enforces API amount bounds and resets per agreement", () =
     new URL("../components/fairshare-app.tsx", import.meta.url),
     "utf8",
   );
-  assert.match(app, /<SandboxCheckoutForm\s+key=\{selected\.id\}/);
+  assert.match(app, /<AgreementInvoices\s+key=\{selected\.id\}/);
 });

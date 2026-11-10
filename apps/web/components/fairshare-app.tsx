@@ -11,7 +11,7 @@ import { PaymentAccountsSettings } from "./payment-account-settings";
 import { ActivityLogSettings } from "./activity-log-settings";
 import { formatDate } from "../lib/preferences";
 import { LocalOcrChoice } from "./local-ocr-choice";
-import { SandboxCheckoutForm } from "./sandbox-checkout-form";
+import { AgreementInvoices } from "./agreement-invoices";
 import { ReviewDiscussion, ReviewReminder } from "./review-discussion";
 import { RevenueRules } from "./revenue-rules";
 import {
@@ -40,7 +40,6 @@ import {
   Section,
   api,
   money,
-  parseCents,
   parseShare,
   title,
   sampleAgreement,
@@ -1258,36 +1257,13 @@ export default function FairshareApp() {
                         title="Incoming payments"
                         description="Confirmed provider data is used to calculate each allocation. Browser returns are not proof of payment."
                       />
-                      {organizer && active && (
-                        <SandboxCheckoutForm
-                          key={selected.id}
-                          busy={busy}
-                          onSubmit={(amount, source) =>
-                            run(async () => {
-                              const amountCents = parseCents(amount);
-                              const storageKey = `fairshare-checkout:${user.id}:${selected.id}:${amountCents}`;
-                              const requestKey =
-                                sessionStorage.getItem(storageKey) ||
-                                crypto.randomUUID();
-                              sessionStorage.setItem(storageKey, requestKey);
-                              const r = await api(`${base}/payments`, "POST", {
-                                requestKey,
-                                amountCents,
-                                source,
-                              });
-                              // Preserve uncertain requests across refreshes; never blindly issue a new provider write.
-                              if (r.approval_url)
-                                sessionStorage.removeItem(storageKey);
-                              await refresh();
-                              setNotice(
-                                r.approval_url
-                                  ? "Sandbox checkout created. Use the approval link below."
-                                  : "Payment request recorded. Check its status before trying again.",
-                              );
-                            })
-                          }
-                        />
-                      )}
+                      <AgreementInvoices
+                        key={selected.id}
+                        base={base}
+                        agreementName={selected.value.name}
+                        userId={user.id}
+                        canCreate={organizer && !!active}
+                      />
                       <table>
                         <thead>
                           <tr>
