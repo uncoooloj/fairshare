@@ -397,6 +397,43 @@ export function registerFairshareRoutes(
       };
     },
   );
+  // Metadata only; full confidential text stays behind the individual document endpoint.
+  app.get(`${base}/:collaborationId/documents`, async (req) => {
+    const { p } = access(req);
+    const query = req.query as Record<string, unknown>;
+    const cursor = query.before;
+    if (
+      cursor !== undefined &&
+      (typeof cursor !== "string" ||
+        !/^\d{1,15}$/.test(cursor) ||
+        !Number.isSafeInteger(Number(cursor)) ||
+        Number(cursor) < 1)
+    )
+      throw new DomainError("INVALID_INPUT", "Invalid document cursor");
+    const rows = app.store.db
+      .prepare(
+        "SELECT rowid AS sequence,id,revision,hash,extraction IS NOT NULL AS has_extraction,provenance FROM fairshare_documents WHERE workspace_id=? AND collaboration_id=? AND rowid<? ORDER BY rowid DESC LIMIT 101",
+      )
+      .all(
+        p.workspaceId,
+        p.collaborationId,
+        cursor === undefined ? Number.MAX_SAFE_INTEGER : Number(cursor),
+      ) as any[];
+    const page = rows.slice(0, 100);
+    return {
+      documents: page.map((row) => ({
+        documentId: row.id,
+        revision: row.revision,
+        sourceHash: row.hash,
+        hasExtraction: !!row.has_extraction,
+        provenance: row.provenance
+          ? JSON.parse(row.provenance)
+          : { inputType: "TEXT", offsetUnit: "UTF16_CODE_UNITS" },
+      })),
+      nextCursor:
+        rows.length > 100 ? String(page[page.length - 1].sequence) : null,
+    };
+  });
   app.get(`${base}/:collaborationId/documents/:documentId`, async (req) => {
     const { p } = access(req);
     const row = app.store.db
@@ -435,6 +472,8 @@ export function registerFairshareRoutes(
       const result: ExtractionResult = await (
         options.extract ?? extractContract
       )(document, options.ai);
+      // Revalidate session and membership after provider I/O before returning or persisting confidential output.
+      access(req);
       // Source docs immutable; conditional write still protects source binding and asynchronous races.
       if (
         result.sourceHash !== row.hash ||

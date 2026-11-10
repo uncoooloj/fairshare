@@ -340,3 +340,230 @@ test("concurrent same-revision updates commit one proposal only", async () => {
     await app.close();
   }
 });
+test("document metadata history survives reload and is scoped to workspace AND agreement", async () => {
+  const { app, owner, peer, outsider, base, c } = await setup();
+  try {
+    const path = `${base}/${c.id}`;
+    assert.deepEqual(
+      (
+        await app.inject({
+          url: path + "/documents",
+          headers: auth(owner.token),
+        })
+      ).json(),
+      { documents: [], nextCursor: null },
+    );
+    const ids: string[] = [];
+    for (const text of ["private clause one", "private clause two"])
+      ids.push(
+        (
+          await app.inject({
+            method: "POST",
+            url: path + "/documents",
+            headers: auth(owner.token),
+            payload: { text },
+          })
+        ).json().documentId,
+      );
+    const list = await app.inject({
+      url: path + "/documents",
+      headers: auth(owner.token),
+    });
+    assert.equal(list.statusCode, 200, list.body);
+    assert.deepEqual(
+      list.json().documents.map((d: any) => d.documentId),
+      [...ids].reverse(),
+    );
+    assert.equal(list.json().documents[0].hasExtraction, false);
+    assert.equal(list.body.includes("private clause"), false);
+    assert.equal(list.body.includes('"text"'), false);
+    assert.equal(
+      (
+        await app.inject({
+          url: path + "/documents",
+          headers: auth(peer.token),
+        })
+      ).statusCode,
+      403,
+    );
+    assert.equal(
+      (
+        await app.inject({
+          url: path + "/documents",
+          headers: auth(outsider.token),
+        })
+      ).statusCode,
+      404,
+    );
+    assert.equal(
+      (await app.inject({ url: path + "/documents" })).statusCode,
+      401,
+    );
+    const other = (
+      await app.inject({
+        method: "POST",
+        url: base,
+        headers: auth(owner.token),
+        payload: { name: "Other" },
+      })
+    ).json();
+    assert.equal(
+      (
+        await app.inject({
+          url: `${base}/${other.id}/documents`,
+          headers: auth(owner.token),
+        })
+      ).json().documents.length,
+      0,
+    );
+    assert.equal(
+      (
+        await app.inject({
+          url: `${base}/${other.id}/documents/${ids[0]}`,
+          headers: auth(owner.token),
+        })
+      ).statusCode,
+      404,
+    );
+    assert.equal(
+      (
+        await app.inject({
+          url: path + "/documents?before=oops",
+          headers: auth(owner.token),
+        })
+      ).statusCode,
+      400,
+    );
+    const detail = await app.inject({
+      url: path + "/documents/" + ids[1],
+      headers: auth(owner.token),
+    });
+    assert.equal(detail.json().text, "private clause two");
+    assert.equal(
+      (await app.inject({ url: path, headers: auth(owner.token) })).json().value
+        .versions.length,
+      0,
+    );
+  } finally {
+    await app.close();
+  }
+});
+test("AI completion cannot return or persist data after session revocation", async () => {
+  let release: () => void = () => {};
+  let started: () => void = () => {};
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const entered = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  const app = await buildApp({
+    dbPath: ":memory:",
+    extract: async (d) => {
+      started();
+      await gate;
+      return {
+        status: ExtractionStatus.REVIEW_REQUIRED,
+        documentId: d.documentId,
+        revision: d.revision,
+        sourceHash: sourceHash(d.text),
+        requiresHumanReview: true,
+        executable: false,
+        facts: [],
+        issues: [],
+        provider: "cloudflare",
+        model: "test",
+        promptVersion: "test",
+        reason: null,
+      };
+    },
+  });
+  try {
+    const owner = app.store.register({
+      name: "Maya",
+      email: "revoke@example.test",
+      password,
+    });
+    const w = app.store.createWorkspace(owner.user.id, "Team");
+    const base = `/api/workspaces/${w.id}/collaborations`;
+    const c = (
+      await app.inject({
+        method: "POST",
+        url: base,
+        headers: auth(owner.token),
+        payload: { name: "Campaign" },
+      })
+    ).json();
+    const path = base + "/" + c.id;
+    const d = (
+      await app.inject({
+        method: "POST",
+        url: path + "/documents",
+        headers: auth(owner.token),
+        payload: { text: "Private agreement" },
+      })
+    ).json();
+    const pending = app.inject({
+      method: "POST",
+      url: path + "/documents/" + d.documentId + "/extract",
+      headers: auth(owner.token),
+      payload: { consentToCloudflare: true },
+    });
+    await entered;
+    app.store.db
+      .prepare("DELETE FROM sessions WHERE user_id=?")
+      .run(owner.user.id);
+    release();
+    const result = await pending;
+    assert.equal(result.statusCode, 401, result.body);
+    assert.equal(
+      (
+        app.store.db
+          .prepare("SELECT extraction FROM fairshare_documents WHERE id=?")
+          .get(d.documentId) as any
+      ).extraction,
+      null,
+    );
+  } finally {
+    release();
+    await app.close();
+  }
+});
+test("document history is bounded and cursor cannot cross agreement boundary", async () => {
+  const { app, owner, base, c } = await setup();
+  try {
+    const workspaceId = base.split("/")[3];
+    const insert = app.store.db.prepare(
+      "INSERT INTO fairshare_documents(workspace_id,collaboration_id,id,revision,source,hash) VALUES(?,?,?,?,?,?)",
+    );
+    for (let i = 0; i < 102; i++)
+      insert.run(
+        workspaceId,
+        c.id,
+        `d${i}`,
+        1,
+        JSON.stringify({ documentId: `d${i}`, revision: 1, text: "source" }),
+        sourceHash("source"),
+      );
+    const url = `${base}/${c.id}/documents`;
+    const first = (
+      await app.inject({ url, headers: auth(owner.token) })
+    ).json();
+    assert.equal(first.documents.length, 100);
+    assert.equal(first.documents[0].documentId, "d101");
+    assert.ok(first.nextCursor);
+    const second = (
+      await app.inject({
+        url: url + "?before=" + first.nextCursor,
+        headers: auth(owner.token),
+      })
+    ).json();
+    assert.deepEqual(
+      second.documents.map((d: any) => d.documentId),
+      ["d1", "d0"],
+    );
+    assert.equal(second.nextCursor, null);
+  } finally {
+    await app.close();
+  }
+});

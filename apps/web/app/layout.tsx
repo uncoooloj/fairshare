@@ -1,23 +1,18 @@
 import type { Metadata } from "next";
+import "./tokens.css";
+import "./globals.css";
 export const metadata: Metadata = {
-  title: "Fairshare",
-  description: "The money follows the agreement.",
+  title: "Fairshare · The money follows the agreement",
+  description: "Agreements, clear allocations and traceable payouts.",
 };
 export default function RootLayout({
   children,
-}: Readonly<{ children: React.ReactNode }>) {
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html lang="en">
-      <body
-        style={{
-          fontFamily: "system-ui, sans-serif",
-          margin: 0,
-          color: "#101010",
-          background: "#fff",
-        }}
-      >
-        {children}
-      </body>
+      <body>{children}</body>
     </html>
   );
 }

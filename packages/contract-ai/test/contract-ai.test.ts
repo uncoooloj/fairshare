@@ -185,7 +185,12 @@ test("untrusted embedded instructions stay in user data and no tools requested",
   };
   const messages = buildMessages(injected);
   assert.equal(messages[0].content.includes(injected.text), false);
-  assert.equal(JSON.parse(messages[1].content).text, injected.text);
+  assert.equal(
+    JSON.parse(messages[1].content)
+      .sourceSpans.map((s: any) => s.text)
+      .join(""),
+    injected.text,
+  );
   let request: any;
   await extractContract(document, {
     ...config,
@@ -250,4 +255,38 @@ test("provider fabricated or ambiguous repeated quotes never get repaired", asyn
       }),
   });
   assert.equal(r.reason, FallbackReason.INVALID_OUTPUT);
+});
+
+test("provider span references become server-owned exact citations", async () => {
+  const r = await invoke({
+    ...draft,
+    facts: [{ ...draft.facts[0], citation: { spanId: "s0" } }],
+  });
+  assert.equal(r.status, ExtractionStatus.REVIEW_REQUIRED);
+  assert.deepEqual(r.facts[0].citation, quote);
+});
+test("unknown source spans and mixed invented source fields fail closed", async () => {
+  for (const citation of [{ spanId: "s99" }, { spanId: "s0", quote: "fake" }])
+    assert.equal(
+      (await invoke({ ...draft, facts: [{ ...draft.facts[0], citation }] }))
+        .reason,
+      FallbackReason.INVALID_OUTPUT,
+    );
+});
+test("provider request has schema-constrained enums and no permissive action fields", async () => {
+  let body: any;
+  await extractContract(document, {
+    ...config,
+    fetch: async (_url, init) => {
+      body = JSON.parse(init!.body as string);
+      return response(draft);
+    },
+  });
+  assert.equal(body.response_format.type, "json_schema");
+  assert.equal(body.response_format.json_schema.additionalProperties, false);
+  assert.deepEqual(
+    body.response_format.json_schema.properties.facts.items.properties.kind
+      .enum,
+    ["SHARE", "ADVANCE", "CURRENCY", "REVENUE_BASIS", "RECIPIENT"],
+  );
 });

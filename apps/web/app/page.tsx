@@ -1,18 +1,4 @@
+import FairshareApp from "../components/fairshare-app";
 export default function Home() {
-  return (
-    <main style={{ maxWidth: 800, margin: "80px auto", padding: 24 }}>
-      <p style={{ color: "#1f4ee8", fontWeight: 600 }}>
-        FAIRSHARE · DEVELOPMENT
-      </p>
-      <h1>The money follows the agreement.</h1>
-      <p>
-        The web application foundation is ready. The dashboard design is being
-        developed separately.
-      </p>
-      <p>
-        This page is an integration shell, not a functioning payment dashboard.
-        No live money is enabled.
-      </p>
-    </main>
-  );
+  return <FairshareApp />;
 }
