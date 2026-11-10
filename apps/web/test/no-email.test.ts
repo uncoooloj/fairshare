@@ -8,19 +8,19 @@ test("email controls require confirmed server capability, failing closed", () =>
   assert.match(source("lib/email-capability.ts"), /auth\/capabilities/);
   assert.match(
     source("components/designer-auth.tsx"),
-    /login && emailDelivery/,
+    /login\s*&&\s*emailDelivery/,
   );
   assert.match(
     source("components/profile-contact.tsx"),
-    /emailDelivery&&changing/,
+    /emailDelivery\s*&&\s*changing/,
   );
   assert.match(
     source("components/password-recovery.tsx"),
-    /reset\|\|emailDelivery/,
+    /reset\s*\|\|\s*emailDelivery/,
   );
   assert.match(
     source("components/fairshare-app.tsx"),
-    /emailDelivery && <Button/,
+    /emailDelivery\s*&&\s*\(?\s*<Button/,
   );
 });
 test("review reminders copy locally and notification preferences are in-app only", () => {
@@ -32,7 +32,7 @@ test("review reminders copy locally and notification preferences are in-app only
   assert.doesNotMatch(reminder, /\/reminders|api\(/);
   assert.match(
     source("components/settings-preferences.tsx"),
-    /\(\['inApp'\] as const\)/,
+    /\(\["inApp"\]\s+as\s+const\)/,
   );
   assert.doesNotMatch(
     source("components/settings-preferences.tsx"),

@@ -87,7 +87,10 @@ export function cloudflareDocumentReaders(
             "PDF_BUSY",
             "Document processing is busy. Retry shortly.",
           );
-        if (response.status === 422 && REJECTED_DOCUMENT_CODES.has(result?.error))
+        if (
+          response.status === 422 &&
+          REJECTED_DOCUMENT_CODES.has(result?.error)
+        )
           throw new DomainError(
             result.error,
             result.error === "PDF_NO_EXTRACTABLE_TEXT"

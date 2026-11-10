@@ -21,19 +21,22 @@ test("tab exploration does not consume native activation or vertical scrolling",
 test("tab markup and panel have connected names, roving tab stop and manual activation", () => {
   const tabs = source("../components/agreement-tabs.tsx");
   const app = source("../components/fairshare-app.tsx");
-  assert.match(tabs, /role="tablist" aria-label="Agreement sections"/);
+  assert.match(tabs, /role="tablist"\s*aria-label="Agreement sections"/);
   assert.match(tabs, /tabIndex=\{value === tab \? 0 : -1\}/);
-  assert.match(tabs, /aria-controls=\{value === tab \? "agreement-panel"/);
+  assert.match(
+    tabs,
+    /aria-controls=\{value\s*===\s*tab\s*\?\s*"agreement-panel"/,
+  );
   assert.match(
     app,
-    /role="tabpanel" id="agreement-panel" aria-labelledby=\{`agreement-tab-\$\{tab\}`\}/,
+    /role="tabpanel"\s*id="agreement-panel"\s*aria-labelledby=\{\x60agreement-tab-\$\{tab\}\x60\}/,
   );
   assert.match(tabs, /buttons.current\[next\]\?\.focus\(\)/);
 });
 test("keyboard skip target and shared notice announcements are present", () => {
   const app = source("../components/fairshare-app.tsx");
   assert.match(app, /href="#main-content"/);
-  assert.match(app, /id="main-content" tabIndex=\{-1\}/);
+  assert.match(app, /id="main-content"\s*tabIndex=\{-1\}/);
   assert.match(
     source("../components/ui.tsx"),
     /role=\{warning \? "alert" : "status"\}/,
@@ -41,10 +44,10 @@ test("keyboard skip target and shared notice announcements are present", () => {
 });
 test("small screens retain sign out and overflowing dialog content can scroll", () => {
   const css = source("../app/globals.css");
-  assert.match(css, /\.sidebar-bottom \{ display: flex;/);
+  assert.match(css, /\.sidebar-bottom\s*\{\s*display:\s*flex;/);
   assert.match(css, /prefers-reduced-motion: reduce/);
   assert.match(
     source("../src/components/payouts.module.css"),
-    /\.drawer \{ overflow-y:auto;/,
+    /\.drawer\s*\{\s*overflow-y:\s*auto;/,
   );
 });
