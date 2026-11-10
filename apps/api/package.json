@@ -11,10 +11,11 @@
     "test": "node --import tsx --test test/*.test.ts"
   },
   "dependencies": {
-    "fastify": "^5.6.2",
-    "@fairshare/domain": "*",
     "@fairshare/contract-ai": "*",
-    "@fairshare/payments": "*"
+    "@fairshare/domain": "*",
+    "@fairshare/payments": "*",
+    "fastify": "^5.6.2",
+    "pdfjs-dist": "^5.4.624"
   },
   "devDependencies": {
     "@types/node": "^24.10.0",

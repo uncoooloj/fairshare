@@ -174,6 +174,39 @@ export function validateDraft(
   if (!facts.length && !issues.length) throw new Error("empty extraction");
   return { facts, issues };
 }
+/** Resolve a provider quote to its exact source location. Models often miscount character
+ * offsets; only an exact, unique quote may be re-anchored. Repeated quotes require correct
+ * original offsets. No fuzzy matching, normalization, or invented source text is allowed. */
+export function anchorProviderDraft(
+  raw: unknown,
+  document: SourceDocument,
+): unknown {
+  const data = object(raw);
+  const anchor = (entry: unknown) => {
+    const item = object(entry);
+    if (item.citation === null) return item;
+    const c = object(item.citation);
+    keys(c, ["start", "end", "quote"]);
+    const quote = string(c.quote, 2000);
+    try {
+      citation(c, document.text);
+      return item;
+    } catch {
+      /* try exact unique quote */
+    }
+    const start = document.text.indexOf(quote);
+    if (start < 0 || document.text.indexOf(quote, start + 1) !== -1)
+      throw new Error("ambiguous source quote");
+    return { ...item, citation: { start, end: start + quote.length, quote } };
+  };
+  if (!Array.isArray(data.facts) || !Array.isArray(data.issues))
+    throw new Error("schema");
+  return {
+    ...data,
+    facts: data.facts.map(anchor),
+    issues: data.issues.map(anchor),
+  };
+}
 export function buildMessages(document: SourceDocument) {
   return [
     {
@@ -285,10 +318,12 @@ export async function extractContract(
       if (envelope.success !== true) throw new Error("provider");
       const result = object(envelope.result);
       received = true;
-      const draft = validateDraft(
+      const rawDraft =
         typeof result.response === "string"
           ? JSON.parse(result.response)
-          : result.response,
+          : result.response;
+      const draft = validateDraft(
+        anchorProviderDraft(rawDraft, document),
         document,
       );
       return {

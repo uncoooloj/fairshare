@@ -26,7 +26,12 @@ export class ApiError extends Error {
     super(message);
   }
 }
-export type User = { id: string; name: string; email: string };
+export type User = {
+  id: string;
+  name: string;
+  email: string;
+  emailVerified?: boolean;
+};
 export const digest = (value: string) =>
   createHash("sha256").update(value).digest("hex");
 const opaque = () => randomBytes(32).toString("base64url");
@@ -34,6 +39,7 @@ const cleanUser = (u: any): User => ({
   id: u.id,
   name: u.name,
   email: u.email,
+  emailVerified: typeof u.email_verified_at === "number",
 });
 const normalizeEmail = (v: unknown) => {
   if (
@@ -68,6 +74,7 @@ export class IdentityStore {
       .exec(`PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL;
    CREATE TABLE IF NOT EXISTS metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL);
    CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY,name TEXT NOT NULL,email TEXT UNIQUE NOT NULL,password_hash TEXT NOT NULL,created_at INTEGER NOT NULL);
+   CREATE TABLE IF NOT EXISTS email_verifications(hash TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),email TEXT NOT NULL,expires_at INTEGER NOT NULL,used_at INTEGER);
    CREATE TABLE IF NOT EXISTS sessions(hash TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),expires_at INTEGER NOT NULL);
    CREATE TABLE IF NOT EXISTS workspaces(id TEXT PRIMARY KEY,name TEXT NOT NULL,mode TEXT NOT NULL,created_at INTEGER NOT NULL);
    CREATE TABLE IF NOT EXISTS memberships(workspace_id TEXT REFERENCES workspaces(id),user_id TEXT REFERENCES users(id),role TEXT NOT NULL CHECK(role IN ('OWNER','MEMBER','VIEWER')),PRIMARY KEY(workspace_id,user_id));
@@ -75,6 +82,12 @@ export class IdentityStore {
    CREATE TABLE IF NOT EXISTS audit(id TEXT PRIMARY KEY,workspace_id TEXT,actor_id TEXT,action TEXT NOT NULL,detail TEXT NOT NULL,created_at INTEGER NOT NULL);
    CREATE TABLE IF NOT EXISTS rate_limits(key TEXT PRIMARY KEY,count INTEGER NOT NULL,reset_at INTEGER NOT NULL);
    CREATE TABLE IF NOT EXISTS workspace_records(workspace_id TEXT NOT NULL REFERENCES workspaces(id),key TEXT NOT NULL,value TEXT NOT NULL,version INTEGER NOT NULL,PRIMARY KEY(workspace_id,key));`);
+    if (
+      !(this.db.prepare("PRAGMA table_info(users)").all() as any[]).some(
+        (row) => row.name === "email_verified_at",
+      )
+    )
+      this.db.exec("ALTER TABLE users ADD COLUMN email_verified_at INTEGER");
     try {
       this.tx(() => {
         const row = this.db
@@ -166,7 +179,12 @@ export class IdentityStore {
         "INVALID_PASSWORD",
         "Password must contain 12–256 characters.",
       );
-    const user = { id: randomUUID(), email, name: input.name.trim() },
+    const user = {
+        id: randomUUID(),
+        email,
+        name: input.name.trim(),
+        emailVerified: false,
+      },
       hash = passwordHash(input.password);
     return this.tx(() => {
       if (this.db.prepare("SELECT id FROM users WHERE email=?").get(email))
@@ -176,7 +194,9 @@ export class IdentityStore {
           "An account already exists. Sign in instead.",
         );
       this.db
-        .prepare("INSERT INTO users VALUES(?,?,?,?,?)")
+        .prepare(
+          "INSERT INTO users(id,name,email,password_hash,created_at) VALUES(?,?,?,?,?)",
+        )
         .run(user.id, user.name, email, hash, this.now());
       this.audit(user.id, null, "USER_REGISTERED");
       return { user, ...this.session(user.id) };
@@ -380,6 +400,73 @@ export class IdentityStore {
     if (!result.changes)
       throw new ApiError(404, "NOT_FOUND", "Invitation not found.");
     this.audit(userId, workspaceId, "INVITATION_REVOKED", { id });
+  }
+  requireVerifiedEmail(userId: string) {
+    const row = this.db
+      .prepare("SELECT email_verified_at FROM users WHERE id=?")
+      .get(userId) as any;
+    if (typeof row?.email_verified_at !== "number")
+      throw new ApiError(
+        403,
+        "EMAIL_VERIFICATION_REQUIRED",
+        "Verify your email before using workspace invitations.",
+      );
+  }
+  createEmailVerification(userId: string) {
+    return this.tx(() => {
+      const user = this.db
+        .prepare("SELECT email,email_verified_at FROM users WHERE id=?")
+        .get(userId) as any;
+      if (!user)
+        throw new ApiError(401, "UNAUTHORIZED", "Sign in to continue.");
+      if (typeof user.email_verified_at === "number")
+        throw new ApiError(
+          409,
+          "EMAIL_ALREADY_VERIFIED",
+          "Your email is already verified.",
+        );
+      const token = opaque(),
+        expiresAt = this.now() + 30 * 60000;
+      this.db
+        .prepare(
+          "DELETE FROM email_verifications WHERE user_id=? OR expires_at<=?",
+        )
+        .run(userId, this.now());
+      this.db
+        .prepare("INSERT INTO email_verifications VALUES(?,?,?,?,NULL)")
+        .run(digest(token), userId, user.email, expiresAt);
+      return { token, expiresAt, email: user.email };
+    });
+  }
+  invalidateEmailVerification(token: string) {
+    this.db
+      .prepare("DELETE FROM email_verifications WHERE hash=?")
+      .run(digest(token));
+  }
+  confirmEmail(userId: string, token: string) {
+    return this.tx(() => {
+      const row = this.db
+        .prepare(
+          "SELECT v.*,u.email AS current_email FROM email_verifications v JOIN users u ON u.id=v.user_id WHERE v.hash=? AND v.user_id=? AND v.expires_at>? AND v.used_at IS NULL",
+        )
+        .get(digest(token), userId, this.now()) as any;
+      if (!row || row.email !== row.current_email)
+        throw new ApiError(
+          400,
+          "INVALID_VERIFICATION",
+          "Verification link is invalid, expired or belongs to another account.",
+        );
+      this.db
+        .prepare("UPDATE email_verifications SET used_at=? WHERE hash=?")
+        .run(this.now(), digest(token));
+      this.db
+        .prepare("UPDATE users SET email_verified_at=? WHERE id=?")
+        .run(this.now(), userId);
+      this.audit(userId, null, "EMAIL_VERIFIED");
+      return cleanUser(
+        this.db.prepare("SELECT * FROM users WHERE id=?").get(userId),
+      );
+    });
   }
   changeMemberRole(
     actorId: string,

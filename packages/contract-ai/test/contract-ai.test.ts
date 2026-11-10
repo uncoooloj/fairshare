@@ -218,3 +218,36 @@ test("citation offsets use UTF16 on unicode text", () => {
     1,
   );
 });
+
+test("provider miscounted offsets can anchor only an exact unique source quote", async () => {
+  const r = await invoke({
+    ...draft,
+    facts: [{ ...draft.facts[0], citation: { ...quote, start: 0, end: 2 } }],
+  });
+  assert.equal(r.status, ExtractionStatus.REVIEW_REQUIRED);
+  assert.deepEqual(r.facts[0].citation, quote);
+});
+test("provider fabricated or ambiguous repeated quotes never get repaired", async () => {
+  const missing = await invoke({
+    ...draft,
+    facts: [
+      {
+        ...draft.facts[0],
+        citation: { ...quote, start: 0, end: 2, quote: "Maya receives 80%" },
+      },
+    ],
+  });
+  assert.equal(missing.reason, FallbackReason.INVALID_OUTPUT);
+  const repeated = { ...document, text: document.text + " " + document.text };
+  const r = await extractContract(repeated, {
+    ...config,
+    fetch: async () =>
+      response({
+        ...draft,
+        facts: [
+          { ...draft.facts[0], citation: { ...quote, start: 1, end: 2 } },
+        ],
+      }),
+  });
+  assert.equal(r.reason, FallbackReason.INVALID_OUTPUT);
+});

@@ -1,3 +1,4 @@
+import { decodePdfBase64, extractPdf, MAX_PDF_REQUEST_BYTES } from "./pdf.js";
 import { randomUUID } from "node:crypto";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import {
@@ -151,6 +152,16 @@ export function registerFairshareRoutes(
   options: { ai?: CloudflareConfig; extract?: typeof extractContract } = {},
 ) {
   const store = new AggregateStore(app.store.db, (fn) => app.store.tx(fn));
+  if (
+    !(
+      app.store.db
+        .prepare("PRAGMA table_info(fairshare_documents)")
+        .all() as any[]
+    ).some((c) => c.name === "provenance")
+  )
+    app.store.db.exec(
+      "ALTER TABLE fairshare_documents ADD COLUMN provenance TEXT",
+    );
   const base = "/api/workspaces/:workspaceId/collaborations";
   function access(req: FastifyRequest) {
     const p = params(req);
@@ -337,11 +348,60 @@ export function registerFairshareRoutes(
       sourceHash: sourceHash(text),
     };
   });
+  app.post(
+    `${base}/:collaborationId/documents/pdf`,
+    { bodyLimit: MAX_PDF_REQUEST_BYTES },
+    async (req, reply) => {
+      const { p, user } = access(req);
+      app.store.limit(`pdf:${user.id}`, 5);
+      const b = body(req);
+      if (b.mimeType !== "application/pdf")
+        throw new DomainError("INVALID_PDF", "Upload a PDF document.");
+      const bytes = decodePdfBase64(b.base64);
+      const parsed = await extractPdf(bytes);
+      // Recheck membership after asynchronous parsing; revoked sessions/members must not persist documents.
+      access(req);
+      const documentId = randomUUID();
+      const doc: SourceDocument = {
+        documentId,
+        revision: 1,
+        text: parsed.text,
+      };
+      const provenance = {
+        inputType: "PDF",
+        sourceFileSha256: parsed.sourceFileSha256,
+        pages: parsed.pages,
+        ...parsed.extraction,
+      };
+      app.store.db
+        .prepare(
+          "INSERT INTO fairshare_documents(workspace_id,collaboration_id,id,revision,source,hash,provenance) VALUES(?,?,?,?,?,?,?)",
+        )
+        .run(
+          p.workspaceId,
+          p.collaborationId,
+          documentId,
+          1,
+          JSON.stringify(doc),
+          sourceHash(doc.text),
+          JSON.stringify(provenance),
+        );
+      reply.code(201);
+      return {
+        documentId,
+        revision: 1,
+        sourceHash: sourceHash(doc.text),
+        provenance,
+        notice:
+          "Review the extracted text before asking AI to interpret it. PDF reading order may differ from the visual layout.",
+      };
+    },
+  );
   app.get(`${base}/:collaborationId/documents/:documentId`, async (req) => {
     const { p } = access(req);
     const row = app.store.db
       .prepare(
-        "SELECT source,hash,extraction FROM fairshare_documents WHERE workspace_id=? AND collaboration_id=? AND id=?",
+        "SELECT source,hash,extraction,provenance FROM fairshare_documents WHERE workspace_id=? AND collaboration_id=? AND id=?",
       )
       .get(p.workspaceId, p.collaborationId, p.documentId) as any;
     if (!row) throw new DomainError("NOT_FOUND", "Document not found");
@@ -349,6 +409,9 @@ export function registerFairshareRoutes(
       ...JSON.parse(row.source),
       sourceHash: row.hash,
       extraction: row.extraction ? JSON.parse(row.extraction) : null,
+      provenance: row.provenance
+        ? JSON.parse(row.provenance)
+        : { inputType: "TEXT", offsetUnit: "UTF16_CODE_UNITS" },
     };
   });
   app.post(

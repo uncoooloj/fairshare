@@ -1,3 +1,4 @@
+import { configuredMailTransport } from "./mail.js";
 import { PayPalSandbox } from "@fairshare/payments";
 import { buildApp } from "./app.js";
 if (process.env.PAYPAL_ENV === "live")
@@ -17,7 +18,10 @@ const provider =
           process.env.PAYPAL_PAYOUTS_ELIGIBILITY_CONFIRMED === "true",
       })
     : undefined;
+const mailTransport = configuredMailTransport();
 const app = await buildApp({
+  mailTransport,
+  publicAppOrigin: process.env.PUBLIC_APP_ORIGIN,
   demo: process.env.DEMO_MODE === "true",
   logger: false,
   payment: { provider, publicOrigin: process.env.PUBLIC_API_URL },

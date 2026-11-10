@@ -1,0 +1,178 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { decodePdfBase64, extractPdf, MAX_PDF_BYTES } from "../src/pdf.js";
+import { buildApp } from "../src/app.js";
+function pdf(text = "Maya receives 50 percent.", pages = 1): Buffer {
+  const objects: string[] = [];
+  objects.push("<< /Type /Catalog /Pages 2 0 R >>");
+  const ids = Array.from({ length: pages }, (_, i) => 4 + i * 2);
+  objects.push(
+    `<< /Type /Pages /Kids [${ids.map((id) => id + " 0 R").join(" ")}] /Count ${pages} >>`,
+  );
+  objects.push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
+  for (const id of ids) {
+    objects.push(
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1000000 792] /Resources << /Font << /F1 3 0 R >> >> /Contents ${id + 1} 0 R >>`,
+    );
+    const stream = text
+      ? `BT /F1 12 Tf 72 720 Td (${text.replace(/[\\()]/g, "\\$&")}) Tj ET`
+      : "";
+    objects.push(
+      `<< /Length ${Buffer.byteLength(stream)} >>\nstream\n${stream}\nendstream`,
+    );
+  }
+  let out = "%PDF-1.4\n";
+  const offsets = [0];
+  objects.forEach((obj, i) => {
+    offsets.push(Buffer.byteLength(out));
+    out += `${i + 1} 0 obj\n${obj}\nendobj\n`;
+  });
+  const xref = Buffer.byteLength(out);
+  out += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  for (const n of offsets.slice(1))
+    out += `${n.toString().padStart(10, "0")} 00000 n \n`;
+  out += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
+  return Buffer.from(out);
+}
+const has = (code: string) => (e: any) => e?.code === code;
+test("PDF extractor preserves deterministic source text, pages, offsets and file provenance", async () => {
+  const bytes = pdf("Maya receives 50 percent.", 2);
+  const r = await extractPdf(bytes);
+  assert.equal(r.pages.length, 2);
+  for (const page of r.pages)
+    assert.match(
+      r.text.slice(page.start, page.end),
+      /Maya receives 50 percent\./,
+    );
+  assert.equal(
+    r.sourceFileSha256,
+    createHash("sha256").update(bytes).digest("hex"),
+  );
+  assert.equal(r.extraction.ocr, false);
+  assert.equal(r.extraction.offsetUnit, "UTF16_CODE_UNITS");
+  assert.equal((await extractPdf(bytes)).text, r.text);
+});
+test("rejects oversize, wrong magic, malformed base64 and malformed PDF", async () => {
+  assert.throws(() => decodePdfBase64("not a pdf"), has("INVALID_PDF"));
+  assert.throws(
+    () => decodePdfBase64(Buffer.from("hello").toString("base64")),
+    has("INVALID_PDF"),
+  );
+  assert.throws(
+    () => decodePdfBase64("a".repeat(Math.ceil(MAX_PDF_BYTES / 3) * 4 + 4)),
+    has("PDF_TOO_LARGE"),
+  );
+  await assert.rejects(
+    extractPdf(Buffer.from("%PDF-broken confidential secret text")),
+    has("INVALID_PDF"),
+  );
+  await assert.rejects(
+    extractPdf(Buffer.alloc(MAX_PDF_BYTES + 1)),
+    has("PDF_TOO_LARGE"),
+  );
+});
+test("blank/scanned-only PDFs require manual text, long/page-heavy PDFs fail closed", async () => {
+  await assert.rejects(extractPdf(pdf("")), has("PDF_NO_EXTRACTABLE_TEXT"));
+  await assert.rejects(extractPdf(pdf("Text", 21)), has("PDF_PAGE_LIMIT"));
+  await assert.rejects(
+    extractPdf(pdf("a".repeat(40001))),
+    has("PDF_TEXT_LIMIT"),
+  );
+});
+test("parser subprocess bounded by timeout without leaking document text", async () => {
+  await assert.rejects(
+    extractPdf(pdf("private contract"), { timeoutMs: 1 }),
+    (e: any) =>
+      e.code === "PDF_EXTRACTION_TIMEOUT" &&
+      !e.message.includes("private contract"),
+  );
+});
+test("PDF route is authenticated, persists extracted source not binary, no automatic AI send", async () => {
+  const app = await buildApp({ dbPath: ":memory:" });
+  try {
+    const owner = app.store.register({
+      name: "Maya",
+      email: "maya@example.test",
+      password: "Correct-Horse-123",
+    });
+    const headers = { authorization: `Bearer ${owner.token}` };
+    const w = app.store.createWorkspace(owner.user.id, "Team");
+    const base = `/api/workspaces/${w.id}/collaborations`;
+    const c = (
+      await app.inject({
+        method: "POST",
+        url: base,
+        headers,
+        payload: { name: "Project" },
+      })
+    ).json();
+    const path = base + "/" + c.id + "/documents/pdf";
+    assert.equal(
+      (
+        await app.inject({
+          method: "POST",
+          url: path,
+          payload: {
+            mimeType: "application/pdf",
+            base64: pdf().toString("base64"),
+          },
+        })
+      ).statusCode,
+      401,
+    );
+    const res = await app.inject({
+      method: "POST",
+      url: path,
+      headers,
+      payload: {
+        mimeType: "application/pdf",
+        base64: pdf().toString("base64"),
+      },
+    });
+    assert.equal(res.statusCode, 201, res.body);
+    const row = (
+      await app.inject({
+        url: base + "/" + c.id + "/documents/" + res.json().documentId,
+        headers,
+      })
+    ).json();
+    assert.match(row.text, /Maya receives/);
+    assert.equal(row.provenance.inputType, "PDF");
+    assert.equal(row.provenance.ocr, false);
+    assert.equal(row.extraction, null);
+    assert.equal(
+      row.sourceHash,
+      createHash("sha256").update(row.text).digest("hex"),
+    );
+    assert.equal(
+      (
+        await app.inject({
+          method: "POST",
+          url: path,
+          headers,
+          payload: { mimeType: "text/html", base64: pdf().toString("base64") },
+        })
+      ).statusCode,
+      400,
+    );
+  } finally {
+    await app.close();
+  }
+});
+test("bounds concurrent parser processes and frees capacity after completion", async () => {
+  const a = extractPdf(pdf()),
+    b = extractPdf(pdf());
+  await assert.rejects(extractPdf(pdf()), has("PDF_BUSY"));
+  await Promise.all([a, b]);
+  assert.match((await extractPdf(pdf())).text, /Maya/);
+});
+test("password protected PDF requests local unlock rather than collecting password", async () => {
+  const { readFileSync } = await import("node:fs");
+  await assert.rejects(
+    extractPdf(
+      readFileSync(new URL("./fixtures/encrypted.pdf", import.meta.url)),
+    ),
+    has("PDF_PASSWORD_REQUIRED"),
+  );
+});
