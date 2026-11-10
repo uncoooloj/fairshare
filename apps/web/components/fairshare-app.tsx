@@ -209,23 +209,23 @@ export default function FairshareApp() {
     if (!id || id !== currentWorkspace.current) return;
     const request = workspaceRequest.current;
     try {
-    const [r, m] = await Promise.all([
-      api(`${workspaceBase(id)}/collaborations`),
-      api(`${workspaceBase(id)}/members`),
-    ]);
-    if (request !== workspaceRequest.current) return;
-    setAgreements(r.collaborations);
-    setMembers(m.members);
-    const all = await Promise.all(
-      r.collaborations.map(async (a: Agreement) => {
-        const p = await api(
-          `${workspaceBase(id)}/collaborations/${a.id}/payouts`,
-        );
-        return p.payouts.map((v: any) => ({ ...v, agreement: a }));
-      }),
-    );
-    if (request !== workspaceRequest.current) return;
-    setPayouts(all.flat());
+      const [r, m] = await Promise.all([
+        api(`${workspaceBase(id)}/collaborations`),
+        api(`${workspaceBase(id)}/members`),
+      ]);
+      if (request !== workspaceRequest.current) return;
+      setAgreements(r.collaborations);
+      setMembers(m.members);
+      const all = await Promise.all(
+        r.collaborations.map(async (a: Agreement) => {
+          const p = await api(
+            `${workspaceBase(id)}/collaborations/${a.id}/payouts`,
+          );
+          return p.payouts.map((v: any) => ({ ...v, agreement: a }));
+        }),
+      );
+      if (request !== workspaceRequest.current) return;
+      setPayouts(all.flat());
     } catch (error) {
       if (request !== workspaceRequest.current) return;
       throw error;
@@ -236,36 +236,36 @@ export default function FairshareApp() {
     const request = ++openRequest.current;
     const root = `${workspaceBase(a.workspaceId)}/collaborations/${a.id}`;
     try {
-    const [fresh, p] = await Promise.all([
-      api<Agreement>(root),
-      api(`${root}/payments`),
-    ]);
-    if (request !== openRequest.current) return;
-    setDraftDirty(false);
-    rulesDirty.current = false;
-    setTab(AgreementTab.Overview);
-    setSelected(fresh);
-    setPayments(p.payments);
-    setSection(Section.Agreements);
-    setCreating(false);
-    setPreview(null);
-    setBreakdown(null);
-    setEditing(false);
-    setSource("");
-    setDocumentId("");
-    setExtraction(null);
-    const v = fresh.value.versions.at(-1);
-    const doc = await recoverSourceDocument(
-      root,
-      v?.rules.source.documentId,
-      api,
-    );
-    if (request !== openRequest.current) return;
-    if (doc) {
-      setDocumentId(doc.documentId);
-      setSource(doc.text);
-      setExtraction(doc.extraction);
-    }
+      const [fresh, p] = await Promise.all([
+        api<Agreement>(root),
+        api(`${root}/payments`),
+      ]);
+      if (request !== openRequest.current) return;
+      setDraftDirty(false);
+      rulesDirty.current = false;
+      setTab(AgreementTab.Overview);
+      setSelected(fresh);
+      setPayments(p.payments);
+      setSection(Section.Agreements);
+      setCreating(false);
+      setPreview(null);
+      setBreakdown(null);
+      setEditing(false);
+      setSource("");
+      setDocumentId("");
+      setExtraction(null);
+      const v = fresh.value.versions.at(-1);
+      const doc = await recoverSourceDocument(
+        root,
+        v?.rules.source.documentId,
+        api,
+      );
+      if (request !== openRequest.current) return;
+      if (doc) {
+        setDocumentId(doc.documentId);
+        setSource(doc.text);
+        setExtraction(doc.extraction);
+      }
     } catch (error) {
       if (request !== openRequest.current) return;
       throw error;
@@ -289,7 +289,7 @@ export default function FairshareApp() {
           ...result.workspace,
         },
       ]);
-    commitWorkspace(result.workspace.id);
+      commitWorkspace(result.workspace.id);
       setAgreements((current) => [
         result.agreement,
         ...current.filter((item) => item.id !== result.agreement.id),
@@ -320,17 +320,33 @@ export default function FairshareApp() {
     const id = currentWorkspace.current;
     try {
       await loadWorkspace(id);
-      if (workspaceRequestId !== workspaceRequest.current || openRequestId !== openRequest.current) return;
+      if (
+        workspaceRequestId !== workspaceRequest.current ||
+        openRequestId !== openRequest.current
+      )
+        return;
       if (selected) {
         const a = await api<Agreement>(base);
-        if (workspaceRequestId !== workspaceRequest.current || openRequestId !== openRequest.current) return;
+        if (
+          workspaceRequestId !== workspaceRequest.current ||
+          openRequestId !== openRequest.current
+        )
+          return;
         setSelected(a);
         const p = await api(`${base}/payments`);
-        if (workspaceRequestId !== workspaceRequest.current || openRequestId !== openRequest.current) return;
+        if (
+          workspaceRequestId !== workspaceRequest.current ||
+          openRequestId !== openRequest.current
+        )
+          return;
         setPayments(p.payments);
       }
     } catch (error) {
-      if (workspaceRequestId !== workspaceRequest.current || openRequestId !== openRequest.current) return;
+      if (
+        workspaceRequestId !== workspaceRequest.current ||
+        openRequestId !== openRequest.current
+      )
+        return;
       throw error;
     }
   }
@@ -1286,7 +1302,11 @@ export default function FairshareApp() {
                                 amountCents,
                                 source,
                                 createRequestKey: () => crypto.randomUUID(),
-                                createPayment: (requestKey, cents, paymentSource) =>
+                                createPayment: (
+                                  requestKey,
+                                  cents,
+                                  paymentSource,
+                                ) =>
                                   api(`${base}/payments`, "POST", {
                                     requestKey,
                                     amountCents: cents,
