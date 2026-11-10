@@ -2,6 +2,8 @@
 
 Keep changes small, readable, and scoped to the behavior being changed. Follow the established TypeScript and React patterns before adding abstractions.
 
+Use descriptive names at API and persistence boundaries. Prefer explicit branches to nested ternaries. When extracting helpers, keep authorization checks, transaction boundaries, and provider-call order easy to follow.
+
 Format changed files with Prettier when practical:
 
 ```sh
