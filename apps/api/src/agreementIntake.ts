@@ -24,6 +24,20 @@ type Intake = {
   filename?: string;
   useLocalOcr?: boolean;
 };
+
+type IntakeReplayRow = {
+  fingerprint: string;
+  workspace_id: string;
+  agreement_id: string;
+  document_id: string;
+};
+
+type StoredSourceRow = {
+  source: string;
+  hash: string;
+  provenance: string;
+};
+
 function invalid(message: string): never {
   throw new ApiError(400, "INVALID_INPUT", message);
 }
@@ -127,7 +141,7 @@ export function registerAgreementIntake(
           .prepare(
             "SELECT * FROM agreement_intakes WHERE user_id=? AND request_id=?",
           )
-          .get(user.id, input.requestId) as any;
+          .get(user.id, input.requestId) as IntakeReplayRow | undefined;
         if (!prior) return null;
         if (prior.fingerprint !== fingerprint)
           throw new ApiError(
@@ -156,7 +170,7 @@ export function registerAgreementIntake(
             prior.workspace_id,
             prior.agreement_id,
             prior.document_id,
-          ) as any;
+          ) as StoredSourceRow;
         return {
           workspace,
           agreement,
@@ -225,7 +239,7 @@ export function registerAgreementIntake(
               Role.MEMBER,
             ]).workspace
           : app.store.createWorkspaceInsideTransaction(user.id, title);
-        const value = createCollaboration(
+        const collaboration = createCollaboration(
           {
             id: randomUUID(),
             name: title,
@@ -242,8 +256,8 @@ export function registerAgreementIntake(
         );
         db.prepare("INSERT INTO fairshare_collaborations VALUES(?,?,1,?)").run(
           workspace.id,
-          value.id,
-          JSON.stringify(value),
+          collaboration.id,
+          JSON.stringify(collaboration),
         );
         const document: SourceDocument = {
           documentId: randomUUID(),
@@ -256,7 +270,7 @@ export function registerAgreementIntake(
         VALUES(?,?,?,?,?,?,?,?,?)`,
         ).run(
           workspace.id,
-          value.id,
+          collaboration.id,
           document.documentId,
           1,
           JSON.stringify(document),
@@ -270,13 +284,13 @@ export function registerAgreementIntake(
           input.requestId,
           fingerprint,
           workspace.id,
-          value.id,
+          collaboration.id,
           document.documentId,
         );
         reply.code(201);
         return {
           workspace,
-          agreement: aggregates.read(workspace.id, value.id),
+          agreement: aggregates.read(workspace.id, collaboration.id),
           document: { ...document, sourceHash: hash, provenance },
         };
       });
