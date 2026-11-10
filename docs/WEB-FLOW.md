@@ -26,6 +26,8 @@ downloads, review discussion, opt-in local OCR, opt-in Cloudflare suggestions, c
 preview, activation, incoming-payment status and traceable allocation breakdown, sandbox checkout,
 fixed allocation dispatch and item reconciliation, read-only Community payout grid and account settings.
 
+Settings includes display preferences, a filtered read-only activity log, profile safeguards and workspace-scoped sandbox payout destinations. A saved destination is masked to collaborators and remains unverified; server payment credentials are managed by the deployment owner, not through the screen.
+
 ## Safety and product boundaries
 
 - Session token is stripped from auth responses and held in HttpOnly SameSite=Strict cookies.

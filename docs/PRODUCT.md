@@ -54,6 +54,12 @@ The hackathon implementation uses PayPal sandbox, not live money. PayPal authent
 
 The primary product object is an agreement. Documents, people, clarifications, rule versions and incoming revenue live inside its workspace. Backend collaboration aggregates may retain their internal names. A separate global Collaborators directory and Library are not needed for the first version. A future cross-collaboration search does not require creating empty menu items now.
 
+## Settings boundaries
+
+Display preferences change the presentation of USD amounts and dates; they do not convert money or change agreement inputs. Notification preferences filter the in-app feed and configured approval-request email. Security email remains outside those controls.
+
+Each collaborator manages their own workspace-scoped sandbox payout destination. A saved ID is not provider-verified, is not an OAuth connection, and does not expose server credentials. The activity log is read-only and only shows account activity and agreement events the person may access.
+
 ## Agreement workspace
 
 The workspace should answer: What did we agree? Who has approved? What money has arrived? What is each person owed? Has it been paid?
