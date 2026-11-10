@@ -11,12 +11,15 @@ const onboarding = readFileSync(
 );
 
 test("workspace selector only offers switching when there is a choice", () => {
-  assert.match(app, /workspaces.length > 1 \? <select/);
-  assert.match(app, /workspaces\[0\]\?\.name \|\| "No workspace yet"/);
+  assert.match(app, /workspaces\.length\s*>\s*1\s*\?\s*\(\s*<select/);
+  assert.match(app, /workspaces\[0\]\?\.name\s*\|\|\s*"No workspace yet"/);
 });
 test("account settings and invitations remain accessible before workspace creation", () => {
-  assert.match(app, /!workspace && section !== Section.Settings \? \(/);
-  assert.match(app, /<WorkspaceOnboarding section=\{section\}/);
+  assert.match(
+    app,
+    /!workspace\s*&&\s*section\s*!==\s*Section\.Settings\s*\?\s*\(/,
+  );
+  assert.match(app, /<WorkspaceOnboarding\s+section=\{section\}/);
 });
 test("successful creation selects server-returned workspace without a fallible second list request", () => {
   const creation = app.slice(
@@ -25,26 +28,36 @@ test("successful creation selects server-returned workspace without a fallible s
   );
   assert.match(
     creation,
-    /const result = await api\("workspaces", "POST", \{ name \}\)/,
+    /const result\s*=\s*await api\(\s*"workspaces",\s*"POST",\s*\{\s*name\s*\}\s*\)/,
   );
   assert.match(creation, /setWorkspace\(result.workspace.id\)/);
   assert.doesNotMatch(creation, /await loadWorkspaces/);
 });
 test("workspace creation locks synchronously until submission settles", () => {
-  assert.match(onboarding, /busy \|\| submitting.current \|\| !name.trim\(\)/);
   assert.match(
     onboarding,
-    /submitting.current = true;[\s\S]*await onCreate\(name.trim\(\)\);[\s\S]*finally \{ submitting.current = false; setCreating\(false\); \}/,
+    /busy\s*\|\|\s*submitting\.current\s*\|\|\s*!name\.trim\(\)/,
+  );
+  assert.match(
+    onboarding,
+    /submitting\.current\s*=\s*true;[\s\S]*await onCreate\(\s*name\.trim\(\)\s*\);[\s\S]*finally\s*\{\s*submitting\.current\s*=\s*false;\s*setCreating\(false\);\s*\}/,
   );
 });
 test("first-run sections explain their own empty state and prioritize real creation over examples", () => {
   assert.match(
     onboarding,
-    /section === "Agreements" \? "Your agreements start here"/,
+    /switch\s*\(\s*section\s*\)\s*\{[\s\S]*case\s+"Agreements"\s*:[\s\S]*title:\s*"Your agreements start here"/,
   );
-  assert.match(onboarding, /section === "Payouts" \? "No payouts yet"/);
+  assert.match(
+    onboarding,
+    /case\s+"Payouts"\s*:[\s\S]*title:\s*"No payouts yet"/,
+  );
+  assert.match(
+    onboarding,
+    /default\s*:[\s\S]*title:\s*"Create your workspace"/,
+  );
   assert.ok(
-    onboarding.indexOf("<form className={styles.setup}") <
+    onboarding.indexOf("<form") <
       onboarding.indexOf("<details className={styles.explainer}"),
   );
   assert.match(onboarding, /<summary>How Fairshare works<\/summary>/);
