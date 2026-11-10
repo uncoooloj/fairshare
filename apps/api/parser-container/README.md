@@ -25,7 +25,12 @@ The network-disabled command checks startup only; a production request enters th
 
 ## Deployment status
 
-Source service and real local HTTP DOCX/OCR tests are implemented. No Container has been created or deployed; the Docker image has not been built in this workspace because Docker is unavailable. Cloudflare Container account availability, paid-plan/billing approval, private binding/egress configuration and hosted synthetic smoke tests remain required. Do not describe these local tests as hosted validation.
+Source service and local HTTP DOCX/concurrency/missing-binding tests pass. OCR was
+skipped on this host because Poppler is unavailable. No Container has been created
+or deployed, and the Docker image has not been built. Cloudflare Container account
+availability, paid-plan/billing approval, private binding/egress configuration,
+image build and hosted synthetic smoke tests remain required. Do not describe
+these local tests as hosted validation.
 
 `apps/api/wrangler.jsonc` now declares the private Container DO binding. Its class
 disables outbound internet and sleeps after one idle minute. Manifest validation
