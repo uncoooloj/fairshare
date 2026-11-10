@@ -11,7 +11,10 @@ test("private invitation actions reject same-tick duplicate creation and release
     source,
     /if \(pending.current\) return;\s*pending.current = true;/,
   );
-  assert.match(source, /finally \{pending.current = false;setBusy\(false\);\}/);
+  assert.match(
+    source,
+    /finally\s*\{\s*pending\.current\s*=\s*false;\s*setBusy\(false\);/,
+  );
   assert.match(source, /Anyone holding this private link/);
   assert.match(source, /No email is sent/);
 });

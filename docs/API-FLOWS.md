@@ -6,7 +6,7 @@ Status: application integration, sandbox only. Actual provider payments require 
 
 1. `POST /api/auth/register` `{name,email,password}` → user + bearer token.
 2. `POST /api/workspaces` `{name}` → workspace. Use bearer token for all subsequent calls.
-3. `POST /api/workspaces/:id/invitations` `{email,role:"MEMBER"}` → one-use email-bound invite token, **manual share only**, no email sent.
+3. `POST /api/workspaces/:id/invitations` `{email,role:"MEMBER"}` → one-use email-bound invite. DEMO returns a synthetic link; SANDBOX requests configured mail delivery and never returns the secret token. Provider acceptance is not inbox-delivery evidence.
 4. Recipient signs up/signs in and `POST /api/invitations/accept` `{token}`.
 5. Organizer creates collaboration `POST /api/workspaces/:workspaceId/collaborations` `{name}`.
 6. Add accepted workspace participant `POST .../collaborations/:collaborationId/members` `{userId,expectedRevision}`. Display name comes from verified user profile, never caller-supplied impersonation. Add members before rules are drafted.
@@ -15,8 +15,12 @@ Every collaboration response is `{workspaceId,id,revision,value}`. Use latest `r
 
 ## Agreement setup
 
-- `POST .../:collaborationId/documents` `{text}` accepts up to40,000 characters; Text-based PDF input is also supported through `POST .../:collaborationId/documents/pdf`; see PDF-INGESTION.md for limits and provenance.
-- `GET .../:collaborationId/documents/:documentId` returns immutable source + any extraction result.
+- `POST /api/agreements/intake` creates the workspace (when `workspaceId` is omitted), organizer membership, agreement and immutable source in one transaction. Send a UUID `requestId` and exactly one source: `{requestId,text}` for 1–40,000 characters, or `{requestId,base64,mimeType,filename?,useLocalOcr?}` for PDF/DOCX. A text upload is accepted as text. PDF/DOCX parsing finishes before any durable write, so an unreadable or invalid source creates nothing.
+- Reuse the same `requestId` only to retry the unchanged intake: it returns the original workspace, agreement and document. Reusing it with changed input returns `409 IDEMPOTENCY_CONFLICT`; use a new UUID. Keys are scoped to the signed-in user. An optional `workspaceId` must be a workspace where that user is an owner or member; viewers cannot create the agreement there.
+- A new agreement and automatically created workspace start with a sanitized filename title. Without a filename, intake may use only the first nonempty pasted line when it is a short, safe heading that looks like an agreement, contract or memorandum; clauses, commands and unsafe text fall back to **Untitled agreement**. This local fallback does not use an AI provider. The organizer can rename the workspace (owner only) and agreement (an organizer, with the current agreement `expectedRevision`) afterward. Renaming never changes the source or terms.
+- `POST .../:collaborationId/documents` `{text}` accepts up to 40,000 characters. Text-layer PDF input uses `POST .../:collaborationId/documents/pdf`; DOCX input uses `POST .../:collaborationId/documents/docx`. See PDF-INGESTION.md and security/source-documents.md for bounds and retention.
+- `GET .../:collaborationId/documents/:documentId` returns immutable source + any extraction result. New PDF/DOCX records report whether an original attachment is available; authorized members can request `GET .../:documentId/original` for that attachment.
+- `GET .../:collaborationId/documents/capabilities` reports whether the host has enabled local OCR. A scanned PDF is processed only when the upload explicitly requests local OCR; see LOCAL-OCR.md.
 - `POST .../:collaborationId/documents/:documentId/extract` `{consentToCloudflare:true}` runs configured extraction and returns observations requiring human review. Missing provider configuration returns honest manual-required state. No version is activated or even created by AI.
 - Human review resolves names to participant IDs, exact cents/percentages, fee policy, advance recipient and whether the prior advance was verified. `POST .../:collaborationId/versions` `{expectedRevision,rules}` creates new draft. Source quotes must occur in stored document; human proposals must be explicitly labeled as such. Quote existence is not proof of semantic correctness.
 - `POST .../:collaborationId/versions/:versionId/preview` `{grossCents,feeCents}` returns preview only, no money movement. The complete allocation includes recoupment AND residual shares.
@@ -29,9 +33,16 @@ Every collaboration response is `{workspaceId,id,revision,value}`. Use latest `r
 
 Tenant and collaboration membership are checked on reads and writes. Workspace viewers cannot mutate. Access changes/removal are blocked while someone is a collaboration participant. Membership changes after drafting rules are intentionally not supported in MVP. Application owns recovery/reconciliation for those cases rather than rewriting liabilities.
 
-Immutable documents remain server-side. API does not fetch source URLs. Text-based PDF ingestion uses a bounded local parser; see PDF-INGESTION.md. Extraction requires explicit Cloudflare processing consent and is rate limited. Do not put personal/legal documents into public demo accounts.
+Immutable documents remain server-side. New PDF/DOCX originals are private authenticated attachments; text-only and legacy documents retain extracted text only. API does not fetch source URLs. PDF and DOCX ingestion use bounded local parsers; see PDF-INGESTION.md and security/source-documents.md. Extraction requires explicit Cloudflare processing consent and is rate limited. Do not put personal/legal documents into public demo accounts.
 
 SQLite uses serialized transactions, revision guards and a separate capture uniqueness table for payment integration. Do not invoke allocation directly from browser-reported amounts/statuses. Only verified provider data with actual fee accounting may be allocated.
+
+## Account settings
+
+- `GET` and `PUT /api/auth/preferences` read and replace the full display and notification preference object. USD remains the only supported currency; number and date formats affect display only and never convert amounts or change amount-entry syntax. Account-security email is outside these preferences.
+- In-app notifications are built from accessible agreement audit events and provider-confirmed sandbox payout states. A notification preference can hide those items from the in-app feed. Email preference currently gates configured approval-request email; other saved email choices do not establish delivery.
+- `GET /api/settings/activity` returns a read-only, paged activity log. It accepts optional `workspaceId`, `actorId`, `action`, `agreementId`, `days` (`0`, `7`, `30`, or `90`) and `offset`. A workspace query includes only agreements visible to the current user.
+- `GET /api/workspaces/:workspaceId/payment-accounts` shows masked payout-destination hints and their saved/unverified state. A member or owner can `PUT` or `DELETE .../payment-accounts/mine` for their own 13-character sandbox merchant ID. This stores a destination only: it is neither OAuth nor proof of account ownership, and does not alter payouts already submitted.
 
 ## Provider runtime configuration
 

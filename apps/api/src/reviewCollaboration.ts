@@ -7,6 +7,49 @@ import { ApiError, DataMode, Role } from "./identity.js";
 import { MemberRole } from "@fairshare/domain";
 import { MailKind, publicAppOrigin } from "./mail.js";
 import type { EmailOptions } from "./emailRoutes.js";
+
+interface ReviewRouteParams {
+  workspaceId: string;
+  collaborationId: string;
+  versionId: string;
+}
+
+interface CommentRow {
+  sequence: number;
+  id: string;
+  versionId: number;
+  ruleKey: string;
+  parentId: string | null;
+  authorId: string;
+  body: string;
+  createdAt: number;
+}
+
+interface ParentCommentRow {
+  parent_id: string | null;
+  rule_key: string;
+}
+
+interface ReminderRecipientRow {
+  email: string;
+  email_verified_at: number | null;
+}
+
+interface RecentReminderRow {
+  status: string;
+  createdAt: number;
+}
+
+interface CommentInput {
+  body: string;
+  ruleKey: string;
+  parentId?: string;
+}
+
+interface ReminderInput {
+  recipientId: string;
+}
+
 export function registerReviewCollaboration(
   app: FairshareApp,
   store: AggregateStore,
@@ -19,48 +62,126 @@ export function registerReviewCollaboration(
   const base =
     "/api/workspaces/:workspaceId/collaborations/:collaborationId/versions/:versionId";
   function access(req: FastifyRequest, write = false) {
-    const p = req.params as {
-      workspaceId: string;
-      collaborationId: string;
-      versionId: string;
-    };
+    const routeParams = req.params as ReviewRouteParams;
     const { user } = app.requireWorkspace(
       req,
-      p.workspaceId,
+      routeParams.workspaceId,
       write ? [Role.OWNER, Role.MEMBER] : undefined,
     );
-    const row = store.read(p.workspaceId, p.collaborationId);
-    const member = row.value.members.find((m) => m.userId === user.id);
-    if (!member)
+    const collaborationRow = store.read(
+      routeParams.workspaceId,
+      routeParams.collaborationId,
+    );
+    const collaborationMember = collaborationRow.value.members.find(
+      (member) => member.userId === user.id,
+    );
+    if (!collaborationMember)
       throw new ApiError(403, "FORBIDDEN", "Agreement participants only.");
-    if (!/^[1-9]\d{0,8}$/.test(p.versionId))
+    if (!/^[1-9]\d{0,8}$/.test(routeParams.versionId))
       throw new ApiError(400, "INVALID_VERSION", "Invalid version.");
-    const version = row.value.versions.find(
-      (v) => v.id === Number(p.versionId),
+    const version = collaborationRow.value.versions.find(
+      (version) => version.id === Number(routeParams.versionId),
     );
     if (!version) throw new ApiError(404, "NOT_FOUND", "Version not found.");
-    return { p, user, row, member, version };
+    return {
+      routeParams,
+      user,
+      collaborationRow,
+      collaborationMember,
+      version,
+    };
   }
-  const rules = ["AGREEMENT", "SPLIT", "FEES", "ADVANCE", "SOURCE"];
-  app.get(`${base}/comments`, async (req) => {
-    const { p } = access(req);
-    const query = req.query as { after?: string };
-    if (query.after !== undefined && !/^\d{1,15}$/.test(query.after))
-      throw new ApiError(400, "INVALID_CURSOR", "Invalid comment cursor.");
-    const rows = db
+  function listComments(
+    routeParams: ReviewRouteParams,
+    afterSequence: number,
+  ): CommentRow[] {
+    return db
       .prepare(
         `SELECT rowid AS sequence,id,version_id AS versionId,rule_key AS ruleKey,parent_id AS parentId,author_id AS authorId,body,created_at AS createdAt FROM agreement_comments WHERE workspace_id=? AND agreement_id=? AND version_id=? AND rowid>? ORDER BY rowid LIMIT 101`,
       )
       .all(
-        p.workspaceId,
-        p.collaborationId,
-        Number(p.versionId),
-        Number(query.after ?? 0),
-      ) as any[];
-    const page = rows.slice(0, 100);
+        routeParams.workspaceId,
+        routeParams.collaborationId,
+        Number(routeParams.versionId),
+        afterSequence,
+      ) as unknown as CommentRow[];
+  }
+  function findReplyParent(
+    parentId: string,
+    routeParams: ReviewRouteParams,
+    versionId: number,
+  ): ParentCommentRow | undefined {
+    return db
+      .prepare(
+        "SELECT parent_id,rule_key FROM agreement_comments WHERE id=? AND workspace_id=? AND agreement_id=? AND version_id=?",
+      )
+      .get(
+        parentId,
+        routeParams.workspaceId,
+        routeParams.collaborationId,
+        versionId,
+      ) as ParentCommentRow | undefined;
+  }
+  function findReminderRecipient(
+    recipientId: string,
+    workspaceId: string,
+  ): ReminderRecipientRow | undefined {
+    return db
+      .prepare(
+        "SELECT u.email,u.email_verified_at FROM users u JOIN memberships m ON m.user_id=u.id WHERE u.id=? AND m.workspace_id=? AND m.role IN (?,?)",
+      )
+      .get(recipientId, workspaceId, Role.OWNER, Role.MEMBER) as
+      | ReminderRecipientRow
+      | undefined;
+  }
+  function reserveReminder(
+    routeParams: ReviewRouteParams,
+    versionId: number,
+    recipientId: string,
+    actorId: string,
+    reminderId: string,
+    createdAt: number,
+  ): RecentReminderRow | undefined {
+    return app.store.tx(() => {
+      const existingReminder = db
+        .prepare(
+          "SELECT status,created_at AS createdAt FROM agreement_reminders WHERE workspace_id=? AND agreement_id=? AND version_id=? AND recipient_id=? AND created_at>? ORDER BY created_at DESC LIMIT 1",
+        )
+        .get(
+          routeParams.workspaceId,
+          routeParams.collaborationId,
+          versionId,
+          recipientId,
+          createdAt - 86400000,
+        ) as RecentReminderRow | undefined;
+      if (existingReminder) return existingReminder;
+      db.prepare(
+        "INSERT INTO agreement_reminders VALUES(?,?,?,?,?,?,?,NULL,?)",
+      ).run(
+        reminderId,
+        routeParams.workspaceId,
+        routeParams.collaborationId,
+        versionId,
+        recipientId,
+        actorId,
+        "SENDING",
+        createdAt,
+      );
+      return undefined;
+    });
+  }
+  const commentRuleKeys = ["AGREEMENT", "SPLIT", "FEES", "ADVANCE", "SOURCE"];
+  app.get(`${base}/comments`, async (req) => {
+    const { routeParams } = access(req);
+    const query = req.query as { after?: string };
+    if (query.after !== undefined && !/^\d{1,15}$/.test(query.after))
+      throw new ApiError(400, "INVALID_CURSOR", "Invalid comment cursor.");
+    const commentRows = listComments(routeParams, Number(query.after ?? 0));
+    const commentPage = commentRows.slice(0, 100);
     return {
-      comments: page,
-      nextCursor: rows.length > 100 ? String(page.at(-1).sequence) : null,
+      comments: commentPage,
+      nextCursor:
+        commentRows.length > 100 ? String(commentPage.at(-1)!.sequence) : null,
     };
   });
   app.post(
@@ -73,20 +194,16 @@ export function registerReviewCollaboration(
           required: ["body", "ruleKey"],
           properties: {
             body: { type: "string", minLength: 1, maxLength: 2000 },
-            ruleKey: { type: "string", enum: rules },
+            ruleKey: { type: "string", enum: commentRuleKeys },
             parentId: { type: "string", maxLength: 100 },
           },
         },
       },
     },
     async (req, reply) => {
-      const { p, user, version } = access(req, true);
-      const input = req.body as {
-        body: string;
-        ruleKey: string;
-        parentId?: string;
-      };
-      if (!input.body.trim())
+      const { routeParams, user, version } = access(req, true);
+      const commentInput = req.body as CommentInput;
+      if (!commentInput.body.trim())
         throw new ApiError(400, "INVALID_COMMENT", "Write a comment first.");
       if (version.status === "SUPERSEDED")
         throw new ApiError(
@@ -95,19 +212,18 @@ export function registerReviewCollaboration(
           "Comment on the current version instead.",
         );
       app.store.limit(`comments:${user.id}`, 30);
-      app.store.limit(`comments:agreement:${p.collaborationId}`, 200);
-      if (input.parentId) {
-        const parent = db
-          .prepare(
-            "SELECT parent_id,rule_key FROM agreement_comments WHERE id=? AND workspace_id=? AND agreement_id=? AND version_id=?",
-          )
-          .get(
-            input.parentId,
-            p.workspaceId,
-            p.collaborationId,
-            version.id,
-          ) as any;
-        if (!parent || parent.parent_id || parent.rule_key !== input.ruleKey)
+      app.store.limit(`comments:agreement:${routeParams.collaborationId}`, 200);
+      if (commentInput.parentId) {
+        const parentComment = findReplyParent(
+          commentInput.parentId,
+          routeParams,
+          version.id,
+        );
+        if (
+          !parentComment ||
+          parentComment.parent_id ||
+          parentComment.rule_key !== commentInput.ruleKey
+        )
           throw new ApiError(
             400,
             "INVALID_PARENT",
@@ -117,10 +233,10 @@ export function registerReviewCollaboration(
       const comment = {
         id: randomUUID(),
         versionId: version.id,
-        ruleKey: input.ruleKey,
-        parentId: input.parentId ?? null,
+        ruleKey: commentInput.ruleKey,
+        parentId: commentInput.parentId ?? null,
         authorId: user.id,
-        body: input.body.trim(),
+        body: commentInput.body.trim(),
         createdAt: app.store.now(),
       };
       app.store.tx(() => {
@@ -128,8 +244,8 @@ export function registerReviewCollaboration(
           "INSERT INTO agreement_comments VALUES(?,?,?,?,?,?,?,?,?)",
         ).run(
           comment.id,
-          p.workspaceId,
-          p.collaborationId,
+          routeParams.workspaceId,
+          routeParams.collaborationId,
           version.id,
           comment.ruleKey,
           comment.parentId,
@@ -137,18 +253,21 @@ export function registerReviewCollaboration(
           comment.body,
           comment.createdAt,
         );
-        app.store.audit(user.id, p.workspaceId, "AGREEMENT_COMMENT_ADDED", {
-          agreementId: p.collaborationId,
-          versionId: version.id,
-          commentId: comment.id,
-        });
+        app.store.audit(
+          user.id,
+          routeParams.workspaceId,
+          "AGREEMENT_COMMENT_ADDED",
+          {
+            agreementId: routeParams.collaborationId,
+            versionId: version.id,
+            commentId: comment.id,
+          },
+        );
       });
-      return reply
-        .code(201)
-        .send({
-          comment,
-          notice: "Discussion only. Comments do not change rules or approvals.",
-        });
+      return reply.code(201).send({
+        comment,
+        notice: "Discussion only. Comments do not change rules or approvals.",
+      });
     },
   );
   app.post(
@@ -166,9 +285,15 @@ export function registerReviewCollaboration(
       },
     },
     async (req) => {
-      const { p, user, row, member, version } = access(req, true);
-      const { recipientId } = req.body as { recipientId: string };
-      if (member.role !== MemberRole.ORGANIZER)
+      const {
+        routeParams,
+        user,
+        collaborationRow,
+        collaborationMember,
+        version,
+      } = access(req, true);
+      const { recipientId } = req.body as ReminderInput;
+      if (collaborationMember.role !== MemberRole.ORGANIZER)
         throw new ApiError(
           403,
           "FORBIDDEN",
@@ -176,7 +301,7 @@ export function registerReviewCollaboration(
         );
       if (
         version.status !== "AWAITING_APPROVAL" ||
-        row.value.versions.at(-1)?.id !== version.id
+        collaborationRow.value.versions.at(-1)?.id !== version.id
       )
         throw new ApiError(
           409,
@@ -185,7 +310,9 @@ export function registerReviewCollaboration(
         );
       if (
         recipientId === user.id ||
-        !row.value.members.some((m) => m.userId === recipientId) ||
+        !collaborationRow.value.members.some(
+          (member) => member.userId === recipientId,
+        ) ||
         Object.hasOwn(version.approvals, recipientId)
       )
         throw new ApiError(
@@ -205,51 +332,34 @@ export function registerReviewCollaboration(
           "Review reminder email is not configured for this environment. No email was sent.",
         );
       app.store.requireVerifiedEmail(user.id);
-      const recipient = db
-        .prepare(
-          "SELECT u.email,u.email_verified_at FROM users u JOIN memberships m ON m.user_id=u.id WHERE u.id=? AND m.workspace_id=? AND m.role IN (?,?)",
-        )
-        .get(recipientId, p.workspaceId, Role.OWNER, Role.MEMBER) as any;
-      if (!recipient || typeof recipient.email_verified_at !== "number")
+      const reminderRecipient = findReminderRecipient(
+        recipientId,
+        routeParams.workspaceId,
+      );
+      if (
+        !reminderRecipient ||
+        typeof reminderRecipient.email_verified_at !== "number"
+      )
         throw new ApiError(
           409,
           "RECIPIENT_UNVERIFIED",
           "The participant must verify their email first.",
         );
-      const link = publicAppOrigin(options.publicAppOrigin) + "/";
-      const id = randomUUID(),
+      const reminderLink = publicAppOrigin(options.publicAppOrigin) + "/";
+      const reminderId = randomUUID(),
         createdAt = app.store.now();
       app.store.limit(`reminders:${user.id}`, 10, 3600000);
-      const previous = app.store.tx(() => {
-        const existing = db
-          .prepare(
-            "SELECT status,created_at AS createdAt FROM agreement_reminders WHERE workspace_id=? AND agreement_id=? AND version_id=? AND recipient_id=? AND created_at>? ORDER BY created_at DESC LIMIT 1",
-          )
-          .get(
-            p.workspaceId,
-            p.collaborationId,
-            version.id,
-            recipientId,
-            createdAt - 86400000,
-          ) as any;
-        if (existing) return existing;
-        db.prepare(
-          "INSERT INTO agreement_reminders VALUES(?,?,?,?,?,?,?,NULL,?)",
-        ).run(
-          id,
-          p.workspaceId,
-          p.collaborationId,
-          version.id,
-          recipientId,
-          user.id,
-          "SENDING",
-          createdAt,
-        );
-        return null;
-      });
-      if (previous)
+      const existingReminder = reserveReminder(
+        routeParams,
+        version.id,
+        recipientId,
+        user.id,
+        reminderId,
+        createdAt,
+      );
+      if (existingReminder)
         return {
-          ...previous,
+          ...existingReminder,
           repeated: true,
           notice:
             "A reminder was already attempted for this person and version in the last 24 hours. No additional email was sent.",
@@ -257,28 +367,28 @@ export function registerReviewCollaboration(
       try {
         const receipt = await options.mailTransport.send({
           kind: MailKind.AGREEMENT_REVIEW,
-          to: recipient.email,
-          link,
+          to: reminderRecipient.email,
+          link: reminderLink,
           expiresAt: createdAt + 86400000,
-          operationId: id,
+          operationId: reminderId,
         });
         if (!receipt.providerId) throw new Error("Missing provider receipt");
         db.prepare(
           "UPDATE agreement_reminders SET status=?,provider_id=? WHERE id=?",
-        ).run("PROVIDER_ACCEPTED", receipt.providerId, id);
+        ).run("PROVIDER_ACCEPTED", receipt.providerId, reminderId);
         app.store.audit(
           user.id,
-          p.workspaceId,
+          routeParams.workspaceId,
           "AGREEMENT_REMINDER_REQUESTED",
           {
-            agreementId: p.collaborationId,
+            agreementId: routeParams.collaborationId,
             versionId: version.id,
             recipientId,
-            reminderId: id,
+            reminderId,
           },
         );
         return {
-          id,
+          id: reminderId,
           status: "PROVIDER_ACCEPTED",
           createdAt,
           notice:
@@ -287,7 +397,7 @@ export function registerReviewCollaboration(
       } catch {
         db.prepare("UPDATE agreement_reminders SET status=? WHERE id=?").run(
           "UNCONFIRMED",
-          id,
+          reminderId,
         );
         throw new ApiError(
           503,
