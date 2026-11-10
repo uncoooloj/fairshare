@@ -925,3 +925,102 @@ test("scheduler refuses DEMO or missing provider configuration", async () => {
     /SANDBOX/,
   );
 });
+
+test("source metadata persists without inventing payment confirmation and is immutable per request key", async () => {
+  const s = await setup();
+  try {
+    const request = {
+      amountCents: 10000,
+      requestKey: "source-other",
+      source: { type: "OTHER", name: " Bandcamp " },
+    };
+    const created = await s.post("/payments", request);
+    assert.equal(created.statusCode, 200, created.body);
+    assert.equal(created.json().source_type, "OTHER");
+    assert.equal(created.json().source_name, "Bandcamp");
+    assert.equal(created.json().status, "AWAITING_BUYER");
+    assert.equal(s.agg.read(s.w.id, "collab").value.revenue.length, 0);
+    assert.equal(
+      (
+        await s.post("/payments", {
+          ...request,
+          source: { type: "OTHER", name: "Bandcamp" },
+        })
+      ).json().id,
+      created.json().id,
+    );
+    assert.equal(s.counts().writes, 1);
+    assert.equal(
+      (
+        await s.post("/payments", {
+          ...request,
+          source: { type: "OTHER", name: "Changed" },
+        })
+      ).json().error.code,
+      "IDEMPOTENCY_CONFLICT",
+    );
+    assert.equal(
+      (
+        await s.post("/payments", {
+          amountCents: 10000,
+          requestKey: "source-other",
+        })
+      ).json().error.code,
+      "IDEMPOTENCY_CONFLICT",
+    );
+    const listing = await s.app.inject({
+      url: s.base + "/payments",
+      headers: auth(s.owner.token),
+    });
+    assert.equal(listing.json().payments[0].source_name, "Bandcamp");
+    assert.equal(
+      (
+        await s.app.inject({
+          url: s.base + "/payments",
+          headers: auth(s.other.token),
+        })
+      ).statusCode,
+      404,
+    );
+    assert.equal(s.counts().writes, 1);
+    assert.equal(s.counts().captures, 0);
+  } finally {
+    await s.app.close();
+  }
+});
+test("invalid source metadata cannot issue a provider write or assert financial status", async () => {
+  const s = await setup();
+  try {
+    for (const source of [
+      null,
+      [],
+      {},
+      "Other",
+      { type: "STRIPE" },
+      { type: "OTHER", name: "" },
+      { type: "OTHER", name: "  " },
+      { type: "OTHER", name: "a".repeat(101) },
+      { type: "OTHER", name: "bad\nname" },
+      { type: "PAYPAL", name: "Bank" },
+      { type: "OTHER", name: "Bandcamp", status: "COMPLETED" },
+    ]) {
+      const r = await s.post("/payments", {
+        amountCents: 10000,
+        requestKey: "invalid-source",
+        source,
+      });
+      assert.equal(r.statusCode, 400, r.body);
+      assert.equal(r.json().error.code, "INVALID_PAYMENT_SOURCE");
+    }
+    assert.equal(s.counts().writes, 0);
+    assert.equal(s.agg.read(s.w.id, "collab").value.revenue.length, 0);
+    const legacy = await s.post("/payments", {
+      amountCents: 10000,
+      requestKey: "legacy-source",
+    });
+    assert.equal(legacy.json().source_type, "PAYPAL");
+    assert.equal(legacy.json().source_name, "PayPal");
+  } finally {
+    await s.app.close();
+  }
+});

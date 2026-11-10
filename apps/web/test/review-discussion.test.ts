@@ -4,6 +4,8 @@ import {
   canRemind,
   commentPayload,
   reminderNotice,
+  discussionVersion,
+  discussionThreads,
   type ReviewComment,
 } from "../lib/review-discussion";
 import type { Agreement, Version } from "../lib/model";
@@ -88,4 +90,46 @@ test("provider receipt never claims inbox delivery; repeats and uncertain result
   assert.match(reminderNotice({ status: "SENDING" }), /Do not resend/);
   assert.match(reminderNotice({ status: "UNCONFIRMED" }), /24 hours/);
   assert.match(reminderNotice({ status: "unexpected" }), /unconfirmed/);
+});
+
+test("historical discussion chooses exact version, not current rules; missing ID falls back safely", () => {
+  const amended = {
+    ...agreement,
+    value: {
+      ...agreement.value,
+      versions: [version, { ...version, id: 2, status: "DRAFT" }],
+    },
+  };
+  assert.equal(discussionVersion(amended, 1)?.id, 1);
+  assert.equal(discussionVersion(amended, 2)?.id, 2);
+  assert.equal(discussionVersion(amended, 9)?.id, 2);
+  assert.equal(
+    discussionVersion(
+      { ...agreement, value: { ...agreement.value, versions: [] } },
+      1,
+    ),
+    undefined,
+  );
+});
+test("topic filter preserves complete scoped threads and rejects mismatched replies", () => {
+  const root = {
+    id: "r",
+    parentId: null,
+    versionId: 1,
+    ruleKey: "SOURCE",
+  } as ReviewComment;
+  const reply = { ...root, id: "reply", parentId: "r" };
+  const split = { ...root, id: "s", ruleKey: "SPLIT" } as ReviewComment;
+  const rows = [
+    root,
+    reply,
+    split,
+    { ...reply, id: "wrong-rule", ruleKey: "FEES" } as ReviewComment,
+    { ...reply, id: "wrong-version", versionId: 2 },
+  ];
+  assert.deepEqual(discussionThreads(rows, "SOURCE"), [
+    { root, replies: [reply] },
+  ]);
+  assert.equal(discussionThreads(rows, "ALL").length, 2);
+  assert.deepEqual(discussionThreads(rows, "FEES"), []);
 });
