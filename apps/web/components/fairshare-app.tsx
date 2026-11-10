@@ -186,7 +186,7 @@ export default function FairshareApp() {
     setWorkspace(result.workspace.id);
     setSection(Section.Agreements);
     setFlowToken("");
-    history.replaceState(null, "", "/");
+    history.replaceState(null, "", "/app");
     setNotice(
       "Workspace joined. The organizer must add you to the agreement before you can review and approve its rules.",
     );
@@ -326,6 +326,13 @@ export default function FairshareApp() {
     ]).finally(() => setReady(true));
   }, []);
   useEffect(() => {
+    // Invitation and verification routes retain their fragments through sign-in.
+    // Only ordinary app/auth entry points change URL with the session state.
+    if (ready && ["/app", "/login"].includes(location.pathname)) {
+      history.replaceState(null, "", user ? "/app" : "/login");
+    }
+  }, [ready, user]);
+  useEffect(() => {
     if (user)
       run(async () => {
         await loadWorkspaces();
@@ -346,7 +353,7 @@ export default function FairshareApp() {
   function dismissAccessFlow() {
     setFlowToken("");
     setError("");
-    history.replaceState(null, "", "/");
+    history.replaceState(null, "", "/app");
   }
   async function mutate(action: string, extra: Record<string, unknown> = {}) {
     try {
@@ -504,7 +511,7 @@ export default function FairshareApp() {
                   await acceptInvitation(flowToken);
                 }
                 setFlowToken("");
-                history.replaceState(null, "", "/");
+                history.replaceState(null, "", "/app");
               })
             }
           />
