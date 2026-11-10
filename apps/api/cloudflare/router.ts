@@ -14,7 +14,7 @@ const allowedSchemaKeys = new Set([
   "pattern",
   "anyOf",
 ]);
-function checkSchema(schema: any): void {
+function assertSupportedSchema(schema: any): void {
   if (
     schema.type !== undefined &&
     !["object", "string", "boolean", "null"].includes(schema.type)
@@ -24,11 +24,14 @@ function checkSchema(schema: any): void {
     if (!allowedSchemaKeys.has(key))
       throw new Error(`Unsupported route schema keyword: ${key}`);
   for (const child of Object.values(schema.properties ?? {}))
-    checkSchema(child);
-  for (const child of schema.anyOf ?? []) checkSchema(child);
+    assertSupportedSchema(child);
+  for (const child of schema.anyOf ?? []) assertSupportedSchema(child);
 }
-function valid(schema: any, value: any): boolean {
-  if (schema.anyOf && !schema.anyOf.some((child: any) => valid(child, value)))
+function matchesSchema(schema: any, value: any): boolean {
+  if (
+    schema.anyOf &&
+    !schema.anyOf.some((child: any) => matchesSchema(child, value))
+  )
     return false;
   if (schema.enum && !schema.enum.includes(value)) return false;
   if (schema.type === "null" && value !== null) return false;
@@ -54,7 +57,7 @@ function valid(schema: any, value: any): boolean {
     for (const key of Object.keys(value)) {
       if (!Object.hasOwn(properties, key)) {
         if (schema.additionalProperties === false) return false;
-      } else if (!valid(properties[key], value[key])) return false;
+      } else if (!matchesSchema(properties[key], value[key])) return false;
     }
   }
   return true;
@@ -178,7 +181,7 @@ export default function workerRouter(defaults: { bodyLimit: number }) {
           }
           if (
             route.options.schema?.body &&
-            !valid(route.options.schema.body, req.body)
+            !matchesSchema(route.options.schema.body, req.body)
           )
             throw Object.assign(new Error("Invalid body"), { statusCode: 400 });
           const value = await route.handler(req, reply);
@@ -215,7 +218,7 @@ export default function workerRouter(defaults: { bodyLimit: number }) {
         handler = options;
         options = {};
       }
-      if (options.schema?.body) checkSchema(options.schema.body);
+      if (options.schema?.body) assertSupportedSchema(options.schema.body);
       if (
         routes.some((route) => route.method === method && route.path === path)
       )

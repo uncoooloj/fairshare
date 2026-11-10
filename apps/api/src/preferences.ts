@@ -11,6 +11,44 @@ export const notificationKinds = [
   "exceptions",
 ] as const;
 type NotificationKind = (typeof notificationKinds)[number];
+
+function notificationKindForAuditEvent(
+  type: string,
+): NotificationKind | undefined {
+  switch (type) {
+    case "SENT_FOR_REVIEW":
+      return "approvalRequests";
+    case "VERSION_PROPOSED":
+      return "versionChanges";
+    case "PAYMENT_HELD":
+      return "exceptions";
+  }
+}
+
+function notificationMessage(kind: NotificationKind) {
+  switch (kind) {
+    case "approvalRequests":
+      return "An agreement version was sent for approval.";
+    case "versionChanges":
+      return "A new agreement version is available.";
+    case "exceptions":
+      return "A payment was put on hold.";
+    case "payoutCompleted":
+      return "PayPal confirms your sandbox payout succeeded.";
+    case "payoutFailed":
+      return "";
+  }
+}
+
+function notificationKindForPayoutStatus(
+  status: string,
+): NotificationKind | null {
+  if (status === "SUCCESS") return "payoutCompleted";
+  if (["FAILED", "BLOCKED", "DENIED", "RETURNED", "REFUNDED"].includes(status))
+    return "payoutFailed";
+  return null;
+}
+
 export interface Preferences {
   defaultCurrency: "USD";
   numberFormat: "en-US" | "de-DE" | "fr-FR";
@@ -116,14 +154,7 @@ export function registerPreferences(app: FairshareApp) {
       if (!c.members.some((member) => member.userId === user.id)) continue;
       agreements.set(c.id, c);
       for (const event of c.audit) {
-        const kind: NotificationKind | undefined =
-          event.type === "SENT_FOR_REVIEW"
-            ? "approvalRequests"
-            : event.type === "VERSION_PROPOSED"
-              ? "versionChanges"
-              : event.type === "PAYMENT_HELD"
-                ? "exceptions"
-                : undefined;
+        const kind = notificationKindForAuditEvent(event.type);
         if (!kind || !preferences.notifications[kind].inApp) continue;
         // Draft versions are private to the organizer. Notify version changes only once sent.
         const version = c.versions.find(
@@ -134,19 +165,13 @@ export function registerPreferences(app: FairshareApp) {
           (!version || version.status === "DRAFT")
         )
           continue;
-        const message =
-          kind === "approvalRequests"
-            ? "An agreement version was sent for approval."
-            : kind === "versionChanges"
-              ? "A new agreement version is available."
-              : "A payment was put on hold.";
         events.push({
           id: `${c.id}:${event.sequence}`,
           kind,
           agreementId: c.id,
           agreementName: c.name,
           at: event.at,
-          message,
+          message: notificationMessage(kind),
         });
       }
     }
@@ -161,14 +186,7 @@ export function registerPreferences(app: FairshareApp) {
     }[];
     for (const payout of payouts) {
       const agreement = agreements.get(payout.collaboration_id);
-      const kind =
-        payout.status === "SUCCESS"
-          ? "payoutCompleted"
-          : ["FAILED", "BLOCKED", "DENIED", "RETURNED", "REFUNDED"].includes(
-                payout.status,
-              )
-            ? "payoutFailed"
-            : null;
+      const kind = notificationKindForPayoutStatus(payout.status);
       if (!agreement || !kind || !preferences.notifications[kind].inApp)
         continue;
       events.push({
@@ -178,9 +196,9 @@ export function registerPreferences(app: FairshareApp) {
         agreementName: agreement.name,
         at: null,
         message:
-          kind === "payoutCompleted"
-            ? "PayPal confirms your sandbox payout succeeded."
-            : `Your sandbox payout needs attention (${payout.status.toLowerCase()}).`,
+          kind === "payoutFailed"
+            ? `Your sandbox payout needs attention (${payout.status.toLowerCase()}).`
+            : notificationMessage(kind),
       });
     }
     return {

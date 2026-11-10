@@ -1,0 +1,10 @@
+{
+  "overrides": [
+    {
+      "files": "apps/api/wrangler.jsonc",
+      "options": {
+        "trailingComma": "none"
+      }
+    }
+  ]
+}

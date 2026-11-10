@@ -119,8 +119,10 @@ function prepareNativeTool(): Promise<string> {
 }
 async function nativePages(source: string, timeout: number): Promise<string[]> {
   const binary = await prepareNativeTool();
-  const raw = JSON.parse(await command(binary, [source], timeout, 320200));
-  const errors: Record<string, string> = {
+  const response = JSON.parse(
+    await command(binary, [source], timeout, 320200),
+  );
+  const messages: Record<string, string> = {
     INVALID_PDF: "Choose a readable PDF no larger than 5 MiB.",
     OCR_PAGE_LIMIT:
       "Local OCR supports at most 5 pages. Split the document or paste its text.",
@@ -130,19 +132,20 @@ async function nativePages(source: string, timeout: number): Promise<string[]> {
     OCR_FAILED:
       "The scan could not be read safely. Upload a clearer scan or paste its text.",
   };
-  if (typeof raw.error === "string")
+
+  if (typeof response.error === "string")
     throw fail(
-      raw.error in errors ? raw.error : "OCR_FAILED",
-      errors[raw.error] ?? errors.OCR_FAILED,
+      response.error in messages ? response.error : "OCR_FAILED",
+      messages[response.error] ?? messages.OCR_FAILED,
     );
   if (
-    !Array.isArray(raw.pages) ||
-    raw.pages.length < 1 ||
-    raw.pages.length > limits.pages ||
-    raw.pages.some((value: unknown) => typeof value !== "string")
+    !Array.isArray(response.pages) ||
+    response.pages.length < 1 ||
+    response.pages.length > limits.pages ||
+    response.pages.some((page: unknown) => typeof page !== "string")
   )
-    throw fail("OCR_FAILED", errors.OCR_FAILED);
-  return raw.pages;
+    throw fail("OCR_FAILED", messages.OCR_FAILED);
+  return response.pages;
 }
 export async function extractPdfOcr(
   bytes: Buffer,
@@ -159,28 +162,28 @@ export async function extractPdfOcr(
       "Local OCR is processing another document. Try again shortly.",
     );
   active++;
-  let directory: string | undefined;
+  let sourceDirectory: string | undefined;
   const deadline = Date.now() + (options.timeoutMs ?? 60000);
-  const remaining = () => {
-    const time = deadline - Date.now();
-    if (time < 1)
+  const remainingTimeout = () => {
+    const remainingMs = deadline - Date.now();
+    if (remainingMs < 1)
       throw fail("OCR_TIMEOUT", "Local OCR timed out. Use a shorter document.");
-    return Math.min(time, 15000);
+    return Math.min(remainingMs, 15000);
   };
   try {
-    directory = await mkdtemp(join(tmpdir(), "fairshare-ocr-"));
-    const source = join(directory, "source.pdf");
+    sourceDirectory = await mkdtemp(join(tmpdir(), "fairshare-ocr-"));
+    const source = join(sourceDirectory, "source.pdf");
     await writeFile(source, bytes, { mode: 0o600 });
     if (process.platform === "darwin") {
       // Prepare before computing the extraction timeout; startup normally warms this.
       await prepareNativeTool();
-      const extracted = await nativePages(source, remaining());
+      const pageTexts = await nativePages(source, remainingTimeout());
       let text = "";
       const pages: Array<{ page: number; start: number; end: number }> = [];
-      for (const [index, result] of extracted.entries()) {
+      for (const [index, pageText] of pageTexts.entries()) {
         if (text) text += "\n\n";
         const start = text.length;
-        text += result.trim();
+        text += pageText.trim();
         if (text.length > limits.characters)
           throw fail(
             "OCR_TEXT_LIMIT",
@@ -207,22 +210,26 @@ export async function extractPdfOcr(
         },
       };
     }
-    const info = await command("pdfinfo", [source], remaining());
-    const count = Number(/^Pages:\s+(\d+)\s*$/m.exec(info)?.[1]);
-    if (!Number.isSafeInteger(count) || count < 1 || count > limits.pages)
+    const pdfInfo = await command("pdfinfo", [source], remainingTimeout());
+    const pageCount = Number(/^Pages:\s+(\d+)\s*$/m.exec(pdfInfo)?.[1]);
+    if (
+      !Number.isSafeInteger(pageCount) ||
+      pageCount < 1 ||
+      pageCount > limits.pages
+    )
       throw fail(
         "OCR_PAGE_LIMIT",
         "Local OCR supports at most 5 pages. Split the document or paste its text.",
       );
-    if (/^Encrypted:\s+yes/m.test(info))
+    if (/^Encrypted:\s+yes/m.test(pdfInfo))
       throw fail(
         "OCR_ENCRYPTED",
         "Remove PDF password protection locally before OCR.",
       );
     let text = "";
     const pages: Array<{ page: number; start: number; end: number }> = [];
-    for (let page = 1; page <= count; page++) {
-      const prefix = join(directory, `page-${page}`);
+    for (let page = 1; page <= pageCount; page++) {
+      const imagePrefix = join(sourceDirectory, `page-${page}`);
       await command(
         "pdftoppm",
         [
@@ -235,35 +242,35 @@ export async function extractPdfOcr(
           "2000",
           "-png",
           source,
-          prefix,
+          imagePrefix,
         ],
-        remaining(),
+        remainingTimeout(),
         1000,
       );
-      const image = prefix + ".png";
-      if ((await stat(image)).size > limits.imageBytes)
+      const imagePath = imagePrefix + ".png";
+      if ((await stat(imagePath)).size > limits.imageBytes)
         throw fail(
           "OCR_IMAGE_LIMIT",
           "The scanned page is too large to process.",
         );
-      const result = (
+      const pageText = (
         await command(
           "tesseract",
-          [image, "stdout", "-l", "eng", "--psm", "3"],
-          remaining(),
+          [imagePath, "stdout", "-l", "eng", "--psm", "3"],
+          remainingTimeout(),
           160100,
         )
       ).trim();
-      if (text.length + result.length + 2 > limits.characters)
+      if (text.length + pageText.length + 2 > limits.characters)
         throw fail(
           "OCR_TEXT_LIMIT",
           "OCR text exceeds 40,000 characters. Use a shorter document.",
         );
       if (text) text += "\n\n";
       const start = text.length;
-      text += result;
+      text += pageText;
       pages.push({ page, start, end: text.length });
-      await rm(image, { force: true });
+      await rm(imagePath, { force: true });
     }
     if (!text.trim())
       throw fail(
@@ -285,7 +292,8 @@ export async function extractPdfOcr(
     };
   } finally {
     try {
-      if (directory) await rm(directory, { recursive: true, force: true });
+      if (sourceDirectory)
+        await rm(sourceDirectory, { recursive: true, force: true });
     } finally {
       active--;
     }

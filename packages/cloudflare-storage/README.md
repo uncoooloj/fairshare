@@ -1,8 +1,9 @@
 # Cloudflare SQL prototype
 
-**Not deployed.** The optional API Worker now injects this adapter into identity,
-agreement and payment handlers; see `apps/api/cloudflare/README.md` for verified
-local runtime coverage and remaining deployment gates.
+**Not deployed.** The optional API Worker injects this adapter into identity,
+agreement and payment handlers within one SQLite Durable Object; see
+`apps/api/cloudflare/README.md` for verified local runtime coverage and remaining
+deployment gates.
 
 `DurableSqlDatabase` provides the SQL subset currently used by the API and maps
 atomic callbacks to `storage.transactionSync`. It deliberately does not emulate
@@ -18,7 +19,9 @@ promise check catches mistakes but cannot cancel a previously started async task
 - `node packages/cloudflare-storage/test/workerd-smoke.mjs`: actual local workerd
   SQLite Durable Object rollback/uniqueness/affected-row checks. Requires the
   Cloudflare web toolchain's Miniflare 5 (via Wrangler); no account or deployment.
-- Typecheck passes. Neither check proves production durability or full API behavior.
+- The workerd smoke passes. Neither check proves production durability, hosted
+  behavior, real provider behavior, backup/migration recovery, alarm recovery or
+  full API behavior.
 
 ## Deployment boundary
 
