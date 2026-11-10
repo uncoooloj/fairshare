@@ -31,6 +31,7 @@ import {
   type Rules,
   type Revenue,
 } from "../lib/model";
+import { NewAgreement, AgreementSetup } from "./agreement-setup";
 import { WorkspaceOnboarding, AccessPrompt } from "./designer-auth";
 import { PaymentRecovery } from "./payment-recovery";
 import { recoverSourceDocument } from "../lib/source-recovery";
@@ -59,7 +60,6 @@ export default function FairshareApp() {
     [payouts, setPayouts] = useState<any[]>([]),
     [mode, setMode] = useState("Unavailable");
   const [creating, setCreating] = useState(false),
-    [search, setSearch] = useState(""),
     [source, setSource] = useState(""),
     [documentId, setDocumentId] = useState(""),
     [extraction, setExtraction] = useState<any>(null),
@@ -396,12 +396,8 @@ export default function FairshareApp() {
                   }
                 />
                 {creating ? (
-                  <div className="narrow">
-                    <SimpleForm
-                      label="Agreement name"
-                      button="Create agreement"
-                      busy={busy}
-                      onSubmit={(name) =>
+                  <NewAgreement busy={busy} onCancel={() => setCreating(false)}
+                      onCreate={(name) =>
                         run(async () => {
                           const a = await api<Agreement>(
                             `${workspaceBase(workspace)}/collaborations`,
@@ -414,28 +410,8 @@ export default function FairshareApp() {
                         })
                       }
                     />
-                    <Button variant="quiet" onClick={() => setCreating(false)}>
-                      Cancel
-                    </Button>
-                  </div>
                 ) : (
-                  <>
-                    <input
-                      className="search"
-                      aria-label="Search agreements"
-                      placeholder="Search agreements…"
-                      value={search}
-                      onChange={(e) => setSearch(e.target.value)}
-                    />
-                    <AgreementList
-                      agreements={agreements.filter((a) =>
-                        a.value.name
-                          .toLowerCase()
-                          .includes(search.toLowerCase()),
-                      )}
-                      onOpen={(a) => run(() => openAgreement(a))}
-                    />
-                  </>
+                  <AgreementList agreements={agreements} onOpen={(a) => run(() => openAgreement(a))} />
                 )}
               </>
             )}
@@ -469,6 +445,7 @@ export default function FairshareApp() {
                     </Button>
                   }
                 />
+                <AgreementSetup agreement={selected} tab={tab} onNavigate={setTab} />
                 <div className="tabs" role="tablist">
                   {Object.values(AgreementTab).map((t) => (
                     <button
@@ -1279,9 +1256,10 @@ export default function FairshareApp() {
                   title="Settings"
                   description="Your account and test environment."
                 />
-                <div className="narrow">
-                  <section className="panel">
-                    <h3>{user.name}</h3>
+                <div className="settings-grid">
+                  <section className="panel settings-profile">
+                    <span className="eyebrow">PROFILE</span>
+                    <div className="settings-identity"><span className="avatar">{user.name.slice(0,1)}</span><h3>{user.name}</h3></div>
                     <p>{user.email}</p>
                     <p className="muted">
                       Current environment: {mode}. Live money is disabled.
@@ -1313,6 +1291,7 @@ export default function FairshareApp() {
                       </a>
                     )}
                   </section>
+                  <section className="panel"><h2>Security</h2><p className="muted">Changing your password signs you out so you can reconnect securely.</p>
                   <PasswordForm
                     busy={busy}
                     onSubmit={(currentPassword, newPassword) =>
@@ -1326,6 +1305,8 @@ export default function FairshareApp() {
                       })
                     }
                   />
+                  </section>
+                  <section className="panel"><h2>Workspace invitations</h2><p className="muted">Join a workspace using a private invitation shared with your account.</p>
                   <SimpleForm
                     label="Invitation token (if shared manually)"
                     button="Accept invitation"
@@ -1338,6 +1319,7 @@ export default function FairshareApp() {
                       })
                     }
                   />
+                  </section>
                 </div>
               </>
             )}

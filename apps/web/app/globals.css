@@ -760,3 +760,27 @@ th:last-child, td:last-child { padding-right: 20px; }
 .table-scroll { overflow-x: auto; }
 .rule-number { display: inline-flex; align-items: center; justify-content: center; height: 24px; width: 24px; border-radius: 50%; background: #f5f5f5; color: #525252; font-size: 12px; flex: none; }
 .rule-card-heading strong { flex: 1; }
+/* Guided setup reflects server prerequisites without auto-approving terms. */
+.setup-layout { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(260px, 1fr); gap: 24px; align-items: start; max-width: 1100px; }
+.setup-form { padding: 32px; }
+.eyebrow { display: block; color: var(--color-muted); font-size: 11px; letter-spacing: .08em; font-weight: 600; margin-bottom: 12px; }
+.setup-form .field { margin: 28px 0; }
+.setup-footer { display: flex; justify-content: flex-end; gap: 12px; border-top: 1px solid var(--color-line); padding-top: 24px; margin-top: 32px; }
+.setup-explainer { background: #fafafa; }
+.setup-explainer ol { padding-left: 20px; }
+.setup-explainer li { padding-left: 8px; margin-bottom: 20px; }
+.setup-explainer p { color: var(--color-muted); font-size: 13px; margin: 6px 0 0; }
+.setup-progress { border: 1px solid var(--color-line); border-radius: 12px; padding: 20px 24px; margin-bottom: 24px; background: #fafafa; }
+.setup-progress p { font-size: 13px; color: var(--color-muted); margin: 4px 0 16px; }
+.setup-steps { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; }
+.setup-steps button { display: flex; gap: 10px; align-items: center; text-align: left; padding: 12px; background: white; border: 1px solid var(--color-line); border-radius: 8px; color: var(--color-ink); }
+.setup-steps button.current { border-color: #93c5fd; background: #eff6ff; }
+.setup-steps button > span { display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; flex: none; border-radius: 50%; background: #f5f5f5; font-size: 12px; }
+.setup-steps small { display: block; font-size: 11px; margin-top: 3px; }
+.settings-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 24px; max-width: 1100px; }
+.settings-grid .panel { width: 100%; }
+.settings-profile { grid-row: span 2; }
+.settings-identity { display: flex; gap: 8px; align-items: center; margin: 24px 0 12px; }
+.settings-identity h3 { margin: 0; }
+.settings-grid form { max-width: none; }
+@media (max-width: 900px) { .setup-layout, .settings-grid { grid-template-columns: 1fr; } .setup-steps { grid-template-columns: 1fr; } .setup-form { padding: 24px; } }
