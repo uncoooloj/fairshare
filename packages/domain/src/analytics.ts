@@ -42,20 +42,10 @@ function validCents(...values: number[]) {
   if (values.some((v) => !Number.isSafeInteger(v) || v < 0))
     throw new Error("INVALID_LEDGER");
 }
-/** Returns recorded historical facts, not newly generated arithmetic or current-version shares. */
-export function explainRecordedAllocation(
-  c: Collaboration,
-  actorId: string,
-  captureId: string,
-  recipientId: string,
-): AllocationExplanation {
-  requireMember(c, actorId);
-  const revenue = c.revenue.find((r) => r.providerCaptureId === captureId);
-  if (!revenue) throw new Error("UNKNOWN_REVENUE");
-  const version = c.versions.find((v) => v.id === revenue.versionId);
-  const allocation = revenue.allocations.find((a) => a.userId === recipientId);
-  const share = version?.rules.shares.find((s) => s.userId === recipientId);
-  if (!version || !allocation || !share) throw new Error("INCOMPLETE_LEDGER");
+function validateAllocationLedger(
+  revenue: Collaboration["revenue"][number],
+  allocation: Collaboration["revenue"][number]["allocations"][number],
+) {
   validCents(
     revenue.grossCents,
     revenue.feeCents,
@@ -73,6 +63,22 @@ export function explainRecordedAllocation(
       revenue.netCents
   )
     throw new Error("INVALID_LEDGER");
+}
+/** Returns recorded historical facts, not newly generated arithmetic or current-version shares. */
+export function explainRecordedAllocation(
+  c: Collaboration,
+  actorId: string,
+  captureId: string,
+  recipientId: string,
+): AllocationExplanation {
+  requireMember(c, actorId);
+  const revenue = c.revenue.find((r) => r.providerCaptureId === captureId);
+  if (!revenue) throw new Error("UNKNOWN_REVENUE");
+  const version = c.versions.find((v) => v.id === revenue.versionId);
+  const allocation = revenue.allocations.find((a) => a.userId === recipientId);
+  const share = version?.rules.shares.find((s) => s.userId === recipientId);
+  if (!version || !allocation || !share) throw new Error("INCOMPLETE_LEDGER");
+  validateAllocationLedger(revenue, allocation);
   return structuredClone({
     kind: "recorded-allocation",
     agreementId: c.id,

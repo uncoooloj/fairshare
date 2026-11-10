@@ -17,6 +17,6 @@ PDF and DOCX files selected by an authorized agreement member are parsed locally
 - DOCX: raw-text extraction using Mammoth 1.11.0, ZIP validation, at most 1,000 archive entries, 10 MiB per inflated entry and 32 MiB total actual inflated bytes; reject macro/ActiveX/embedded object packages. Never render generated HTML or execute document content. Formatting and tracked edits need manual comparison with original.
 - Parsers run in separate credential-free subprocesses with 128 MiB JS heap, two concurrent jobs per format, 8-second timeout, bounded protocol output and suppressed source-bearing logs. This is resource isolation, not a claim of a kernel sandbox.
 
-## OCR remains unavailable
+## Local OCR is opt-in
 
-No approved OCR provider or contract-sharing consent is configured. Image-only PDFs fail with instructions to paste text or supply a text-layer PDF. Do not upload private contracts to a new OCR service until provider, destination, data handling and user consent are established.
+Image-only PDFs can use local OCR only when the API operator enables the host-installed Poppler and Tesseract tools and the user explicitly selects that path. OCR runs on the API host and does not upload a document to an OCR provider; it has separate page, time, and resource limits. Text-layer PDF parsing never falls back to OCR. See [LOCAL-OCR.md](../LOCAL-OCR.md) for the implementation boundary and host acceptance requirements.

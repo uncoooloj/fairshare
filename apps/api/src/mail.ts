@@ -38,6 +38,37 @@ export function publicAppOrigin(value: string) {
 export function emailLink(origin: string, kind: MailKind, token: string) {
   return `${publicAppOrigin(origin)}/${kind === MailKind.RESET_PASSWORD ? "reset-password" : kind === MailKind.VERIFY_EMAIL ? "verify-email" : "invitation"}#token=${encodeURIComponent(token)}`;
 }
+function renderMessage(message: MailMessage) {
+  const subject =
+    message.kind === MailKind.RESET_PASSWORD
+      ? "Reset your Fairshare password"
+      : message.kind === MailKind.AGREEMENT_REVIEW
+        ? "Review your Fairshare agreement"
+        : message.kind === MailKind.VERIFY_EMAIL
+          ? "Verify your Fairshare email"
+          : "Your Fairshare workspace invitation";
+  const text =
+    message.kind === MailKind.RESET_PASSWORD
+      ? `Reset your Fairshare password using this single-use link:\n\n${message.link}\n\nExpires at ${new Date(message.expiresAt).toISOString()}. Resetting signs out every session. If you did not request this, ignore it; your password has not changed.`
+      : message.kind === MailKind.AGREEMENT_REVIEW
+        ? `An agreement organizer has asked you to review pending terms in Fairshare. Sign in, open Agreements, and review the version awaiting your approval.\n\n${message.link}\n\nThis reminder does not approve an agreement or move money. If you have already reviewed it, no further action is needed.`
+        : message.kind === MailKind.VERIFY_EMAIL
+          ? `Verify your email to join Fairshare workspaces. Open this link while signed in to the same email:\n\n${message.link}\n\nThis link expires at ${new Date(message.expiresAt).toISOString()}. If you did not request this, ignore it.`
+          : `You were invited to a Fairshare workspace${message.workspaceName ? ` (${message.workspaceName})` : ""}. Sign in with ${message.to}, verify your email, then review and accept this invitation:\n\n${message.link}\n\nExpires at ${new Date(message.expiresAt).toISOString()}. This invitation does not approve an agreement or move money.`;
+  return { subject, text };
+}
+async function parseProviderResponse(response: Response) {
+  if (!response.ok) throw new Error("EMAIL_PROVIDER_REJECTED");
+  let body: { id?: unknown };
+  try {
+    body = (await response.json()) as { id?: unknown };
+  } catch {
+    throw new Error("EMAIL_PROVIDER_RESPONSE_INVALID");
+  }
+  if (!body || typeof body.id !== "string" || !body.id)
+    throw new Error("EMAIL_PROVIDER_RESPONSE_INVALID");
+  return { providerId: body.id };
+}
 export function createResendTransport(options: {
   apiKey: string;
   from: string;
@@ -48,22 +79,7 @@ export function createResendTransport(options: {
   const request = options.fetch ?? fetch;
   return {
     async send(message) {
-      const subject =
-        message.kind === MailKind.RESET_PASSWORD
-          ? "Reset your Fairshare password"
-          : message.kind === MailKind.AGREEMENT_REVIEW
-            ? "Review your Fairshare agreement"
-            : message.kind === MailKind.VERIFY_EMAIL
-              ? "Verify your Fairshare email"
-              : "Your Fairshare workspace invitation";
-      const text =
-        message.kind === MailKind.RESET_PASSWORD
-          ? `Reset your Fairshare password using this single-use link:\n\n${message.link}\n\nExpires at ${new Date(message.expiresAt).toISOString()}. Resetting signs out every session. If you did not request this, ignore it; your password has not changed.`
-          : message.kind === MailKind.AGREEMENT_REVIEW
-            ? `An agreement organizer has asked you to review pending terms in Fairshare. Sign in, open Agreements, and review the version awaiting your approval.\n\n${message.link}\n\nThis reminder does not approve an agreement or move money. If you have already reviewed it, no further action is needed.`
-            : message.kind === MailKind.VERIFY_EMAIL
-              ? `Verify your email to join Fairshare workspaces. Open this link while signed in to the same email:\n\n${message.link}\n\nThis link expires at ${new Date(message.expiresAt).toISOString()}. If you did not request this, ignore it.`
-              : `You were invited to a Fairshare workspace${message.workspaceName ? ` (${message.workspaceName})` : ""}. Sign in with ${message.to}, verify your email, then review and accept this invitation:\n\n${message.link}\n\nExpires at ${new Date(message.expiresAt).toISOString()}. This invitation does not approve an agreement or move money.`;
+      const { subject, text } = renderMessage(message);
       // Do not include credentials, message bodies or provider response bodies in errors/logs.
       let response: Response;
       try {
@@ -85,16 +101,7 @@ export function createResendTransport(options: {
       } catch {
         throw new Error("EMAIL_PROVIDER_UNCONFIRMED");
       }
-      if (!response.ok) throw new Error("EMAIL_PROVIDER_REJECTED");
-      let body: { id?: unknown };
-      try {
-        body = (await response.json()) as { id?: unknown };
-      } catch {
-        throw new Error("EMAIL_PROVIDER_RESPONSE_INVALID");
-      }
-      if (!body || typeof body.id !== "string" || !body.id)
-        throw new Error("EMAIL_PROVIDER_RESPONSE_INVALID");
-      return { providerId: body.id };
+      return parseProviderResponse(response);
     },
   };
 }
