@@ -315,8 +315,8 @@ export default function FairshareApp() {
     if (workspace && user) run(() => loadWorkspace(workspace));
   }, [workspace]);
   function navigate(s: Section) {
-    openRequest.current++;
     if (!mayLeaveDraft()) return;
+    openRequest.current++;
     setSection(s);
     setSelected(null);
     setCreating(false);

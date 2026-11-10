@@ -67,9 +67,10 @@ test("workspace changes fence in-flight reads and clear workspace-scoped state",
     agreement,
     /catch \(error\) \{\s*if \(request !== openRequest\.current\) return/,
   );
-  assert.match(
-    source,
-    /function navigate\(s: Section\) \{\s*openRequest\.current\+\+/,
+  assert.ok(
+    source.includes(
+      "function navigate(s: Section) {\n    if (!mayLeaveDraft()) return;\n    openRequest.current++;",
+    ),
   );
 
   const refresh = source
