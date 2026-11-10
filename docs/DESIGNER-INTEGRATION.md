@@ -15,6 +15,7 @@ The design's approval workflow remains governed by backend constraints: accepted
 Implemented after initial handoff: guided creation/people-first setup, profile/security/invitation settings surfaces, review-readiness/clarification/approval panel, payout details and safe filtered CSV, and dedicated version-pinned Document view with extracted-text download. Source document loading clears stale state and ignores late responses.
 
 Remaining highest-value reference gaps:
+
 1. Distinct Allocations tab with source-linked per-capture calculation view (currently functional within Payments).
 2. Compare proposal versions, showing deterministic differences and unchanged active rules.
 3. Overview attention cards linking directly to pending approvals/holds instead of only counts.
