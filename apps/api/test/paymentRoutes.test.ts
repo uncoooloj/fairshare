@@ -600,7 +600,7 @@ test("worker stale pending refund evidence cannot overwrite manual terminal reco
         { method: "POST", headers: auth(s.owner.token) },
       );
       assert.equal(recovered.status, 200);
-      assert.equal((await recovered.json() as any).status, status);
+      assert.equal(((await recovered.json()) as any).status, status);
       release();
       await worker;
       assert.equal(
