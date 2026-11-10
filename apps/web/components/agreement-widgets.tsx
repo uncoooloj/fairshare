@@ -1,3 +1,4 @@
+import {formatDate} from "../lib/preferences";
 import { ClarificationDecisions } from "./clarification-decisions";
 import { proposalQuestions } from "../lib/clarification-draft";
 import { suggestedShares } from "../lib/ai-draft";
@@ -182,7 +183,7 @@ export function RevenueTable({
       <tbody>
         {agreement.value.revenue.map((r) => (
           <tr key={r.providerCaptureId}>
-            <td>{new Date(r.at).toLocaleDateString()}</td>
+            <td>{formatDate(r.at)}</td>
             <td className="numeric">{money(r.netCents)}</td>
             <td>
               <Badge value={r.status} />

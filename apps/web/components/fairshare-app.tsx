@@ -1,4 +1,9 @@
 "use client";
+import {useDisplayPreferences, NotificationsSettings, CurrencyDisplaySettings} from "./settings-preferences";
+import {ProfileContact} from "./profile-contact";
+import {PaymentAccountsSettings} from "./payment-account-settings";
+import {ActivityLogSettings} from "./activity-log-settings";
+import {formatDate} from "../lib/preferences";
 import {LocalOcrChoice} from "./local-ocr-choice";
 import { SandboxCheckoutForm } from "./sandbox-checkout-form";
 import { ReviewDiscussion, ReviewReminder } from "./review-discussion";
@@ -57,12 +62,14 @@ import { PaymentGridStatus } from "../src/components/paymentGridModel";
 import { Badge, Button, Empty, Field, Icon, Notice } from "./ui";
 const workspaceBase = (id: string) => `workspaces/${id}`;
 export default function FairshareApp() {
+  const [settingsTab,setSettingsTab] = useState("Profile");
   const [useLocalOcr,setUseLocalOcr] = useState(false);
   const [user, setUser] = useState<User | null>(null),
     [ready, setReady] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [notice, setNotice] = useState("");
+  useDisplayPreferences(user?.id);
   const [workspaces, setWorkspaces] = useState<any[]>([]),
     [workspace, setWorkspace] = useState(""),
     [agreements, setAgreements] = useState<Agreement[]>([]),
@@ -622,7 +629,7 @@ export default function FairshareApp() {
                           .map((e) => (
                             <li key={e.sequence}>
                               <span>{title(e.type)}</span>
-                              <time>{new Date(e.at).toLocaleString()}</time>
+                              <time>{formatDate(e.at)}</time>
                             </li>
                           ))}
                       </ul>
@@ -1210,11 +1217,17 @@ export default function FairshareApp() {
                   title="Settings"
                   description="Your account and test environment."
                 />
-                <div className="settings-grid">
+                <nav className="settings-tabs" aria-label="Settings sections">
+                  {["Profile", "Payment accounts", "Notifications", "Currency & display", "Activity log"].map(tab => <Button key={tab} variant={settingsTab===tab?"primary":"secondary"} aria-pressed={settingsTab===tab} onClick={()=>setSettingsTab(tab)}>{tab}</Button>)}
+                </nav>
+                {settingsTab === "Payment accounts" && (workspace ? <PaymentAccountsSettings key={workspace} workspace={workspace} canEdit={workspaces.find(w=>w.id===workspace)?.role!=="VIEWER"} /> : <Empty title="Start an agreement first">Payment accounts are scoped to a workspace. Create your first agreement to set up a payout destination.</Empty>)}
+                {settingsTab === "Notifications" && <NotificationsSettings key={user.id} />}
+                {settingsTab === "Currency & display" && <CurrencyDisplaySettings key={user.id} />}
+                {settingsTab === "Activity log" && <ActivityLogSettings key={`${user.id}:${workspace}`} workspace={workspace} />}
+                {settingsTab === "Profile" && <div className="settings-grid">
                   <section className="panel settings-profile">
                     <span className="eyebrow">PROFILE</span>
-                    <div className="settings-identity"><span className="avatar">{user.name.slice(0,1)}</span><h3>{user.name}</h3></div>
-                    <p>{user.email}</p>
+                    <ProfileContact key={user.id} name={user.name} email={user.email}/>
                     <ProfileForm key={user.id} name={user.name} busy={busy} onSave={async name => {
                       const result = await api("auth/profile", "POST", {name});
                       setUser(result.user);
@@ -1285,7 +1298,7 @@ export default function FairshareApp() {
                     }
                   />
                   </section>
-                </div>
+                </div>}
               </>
             )}
           </>

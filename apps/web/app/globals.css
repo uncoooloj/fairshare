@@ -829,3 +829,5 @@ th:last-child, td:last-child { padding-right: 20px; }
 .agreement-status-filter:focus-within { outline: 2px solid var(--color-primary, #1d4ed8); outline-offset: 2px; }
 .revenue-rules-disclosure > summary { cursor: pointer; font-size: 18px; font-weight: 600; line-height: 28px; padding-bottom: 12px; }
 .revenue-rules-disclosure > summary:focus-visible { outline: 2px solid var(--color-primary, #1d4ed8); outline-offset: 4px; border-radius: 4px; }
+
+.settings-tabs { display:flex; flex-wrap:wrap; gap:8px; margin:20px 0; }

@@ -1,3 +1,6 @@
+import {registerProfileRoutes} from './profileRoutes.js';
+import {registerPreferences} from './preferences.js';
+import {registerAccountSettings} from './accountSettings.js';
 import {registerAgreementIntake} from './agreementIntake.js';
 import {verifyLocalOcrTools} from './ocr.js';
 import {registerReviewCollaboration} from './reviewCollaboration.js';
@@ -56,10 +59,13 @@ export async function buildApp(options:AppOptions={}):Promise<FairshareApp>{
  app.delete<{Params:{id:string;invitationId:string}}>('/api/workspaces/:id/invitations/:invitationId',async req=>{const {user}=app.requireWorkspace(req,req.params.id,[Role.OWNER]);store.revoke(user.id,req.params.id,req.params.invitationId);return {ok:true};});
  app.post('/api/invitations/accept',{schema:{body:{...objectBody,required:['token'],properties:{token:{type:'string',maxLength:128}}}}},async req=>{const user=app.requireSession(req);limit(req,'accept',30);return {workspace:store.accept(user,(req.body as any).token,true)};});
  app.get<{Params:{id:string}}>('/api/workspaces/:id/audit',async req=>{app.requireWorkspace(req,req.params.id);return {events:store.db.prepare('SELECT id,actor_id AS actorId,action,detail,created_at AS createdAt FROM audit WHERE workspace_id=? ORDER BY created_at DESC LIMIT 100').all(req.params.id).map((row:any)=>({...row,detail:JSON.parse(row.detail)}))};});
+ registerPreferences(app);
  registerEmailRoutes(app,options);
+ registerProfileRoutes(app,options);
  const domainRoutes=registerFairshareRoutes(app,{ai:options.ai,extract:options.extract,localOcrEnabled:options.localOcrEnabled});
  registerAgreementIntake(app,domainRoutes.store,{localOcrEnabled:options.localOcrEnabled});
  registerPaymentRoutes(app,domainRoutes.store,options.payment);
  registerReviewCollaboration(app,domainRoutes.store,options);
+ registerAccountSettings(app,!!options.payment?.provider);
  return app;
 }

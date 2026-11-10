@@ -1,3 +1,4 @@
+import {requireApprovalEmail} from './preferences.js';
 import {randomUUID} from 'node:crypto';
 import type {FastifyRequest} from 'fastify';
 import type {FairshareApp} from './app.js';
@@ -45,6 +46,7 @@ export function registerReviewCollaboration(app:FairshareApp,store:AggregateStor
   if(member.role!==MemberRole.ORGANIZER)throw new ApiError(403,'FORBIDDEN','Only the agreement organizer can send review reminders.');
   if(version.status!=='AWAITING_APPROVAL'||row.value.versions.at(-1)?.id!==version.id)throw new ApiError(409,'NOT_IN_REVIEW','Only the latest version awaiting approval can be reminded.');
   if(recipientId===user.id||!row.value.members.some(m=>m.userId===recipientId)||Object.hasOwn(version.approvals,recipientId))throw new ApiError(400,'INVALID_RECIPIENT','Choose a participant who has not approved this version.');
+  requireApprovalEmail(app.store,recipientId);
   if(app.store.mode===DataMode.DEMO||!options.mailTransport||!options.publicAppOrigin)throw new ApiError(503,'EMAIL_UNAVAILABLE','Review reminder email is not configured for this environment. No email was sent.');
   app.store.requireVerifiedEmail(user.id);
   const recipient=db.prepare('SELECT u.email,u.email_verified_at FROM users u JOIN memberships m ON m.user_id=u.id WHERE u.id=? AND m.workspace_id=? AND m.role IN (?,?)').get(recipientId,p.workspaceId,Role.OWNER,Role.MEMBER) as any;

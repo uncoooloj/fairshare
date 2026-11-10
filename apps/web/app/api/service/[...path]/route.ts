@@ -16,7 +16,7 @@ async function handler(
       { error: { message: "Invalid path" } },
       { status: 400 },
     );
-  if (!["auth", "workspaces", "invitations", "agreements", "health"].includes(parts[0]))
+  if (!["auth", "workspaces", "invitations", "agreements", "health", "settings"].includes(parts[0]))
     return NextResponse.json(
       { error: { message: "Unknown API route" } },
       { status: 404 },
@@ -57,7 +57,7 @@ async function handler(
       : await req.text();
     if (
       body &&
-      body.length > ((["pdf", "docx"].includes(parts.at(-1) || "") || parts.join("/") === "agreements/intake") ? 7 * 1024 * 1024 : 100000)
+      body.length > ((["pdf", "docx"].includes(parts.at(-1) || "") || parts.join("/") === "agreements/intake") ? 7 * 1024 * 1024 : parts.join("/") === "auth/profile/photo" ? 360000 : 100000)
     )
       return NextResponse.json(
         { error: { message: "Request too large" } },
@@ -100,7 +100,7 @@ async function handler(
       });
     if (
       parts.join("/") === "auth/logout" ||
-      (["auth/password", "auth/password-reset/confirm", "auth/mfa/activate", "auth/mfa/disable"].includes(parts.join("/")) && result.ok) ||
+      (["auth/email-change/confirm", "auth/password", "auth/password-reset/confirm", "auth/mfa/activate", "auth/mfa/disable"].includes(parts.join("/")) && result.ok) ||
       result.status === 401
     )
       response.cookies.delete(COOKIE);
