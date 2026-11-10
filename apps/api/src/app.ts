@@ -1,3 +1,4 @@
+import {registerReviewCollaboration} from './reviewCollaboration.js';
 import {registerEmailRoutes,deliverInvitation,type EmailOptions} from './emailRoutes.js';
 import {registerPaymentRoutes,type PaymentOptions} from './paymentRoutes.js';
 import {PayPalError} from '@fairshare/payments';
@@ -9,6 +10,7 @@ import {ApiError,DataMode,IdentityStore,Role,digest,type User} from './identity.
 export interface AppOptions extends EmailOptions {dbPath?:string;clock?:()=>number;demo?:boolean;logger?:boolean;ai?:CloudflareConfig;extract?:typeof extractContract;payment?:PaymentOptions}
 export type FairshareApp=FastifyInstance&{store:IdentityStore;requireSession:(request:FastifyRequest)=>User;requireWorkspace:(request:FastifyRequest,workspaceId:string,roles?:Role[])=>{user:User;workspace:any}};
 export async function buildApp(options:AppOptions={}):Promise<FairshareApp>{
+ if(options.payment?.reconciliation?.enabled&&(options.demo||!options.payment.provider))throw new Error('Reconciliation worker requires configured SANDBOX provider');
  const app=Fastify({logger:options.logger??false,bodyLimit:65536,trustProxy:false,ajv:{customOptions:{removeAdditional:false}}}) as unknown as FairshareApp;
  const mode=options.demo?DataMode.DEMO:DataMode.SANDBOX;
  const store=new IdentityStore(options.dbPath??process.env.DATABASE_PATH??'./data/fairshare-sandbox.db',mode,options.clock);
@@ -43,5 +45,6 @@ export async function buildApp(options:AppOptions={}):Promise<FairshareApp>{
  registerEmailRoutes(app,options);
  const domainRoutes=registerFairshareRoutes(app,{ai:options.ai,extract:options.extract});
  registerPaymentRoutes(app,domainRoutes.store,options.payment);
+ registerReviewCollaboration(app,domainRoutes.store,options);
  return app;
 }
