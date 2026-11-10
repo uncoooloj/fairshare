@@ -70,3 +70,33 @@ export function reminderNotice(result: { status: string; repeated?: boolean }) {
       );
   }
 }
+
+/** Fall back to the current version if an obsolete selection is no longer present. */
+export function discussionVersion(
+  agreement: Agreement,
+  id: number,
+): Version | undefined {
+  return (
+    agreement.value.versions.find((version) => version.id === id) ??
+    agreement.value.versions.at(-1)
+  );
+}
+export function discussionThreads(
+  comments: ReviewComment[],
+  topic: Topic | "ALL",
+) {
+  return comments
+    .filter(
+      (comment) =>
+        !comment.parentId && (topic === "ALL" || comment.ruleKey === topic),
+    )
+    .map((root) => ({
+      root,
+      replies: comments.filter(
+        (reply) =>
+          reply.parentId === root.id &&
+          reply.versionId === root.versionId &&
+          reply.ruleKey === root.ruleKey,
+      ),
+    }));
+}

@@ -19,3 +19,9 @@ The API registers sandbox routes under each authenticated collaboration. Only it
 - No production/live money mode. No escrow or guaranteed live marketplace splitting claim.
 
 Tests cover immutable checkout retry keys, access isolation, duplicate verified events, mismatched event IDs, fee requirements, duplicate payout dispatch, provider-verified item statuses, unknown outcomes and reversal before/after capture.
+
+## Source labels
+
+Checkout accepts optional `source: {type: "OTHER", name: "Bandcamp"}` or `{type: "PAYPAL"}`. Other requires 1–100 non-control characters. Omission defaults to PayPal, including existing records. Source attribution is immutable under the checkout request key; changing it on a retry returns `IDEMPOTENCY_CONFLICT` instead of creating another payment.
+
+`source_type` and `source_name` are organizer-entered labels returned with payment records. They are never provider evidence, do not import external revenue and cannot mark money confirmed. All actual checkout/capture verification still uses PayPal sandbox. The UI retains the original uncertain-request key when a label changes.

@@ -1,33 +1,99 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type Agreement, type Version, ApiError } from "../lib/model";
 import {
   canRemind,
   commentPayload,
   discussionTopics,
   reminderNotice,
+  discussionVersion,
+  discussionThreads,
   type ReviewComment,
   type Topic,
 } from "../lib/review-discussion";
 import { Button, Field, Notice } from "./ui";
 
-export function ReviewDiscussion({
-  base,
-  agreement,
-  version,
-  canWrite,
-  onDirtyChange,
-}: {
+type DiscussionProps = {
   base: string;
   agreement: Agreement;
   version: Version;
   canWrite: boolean;
   onDirtyChange: (dirty: boolean) => void;
-}) {
+};
+export function ReviewDiscussion(props: DiscussionProps) {
+  const [versionId, setVersionId] = useState(props.version.id),
+    [posting, setPosting] = useState(false);
+  const dirty = useRef(false);
+  const version = discussionVersion(props.agreement, versionId);
+  const onDirtyChange = useCallback(
+    (value: boolean) => {
+      dirty.current = value;
+      props.onDirtyChange(value);
+    },
+    [props.onDirtyChange],
+  );
+  if (!version) return null;
+  return (
+    <div>
+      <Field label="Discussion version">
+        <select
+          disabled={posting}
+          value={version.id}
+          onChange={(event) => {
+            if (
+              dirty.current &&
+              !window.confirm(
+                "Discard your unsaved comment and view another version?",
+              )
+            )
+              return;
+            dirty.current = false;
+            props.onDirtyChange(false);
+            setVersionId(Number(event.target.value));
+          }}
+        >
+          {[...props.agreement.value.versions].reverse().map((item) => (
+            <option key={item.id} value={item.id}>
+              Version {item.id}
+              {item.id === props.version.id
+                ? " · latest"
+                : " · read-only history"}
+            </option>
+          ))}
+        </select>
+      </Field>
+      {version.id !== props.version.id && (
+        <Notice>
+          Historical discussion is read-only. These comments belong to version{" "}
+          {version.id}, not the latest terms. Switch to the latest version to
+          continue the conversation.
+        </Notice>
+      )}
+      <VersionDiscussion
+        key={`${props.agreement.id}:${version.id}`}
+        {...props}
+        version={version}
+        canWrite={props.canWrite && version.id === props.version.id}
+        onDirtyChange={onDirtyChange}
+        onPostingChange={setPosting}
+      />
+    </div>
+  );
+}
+
+function VersionDiscussion({
+  base,
+  agreement,
+  version,
+  canWrite,
+  onDirtyChange,
+  onPostingChange,
+}: DiscussionProps & { onPostingChange: (posting: boolean) => void }) {
   const [comments, setComments] = useState<ReviewComment[]>([]),
     [cursor, setCursor] = useState<string | null>(null),
     [body, setBody] = useState(""),
     [topic, setTopic] = useState<Topic>("AGREEMENT"),
+    [filter, setFilter] = useState<Topic | "ALL">("ALL"),
     [parent, setParent] = useState<ReviewComment>(),
     [loading, setLoading] = useState(true),
     [posting, setPosting] = useState(false),
@@ -78,6 +144,7 @@ export function ReviewDiscussion({
   const name = (id: string) =>
     agreement.value.members.find((m) => m.userId === id)?.displayName ??
     "Participant";
+  const threads = discussionThreads(comments, filter);
   const item = (comment: ReviewComment) => (
     <article
       key={comment.id}
@@ -122,6 +189,19 @@ export function ReviewDiscussion({
         Visible to everyone in this agreement. Comments do not change terms or
         approvals. Use Request changes to formally reopen the review.
       </p>
+      <Field label="Filter discussion by topic">
+        <select
+          value={filter}
+          onChange={(event) => setFilter(event.target.value as Topic | "ALL")}
+        >
+          <option value="ALL">All topics</option>
+          {Object.entries(discussionTopics).map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </select>
+      </Field>
       <Button
         type="button"
         variant="quiet"
@@ -136,16 +216,20 @@ export function ReviewDiscussion({
           No comments yet. Start a conversation about these terms.
         </p>
       )}
-      {comments
-        .filter((c) => !c.parentId)
-        .map((root) => (
-          <div key={root.id}>
-            {item(root)}
-            <div style={{ marginLeft: 24 }}>
-              {comments.filter((c) => c.parentId === root.id).map(item)}
-            </div>
-          </div>
-        ))}
+      {threads.map(({ root, replies }) => (
+        <div key={root.id}>
+          {item(root)}
+          <div style={{ marginLeft: 24 }}>{replies.map(item)}</div>
+        </div>
+      ))}
+      {!loading && !error && comments.length > 0 && threads.length === 0 && (
+        <p className="muted">
+          No loaded comments for this topic.
+          {cursor
+            ? " Load more comments to check the remaining discussion."
+            : ""}
+        </p>
+      )}
       {cursor && (
         <Button
           type="button"
@@ -163,6 +247,7 @@ export function ReviewDiscussion({
             if (lock.current) return;
             lock.current = true;
             setPosting(true);
+            onPostingChange(true);
             setError("");
             setNotice("");
             try {
@@ -181,7 +266,10 @@ export function ReviewDiscussion({
                 );
             } finally {
               lock.current = false;
-              if (alive.current) setPosting(false);
+              if (alive.current) {
+                setPosting(false);
+                onPostingChange(false);
+              }
             }
           }}
         >

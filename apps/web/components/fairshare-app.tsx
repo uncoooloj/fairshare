@@ -1,4 +1,5 @@
 "use client";
+import { SandboxCheckoutForm } from "./sandbox-checkout-form";
 import { ReviewDiscussion, ReviewReminder } from "./review-discussion";
 import { RevenueRules } from "./revenue-rules";
 import {
@@ -1275,12 +1276,9 @@ export default function FairshareApp() {
                         description="Confirmed provider data is used to calculate each allocation. Browser returns are not proof of payment."
                       />
                       {organizer && active && (
-                        <SimpleForm
-                          label="Sandbox checkout amount (USD)"
-                          type="text"
-                          button="Create sandbox checkout"
+                        <SandboxCheckoutForm
                           busy={busy}
-                          onSubmit={(amount) =>
+                          onSubmit={(amount, source) =>
                             run(async () => {
                               const amountCents = parseCents(amount);
                               const storageKey = `fairshare-checkout:${user.id}:${selected.id}:${amountCents}`;
@@ -1288,11 +1286,17 @@ export default function FairshareApp() {
                                 storage: sessionStorage,
                                 storageKey,
                                 amountCents,
+                                source,
                                 createRequestKey: () => crypto.randomUUID(),
-                                createPayment: (requestKey, cents) =>
+                                createPayment: (
+                                  requestKey,
+                                  cents,
+                                  paymentSource,
+                                ) =>
                                   api(`${base}/payments`, "POST", {
                                     requestKey,
                                     amountCents: cents,
+                                    source: paymentSource,
                                   }),
                                 refresh,
                               });
@@ -1309,6 +1313,7 @@ export default function FairshareApp() {
                         <thead>
                           <tr>
                             <th>Payment</th>
+                            <th>Source label</th>
                             <th>Amount</th>
                             <th>Status</th>
                             <th>Action</th>
@@ -1320,6 +1325,7 @@ export default function FairshareApp() {
                               <td>
                                 <code>{p.id.slice(0, 8)}</code>
                               </td>
+                              <td>{p.source_name || "PayPal"}</td>
                               <td>{money(p.amount)}</td>
                               <td>
                                 <Badge value={p.status} />

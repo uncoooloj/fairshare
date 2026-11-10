@@ -1,3 +1,4 @@
+import { paymentSource } from "./paymentSource.js";
 import { createReconciliationWorker } from "./reconciliationWorker.js";
 import { randomUUID, createHash } from "node:crypto";
 import type { FastifyRequest } from "fastify";
@@ -53,6 +54,20 @@ export function registerPaymentRoutes(
  CREATE TABLE IF NOT EXISTS fairshare_webhook_inbox(id TEXT PRIMARY KEY,fingerprint TEXT NOT NULL,action TEXT NOT NULL,status TEXT NOT NULL,error TEXT);
  CREATE TABLE IF NOT EXISTS fairshare_recipients(workspace_id TEXT NOT NULL,user_id TEXT NOT NULL,paypal_id TEXT NOT NULL,PRIMARY KEY(workspace_id,user_id));
  CREATE TABLE IF NOT EXISTS fairshare_payout_ops(id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL,collaboration_id TEXT NOT NULL,capture_id TEXT NOT NULL,user_id TEXT NOT NULL,recipient_id TEXT NOT NULL,amount INTEGER NOT NULL,batch_id TEXT,status TEXT NOT NULL,item_id TEXT,UNIQUE(capture_id,user_id));`);
+  // Additive migration: existing checkouts retain their original PayPal attribution.
+  for (const [name, definition] of [
+    ["source_type", "TEXT NOT NULL DEFAULT 'PAYPAL'"],
+    ["source_name", "TEXT NOT NULL DEFAULT 'PayPal'"],
+  ]) {
+    if (
+      !(
+        db.prepare("PRAGMA table_info(fairshare_payment_ops)").all() as any[]
+      ).some((c) => c.name === name)
+    )
+      db.exec(
+        `ALTER TABLE fairshare_payment_ops ADD COLUMN ${name} ${definition}`,
+      );
+  }
   const provider = () =>
     options.provider ??
     fail("PAYPAL_NOT_CONFIGURED", "Sandbox provider is not configured");
@@ -195,6 +210,7 @@ export function registerPaymentRoutes(
     const { p, row } = access(req, true);
     const b = req.body as any;
     const key = str(b?.requestKey);
+    const source = paymentSource(b?.source);
     if (
       !Number.isSafeInteger(b?.amountCents) ||
       b.amountCents < 1 ||
@@ -216,7 +232,9 @@ export function registerPaymentRoutes(
       if (prior) {
         if (
           prior.collaboration_id !== p.collaborationId ||
-          prior.amount !== b.amountCents
+          prior.amount !== b.amountCents ||
+          prior.source_type !== source.type ||
+          prior.source_name !== source.name
         )
           fail(
             "IDEMPOTENCY_CONFLICT",
@@ -229,7 +247,7 @@ export function registerPaymentRoutes(
         fail("PAYMENT_HOLD", "Active approved rules and no hold required");
       const id = randomUUID();
       db.prepare(
-        "INSERT INTO fairshare_payment_ops(id,workspace_id,collaboration_id,request_key,version_id,amount,status) VALUES(?,?,?,?,?,?,?)",
+        "INSERT INTO fairshare_payment_ops(id,workspace_id,collaboration_id,request_key,version_id,amount,status,source_type,source_name) VALUES(?,?,?,?,?,?,?,?,?)",
       ).run(
         id,
         p.workspaceId,
@@ -238,6 +256,8 @@ export function registerPaymentRoutes(
         current.value.activeVersionId!,
         b.amountCents,
         "CREATING",
+        source.type,
+        source.name,
       );
       return { op: payment(id), created: true };
     });

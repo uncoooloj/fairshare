@@ -22,6 +22,6 @@ flowchart LR
 
 `packages/payments` is server-only and sandbox-only. It preserves idempotency and reconciliation boundaries around provider writes. The optional reconciliation worker is enabled only with `PAYPAL_RECONCILIATION_ENABLED=true`; it reads and reconciles known operations and does not create orders, capture payments, dispatch payouts, or retry money-moving writes.
 
-Review discussion comments are separate from rule and approval transitions. Password reset uses the existing authorized email transport.
+Review discussion comments are separate from rule and approval transitions. A checkout may carry an immutable organizer-entered payment-source label, but that label never imports external revenue or proves a provider outcome. Password reset uses the existing authorized email transport.
 
 For route-level behavior see [API flows](API-FLOWS.md), document boundaries in [source documents](security/source-documents.md), and operational acceptance in [release readiness](RELEASE-READINESS.md).

@@ -65,6 +65,7 @@ These checks provide source-level and build evidence. They do not prove browser 
 - New PDF and DOCX uploads retain an authenticated original alongside extracted text. That private SQLite data is not encrypted at rest by this application.
 - Password recovery needs an authorized email transport; the synthetic DEMO does not provide a reset-link echo.
 - Review discussion records comments without changing rules or approvals.
+- Checkout payment-source labels are organizer-entered metadata, not evidence of external revenue or a confirmed payment.
 
 ## Documentation
 
