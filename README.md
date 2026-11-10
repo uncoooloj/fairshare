@@ -48,6 +48,7 @@ The API process does not load dotenv files automatically. `apps/api/.env.example
 ## Checks
 
 ```sh
+npm run format:check
 npm test
 npm run typecheck
 npm run build

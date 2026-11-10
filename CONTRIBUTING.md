@@ -5,12 +5,13 @@ Keep changes small, readable, and scoped to the behavior being changed. Follow t
 Format changed files with Prettier when practical:
 
 ```sh
-/private/tmp/fairshare-readability-tools/node_modules/.bin/prettier --write <changed-files>
+npm run format
 ```
 
 Run the smallest relevant check, then run repository checks when the change crosses packages or shared behavior:
 
 ```sh
+npm run format:check
 npm test
 npm run typecheck
 npm run build

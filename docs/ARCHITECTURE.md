@@ -10,7 +10,6 @@ flowchart LR
   API --> Domain[Domain package]
   API --> AI[Contract AI adapter]
   API --> PayPal[PayPal sandbox adapter]
-  Domain --> Store
 ```
 
 `apps/web` holds the user interface and proxies allowed same-origin requests to the API. It keeps the session cookie at the web boundary; it does not expose API credentials to the browser.
