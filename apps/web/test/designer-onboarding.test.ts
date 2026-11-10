@@ -22,7 +22,8 @@ test("onboarding never claims provider success or adds unsupported OAuth links",
     source,
     /It does not approve an agreement\s+or\s+change anyone’s share\./,
   );
-  assert.ok(
+  assert.match(
+    source,
     /if\s*\(\s*busy\s*\|\|\s*submitting\.current\s*\|\|\s*!name\.trim\(\)\s*\)\s*return;/,
   );
   assert.ok(source.includes("submitting.current = true;"));
