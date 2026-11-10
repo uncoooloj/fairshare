@@ -1,4 +1,5 @@
 "use client";
+import { WorkspaceNameForm } from "./workspace-name-form";
 import {
   useDisplayPreferences,
   NotificationsSettings,
@@ -1705,11 +1706,14 @@ export default function FairshareApp() {
                           Rename your workspace without changing its agreements
                           or access.
                         </p>
-                        <SimpleForm
-                          label="Workspace name"
-                          button="Save workspace name"
+                        <WorkspaceNameForm
+                          key={workspace}
+                          name={
+                            workspaces.find((w) => w.id === workspace)?.name ??
+                            ""
+                          }
                           busy={busy}
-                          onSubmit={(name) =>
+                          onSave={(name) =>
                             run(async () => {
                               const result = await api(
                                 `${workspaceBase(workspace)}/name`,
