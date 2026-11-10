@@ -20,7 +20,7 @@ test("onboarding never claims provider success or adds unsupported OAuth links",
   assert.doesNotMatch(source, /Example: \$3,000 payment/);
   assert.match(
     source,
-    /It does not approve an agreement\s+or\s+change anyone’s share\./,
+    /It\s+does\s+not\s+approve an agreement\s+or\s+change anyone’s share\./,
   );
   assert.match(
     source,
