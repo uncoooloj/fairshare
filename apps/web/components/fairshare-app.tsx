@@ -195,6 +195,8 @@ export default function FairshareApp() {
   }
   async function acceptInvitation(token: string) {
     const result = await api("invitations/accept", "POST", { token });
+    setSelected(null);
+    setAgreements([]);
     setWorkspaces((current) => [
       ...current.filter((item) => item.id !== result.workspace.id),
       result.workspace,
@@ -207,10 +209,12 @@ export default function FairshareApp() {
   }
   async function loadWorkspace(id: string) {
     if (!id || id !== currentWorkspace.current) return;
+    const request = workspaceRequest.current;
     const [r, m] = await Promise.all([
       api(`${workspaceBase(id)}/collaborations`),
       api(`${workspaceBase(id)}/members`),
     ]);
+    if (request !== workspaceRequest.current) return;
     setAgreements(r.collaborations);
     setMembers(m.members);
     const all = await Promise.all(
@@ -221,9 +225,11 @@ export default function FairshareApp() {
         return p.payouts.map((v: any) => ({ ...v, agreement: a }));
       }),
     );
+    if (request !== workspaceRequest.current) return;
     setPayouts(all.flat());
   }
   async function openAgreement(a: Agreement) {
+    if (a.workspaceId !== currentWorkspace.current) return;
     const request = ++openRequest.current;
     const root = `${workspaceBase(a.workspaceId)}/collaborations/${a.id}`;
     const [fresh, p] = await Promise.all([
@@ -314,7 +320,6 @@ export default function FairshareApp() {
     if (token && ["/verify-email", "/invitation"].includes(location.pathname)) {
       setFlowKind(location.pathname);
       setFlowToken(decodeURIComponent(token));
-      history.replaceState(null, "", location.pathname);
     }
     Promise.all([
       api("auth/me")
