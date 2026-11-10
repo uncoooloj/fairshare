@@ -20,7 +20,10 @@ test("successful source save clears source dirty state but preserves unsaved rul
     /setDocumentId\(doc.documentId\);\s*setDraftDirty\(rulesDirty.current\);\s*setNotice/,
   );
   // PDF/DOCX uploads are persisted by the API; plain text still needs Save source.
-  assert.ok(app.includes("setDraftDirty(!/\\.(pdf|docx)$/i.test(f.name))"));
+  assert.match(
+    app,
+    /setDraftDirty\(\s*!\/\\\.\(pdf\|docx\)\$\/i\.test\(f\.name\),?\s*\)/,
+  );
   assert.match(
     app,
     /onDirty=\{\(\)\s*=>\s*\{\s*rulesDirty\.current\s*=\s*true;\s*setDraftDirty\(true\);\s*\}\}/,
@@ -31,7 +34,7 @@ test("sample rules show party names and explicit human-review guidance", () => {
   assert.match(widgets, /Sample text is not your participants’ agreement/);
   assert.match(widgets, /\(?member\)?\s*=>\s*member\.displayName/);
   assert.match(widgets, /Add the correct people in People/);
-  assert.match(widgets, /not extracted or approved terms/);
+  assert.match(widgets, /not\s+extracted or approved terms/);
   assert.match(widgets, /everyone must review and approve/);
 });
 test("sidebar email truncates visibly without losing full address", () => {
