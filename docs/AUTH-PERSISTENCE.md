@@ -2,7 +2,7 @@
 
 ## Scope
 
-Node 22.13+ `node:sqlite` database, synchronous transactions, WAL, foreign keys, 5s busy timeout, 0600 main database file. Use an access-restricted persistent volume for database plus WAL/SHM sidecars. Never publish the database, credentials, raw invitation tokens or session tokens.
+Node 22.16+ `node:sqlite` database, synchronous transactions, WAL, foreign keys, 5s busy timeout, 0600 main database file. Use an access-restricted persistent volume for database plus WAL/SHM sidecars. Never publish the database, credentials, raw invitation tokens or session tokens.
 
 `buildApp({dbPath, demo, clock})` creates an isolated app. Default is SANDBOX. DEMO and SANDBOX refuse to share a database. No live mode exists in this module; server rejects PAYPAL_ENV=live. Default binding is loopback. A health response is not provider verification.
 
@@ -31,9 +31,9 @@ Authenticated calls use `Authorization: Bearer <token>`. Tokens are 32 random by
 
 ## Known scope limits
 
-Email verification and a server-only Resend adapter are implemented but no real delivery has been exercised. No password recovery, owner transfer, MFA or production account deletion yet. Demo verification is explicitly simulated and cannot cross into SANDBOX. Use synthetic identities for demo testing; real mail requires explicit operator setup and authorization. Rate limits use the app database and direct socket IP; do not blindly enable trustProxy. Database encryption, backup/restore and deployment quotas require hosting configuration. These are not claims of production readiness.
+Email verification, password recovery, and a server-only Resend adapter are implemented but no real delivery has been exercised. Password recovery requires a verified email and authorized mail configuration; DEMO has no reset-link echo. Authenticator MFA is available only with a valid server-side `FAIRSHARE_MFA_ENCRYPTION_KEY`; password reset does not bypass an enabled authenticator. No owner transfer or production account deletion exists. Demo verification is explicitly simulated and cannot cross into SANDBOX. Use synthetic identities for demo testing; real mail requires explicit operator setup and authorization. Rate limits use the app database and direct socket IP; do not blindly enable trustProxy. Database encryption, backup/restore and deployment quotas require hosting configuration. These are not claims of production readiness.
 
-## Verified
+## Historical verification notes
 
 13 tests cover session hashing, successful/failed login, logout/expiry, cross-tenant reads, injected roles, viewer restrictions, invitation mismatch/replay/expiry/revocation/replacement, password-change revocation, durable reopen, separate-mode guard, optimistic write conflicts, rate limits, immediate membership revocation and retained audit. Typecheck and build run separately. Additional email regressions cover wrong-account/expired/replayed tokens, sandbox fail-closed delivery, verified-recipient requirement, failed-send revocation, demo-only transport and Resend request/error handling. No live payment or email-provider call.
 

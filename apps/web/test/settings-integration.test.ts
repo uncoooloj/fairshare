@@ -24,7 +24,7 @@ test("five settings sections mount real components and protect workspace-less ac
     "ActivityLogSettings",
   ])
     assert(source.includes(`<${component}`));
-  assert(source.includes("workspace ? <PaymentAccountsSettings"));
+  assert.match(source, /workspace\s*\?\s*\(\s*<PaymentAccountsSettings/);
   assert(source.includes('settingsTab === "Profile"'));
 });
 test("BFF reaches authenticated settings activity preserving filters", async () => {
