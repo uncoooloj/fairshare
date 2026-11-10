@@ -6,8 +6,8 @@ Status: application integration, sandbox only. Actual provider payments require 
 
 1. `POST /api/auth/register` `{name,email,password}` → user + bearer token.
 2. `POST /api/workspaces` `{name}` → workspace. Use bearer token for all subsequent calls.
-3. `POST /api/workspaces/:id/invitations` `{email,role:"MEMBER"}` → one-use email-bound invite. DEMO returns a synthetic link; SANDBOX requests configured mail delivery and never returns the secret token. Provider acceptance is not inbox-delivery evidence.
-4. Recipient signs up/signs in and `POST /api/invitations/accept` `{token}`.
+3. The primary invitation flow is `POST /api/workspaces/:id/invitation-links` `{role:"MEMBER"}`. It creates one private, single-use link; share it directly with the intended collaborator. No email is sent.
+4. Recipient signs up/signs in and `POST /api/invitations/accept` `{token}`. The optional legacy `POST /api/workspaces/:id/invitations` `{email,role:"MEMBER"}` route remains registered: DEMO returns a synthetic link even when `emailDelivery` is false, while SANDBOX requires configured mail delivery. Provider acceptance is not inbox-delivery evidence.
 5. Organizer creates collaboration `POST /api/workspaces/:workspaceId/collaborations` `{name}`.
 6. Add each accepted workspace participant to the agreement with `POST .../collaborations/:collaborationId/members` `{userId,expectedRevision}`. Display name comes from verified user profile, never caller-supplied impersonation. Workspace-invitation acceptance grants workspace access only: it does not create agreement membership or review/approval eligibility. The organizer adds the accepted person to the agreement before the first draft.
 
@@ -39,8 +39,9 @@ SQLite uses serialized transactions, revision guards and a separate capture uniq
 
 ## Account settings
 
+- Public `GET /api/auth/capabilities` returns `{invitationDelivery:"LINK",emailDelivery:boolean}`. `invitationDelivery` identifies the link-first collaboration flow; `emailDelivery` is true only when the server has a configured non-DEMO mail transport. The capability gates current web email-request controls, not the optional legacy email-invitation backend route, which has no web creation control.
 - `GET` and `PUT /api/auth/preferences` read and replace the full display and notification preference object. USD remains the only supported currency; number and date formats affect display only and never convert amounts or change amount-entry syntax. Account-security email is outside these preferences.
-- In-app notifications are built from accessible agreement audit events and provider-confirmed sandbox payout states. A notification preference can hide those items from the in-app feed. Email preference currently gates configured approval-request email; other saved email choices do not establish delivery.
+- In-app notifications are built from accessible agreement audit events and provider-confirmed sandbox payout states. The current web settings surface offers in-app notification choices only. Legacy saved email preference data can still gate configured approval-request email on the API; it does not establish delivery.
 - `GET /api/settings/activity` returns a read-only, paged activity log. It accepts optional `workspaceId`, `actorId`, `action`, `agreementId`, `days` (`0`, `7`, `30`, or `90`) and `offset`. A workspace query includes only agreements visible to the current user.
 - `GET /api/workspaces/:workspaceId/payment-accounts` shows masked payout-destination hints and their saved/unverified state. A member or owner can `PUT` or `DELETE .../payment-accounts/mine` for their own 13-character sandbox merchant ID. This stores a destination only: it is neither OAuth nor proof of account ownership, and does not alter payouts already submitted.
 
@@ -52,11 +53,11 @@ Payment endpoint wiring is in `paymentRoutes.ts`; HTTP tests exercise injected p
 
 ### Private invitation links (no email dependency)
 
-Workspace owners can create a single-use member/viewer link using
+Workspace owners create a single-use member/viewer link using
 `POST /api/workspaces/:id/invitation-links` with `{ "role": "MEMBER" }`.
 Settings → Workspace invitations and an agreement's People section expose
 **Create private invitation link**, **Copy link**, and **Revoke link**.
-Send the link privately to one intended collaborator. The link expires in 48 hours.
+This is the primary invitation flow. Send the link privately to one intended collaborator. The link expires in 48 hours.
 The recipient signs in (or creates an account), then explicitly accepts it.
 
 This is bearer-link authorization, not proof of mailbox ownership: anyone holding

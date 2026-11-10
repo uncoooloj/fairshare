@@ -20,11 +20,11 @@ Onest is the preferred font stack. The application bundles local Onest font asse
 
 ## Working routes
 
-Account/register/login/logout, password recovery, workspace setup and selection, invite acceptance and email verification,
+Account/register/login/logout, capability-gated password-reset and verification request controls with confirmation routes retained, workspace setup and selection, private-link invite acceptance,
 upload-first agreement intake (which creates a first workspace when needed), people/invitations, text/PDF/DOCX upload and extracted-text review, authenticated original
 downloads, review discussion, opt-in local OCR, opt-in Cloudflare suggestions, conditional authenticator MFA, manual source-bound proposal editing, neutral fee policy choices, exact version approval,
 preview, activation, incoming-payment status and traceable allocation breakdown, sandbox checkout,
-fixed allocation dispatch and item reconciliation, read-only Community payout grid and account settings.
+fixed allocation dispatch and item reconciliation, copied review reminders, read-only Community payout grid and account settings.
 
 Settings includes display preferences, a filtered read-only activity log, profile safeguards and workspace-scoped sandbox payout destinations. A saved destination is masked to collaborators and remains unverified; server payment credentials are managed by the deployment owner, not through the screen.
 
@@ -41,8 +41,7 @@ Settings includes display preferences, a filtered read-only activity log, profil
 - A first agreement starts from its source, not an empty name form. The API saves its workspace, agreement and source together; an uncertain request can be retried with the same request ID. A filename, or a safe short pasted document heading, can supply the initial name without an AI request; unsafe text falls back to **Untitled agreement**. Names can be changed after creation.
 - Terms preparation is progressive: choose the source, read the saved agreement and then prepare proposed rules. The third step stays unavailable until the saved source has been read. Moving between steps preserves the rules draft. If saving an edited source fails, keep that edited source available for retry; it neither replaces nor deletes the previously committed document, and the flow does not advance. Continuing through this flow does not approve or activate a version.
 - The workspace-name editor starts with the server name. Later refreshes replace an untouched draft, but never overwrite a locally edited unsaved name; after a matching save, it returns to the server value. A failed rename keeps the draft for retry.
-- Manual invitation token and email verification links are supported. Sandbox delivery requires configured
-  transport; DEMO links are explicitly simulated. No claim of delivered email from accepted requests.
+- Private invitation links are the primary collaboration flow and review reminders are copied for direct sharing; neither sends email. `GET /api/auth/capabilities` gates the current UI's email request controls for forgotten-password, verification-request, and email-change flows. Confirmation routes and their existing token/authentication rules remain registered, including the reset-confirm form. The web UI does not expose legacy email-invitation creation; that configured backend route remains separate. Sandbox delivery still requires configured transport; DEMO links are explicitly simulated. No claim of delivered email follows provider acceptance.
 - For a first proposal, the person saving it must acknowledge the displayed agreement roster before saving. This is a UI check that all share/approval participants were added before membership locks; accepting a workspace invitation alone does not add a person to the agreement or permit their review.
 - UI role errors remain authoritative on server. Real-money mode is absent.
 
