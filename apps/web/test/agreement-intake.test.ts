@@ -28,7 +28,7 @@ test("input survives errors and retries retain idempotency key until input chang
   assert.match(source, /locked\.current = true;\s*setSubmitting\(true\);/);
   assert.match(source, /const disabled = busy \|\| submitting;/);
   assert.match(source, /disabled=\{disabled\}/);
-  assert.match(source, /disabled=\{disabled \|\| !!file\}/);
+  assert.match(source, /disabled=\{disabled \|\| method !== "paste"\}/);
   assert.match(
     source,
     /finally\s*\{\s*locked\.current\s*=\s*false;\s*setSubmitting\(false\);/,

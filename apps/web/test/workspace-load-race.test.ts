@@ -79,7 +79,7 @@ test("workspace changes fence in-flight reads and clear workspace-scoped state",
   assert.equal(
     (refresh.match(/workspaceRequestId !== workspaceRequest\.current/g) || [])
       .length,
-    3,
+    4,
   );
 
   const mutate = source
