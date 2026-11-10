@@ -7,11 +7,11 @@ test("source form has bounded Other input and does not represent metadata as con
     new URL("../components/sandbox-checkout-form.tsx", import.meta.url),
     "utf8",
   );
-  assert.match(source, /name="sourceName" required maxLength=\{100\}/);
-  assert.match(source, /type === 'OTHER'/);
+  assert.match(source, /name="sourceName"\s+required\s+maxLength=\{100\}/);
+  assert.match(source, /type\s*===\s*["']OTHER["']/);
   assert.match(source, /does not import or confirm external revenue/);
   assert.match(source, /busy \|\| pending.current/);
-  assert.match(source, /finally \{ pending.current = false/);
+  assert.match(source, /finally\s*\{\s*pending\.current = false/);
 });
 test("source changes retain uncertain checkout key rather than silently creating another payment", () => {
   const source = readFileSync(
