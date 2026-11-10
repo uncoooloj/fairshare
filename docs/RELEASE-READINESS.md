@@ -26,5 +26,7 @@ Before describing a deployment or enabled integration as ready, establish and re
 3. Approved operational configuration for persistent SQLite storage, backups and restore, one API writer, HTTPS origins, and server-side secret storage.
 4. Authorized email delivery evidence if email is enabled, including sender setup and inbox delivery; DEMO simulation is not delivery evidence.
 5. Password-reset acceptance with an authorized, real mailbox when that feature is enabled.
+6. If local OCR is enabled, a host acceptance run for its installed Poppler/Tesseract tools, protected temporary storage and cleanup, bounded resources, and the user opt-in path.
+7. If MFA is enabled, durable, access-controlled backup and recovery handling for `FAIRSHARE_MFA_ENCRYPTION_KEY`, plus a real authenticator-app walkthrough.
 
 A public source release can proceed after the source publication gates. Deployment and integration evidence is separate. See [JUDGE-DEPLOYMENT.md](JUDGE-DEPLOYMENT.md) for the fuller deployment plan.

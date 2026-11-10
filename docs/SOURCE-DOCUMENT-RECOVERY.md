@@ -21,6 +21,6 @@ Verified via routes/tests and code inspection:
 - List bounded to 100 metadata records; cursor is validated and cannot replace the scoped predicates.
 - Cloudflare processing still requires explicit consent. Source hash/document/revision bind returned results to the immutable upload.
 - Extraction treats document text as untrusted data, no tool execution or arbitrary URL fetching. Config constrains provider URL; redirects disabled. Provider JSON has byte/schema limits and exact quoted-source validation. Output cannot activate agreement terms or issue payments.
-- PDF parser runs bounded child process without provider secrets; no OCR or remote resource fetching. Strong OS-level isolation remains a production hardening item.
+- PDF and DOCX parsers run bounded child processes without provider secrets. OCR has no remote provider but is a separate, explicit local opt-in with host tools and its own limits; see LOCAL-OCR.md. Strong OS-level isolation remains a production hardening item.
 
 Residual: citation correctness is not semantic correctness. Malicious or contradictory clauses may still produce misleading source-grounded observations; all proposed rules need human review and unanimous version approval. Rate limits are per process; distributed abuse protection is not implemented. This patch does not add antivirus, encryption-at-rest, retention deletion, or legal signature semantics.

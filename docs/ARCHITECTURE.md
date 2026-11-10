@@ -24,4 +24,6 @@ flowchart LR
 
 Review discussion comments are separate from rule and approval transitions. A checkout may carry an immutable organizer-entered payment-source label, but that label never imports external revenue or proves a provider outcome. Password reset uses the existing authorized email transport.
 
+Local OCR is an API-host option, disabled by default. It requires Poppler and Tesseract and only processes a scan after the user opts in; normal text-layer PDF parsing never falls back to OCR. Authenticator MFA is available only when the operator supplies `FAIRSHARE_MFA_ENCRYPTION_KEY` and keeps that key with the database backup.
+
 For route-level behavior see [API flows](API-FLOWS.md), document boundaries in [source documents](security/source-documents.md), and operational acceptance in [release readiness](RELEASE-READINESS.md).

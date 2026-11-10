@@ -66,6 +66,8 @@ These checks provide source-level and build evidence. They do not prove browser 
 - Password recovery needs an authorized email transport; the synthetic DEMO does not provide a reset-link echo.
 - Review discussion records comments without changing rules or approvals.
 - Checkout payment-source labels are organizer-entered metadata, not evidence of external revenue or a confirmed payment.
+- Local scanned-PDF OCR is disabled by default, runs only after a user selects it, and needs host-installed Poppler and Tesseract. It is not a Cloudflare upload or a correctness guarantee.
+- Authenticator MFA needs a separately managed server encryption key; it is not enabled by the synthetic DEMO alone.
 
 ## Documentation
 
@@ -77,6 +79,8 @@ These checks provide source-level and build evidence. They do not prove browser 
 - [Authentication and persistence](docs/AUTH-PERSISTENCE.md)
 - [Source-document storage and downloads](docs/security/source-documents.md)
 - [Password recovery](docs/password-recovery.md)
+- [Local OCR](docs/LOCAL-OCR.md)
+- [Authenticator MFA](docs/mfa.md)
 - [Release readiness](docs/RELEASE-READINESS.md)
 - [Contributing](CONTRIBUTING.md)
 

@@ -28,7 +28,7 @@ const messages: Record<string, string> = {
   PDF_TEXT_LIMIT:
     "This agreement exceeds 40,000 characters. Use a shorter document.",
   PDF_NO_EXTRACTABLE_TEXT:
-    "This PDF has no readable text layer. OCR is not supported; paste the text or upload a text-based PDF.",
+    "This PDF has no readable text layer. Choose local OCR if available, paste the text, or upload a text-based PDF.",
   PDF_EXTRACTION_TIMEOUT:
     "PDF processing took too long. Try a simpler file or paste the text.",
   PDF_EXTRACTION_FAILED:

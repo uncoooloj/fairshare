@@ -132,6 +132,17 @@ export function Auth({
               testing.
             </p>
           )}
+          {login && (
+            <label>
+              Authenticator or recovery code (if enabled)
+              <input
+                name="mfaCode"
+                autoComplete="one-time-code"
+                maxLength={80}
+                disabled={busy}
+              />
+            </label>
+          )}
           <button className={styles.primary} disabled={busy}>
             {busy ? "Please wait…" : login ? "Sign in" : "Create account"}
           </button>

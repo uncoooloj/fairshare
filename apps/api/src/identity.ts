@@ -1,3 +1,4 @@
+import { MfaService } from "./mfa.js";
 import { DatabaseSync } from "node:sqlite";
 import {
   createHash,
@@ -62,10 +63,12 @@ function matches(password: string, encoded: string) {
 }
 export class IdentityStore {
   readonly db: DatabaseSync;
+  readonly mfa: MfaService;
   constructor(
     path: string,
     public mode: DataMode = DataMode.SANDBOX,
     public now: () => number = Date.now,
+    mfaEncryptionKey = process.env.FAIRSHARE_MFA_ENCRYPTION_KEY,
   ) {
     if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
     this.db = new DatabaseSync(path);
@@ -89,6 +92,7 @@ export class IdentityStore {
       )
     )
       this.db.exec("ALTER TABLE users ADD COLUMN email_verified_at INTEGER");
+    this.mfa = new MfaService(this, mfaEncryptionKey);
     try {
       this.tx(() => {
         const row = this.db
@@ -212,7 +216,7 @@ export class IdentityStore {
       .run(digest(token), userId, expiresAt);
     return { token, expiresAt };
   }
-  login(emailInput: unknown, password: unknown) {
+  login(emailInput: unknown, password: unknown, mfaCode?: unknown) {
     const email = normalizeEmail(emailInput);
     if (typeof password !== "string" || password.length > 256)
       throw new ApiError(
@@ -230,7 +234,10 @@ export class IdentityStore {
         "INVALID_CREDENTIALS",
         "Email or password is incorrect.",
       );
-    return this.tx(() => ({ user: cleanUser(row), ...this.session(row.id) }));
+    return this.tx(() => {
+      this.mfa.verify(row.id, mfaCode);
+      return { user: cleanUser(row), ...this.session(row.id) };
+    });
   }
   userForToken(token: string) {
     if (!/^[A-Za-z0-9_-]{43}$/.test(token))
@@ -308,6 +315,9 @@ export class IdentityStore {
       this.db
         .prepare("DELETE FROM email_verifications WHERE user_id=?")
         .run(row.user_id);
+      this.db
+        .prepare("DELETE FROM mfa WHERE user_id=? AND enabled=0")
+        .run(row.user_id);
       this.audit(row.user_id, null, "PASSWORD_RESET");
     });
   }
@@ -334,6 +344,22 @@ export class IdentityStore {
         this.db.prepare("SELECT * FROM users WHERE id=?").get(userId),
       );
     });
+  }
+  verifyPassword(userId: string, password: unknown) {
+    const row = this.db
+      .prepare("SELECT password_hash FROM users WHERE id=?")
+      .get(userId) as any;
+    if (
+      typeof password !== "string" ||
+      password.length > 256 ||
+      !row ||
+      !matches(password, row.password_hash)
+    )
+      throw new ApiError(
+        401,
+        "INVALID_CREDENTIALS",
+        "Current password is incorrect.",
+      );
   }
   changePassword(userId: string, current: unknown, next: unknown) {
     if (
@@ -365,6 +391,9 @@ export class IdentityStore {
       this.db.prepare("DELETE FROM sessions WHERE user_id=?").run(userId);
       this.db
         .prepare("DELETE FROM password_resets WHERE user_id=?")
+        .run(userId);
+      this.db
+        .prepare("DELETE FROM mfa WHERE user_id=? AND enabled=0")
         .run(userId);
       this.audit(userId, null, "PASSWORD_CHANGED");
     });
