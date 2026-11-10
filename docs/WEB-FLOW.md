@@ -16,7 +16,7 @@ to the exact external HTTPS origin for origin enforcement. Never use a live PayP
 `components/ui.tsx` holds primitives. `agreement-widgets.tsx` holds reusable forms/tables.
 `fairshare-app.tsx` coordinates server actions and state; AG Grid is a read-only payout projection.
 The final Figma can change tokens and components without changing the money engine.
-Onest is the preferred font stack; no unlicensed font asset is embedded (system fallback until supplied).
+Onest is the preferred font stack. The application bundles local Onest font assets under the SIL Open Font License; see `public/fonts/OFL.txt`.
 
 ## Working routes
 
@@ -40,9 +40,9 @@ fixed allocation dispatch and item reconciliation, read-only Community payout gr
   transport; DEMO links are explicitly simulated. No claim of delivered email from accepted requests.
 - UI role errors remain authoritative on server. Real-money mode is absent.
 
-## Verification
+## Historical verification notes
 
-Production Next build and TypeScript pass. Five focused web tests cover exact cents, grid validation and
+At the time recorded, the production Next build and TypeScript passed. Five focused web tests covered exact cents, grid validation and
 BFF session/CSRF/path restrictions. An actual production-server HTTP journey passed registration→workspace→
 agreement→source→proposal→send→approve→activate→preview→payment/payout reads→logout against the real API.
 No provider call was made in that journey. Browser visual QA was attempted but Chromium could not open

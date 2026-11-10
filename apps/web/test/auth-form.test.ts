@@ -53,8 +53,9 @@ test("onboarding matches API workspace limit; auth mode switch dismisses stale e
     "utf8",
   );
   assert.ok(source.includes("maxLength={100}"));
-  assert.ok(
-    source.includes("setShowServerError(false); setShowPassword(false)"),
+  assert.match(
+    source,
+    /setShowServerError\(false\);\s*setShowPassword\(false\)/,
   );
   assert.ok(source.includes("aria-pressed={showPassword}"));
 });
