@@ -12,7 +12,7 @@ test("invitation acceptance adopts the committed workspace before any reload", (
     .split("async function acceptInvitation(token: string) {")[1]
     .split("async function loadWorkspace")[0];
   assert.match(accept, /api\("invitations\/accept", "POST", \{ token \}\)/);
-  assert.match(accept, /setWorkspace\(result.workspace.id\)/);
+  assert.match(accept, /commitWorkspace\(result.workspace.id\)/);
   assert.match(accept, /setSelected\(null\)/);
   assert.match(accept, /setAgreements\(\[\]\)/);
   assert.match(accept, /setFlowToken\(""\)/);
