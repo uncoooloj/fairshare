@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { FairshareApp } from "./app.js";
 import { ApiError, DataMode, digest } from "./identity.js";
 import {
+  emailDeliveryOrigin,
   emailLink,
   publicAppOrigin,
   MailKind,
@@ -13,9 +14,10 @@ export interface EmailOptions {
 }
 export function registerEmailRoutes(app: FairshareApp, options: EmailOptions) {
   const demo = app.store.mode === DataMode.DEMO,
-    origin = publicAppOrigin(
-      options.publicAppOrigin ?? "http://localhost:3000",
-    );
+    origin =
+      !demo && options.mailTransport
+        ? emailDeliveryOrigin(options.publicAppOrigin)
+        : publicAppOrigin(options.publicAppOrigin ?? "http://localhost:3000");
   app.post(
     "/api/auth/verification/request",
     { schema: { body: { type: "object", additionalProperties: false } } },
