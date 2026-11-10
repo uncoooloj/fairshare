@@ -5,6 +5,19 @@ import {emailLink,publicAppOrigin,MailKind,type MailTransport} from './mail.js';
 export interface EmailOptions {mailTransport?:MailTransport;publicAppOrigin?:string}
 export function registerEmailRoutes(app:FairshareApp,options:EmailOptions){
  const demo=app.store.mode===DataMode.DEMO,origin=publicAppOrigin(options.publicAppOrigin??'http://localhost:3000');
+ app.post('/api/auth/password-reset/request',{schema:{body:{type:'object',additionalProperties:false,required:['email'],properties:{email:{type:'string',maxLength:254,pattern:'^\\S+@\\S+\\.\\S+$'}}}}},async req=>{
+  const email=(req.body as {email:string}).email.trim().toLowerCase();
+  app.store.limit(`reset:ip:${digest(req.ip)}`,20,30*60000);app.store.limit(`reset:email:${digest(email)}`,3,30*60000);
+  if(demo||!options.mailTransport)throw new ApiError(503,'EMAIL_UNAVAILABLE','Password recovery email is not configured for this environment. No reset email was sent.');
+  // Same response window for known, missing, unverified and delivery-failed accounts.
+  // The transport timeout is bounded below this window; no account-specific timing fast path.
+  const responseWindow=new Promise<void>(resolve=>setTimeout(resolve,16000));
+  const proof=app.store.createPasswordReset(email);
+  if(proof){let timer:ReturnType<typeof setTimeout>|undefined;try{await Promise.race([options.mailTransport.send({kind:MailKind.RESET_PASSWORD,to:proof.email,link:emailLink(origin,MailKind.RESET_PASSWORD,proof.token),expiresAt:proof.expiresAt,operationId:randomUUID()}),new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(new Error('RESET_DELIVERY_TIMEOUT')),15000);})]);}catch{app.store.invalidatePasswordReset(proof.token);}finally{if(timer)clearTimeout(timer);}}
+  await responseWindow;
+  return {status:'REQUEST_ACCEPTED',notice:'If this address has a verified account, a password-reset email will be requested. Check your inbox. If it does not arrive, try again later.'};
+ });
+ app.post('/api/auth/password-reset/confirm',{schema:{body:{type:'object',additionalProperties:false,required:['token','password'],properties:{token:{type:'string',pattern:'^[A-Za-z0-9_-]{43}$'},password:{type:'string',minLength:12,maxLength:256}}}}},async req=>{app.store.limit(`reset-confirm:ip:${digest(req.ip)}`,20,30*60000);const body=req.body as {token:string;password:string};app.store.resetPassword(body.token,body.password);return {ok:true,signInRequired:true};});
  app.post('/api/auth/verification/request',{schema:{body:{type:'object',additionalProperties:false}}},async req=>{
   const user=app.requireSession(req);app.store.limit(`verify:user:${user.id}`,3,30*60000);app.store.limit(`verify:ip:${digest(req.ip)}`,20,30*60000);
   if(user.emailVerified)return {status:'ALREADY_VERIFIED'};
