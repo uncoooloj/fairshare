@@ -14,7 +14,7 @@ flowchart LR
 
 `apps/web` holds the user interface and proxies allowed same-origin requests to the API. It keeps the session cookie at the web boundary; it does not expose API credentials to the browser.
 
-`apps/api` authenticates users, applies workspace and collaboration authorization, persists state in SQLite, and coordinates domain transitions. The API starts in SANDBOX by default; `DEMO_MODE=true` selects an isolated synthetic-data mode. The two modes reject a shared database.
+`apps/api` authenticates users, applies workspace and collaboration authorization, persists state in SQLite, and coordinates domain transitions. New PDF and DOCX uploads retain original bytes with extracted text in that private database; every download rechecks membership and is an attachment, never a public link. The API starts in SANDBOX by default; `DEMO_MODE=true` selects an isolated synthetic-data mode. The two modes reject a shared database.
 
 `packages/domain` is the source of deterministic allocation behavior. It requires a unanimously approved rule version before activation, uses integer cents and basis points, and treats allocation as distinct from an outgoing payout.
 
@@ -22,4 +22,8 @@ flowchart LR
 
 `packages/payments` is server-only and sandbox-only. It preserves idempotency and reconciliation boundaries around provider writes. The optional reconciliation worker is enabled only with `PAYPAL_RECONCILIATION_ENABLED=true`; it reads and reconciles known operations and does not create orders, capture payments, dispatch payouts, or retry money-moving writes.
 
-For route-level behavior see [API flows](API-FLOWS.md), and for the operational acceptance boundary see [release readiness](RELEASE-READINESS.md).
+Review discussion comments are separate from rule and approval transitions. A checkout may carry an immutable organizer-entered payment-source label, but that label never imports external revenue or proves a provider outcome. Password reset uses the existing authorized email transport.
+
+Local OCR is an API-host option, disabled by default. It requires Poppler and Tesseract and only processes a scan after the user opts in; normal text-layer PDF parsing never falls back to OCR. Authenticator MFA is available only when the operator supplies `FAIRSHARE_MFA_ENCRYPTION_KEY` and keeps that key with the database backup.
+
+For route-level behavior see [API flows](API-FLOWS.md), document boundaries in [source documents](security/source-documents.md), and operational acceptance in [release readiness](RELEASE-READINESS.md).
