@@ -1,4 +1,5 @@
-import { useState, type ReactNode } from "react";
+import { suggestedShares } from "../lib/ai-draft";
+import { useState, useRef, type ReactNode } from "react";
 import {
   money,
   parseCents,
@@ -480,14 +481,19 @@ export function RulesEditor({
   source,
   documentId,
   busy,
+  extraction,
   onSave,
 }: {
   agreement: Agreement;
   source: string;
   documentId: string;
   busy: boolean;
+  extraction?: unknown;
   onSave: (r: Rules) => void;
 }) {
+  const formRef = useRef<HTMLFormElement>(null);
+  const [prefilled, setPrefilled] = useState(false);
+  const suggestions = suggestedShares(extraction, documentId, source, agreement.value.members);
   const old = agreement.value.versions.at(-1)?.rules;
   const [error, setError] = useState(""),
     [fee, setFee] = useState(old?.feePolicy || "BEFORE_SPLIT"),
@@ -495,6 +501,7 @@ export function RulesEditor({
     [origin, setOrigin] = useState(old?.source.origin || "HUMAN_PROPOSAL");
   return (
     <form
+      ref={formRef}
       className="section"
       onSubmit={(e) => {
         e.preventDefault();
@@ -552,6 +559,19 @@ export function RulesEditor({
         All participants review this version. Add people first; membership is
         locked once a proposal exists.
       </p>
+      {Object.keys(suggestions).length > 0 && (
+        <Notice>
+          <p>AI found source-backed shares for {Object.keys(suggestions).length} people. Copy them into this draft, then check every value and complete any missing terms.</p>
+          <Button type="button" variant="secondary" disabled={busy} onClick={() => {
+            for (const [id,value] of Object.entries(suggestions)) {
+              const input = formRef.current?.elements.namedItem(id);
+              if (input instanceof HTMLInputElement) input.value = value;
+            }
+            setPrefilled(true);
+          }}>Use suggested shares</Button>
+          {prefilled && <p role="status">Shares copied into the draft. Nothing has been saved or approved. Review them before saving.</p>}
+        </Notice>
+      )}
       {error && <Notice warning>{error}</Notice>}
       <div className="form-grid">
         {agreement.value.members.map((m) => (

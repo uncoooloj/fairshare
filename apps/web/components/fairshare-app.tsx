@@ -1028,6 +1028,7 @@ export default function FairshareApp() {
                               }
                             />
                             <RulesEditor
+                              extraction={extraction}
                               key={documentId}
                               agreement={selected}
                               source={source}
