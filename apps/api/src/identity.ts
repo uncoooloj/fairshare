@@ -245,6 +245,30 @@ export class IdentityStore {
   logout(token: string) {
     this.db.prepare("DELETE FROM sessions WHERE hash=?").run(digest(token));
   }
+  updateProfile(userId: string, name: unknown) {
+    if (
+      typeof name !== "string" ||
+      !name.trim() ||
+      name.trim().length > 80 ||
+      /[\u0000-\u001f\u007f]/.test(name)
+    )
+      throw new ApiError(
+        400,
+        "INVALID_NAME",
+        "Name must contain 1–80 printable characters.",
+      );
+    return this.tx(() => {
+      const result = this.db
+        .prepare("UPDATE users SET name=? WHERE id=?")
+        .run(name.trim(), userId);
+      if (!result.changes)
+        throw new ApiError(401, "UNAUTHORIZED", "Sign in to continue.");
+      this.audit(userId, null, "PROFILE_UPDATED");
+      return cleanUser(
+        this.db.prepare("SELECT * FROM users WHERE id=?").get(userId),
+      );
+    });
+  }
   changePassword(userId: string, current: unknown, next: unknown) {
     if (
       typeof current !== "string" ||

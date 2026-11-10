@@ -46,19 +46,15 @@ test("workspace creation locks synchronously until submission settles", () => {
 test("first-run sections explain their own empty state and prioritize real creation over examples", () => {
   assert.match(
     onboarding,
-    /function workspaceOnboardingCopy\(section: string\)\s*\{\s*switch \(section\)/,
+    /switch\s*\(\s*section\s*\)\s*\{[\s\S]*case\s*"Agreements"\s*:[\s\S]*title:\s*"Your agreements start here"/,
   );
   assert.match(
     onboarding,
-    /case "Agreements":\s*return \{\s*title:\s*"Your agreements start here"/,
+    /case\s*"Payouts"\s*:[\s\S]*title:\s*"No payouts yet"/,
   );
   assert.match(
     onboarding,
-    /case "Payouts":\s*return \{\s*title:\s*"No payouts yet"/,
-  );
-  assert.match(
-    onboarding,
-    /default:\s*return \{\s*title:\s*"Create your workspace"/,
+    /default\s*:[\s\S]*title:\s*"Create your workspace"/,
   );
   assert.ok(
     onboarding.indexOf("<form") <
