@@ -11,8 +11,8 @@ const onboarding = readFileSync(
 );
 
 test("workspace selector only offers switching when there is a choice", () => {
-  assert.match(app, /workspaces.length > 1 \? <select/);
-  assert.match(app, /workspaces\[0\]\?\.name \|\| "No workspace yet"/);
+  assert.match(app, /workspaces\.length\s*>\s*1\s*\?\s*\(\s*<select/);
+  assert.match(app, /workspaces\[0\]\?\.name\s*\|\|\s*"No workspace yet"/);
 });
 test("account settings and invitations remain accessible before workspace creation", () => {
   assert.match(app, /!workspace && section !== Section.Settings \? \(/);
