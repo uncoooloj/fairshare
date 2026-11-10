@@ -1354,3 +1354,13 @@ td:last-child {
     text-align: left;
   }
 }
+
+/* iOS zooms focused controls below 16px. Keep pinch-to-zoom available.
+   Important intentionally wins over component modules and inherited font shorthands. */
+@media (max-width: 767px) {
+  input,
+  select,
+  textarea {
+    font-size: max(16px, 1rem) !important;
+  }
+}
