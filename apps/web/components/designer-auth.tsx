@@ -161,6 +161,29 @@ export function Auth({
   );
 }
 
+function workspaceOnboardingCopy(section: string) {
+  switch (section) {
+    case "Agreements":
+      return {
+        title: "Your agreements start here",
+        description:
+          "Create a workspace to upload your first agreement, invite collaborators and agree how revenue is shared.",
+      };
+    case "Payouts":
+      return {
+        title: "No payouts yet",
+        description:
+          "Payouts will appear here when an agreement has approved rules and recorded payments. Start by creating your workspace.",
+      };
+    default:
+      return {
+        title: "Create your workspace",
+        description:
+          "A shared home for your agreements, collaborators and payment activity.",
+      };
+  }
+}
+
 /** Uses the existing POST /workspaces callback; never advances before API success. */
 export function WorkspaceOnboarding({
   busy,
@@ -176,18 +199,7 @@ export function WorkspaceOnboarding({
   const [name, setName] = useState("");
   const submitting = useRef(false);
   const [creating, setCreating] = useState(false);
-  const title =
-    section === "Agreements"
-      ? "Your agreements start here"
-      : section === "Payouts"
-        ? "No payouts yet"
-        : "Create your workspace";
-  const description =
-    section === "Agreements"
-      ? "Create a workspace to upload your first agreement, invite collaborators and agree how revenue is shared."
-      : section === "Payouts"
-        ? "Payouts will appear here when an agreement has approved rules and recorded payments. Start by creating your workspace."
-        : "A shared home for your agreements, collaborators and payment activity.";
+  const { title, description } = workspaceOnboardingCopy(section);
   return (
     <section className={styles.welcome}>
       <h1>{title}</h1>
