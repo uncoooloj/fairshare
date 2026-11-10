@@ -299,6 +299,8 @@ export default function FairshareApp() {
     }
   }
   async function refresh() {
+    // An operation started in an older render may finish after navigation.
+    if (workspace !== currentWorkspace.current) return;
     await loadWorkspace(workspace);
     if (selected) {
       const a = await api<Agreement>(base);
