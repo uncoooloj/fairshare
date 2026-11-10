@@ -40,6 +40,7 @@ import { ContractReviewPanel, ContractSourceGuidance } from "./contract-review-g
 import { NewAgreement, AgreementSetup } from "./agreement-setup";
 import { WorkspaceOnboarding, AccessPrompt } from "./designer-auth";
 import { PaymentRecovery } from "./payment-recovery";
+import { ProfileForm } from "./profile-form";
 import { recoverSourceDocument } from "../lib/source-recovery";
 import dynamic from "next/dynamic";
 const PaymentGrid = dynamic(
@@ -1240,6 +1241,11 @@ export default function FairshareApp() {
                     <span className="eyebrow">PROFILE</span>
                     <div className="settings-identity"><span className="avatar">{user.name.slice(0,1)}</span><h3>{user.name}</h3></div>
                     <p>{user.email}</p>
+                    <ProfileForm key={user.id} name={user.name} busy={busy} onSave={async name => {
+                      const result = await api("auth/profile", "POST", {name});
+                      setUser(result.user);
+                      setNotice("Display name saved. Existing agreement names are unchanged.");
+                    }} />
                     <p className="muted">
                       Current environment: {mode}. Live money is disabled.
                     </p>
