@@ -210,6 +210,7 @@ export default function FairshareApp() {
   async function loadWorkspace(id: string) {
     if (!id || id !== currentWorkspace.current) return;
     const request = workspaceRequest.current;
+    try {
     const [r, m] = await Promise.all([
       api(`${workspaceBase(id)}/collaborations`),
       api(`${workspaceBase(id)}/members`),
@@ -227,11 +228,16 @@ export default function FairshareApp() {
     );
     if (request !== workspaceRequest.current) return;
     setPayouts(all.flat());
+    } catch (error) {
+      if (request !== workspaceRequest.current) return;
+      throw error;
+    }
   }
   async function openAgreement(a: Agreement) {
     if (a.workspaceId !== currentWorkspace.current) return;
     const request = ++openRequest.current;
     const root = `${workspaceBase(a.workspaceId)}/collaborations/${a.id}`;
+    try {
     const [fresh, p] = await Promise.all([
       api<Agreement>(root),
       api(`${root}/payments`),
@@ -261,6 +267,10 @@ export default function FairshareApp() {
       setDocumentId(doc.documentId);
       setSource(doc.text);
       setExtraction(doc.extraction);
+    }
+    } catch (error) {
+      if (request !== openRequest.current) return;
+      throw error;
     }
   }
   async function createFromAgreement(input: AgreementIntakeInput) {
@@ -307,12 +317,23 @@ export default function FairshareApp() {
   async function refresh() {
     // An operation started in an older render may finish after navigation.
     if (workspace !== currentWorkspace.current) return;
-    await loadWorkspace(workspace);
-    if (selected) {
-      const a = await api<Agreement>(base);
-      setSelected(a);
-      const p = await api(`${base}/payments`);
-      setPayments(p.payments);
+    const workspaceRequestId = workspaceRequest.current;
+    const openRequestId = openRequest.current;
+    const id = currentWorkspace.current;
+    try {
+      await loadWorkspace(id);
+      if (workspaceRequestId !== workspaceRequest.current || openRequestId !== openRequest.current) return;
+      if (selected) {
+        const a = await api<Agreement>(base);
+        if (workspaceRequestId !== workspaceRequest.current || openRequestId !== openRequest.current) return;
+        setSelected(a);
+        const p = await api(`${base}/payments`);
+        if (workspaceRequestId !== workspaceRequest.current || openRequestId !== openRequest.current) return;
+        setPayments(p.payments);
+      }
+    } catch (error) {
+      if (workspaceRequestId !== workspaceRequest.current || openRequestId !== openRequest.current) return;
+      throw error;
     }
   }
   useEffect(() => {
