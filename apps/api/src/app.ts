@@ -8,14 +8,14 @@ import {DomainError} from '@fairshare/domain';
 import type {CloudflareConfig,extractContract} from '@fairshare/contract-ai';
 import Fastify, {type FastifyInstance,type FastifyRequest} from 'fastify';
 import {ApiError,DataMode,IdentityStore,Role,digest,type User} from './identity.js';
-export interface AppOptions extends EmailOptions {mfaEncryptionKey?:string;dbPath?:string;clock?:()=>number;demo?:boolean;logger?:boolean;localOcrEnabled?:boolean;ai?:CloudflareConfig;extract?:typeof extractContract;payment?:PaymentOptions}
+export interface AppOptions extends EmailOptions {hackathonMfaSimulation?:boolean;mfaEncryptionKey?:string;dbPath?:string;clock?:()=>number;demo?:boolean;logger?:boolean;localOcrEnabled?:boolean;ai?:CloudflareConfig;extract?:typeof extractContract;payment?:PaymentOptions}
 export type FairshareApp=FastifyInstance&{store:IdentityStore;requireSession:(request:FastifyRequest)=>User;requireWorkspace:(request:FastifyRequest,workspaceId:string,roles?:Role[])=>{user:User;workspace:any}};
 export async function buildApp(options:AppOptions={}):Promise<FairshareApp>{
  if(options.localOcrEnabled)await verifyLocalOcrTools();
  if(options.payment?.reconciliation?.enabled&&(options.demo||!options.payment.provider))throw new Error('Reconciliation worker requires configured SANDBOX provider');
  const app=Fastify({logger:options.logger??false,bodyLimit:65536,trustProxy:false,ajv:{customOptions:{removeAdditional:false}}}) as unknown as FairshareApp;
  const mode=options.demo?DataMode.DEMO:DataMode.SANDBOX;
- const store=new IdentityStore(options.dbPath??process.env.DATABASE_PATH??'./data/fairshare-sandbox.db',mode,options.clock,options.mfaEncryptionKey);
+ const store=new IdentityStore(options.dbPath??process.env.DATABASE_PATH??'./data/fairshare-sandbox.db',mode,options.clock,options.mfaEncryptionKey,options.hackathonMfaSimulation);
  const bearer=(req:FastifyRequest)=>{const raw=req.headers.authorization;if(!raw?.startsWith('Bearer '))throw new ApiError(401,'UNAUTHORIZED','Sign in to continue.');return raw.slice(7);};
  app.decorate('store',store);
  app.decorate('requireSession',(req:FastifyRequest)=>store.userForToken(bearer(req)));

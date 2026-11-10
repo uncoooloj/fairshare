@@ -286,7 +286,7 @@ export default function FairshareApp() {
             <span className="avatar">{user.name.slice(0, 1)}</span>
             <div>
               <strong>{user.name}</strong>
-              <small>{user.email}</small>
+              <small title={user.email}>{user.email}</small>
             </div>
           </div>
           <button
@@ -869,7 +869,7 @@ export default function FairshareApp() {
                                     }
                                     rulesDirty.current = false;
                                     setExtraction(null);
-                                    setDraftDirty(true);
+                                    setDraftDirty(!/\.(pdf|docx)$/i.test(f.name));
                                   })
                                 }
                               />
@@ -897,6 +897,7 @@ export default function FairshareApp() {
                                     { text: source },
                                   );
                                   setDocumentId(doc.documentId);
+                                  setDraftDirty(rulesDirty.current);
                                   setNotice(
                                     "Source saved. You can review rules manually or ask AI for suggestions.",
                                   );

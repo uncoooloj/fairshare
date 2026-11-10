@@ -17,7 +17,7 @@ function matches(password:string,encoded:string){const [salt,hash]=encoded.split
 export class IdentityStore {
  readonly db:DatabaseSync;
  readonly mfa:MfaService;
- constructor(path:string,public mode:DataMode=DataMode.SANDBOX,public now:()=>number=Date.now,mfaEncryptionKey=process.env.FAIRSHARE_MFA_ENCRYPTION_KEY){
+ constructor(path:string,public mode:DataMode=DataMode.SANDBOX,public now:()=>number=Date.now,mfaEncryptionKey=process.env.FAIRSHARE_MFA_ENCRYPTION_KEY,hackathonMfaSimulation=false){
   if(path!==':memory:')mkdirSync(dirname(path),{recursive:true}); this.db=new DatabaseSync(path); if(path!==':memory:')chmodSync(path,0o600);
   this.db.exec(`PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL;
    CREATE TABLE IF NOT EXISTS metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL);
@@ -33,7 +33,7 @@ export class IdentityStore {
    CREATE TABLE IF NOT EXISTS workspace_records(workspace_id TEXT NOT NULL REFERENCES workspaces(id),key TEXT NOT NULL,value TEXT NOT NULL,version INTEGER NOT NULL,PRIMARY KEY(workspace_id,key));`);
   if(!(this.db.prepare('PRAGMA table_info(users)').all() as any[]).some(row=>row.name==='email_verified_at'))this.db.exec('ALTER TABLE users ADD COLUMN email_verified_at INTEGER');
   if(!(this.db.prepare('PRAGMA table_info(invitations)').all() as any[]).some(row=>row.name==='delivery'))this.db.exec("ALTER TABLE invitations ADD COLUMN delivery TEXT NOT NULL DEFAULT 'EMAIL'");
-  this.mfa=new MfaService(this,mfaEncryptionKey);
+  this.mfa=new MfaService(this,mfaEncryptionKey,hackathonMfaSimulation);
   try { this.tx(()=>{const row=this.db.prepare('SELECT value FROM metadata WHERE key=?').get('mode') as any;if(row&&row.value!==mode)throw new Error('Database mode mismatch. Use a separate database for DEMO and SANDBOX.');this.db.prepare('INSERT OR IGNORE INTO metadata VALUES(?,?)').run('mode',mode);}); } catch(error) {this.db.close();throw error;}
  }
  close(){this.db.close();}

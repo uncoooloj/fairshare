@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/model';
 import { Button, Field } from './ui';
-type Status = { available: boolean; enabled: boolean; recoveryCodesRemaining: number };
+type Status = { simulated?: boolean; available: boolean; enabled: boolean; recoveryCodesRemaining: number };
 export function MfaSettings({ onSignOut }: { onSignOut: () => void }) {
   const [status, setStatus] = useState<Status | null>(null),
     [setup, setSetup] = useState<{ secret: string; expiresAt: number } | null>(null),
@@ -50,6 +50,7 @@ export function MfaSettings({ onSignOut }: { onSignOut: () => void }) {
       if (action === 'cancel') setSetup(null);
       if (action === 'activate') {
         setSetup(null);
+        if (result.simulated) { onSignOut(); return; }
         setRecovery(result.recoveryCodes);
       }
       if (action === 'disable') onSignOut();
@@ -62,11 +63,12 @@ export function MfaSettings({ onSignOut }: { onSignOut: () => void }) {
   }
   return (
     <section className="panel">
-      <h2>Authenticator security</h2>
-      <p className="muted">
+      <h2>{status?.simulated ? 'Hackathon MFA simulation' : 'Authenticator security'}</h2>
+      {status?.simulated && <p role="status">SANDBOX ONLY · This is a simulated step, not account protection. Enter any nonempty value to continue. No authenticator app or recovery codes are needed. Your password is still required.</p>}
+      {!status?.simulated && <p className="muted">
         Require a six-digit authenticator code when you sign in. Recovery codes are single-use;
         store them somewhere private.
-      </p>
+      </p>}
       {error && <p role="alert">{error}</p>}
       {!!recovery.length ? (
         <>
@@ -106,26 +108,26 @@ export function MfaSettings({ onSignOut }: { onSignOut: () => void }) {
             void submit(event.currentTarget, 'activate');
           }}
         >
-          <p>
+          {!status.simulated && <><p>
             In your authenticator app, add a time-based code for Fairshare using this setup key. It
             expires in ten minutes.
           </p>
           <p>
             <code>{setup.secret}</code>
-          </p>
-          <Field label="Six-digit authenticator code">
+          </p></>}
+          <Field label={status.simulated ? "Any value (simulation)" : "Six-digit authenticator code"}>
             <input
               name="code"
               autoComplete="one-time-code"
-              inputMode="numeric"
-              pattern="[0-9]{6}"
-              maxLength={6}
+              inputMode={status.simulated ? "text" : "numeric"}
+              pattern={status.simulated ? undefined : "[0-9]{6}"}
+              maxLength={status.simulated ? 80 : 6}
               required
               disabled={busy}
             />
           </Field>
           <Button disabled={busy}>
-            {busy ? 'Verifying…' : 'Enable authenticator and show recovery codes'}
+            {busy ? 'Verifying…' : status.simulated ? 'Enable simulated step and sign out' : 'Enable authenticator and show recovery codes'}
           </Button>
           <Button
             type="button"
@@ -146,10 +148,10 @@ export function MfaSettings({ onSignOut }: { onSignOut: () => void }) {
             void submit(event.currentTarget, 'disable');
           }}
         >
-          <p>
+          {status.simulated ? <p>Simulation enabled. Disable using your password and any nonempty value.</p> : <p>
             Enabled · {status.recoveryCodesRemaining} recovery codes remaining. Disabling requires
             your password and an unused code and signs out every session.
-          </p>
+          </p>}
           <Field label="Current password">
             <input
               type="password"

@@ -4,6 +4,7 @@ import { suggestedShares } from "../lib/ai-draft";
 import { useState, useRef, type ReactNode } from "react";
 import {
   money,
+  sampleAgreement,
   parseCents,
   parseShare,
   title,
@@ -464,6 +465,13 @@ export function RulesEditor({
       }}
     >
       <h3>Proposed rules</h3>
+      {source.trim() === sampleAgreement && (
+        <Notice warning>
+          <strong>Sample text is not your participants’ agreement.</strong>
+          <p>This example names Maya, Jordan and Riley. Your current participants are {agreement.value.members.map(member => member.displayName).join(", ")}. Check that each person corresponds to a party in the source before proposing terms.</p>
+          <p>Add the correct people in People, or replace this text with their agreement. The percentages below are editable defaults, not extracted or approved terms. Check the shares, advance and fees against the source; everyone must review and approve the proposal.</p>
+        </Notice>
+      )}
       <p className="muted">
         All participants review this version. Add people first; membership is
         locked once a proposal exists.
