@@ -28,4 +28,6 @@ Review discussion comments are separate from rule and approval transitions. A ch
 
 Local OCR is an API-host option, disabled by default. It requires Poppler and Tesseract and only processes a scan after the user opts in; normal text-layer PDF parsing never falls back to OCR. Authenticator MFA is available only when the operator supplies `FAIRSHARE_MFA_ENCRYPTION_KEY` and keeps that key with the database backup. `HACKATHON_MFA_SIMULATION=true` is a separate synthetic-account option for non-production SANDBOX only; startup rejects it in DEMO, production, or live-PayPal configuration. The flag applies process-wide to accounts without an existing real authenticator, so it requires a dedicated synthetic-only database. It never bypasses a real authenticator record and is not account protection.
 
+The Cloudflare work is an adapter/prototype seam, not a wired API or deployment. [Cloudflare deployment](CLOUDFLARE.md) records the web-adapter and deployment gates; the [Durable SQL prototype](../packages/cloudflare-storage/README.md) records the isolated storage contract. Durable acceptance, API wiring, and deployment remain outstanding.
+
 For route-level behavior see [API flows](API-FLOWS.md), document boundaries in [source documents](security/source-documents.md), and operational acceptance in [release readiness](RELEASE-READINESS.md).
