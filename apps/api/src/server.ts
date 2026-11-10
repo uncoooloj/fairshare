@@ -24,7 +24,13 @@ const app = await buildApp({
   publicAppOrigin: process.env.PUBLIC_APP_ORIGIN,
   demo: process.env.DEMO_MODE === "true",
   logger: false,
-  payment: { provider, publicOrigin: process.env.PUBLIC_API_URL },
+  payment: {
+    provider,
+    publicOrigin: process.env.PUBLIC_API_URL,
+    reconciliation: {
+      enabled: process.env.PAYPAL_RECONCILIATION_ENABLED === "true",
+    },
+  },
   ai: {
     accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
     apiToken: process.env.CLOUDFLARE_API_TOKEN,

@@ -2,6 +2,7 @@
 export enum MailKind {
   VERIFY_EMAIL = "VERIFY_EMAIL",
   WORKSPACE_INVITATION = "WORKSPACE_INVITATION",
+  AGREEMENT_REVIEW = "AGREEMENT_REVIEW",
 }
 export interface MailMessage {
   kind: MailKind;
@@ -48,13 +49,17 @@ export function emailLink(origin: string, kind: MailKind, token: string) {
 }
 function renderMessage(message: MailMessage) {
   const subject =
-    message.kind === MailKind.VERIFY_EMAIL
-      ? "Verify your Fairshare email"
-      : "Your Fairshare workspace invitation";
+    message.kind === MailKind.AGREEMENT_REVIEW
+      ? "Review your Fairshare agreement"
+      : message.kind === MailKind.VERIFY_EMAIL
+        ? "Verify your Fairshare email"
+        : "Your Fairshare workspace invitation";
   const text =
-    message.kind === MailKind.VERIFY_EMAIL
-      ? `Verify your email to join Fairshare workspaces. Open this link while signed in to the same email:\n\n${message.link}\n\nThis link expires at ${new Date(message.expiresAt).toISOString()}. If you did not request this, ignore it.`
-      : `You were invited to a Fairshare workspace${message.workspaceName ? ` (${message.workspaceName})` : ""}. Sign in with ${message.to}, verify your email, then review and accept this invitation:\n\n${message.link}\n\nExpires at ${new Date(message.expiresAt).toISOString()}. This invitation does not approve an agreement or move money.`;
+    message.kind === MailKind.AGREEMENT_REVIEW
+      ? `An agreement organizer has asked you to review pending terms in Fairshare. Sign in, open Agreements, and review the version awaiting your approval.\n\n${message.link}\n\nThis reminder does not approve an agreement or move money. If you have already reviewed it, no further action is needed.`
+      : message.kind === MailKind.VERIFY_EMAIL
+        ? `Verify your email to join Fairshare workspaces. Open this link while signed in to the same email:\n\n${message.link}\n\nThis link expires at ${new Date(message.expiresAt).toISOString()}. If you did not request this, ignore it.`
+        : `You were invited to a Fairshare workspace${message.workspaceName ? ` (${message.workspaceName})` : ""}. Sign in with ${message.to}, verify your email, then review and accept this invitation:\n\n${message.link}\n\nExpires at ${new Date(message.expiresAt).toISOString()}. This invitation does not approve an agreement or move money.`;
   return { subject, text };
 }
 async function parseProviderResponse(response: Response) {

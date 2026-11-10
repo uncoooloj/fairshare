@@ -1,3 +1,4 @@
+import { registerReviewCollaboration } from "./reviewCollaboration.js";
 import {
   registerEmailRoutes,
   deliverInvitation,
@@ -63,6 +64,13 @@ function domainErrorStatus(code: string): number {
 export async function buildApp(
   options: AppOptions = {},
 ): Promise<FairshareApp> {
+  if (
+    options.payment?.reconciliation?.enabled &&
+    (options.demo || !options.payment.provider)
+  )
+    throw new Error(
+      "Reconciliation worker requires configured SANDBOX provider",
+    );
   const app = Fastify({
     logger: options.logger ?? false,
     bodyLimit: 65536,
@@ -379,5 +387,6 @@ export async function buildApp(
     extract: options.extract,
   });
   registerPaymentRoutes(app, domainRoutes.store, options.payment);
+  registerReviewCollaboration(app, domainRoutes.store, options);
   return app;
 }

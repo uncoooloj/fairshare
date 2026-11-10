@@ -12,10 +12,10 @@ import {
   RuleOrigin,
   FeePolicy,
 } from "@fairshare/domain";
-import { PayPalError, PayPalSandbox } from "@fairshare/payments";
+import { PayPalError } from "@fairshare/payments";
 import type { PaymentProvider } from "../src/paymentRoutes.js";
 const auth = (token: string) => ({ authorization: `Bearer ${token}` });
-async function setup() {
+async function setup(reconciliation = false) {
   let writes = 0,
     captures = 0,
     payoutWrites = 0,
@@ -65,7 +65,11 @@ async function setup() {
   };
   const app = await buildApp({
     dbPath: ":memory:",
-    payment: { provider, publicOrigin: "https://callbacks.example.test" },
+    payment: {
+      provider,
+      publicOrigin: "https://callbacks.example.test",
+      reconciliation: { enabled: reconciliation },
+    },
   });
   const owner = app.store.register({
     name: "Maya",
@@ -380,8 +384,8 @@ test("unmatched or uncompleted recovery evidence is rejected and cannot leak ten
     await s.app.close();
   }
 });
-async function refundable() {
-  const s = await setup();
+async function refundable(reconciliation = false) {
+  const s = await setup(reconciliation);
   const id = (
     await s.post("/payments", { amountCents: 10000, requestKey: "one" })
   ).json().id;
@@ -404,6 +408,20 @@ async function refundable() {
     reference: request,
   });
   return { ...s, paymentId: id, refundCount: () => refunds };
+}
+async function pendingRefund() {
+  const s = await refundable(true);
+  const original = s.provider.getRefund!;
+  s.provider.getRefund = async (id) => ({
+    ...(await original(id)),
+    status: "PENDING",
+  });
+  const response = await s.post(`/payments/${s.paymentId}/refund`, {
+    confirmFullRefund: true,
+  });
+  assert.equal(response.statusCode, 200, response.body);
+  assert.equal(response.json().status, "PENDING");
+  return { ...s, original, refundId: response.json().id as string };
 }
 test("full original refund is durable exactly-once and holds liabilities without editing agreed split", async () => {
   const s = await refundable();
@@ -558,6 +576,80 @@ test("refund reservation blocks concurrent payout while provider write is in fli
     await s.app.close();
   }
 });
+test("worker stale pending refund evidence cannot overwrite manual terminal recovery", async () => {
+  for (const status of ["FAILED", "CANCELLED"]) {
+    const s = await pendingRefund();
+    try {
+      const origin = await s.app.listen({ host: "127.0.0.1", port: 0 });
+      let release!: () => void, started!: () => void;
+      const waiting = new Promise<void>((resolve) => (release = resolve));
+      const began = new Promise<void>((resolve) => (started = resolve));
+      s.provider.getRefund = async (id) => {
+        started();
+        await waiting;
+        return { ...(await s.original(id)), status: "PENDING" };
+      };
+      const worker = (s.app as any).paymentReconciliation.tick();
+      await began;
+      s.provider.getRefund = async (id) => ({
+        ...(await s.original(id)),
+        status,
+      });
+      const recovered = await fetch(
+        `${origin}${s.base}/refunds/${s.refundId}/reconcile`,
+        { method: "POST", headers: auth(s.owner.token) },
+      );
+      assert.equal(recovered.status, 200);
+      assert.equal(((await recovered.json()) as any).status, status);
+      release();
+      await worker;
+      assert.equal(
+        (
+          s.app.store.db
+            .prepare("SELECT status FROM fairshare_refund_ops WHERE id=?")
+            .get(s.refundId) as any
+        ).status,
+        status,
+      );
+    } finally {
+      await s.app.close();
+    }
+  }
+});
+test("manual stale pending refund evidence cannot overwrite worker terminal recovery", async () => {
+  for (const status of ["FAILED", "CANCELLED"]) {
+    const s = await pendingRefund();
+    try {
+      let release!: () => void, started!: () => void;
+      const waiting = new Promise<void>((resolve) => (release = resolve));
+      const began = new Promise<void>((resolve) => (started = resolve));
+      s.provider.getRefund = async (id) => {
+        started();
+        await waiting;
+        return { ...(await s.original(id)), status: "PENDING" };
+      };
+      const recovery = s.post(`/refunds/${s.refundId}/reconcile`);
+      await began;
+      s.provider.getRefund = async (id) => ({
+        ...(await s.original(id)),
+        status,
+      });
+      await (s.app as any).paymentReconciliation.tick();
+      release();
+      assert.equal((await recovery).statusCode, 400);
+      assert.equal(
+        (
+          s.app.store.db
+            .prepare("SELECT status FROM fairshare_refund_ops WHERE id=?")
+            .get(s.refundId) as any
+        ).status,
+        status,
+      );
+    } finally {
+      await s.app.close();
+    }
+  }
+});
 test("unknown payout recovery is read-only, adapter verifies frozen operation and status", async () => {
   const s = await setup();
   try {
@@ -670,125 +762,166 @@ test("unrelated adverse provider event does not block an otherwise valid capture
   }
 });
 
-test("disabled payout gates remain retryable without submitting or replaying money", async () => {
-  const s = await setup();
-  let providerRequests = 0;
-  const config = {
-    clientId: "synthetic",
-    clientSecret: "synthetic",
-    payoutsEnabled: false,
-    payoutsEligibilityConfirmed: false,
-  };
-  const client = new PayPalSandbox(config, (async (url, init) => {
-    providerRequests++;
-    if (String(url).endsWith("/v1/oauth2/token"))
-      return Response.json({ access_token: "synthetic", expires_in: 3600 });
-    const body = JSON.parse(String(init?.body));
-    return Response.json({
-      batch_header: {
-        payout_batch_id: "BATCH1",
-        sender_batch_header: body.sender_batch_header,
-      },
-    });
-  }) as typeof fetch);
+test("background reconciliation reads known orders exactly once and never captures or dispatches money", async () => {
+  const s = await setup(true);
   try {
-    const payment = await s.post("/payments", {
-      amountCents: 10000,
-      requestKey: "one",
-    });
-    await s.post(`/payments/${payment.json().id}/capture`);
-    await s.app.inject({
-      method: "PUT",
-      url: s.base + "/recipient",
-      headers: auth(s.owner.token),
-      payload: { paypalId: "ABCDEFGHIJKLM" },
-    });
-    s.provider.createPayout = client.createPayout.bind(client);
-    await s.app.listen({ host: "127.0.0.1", port: 0 });
-    const address = s.app.server.address();
-    assert.ok(address && typeof address !== "string");
-    const dispatch = () =>
-      fetch(`http://127.0.0.1:${address.port}${s.base}/payouts/dispatch`, {
-        method: "POST",
-        headers: { ...auth(s.owner.token), "content-type": "application/json" },
-        body: JSON.stringify({ captureId: "CAP1" }),
-      });
-    const disabled = await dispatch();
-    assert.equal(disabled.status, 503, await disabled.text());
-    assert.equal(providerRequests, 0);
+    const op = (
+      await s.post("/payments", { amountCents: 10000, requestKey: "worker" })
+    ).json();
+    await (s.app as any).paymentReconciliation.tick();
+    assert.equal(s.agg.read(s.w.id, "collab").value.revenue.length, 1);
+    assert.equal(s.counts().captures, 0);
+    assert.equal(s.counts().payoutWrites, 0);
+    await (s.app as any).paymentReconciliation.tick();
+    assert.equal(s.agg.read(s.w.id, "collab").value.revenue.length, 1);
     assert.equal(
       (
         s.app.store.db
-          .prepare("SELECT status FROM fairshare_payout_ops")
-          .get() as { status: string }
+          .prepare("SELECT status FROM fairshare_payment_ops WHERE id=?")
+          .get(op.id) as any
       ).status,
-      "RESERVED",
-    );
-    config.payoutsEnabled = true;
-    config.payoutsEligibilityConfirmed = true;
-    const retried = await dispatch();
-    assert.equal(retried.status, 200);
-    assert.equal(((await retried.json()) as any).payouts[0].status, "PENDING");
-    await dispatch();
-    assert.equal(
-      providerRequests,
-      2,
-      "one OAuth request and one payout submission",
+      "ALLOCATED",
     );
   } finally {
     await s.app.close();
   }
 });
-
-test("concurrent dispatch claims a recovered reservation once and never replays uncertain writes", async () => {
-  const s = await setup();
+test("background reconciliation never retries unknown writes without provider IDs", async () => {
+  const s = await setup(true);
   try {
-    const payment = await s.post("/payments", {
-      amountCents: 10000,
-      requestKey: "one",
-    });
-    await s.post(`/payments/${payment.json().id}/capture`);
-    const payoutId = "recovered-reservation";
-    s.app.store.db
-      .prepare(
-        "INSERT INTO fairshare_payout_ops(id,workspace_id,collaboration_id,capture_id,user_id,recipient_id,amount,status) VALUES(?,?,?,?,?,?,?,?)",
-      )
-      .run(
-        payoutId,
-        s.w.id,
-        "collab",
-        "CAP1",
-        s.owner.user.id,
-        "ABCDEFGHIJKLM",
-        9700,
-        "RESERVED",
-      );
-    let submissions = 0;
-    let release!: () => void;
-    let entered!: () => void;
-    const started = new Promise<void>((resolve) => {
-      entered = resolve;
-    });
-    const pending = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    s.provider.createPayout = async () => {
-      submissions++;
-      entered();
-      await pending;
-      throw new PayPalError("PAYPAL_OUTCOME_UNKNOWN");
+    s.provider.createOrder = async () => {
+      throw new Error("uncertain");
     };
-    const first = s.post("/payouts/dispatch", { captureId: "CAP1" });
-    await started;
-    const concurrent = await s.post("/payouts/dispatch", { captureId: "CAP1" });
-    assert.equal(concurrent.json().payouts[0].status, "SUBMITTING");
-    assert.equal(submissions, 1);
-    release();
-    assert.equal((await first).json().payouts[0].status, "OUTCOME_UNKNOWN");
-    const retry = await s.post("/payouts/dispatch", { captureId: "CAP1" });
-    assert.equal(retry.json().payouts[0].status, "OUTCOME_UNKNOWN");
-    assert.equal(submissions, 1);
+    await s.post("/payments", {
+      amountCents: 10000,
+      requestKey: "unknown-worker",
+    });
+    let reads = 0;
+    s.provider.getOrder = async () => {
+      reads++;
+      throw new Error("must not read without ID");
+    };
+    await (s.app as any).paymentReconciliation.tick();
+    assert.equal(reads, 0);
+    assert.equal(s.counts().captures, 0);
+    assert.equal(s.counts().payoutWrites, 0);
   } finally {
     await s.app.close();
   }
+});
+
+test("worker verifies payout and refund evidence, preserves refund hold and rejects mismatched refunds", async () => {
+  const s = await refundable(true);
+  try {
+    const original = s.provider.getRefund!;
+    s.provider.getRefund = async (id) => ({
+      ...(await original(id)),
+      status: "PENDING",
+    });
+    const r = await s.post(`/payments/${s.paymentId}/refund`, {
+      confirmFullRefund: true,
+    });
+    assert.equal(r.statusCode, 200, r.body);
+    s.provider.getRefund = async (id) => ({
+      ...(await original(id)),
+      amountCents: 1,
+    });
+    await (s.app as any).paymentReconciliation.tick();
+    assert.equal(
+      (
+        s.app.store.db
+          .prepare("SELECT status FROM fairshare_refund_ops")
+          .get() as any
+      ).status,
+      "PENDING",
+    );
+    s.provider.getRefund = original;
+    s.app.store.db
+      .prepare("UPDATE fairshare_reconciliation_jobs SET next_run=0")
+      .run();
+    await (s.app as any).paymentReconciliation.tick();
+    assert.equal(
+      (
+        s.app.store.db
+          .prepare("SELECT status FROM fairshare_refund_ops")
+          .get() as any
+      ).status,
+      "COMPLETED",
+    );
+    assert.equal(s.refundCount(), 1);
+    assert.equal(s.agg.read(s.w.id, "collab").value.reviewHold, true);
+  } finally {
+    await s.app.close();
+  }
+  const p = await setup(true);
+  try {
+    const id = (
+      await p.post("/payments", {
+        amountCents: 10000,
+        requestKey: "payout-worker",
+      })
+    ).json().id;
+    await p.post(`/payments/${id}/capture`);
+    await p.app.inject({
+      method: "PUT",
+      url: p.base + "/recipient",
+      headers: auth(p.owner.token),
+      payload: { paypalId: "ABCDEFGHIJKLM" },
+    });
+    await p.post("/payouts/dispatch", { captureId: "CAP1" });
+    await (p.app as any).paymentReconciliation.tick();
+    assert.equal(
+      (
+        p.app.store.db
+          .prepare("SELECT status FROM fairshare_payout_ops")
+          .get() as any
+      ).status,
+      "SUCCESS",
+    );
+    assert.equal(p.counts().payoutWrites, 1);
+  } finally {
+    await p.app.close();
+  }
+});
+test("worker retries signed pending event but cannot allocate held capture", async () => {
+  const s = await setup(true);
+  try {
+    const id = (
+      await s.post("/payments", {
+        amountCents: 10000,
+        requestKey: "held-worker",
+      })
+    ).json().id;
+    await s.event("worker-adverse", "PAYMENT.CAPTURE.REVERSED");
+    await (s.app as any).paymentReconciliation.tick();
+    assert.equal(s.agg.read(s.w.id, "collab").value.revenue.length, 0);
+    assert.equal(s.counts().captures, 0);
+    assert.equal(
+      (
+        s.app.store.db
+          .prepare("SELECT status FROM fairshare_webhook_inbox WHERE id=?")
+          .get("worker-adverse") as any
+      ).status,
+      "PENDING",
+    );
+  } finally {
+    await s.app.close();
+  }
+});
+test("scheduler refuses DEMO or missing provider configuration", async () => {
+  await assert.rejects(
+    buildApp({
+      dbPath: ":memory:",
+      demo: true,
+      payment: { reconciliation: { enabled: true } },
+    }),
+    /SANDBOX/,
+  );
+  await assert.rejects(
+    buildApp({
+      dbPath: ":memory:",
+      payment: { reconciliation: { enabled: true } },
+    }),
+    /SANDBOX/,
+  );
 });

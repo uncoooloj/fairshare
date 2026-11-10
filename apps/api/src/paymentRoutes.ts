@@ -1,3 +1,4 @@
+import { createReconciliationWorker } from "./reconciliationWorker.js";
 import { randomUUID, createHash } from "node:crypto";
 import type { FastifyRequest } from "fastify";
 import {
@@ -30,6 +31,7 @@ export type PaymentProvider = Pick<
 export interface PaymentOptions {
   provider?: PaymentProvider;
   publicOrigin?: string;
+  reconciliation?: { enabled: boolean; intervalMs?: number };
 }
 const fail = (code: string, message: string): never => {
   throw new DomainError(code, message);
@@ -86,7 +88,7 @@ export function registerPaymentRoutes(
   function paymentError(e: unknown): never {
     throw e;
   }
-  async function applyCapture(op: any) {
+  async function applyCapture(op: any, assertLease: () => void = () => {}) {
     if (!op.provider_order_id)
       fail("PAYMENT_OUTCOME_UNKNOWN", "Order requires reconciliation");
     let result;
@@ -111,6 +113,7 @@ export function registerPaymentRoutes(
         "CAPTURE_ACCOUNTING_REQUIRED",
         "Provider fee accounting must be verified before allocation",
       );
+    assertLease();
     return tx(() => {
       const adverse = (
         db
@@ -344,7 +347,7 @@ export function registerPaymentRoutes(
         .all(p.workspaceId, p.collaborationId),
     };
   });
-  async function reconcilePayout(op: any) {
+  async function reconcilePayout(op: any, assertLease: () => void = () => {}) {
     if (!op.batch_id)
       fail(
         "PAYOUT_OUTCOME_UNKNOWN",
@@ -361,6 +364,12 @@ export function registerPaymentRoutes(
     } catch (e) {
       paymentError(e);
     }
+    assertLease();
+    const fresh = db
+      .prepare("SELECT status,batch_id FROM fairshare_payout_ops WHERE id=?")
+      .get(op.id) as any;
+    if (!fresh || fresh.batch_id !== op.batch_id || fresh.status !== op.status)
+      fail("RECONCILIATION_CONFLICT", "Payout changed during provider read");
     db.prepare(
       "UPDATE fairshare_payout_ops SET status=?,item_id=? WHERE id=?",
     ).run(r!.status, r!.itemId, op.id);
@@ -500,7 +509,8 @@ export function registerPaymentRoutes(
     if (!op) fail("NOT_FOUND", "Payout not found");
     return reconcilePayout(op);
   });
-  async function processEvent(id: string) {
+  async function processEvent(id: string, assertLease: () => void = () => {}) {
+    assertLease();
     const stored = db
       .prepare("SELECT * FROM fairshare_webhook_inbox WHERE id=?")
       .get(id) as any;
@@ -514,7 +524,9 @@ export function registerPaymentRoutes(
           )
           .get(action.orderId) as any;
         if (!op) fail("UNMATCHED_EVENT", "Order not found");
-        await applyCapture(op);
+        const result = await applyCapture(op, assertLease);
+        if (!result.confirmed)
+          fail("CAPTURE_NOT_CONFIRMED", "Provider capture is not completed");
       } else if (action.kind === WebhookActionKind.HoldCapture) {
         const match = db
           .prepare(
@@ -540,13 +552,15 @@ export function registerPaymentRoutes(
           .prepare("SELECT * FROM fairshare_payout_ops WHERE batch_id=?")
           .get(action.providerId) as any;
         if (!op) fail("UNMATCHED_EVENT", "Payout not found");
-        await reconcilePayout(op);
+        await reconcilePayout(op, assertLease);
       } else if (action.kind === WebhookActionKind.RecordUnmatched)
         fail("UNMATCHED_EVENT", "Provider event needs matching");
+      assertLease();
       db.prepare(
         "UPDATE fairshare_webhook_inbox SET status='DONE',error=NULL WHERE id=?",
       ).run(id);
     } catch (e) {
+      assertLease();
       db.prepare(
         "UPDATE fairshare_webhook_inbox SET status='PENDING',error=? WHERE id=?",
       ).run(
@@ -601,5 +615,107 @@ export function registerPaymentRoutes(
     ownPayment,
     applyCapture,
   });
-  return { processEvent };
+  const worker = options.reconciliation?.enabled
+    ? createReconciliationWorker({
+        db,
+        intervalMs: options.reconciliation.intervalMs,
+        discover: () => [
+          ...(
+            db
+              .prepare(
+                "SELECT id FROM fairshare_payment_ops WHERE provider_order_id IS NOT NULL AND status IN ('AWAITING_BUYER','CAPTURING','OUTCOME_UNKNOWN')",
+              )
+              .all() as any[]
+          ).map((r) => ({ kind: "PAYMENT", id: r.id })),
+          ...(
+            db
+              .prepare(
+                "SELECT id FROM fairshare_payout_ops WHERE batch_id IS NOT NULL AND status IN ('PENDING','ONHOLD','UNCLAIMED','OUTCOME_UNKNOWN')",
+              )
+              .all() as any[]
+          ).map((r) => ({ kind: "PAYOUT", id: r.id })),
+          ...(
+            db
+              .prepare(
+                "SELECT id FROM fairshare_refund_ops WHERE provider_refund_id IS NOT NULL AND status IN ('PENDING','SUBMITTING','OUTCOME_UNKNOWN')",
+              )
+              .all() as any[]
+          ).map((r) => ({ kind: "REFUND", id: r.id })),
+          ...(
+            db
+              .prepare(
+                "SELECT id FROM fairshare_webhook_inbox WHERE status='PENDING'",
+              )
+              .all() as any[]
+          ).map((r) => ({ kind: "WEBHOOK", id: r.id })),
+        ],
+        reconcile: async (job, assertLease) => {
+          if (job.kind === "PAYMENT") {
+            await applyCapture(payment(job.id), assertLease);
+            return;
+          }
+          if (job.kind === "PAYOUT") {
+            const op = db
+              .prepare("SELECT * FROM fairshare_payout_ops WHERE id=?")
+              .get(job.id);
+            await reconcilePayout(op, assertLease);
+            return;
+          }
+          if (job.kind === "WEBHOOK") {
+            await processEvent(job.id, assertLease);
+            const row = db
+              .prepare("SELECT status FROM fairshare_webhook_inbox WHERE id=?")
+              .get(job.id) as any;
+            if (row.status !== "DONE")
+              fail(
+                "RECONCILIATION_PENDING",
+                "Event still requires reconciliation",
+              );
+            return;
+          }
+          if (job.kind === "REFUND") {
+            const op = db
+              .prepare("SELECT * FROM fairshare_refund_ops WHERE id=?")
+              .get(job.id) as any;
+            const p = provider();
+            if (!p.getRefund)
+              fail("REFUND_NOT_CONFIGURED", "Sandbox refund provider required");
+            const result = await p.getRefund!(op.provider_refund_id);
+            assertLease();
+            if (
+              result.id !== op.provider_refund_id ||
+              result.amountCents !== op.amount ||
+              result.currency !== "USD" ||
+              result.captureId !== op.capture_id ||
+              result.reference !== op.request_key
+            )
+              fail("REFUND_MISMATCH", "Refund evidence mismatch");
+            tx(() => {
+              const fresh = db
+                .prepare("SELECT * FROM fairshare_refund_ops WHERE id=?")
+                .get(op.id) as any;
+              if (fresh.provider_refund_id !== result.id)
+                fail("RECOVERY_CONFLICT", "Refund evidence changed");
+              if (
+                ["COMPLETED", "FAILED", "CANCELLED"].includes(fresh.status) &&
+                fresh.status !== result.status
+              )
+                fail(
+                  "REFUND_STATUS_CONFLICT",
+                  "Terminal refund status cannot regress",
+                );
+              db.prepare(
+                "UPDATE fairshare_refund_ops SET status=? WHERE id=?",
+              ).run(result.status, op.id);
+            });
+          }
+        },
+      })
+    : undefined;
+  app.decorate("paymentReconciliation", worker ?? null);
+  if (worker) {
+    app.addHook("onReady", async () => worker.start());
+    app.addHook("preClose", async () => worker.stop());
+  }
+  return { processEvent, worker };
 }
