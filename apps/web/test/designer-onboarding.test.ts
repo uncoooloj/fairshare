@@ -22,7 +22,10 @@ test("onboarding never claims provider success or adds unsupported OAuth links",
     source,
     /It does not approve an agreement\s+or\s+change anyone’s share\./,
   );
-  assert.match(source, /if\s*\(\s*!busy\s*&&\s*name\.trim\(\)\s*\)\s*onCreate\(\s*name\.trim\(\)\s*\)/);
+  assert.match(
+    source,
+    /if\s*\(\s*!busy\s*&&\s*name\.trim\(\)\s*\)\s*onCreate\(\s*name\.trim\(\)\s*\)/,
+  );
   assert.match(source, /if\s*\(\s*!busy\s*\)\s*onContinue\(\s*\)/);
   assert.doesNotMatch(
     source,
