@@ -16,7 +16,7 @@ import {
   safePayPalUrl,
   payoutStatus,
 } from "./agreement-widgets";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ApiError,
   AgreementTab,
@@ -76,6 +76,26 @@ export default function FairshareApp() {
     [inviteLink, setInviteLink] = useState(""),
     [flowToken, setFlowToken] = useState(""),
     [flowKind, setFlowKind] = useState("");
+  const workspaceRequest = useRef(0);
+  const openRequest = useRef(0);
+  function commitWorkspace(id: string) {
+    workspaceRequest.current++;
+    openRequest.current++;
+    setWorkspace(id);
+    setSelected(null);
+    setCreating(false);
+    setAgreements([]);
+    setMembers([]);
+    setPayments([]);
+    setPayouts([]);
+    setSource("");
+    setDocumentId("");
+    setExtraction(null);
+    setPreview(null);
+    setBreakdown(null);
+    setEditing(false);
+    setInviteLink("");
+  }
   const base = selected
     ? `${workspaceBase(selected.workspaceId)}/collaborations/${selected.id}`
     : "";
@@ -99,14 +119,21 @@ export default function FairshareApp() {
     }
   }
   async function loadWorkspaces() {
-    const r = await api("workspaces");
-    setWorkspaces(r.workspaces);
-    const id =
-      workspace && r.workspaces.some((w: any) => w.id === workspace)
-        ? workspace
-        : r.workspaces[0]?.id || "";
-    setWorkspace(id);
-    return id;
+    const request = workspaceRequest.current;
+    try {
+      const r = await api("workspaces");
+      if (request !== workspaceRequest.current) return "";
+      const id =
+        workspace && r.workspaces.some((w: any) => w.id === workspace)
+          ? workspace
+          : r.workspaces[0]?.id || "";
+      setWorkspaces(r.workspaces);
+      if (id !== workspace) commitWorkspace(id);
+      return id;
+    } catch (error) {
+      if (request !== workspaceRequest.current) return "";
+      throw error;
+    }
   }
   async function acceptInvitation(token: string) {
     const result = await api("invitations/accept", "POST", { token });
@@ -129,48 +156,65 @@ export default function FairshareApp() {
   }
   async function loadWorkspace(id: string) {
     if (!id) return;
-    const [r, m] = await Promise.all([
-      api(`${workspaceBase(id)}/collaborations`),
-      api(`${workspaceBase(id)}/members`),
-    ]);
-    setAgreements(r.collaborations);
-    setMembers(m.members);
-    const all = await Promise.all(
-      r.collaborations.map(async (a: Agreement) => {
-        const p = await api(
-          `${workspaceBase(id)}/collaborations/${a.id}/payouts`,
-        );
-        return p.payouts.map((v: any) => ({ ...v, agreement: a }));
-      }),
-    );
-    setPayouts(all.flat());
+    const request = workspaceRequest.current;
+    try {
+      const [r, m] = await Promise.all([
+        api(`${workspaceBase(id)}/collaborations`),
+        api(`${workspaceBase(id)}/members`),
+      ]);
+      if (request !== workspaceRequest.current) return;
+      setAgreements(r.collaborations);
+      setMembers(m.members);
+      const all = await Promise.all(
+        r.collaborations.map(async (a: Agreement) => {
+          const p = await api(
+            `${workspaceBase(id)}/collaborations/${a.id}/payouts`,
+          );
+          return p.payouts.map((v: any) => ({ ...v, agreement: a }));
+        }),
+      );
+      if (request !== workspaceRequest.current) return;
+      setPayouts(all.flat());
+    } catch (error) {
+      if (request !== workspaceRequest.current) return;
+      throw error;
+    }
   }
   async function openAgreement(a: Agreement) {
+    if (a.workspaceId !== workspace) return;
+    const request = ++openRequest.current;
     const root = `${workspaceBase(a.workspaceId)}/collaborations/${a.id}`;
-    const [fresh, p] = await Promise.all([
-      api<Agreement>(root),
-      api(`${root}/payments`),
-    ]);
-    setSelected(fresh);
-    setPayments(p.payments);
-    setSection(Section.Agreements);
-    setCreating(false);
-    setPreview(null);
-    setBreakdown(null);
-    setEditing(false);
-    setSource("");
-    setDocumentId("");
-    setExtraction(null);
-    const v = fresh.value.versions.at(-1);
-    const doc = await recoverSourceDocument(
-      root,
-      v?.rules.source.documentId,
-      api,
-    );
-    if (doc) {
-      setDocumentId(doc.documentId);
-      setSource(doc.text);
-      setExtraction(doc.extraction);
+    try {
+      const [fresh, p] = await Promise.all([
+        api<Agreement>(root),
+        api(`${root}/payments`),
+      ]);
+      if (request !== openRequest.current) return;
+      setSelected(fresh);
+      setPayments(p.payments);
+      setSection(Section.Agreements);
+      setCreating(false);
+      setPreview(null);
+      setBreakdown(null);
+      setEditing(false);
+      setSource("");
+      setDocumentId("");
+      setExtraction(null);
+      const v = fresh.value.versions.at(-1);
+      const doc = await recoverSourceDocument(
+        root,
+        v?.rules.source.documentId,
+        api,
+      );
+      if (request !== openRequest.current) return;
+      if (doc) {
+        setDocumentId(doc.documentId);
+        setSource(doc.text);
+        setExtraction(doc.extraction);
+      }
+    } catch (error) {
+      if (request !== openRequest.current) return;
+      throw error;
     }
   }
   async function refresh() {
@@ -209,6 +253,7 @@ export default function FairshareApp() {
     if (workspace && user) run(() => loadWorkspace(workspace));
   }, [workspace]);
   function navigate(s: Section) {
+    openRequest.current++;
     setSection(s);
     setSelected(null);
     setCreating(false);
@@ -286,9 +331,7 @@ export default function FairshareApp() {
               run(async () => {
                 await api("auth/logout", "POST", {});
                 setUser(null);
-                setWorkspace("");
-                setSelected(null);
-                setAgreements([]);
+                commitWorkspace("");
               })
             }
           >
@@ -303,8 +346,7 @@ export default function FairshareApp() {
             aria-label="Workspace"
             value={workspace}
             onChange={(e) => {
-              setSelected(null);
-              setWorkspace(e.target.value);
+              commitWorkspace(e.target.value);
             }}
           >
             {workspaces.map((w) => (
@@ -1326,7 +1368,7 @@ export default function FairshareApp() {
                             newPassword,
                           });
                           setUser(null);
-                          setWorkspace("");
+                          commitWorkspace("");
                         })
                       }
                     />
