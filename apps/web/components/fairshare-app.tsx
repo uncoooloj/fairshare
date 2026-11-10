@@ -1257,7 +1257,11 @@ export default function FairshareApp() {
                                 amountCents,
                                 source,
                                 createRequestKey: () => crypto.randomUUID(),
-                                createPayment: (requestKey, cents, paymentSource) =>
+                                createPayment: (
+                                  requestKey,
+                                  cents,
+                                  paymentSource,
+                                ) =>
                                   api(`${base}/payments`, "POST", {
                                     requestKey,
                                     amountCents: cents,
