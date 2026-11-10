@@ -761,58 +761,12 @@ export default function FairshareApp() {
                                 </Button>
                               </div>
                             ))}
-                          <SimpleForm
-                            label="Invite someone by email"
-                            type="email"
-                            button="Create invitation"
-                            busy={busy}
-                            onSubmit={(email) =>
-                              run(async () => {
-                                const r = await api(
-                                  `${workspaceBase(workspace)}/invitations`,
-                                  "POST",
-                                  { email, role: "MEMBER" },
-                                );
-                                const token = r.invitation?.token;
-                                setInviteLink(
-                                  r.invitation?.demoInvitationLink ||
-                                    r.demoInvitationLink ||
-                                    (token
-                                      ? `${location.origin}/invitation#token=${encodeURIComponent(token)}`
-                                      : ""),
-                                );
-                                setNotice(
-                                  r.notice ||
-                                    `Invitation: ${title(r.delivery)}. Recipient must accept before being added to this agreement.`,
-                                );
-                              })
-                            }
-                          />
-                          {inviteLink && (
-                            <Notice>
-                              <p>
-                                Share this invitation privately with the named
-                                recipient.
-                              </p>
-                              <input
-                                aria-label="Invitation link"
-                                readOnly
-                                value={inviteLink}
-                              />
-                              <Button
-                                variant="secondary"
-                                onClick={() =>
-                                  run(async () => {
-                                    await navigator.clipboard.writeText(
-                                      inviteLink,
-                                    );
-                                    setNotice("Invitation copied.");
-                                  })
-                                }
-                              >
-                                Copy invitation
-                              </Button>
-                            </Notice>
+                          {workspaces.find((w) => w.id === workspace)?.role ===
+                            "OWNER" && (
+                            <PrivateInvitation
+                              key={workspace}
+                              workspace={workspace}
+                            />
                           )}
                         </section>
                       )}
@@ -1516,6 +1470,13 @@ export default function FairshareApp() {
                   />
                   <section className="panel">
                     <h2>Workspace invitations</h2>
+                    {workspaces.find((w) => w.id === workspace)?.role ===
+                      "OWNER" && (
+                      <PrivateInvitation
+                        key={workspace}
+                        workspace={workspace}
+                      />
+                    )}
                     <p className="muted">
                       Join a workspace using a private invitation shared with
                       your account.
@@ -1540,5 +1501,109 @@ export default function FairshareApp() {
         )}
       </main>
     </div>
+  );
+}
+
+function PrivateInvitation({ workspace }: { workspace: string }) {
+  const [invitation, setInvitation] = useState<{
+    id: string;
+    token: string;
+    expiresAt: number;
+  } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const pending = useRef(false);
+  const [message, setMessage] = useState("");
+  const link = invitation
+    ? `${location.origin}/invitation#token=${encodeURIComponent(invitation.token)}`
+    : "";
+  async function act(action: () => Promise<void>) {
+    if (pending.current) return;
+    pending.current = true;
+    setBusy(true);
+    setMessage("");
+    try {
+      await action();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Please try again.");
+    } finally {
+      pending.current = false;
+      setBusy(false);
+    }
+  }
+  return (
+    <section className="section">
+      <h3>Invite a collaborator</h3>
+      <p className="muted">
+        Anyone holding this private link can join this workspace once as a
+        member after signing in. Share it only with your intended collaborator.
+        No email is sent, and joining does not approve an agreement or move
+        money.
+      </p>
+      {!invitation ? (
+        <Button
+          disabled={busy}
+          onClick={() =>
+            act(async () => {
+              const result = await api(
+                `${workspaceBase(workspace)}/invitation-links`,
+                "POST",
+                { role: "MEMBER" },
+              );
+              setInvitation(result.invitation);
+            })
+          }
+        >
+          Create private invitation link
+        </Button>
+      ) : (
+        <>
+          <label>
+            Private invitation link
+            <input
+              readOnly
+              aria-label="Private invitation link"
+              value={link}
+              onFocus={(event) => event.target.select()}
+            />
+          </label>
+          <p className="muted">
+            Expires {new Date(invitation.expiresAt).toLocaleString()}. Copy it
+            now; it is not stored in your browser.
+          </p>
+          <Button
+            disabled={busy}
+            onClick={() =>
+              act(async () => {
+                if (!navigator.clipboard) {
+                  setMessage("Select the link above and copy it manually.");
+                  return;
+                }
+                await navigator.clipboard.writeText(link);
+                setMessage("Invitation link copied.");
+              })
+            }
+          >
+            Copy link
+          </Button>
+          <Button
+            variant="secondary"
+            disabled={busy}
+            onClick={() =>
+              act(async () => {
+                await api(
+                  `${workspaceBase(workspace)}/invitations/${invitation.id}`,
+                  "DELETE",
+                );
+                setInvitation(null);
+                setMessage("Invitation revoked. You can create a new one.");
+              })
+            }
+          >
+            Revoke link
+          </Button>
+        </>
+      )}
+      {message && <p role="status">{message}</p>}
+    </section>
   );
 }

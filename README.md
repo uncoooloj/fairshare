@@ -68,6 +68,7 @@ These checks provide source-level and build evidence. They do not prove browser 
 - Checkout payment-source labels are organizer-entered metadata, not evidence of external revenue or a confirmed payment.
 - Local scanned-PDF OCR is disabled by default, runs only after a user selects it, and needs host-installed Poppler and Tesseract. It is not a Cloudflare upload or a correctness guarantee.
 - Authenticator MFA needs a separately managed server encryption key; it is not enabled by the synthetic DEMO alone.
+- Private invitation links are single-use bearer links created by a workspace owner. They are shown only at creation, use a URL fragment, expire after 48 hours, and do not send email or prove mailbox ownership.
 
 ## Documentation
 
