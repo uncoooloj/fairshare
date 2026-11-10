@@ -31,7 +31,7 @@ Authenticated calls use `Authorization: Bearer <token>`. Tokens are 32 random by
 
 ## Known scope limits
 
-Email verification and a server-only Resend adapter are implemented but no real delivery has been exercised. No password recovery, owner transfer, MFA or production account deletion yet. Demo verification is explicitly simulated and cannot cross into SANDBOX. Use synthetic identities for demo testing; real mail requires explicit operator setup and authorization. Rate limits use the app database and direct socket IP; do not blindly enable trustProxy. Database encryption, backup/restore and deployment quotas require hosting configuration. These are not claims of production readiness.
+Email verification, password recovery, and a server-only Resend adapter are implemented but no real delivery has been exercised. Password recovery requires a verified email and authorized mail configuration; DEMO has no reset-link echo. No MFA, owner transfer or production account deletion exists yet. Demo verification is explicitly simulated and cannot cross into SANDBOX. Use synthetic identities for demo testing; real mail requires explicit operator setup and authorization. Rate limits use the app database and direct socket IP; do not blindly enable trustProxy. Database encryption, backup/restore and deployment quotas require hosting configuration. These are not claims of production readiness.
 
 ## Historical verification notes
 

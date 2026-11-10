@@ -62,6 +62,9 @@ These checks provide source-level and build evidence. They do not prove browser 
 - AI observations require human review and cannot activate rules or move money.
 - The payment adapter is sandbox-only. Provider acceptance, capture, webhook delivery, refunds, and recipient payout outcomes each need their own evidence.
 - The reconciliation worker exists but is disabled by default and performs reads/reconciliation only; it does not issue money-moving retries.
+- New PDF and DOCX uploads retain an authenticated original alongside extracted text. That private SQLite data is not encrypted at rest by this application.
+- Password recovery needs an authorized email transport; the synthetic DEMO does not provide a reset-link echo.
+- Review discussion records comments without changing rules or approvals.
 
 ## Documentation
 
@@ -71,6 +74,8 @@ These checks provide source-level and build evidence. They do not prove browser 
 - [Payment flow and boundaries](docs/PAYMENTS.md)
 - [Reconciliation worker](docs/RECONCILIATION-WORKER.md)
 - [Authentication and persistence](docs/AUTH-PERSISTENCE.md)
+- [Source-document storage and downloads](docs/security/source-documents.md)
+- [Password recovery](docs/password-recovery.md)
 - [Release readiness](docs/RELEASE-READINESS.md)
 - [Contributing](CONTRIBUTING.md)
 
