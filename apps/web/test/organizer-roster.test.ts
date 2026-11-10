@@ -9,10 +9,10 @@ const editor = widgets.slice(widgets.indexOf("export function RulesEditor("));
 test("first proposal requires explicit roster review before locking membership", () => {
   assert.match(
     editor,
-    /!agreement\.value\.versions\.length\s*&&\s*f\.get\("rosterConfirmed"\)\s*!==\s*"on"/,
+    /!agreement.value.versions.length\s+&&\s+f.get\("rosterConfirmed"\) !== "on"/,
   );
   assert.match(editor, /name="rosterConfirmed"\s+required/);
-  assert.match(editor, /even in a revised version/);
+  assert.match(editor, /even\s+in\s+a\s+revised\s+version/);
   assert.match(
     editor,
     /type="button"\s+variant="secondary"\s+disabled=\{busy\}\s+onClick=\{onReviewPeople\}/,
@@ -21,11 +21,11 @@ test("first proposal requires explicit roster review before locking membership",
 test("roster confirmation resets after membership changes and permits intentional solo agreements", () => {
   assert.match(
     editor,
-    /key=\{agreement\.value\.members\s*\.map\(\(member\)\s*=>\s*member\.userId\)\s*\.join\(":"\)\}/,
+    /key=\{agreement.value.members\s+\.map\(\(member\) => member.userId\)\s+\.join\(":"\)\}/,
   );
   assert.match(
     editor,
-    /A one-person agreement is allowed\s+when that is intentional/,
+    /A\s+one-person\s+agreement\s+is\s+allowed\s+when\s+that\s+is\s+intentional/,
   );
   assert.doesNotMatch(editor, /members.length\s*[<>]=?\s*2/);
 });

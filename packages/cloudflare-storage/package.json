@@ -4,6 +4,7 @@
   "private": true,
   "license": "MIT",
   "type": "module",
+  "license": "MIT",
   "exports": "./src/index.ts",
   "scripts": {
     "test": "node --import tsx --test test/*.test.ts",

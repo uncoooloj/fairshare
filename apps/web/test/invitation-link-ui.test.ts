@@ -50,5 +50,5 @@ test("refresh during sign-in retains the invitation fragment until acceptance", 
     new URL("../components/designer-auth.tsx", import.meta.url),
     "utf8",
   );
-  assert.match(prompt, /organizer must also add you to the agreement/);
+  assert.match(prompt, /organizer must also add you to\s+the agreement/);
 });
