@@ -15,4 +15,4 @@
 3. Reusing the same link fails. Requesting a newer link invalidates the old link.
 4. Unknown email has the same visible response and response window. Mail unavailable returns a truthful service-unavailable error.
 
-Automated tests use a recording/failing transport, not a live mailbox. Actual delivery remains an environment acceptance check. MFA and social sign-in are separate features and are not implemented here.
+Automated tests use a recording/failing transport, not a live mailbox. Actual delivery remains an environment acceptance check. Authenticator MFA is a separate optional feature that requires `FAIRSHARE_MFA_ENCRYPTION_KEY`; password reset does not remove or bypass an enabled authenticator. Social sign-in is not implemented here. See [mfa.md](mfa.md).

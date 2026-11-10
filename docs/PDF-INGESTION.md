@@ -16,9 +16,9 @@ Body `{ "mimeType": "application/pdf", "base64": "..." }`. It is an API transpor
 - Child receives only NODE_ENV, no application secrets. No shell commands are constructed from document content or filenames. PDF JavaScript evaluation, XFA, remote worker fetching and font rendering are disabled.
 - Child process limits are defense in depth, **not an OS security sandbox**. A production multi-tenant service should additionally use an isolated parsing container with network denied and filesystem restricted, plus host-level memory/process limits.
 - Parser stdout is a private IPC payload, not logged. Stderr is drained and discarded, never exposed to clients. API returns only safe error codes/messages.
-- Parsed binary PDF is not persisted. The extracted text, original-file SHA-256, extraction engine version and page offset ranges are persisted. This is an intentional retention limitation: users cannot yet download the original upload.
+- New successful PDF uploads retain the original bytes with extracted text, original-file SHA-256, extraction engine version and page offset ranges in the private SQLite database. Authorized agreement members can download the original as an attachment. Text-only and legacy uploads retain extracted text only; see security/source-documents.md.
 - PDF text layer reading order may differ from visual order, especially multi-column documents, tables, ligatures, invisible text and unusual fonts. The UI must show the extracted text for review. Exact AI offsets reference this text, **not** pixels or raw PDF byte positions. A matching quote does not prove contract semantics.
-- Scanned/image-only or empty PDFs fail with PDF_NO_EXTRACTABLE_TEXT and ask the user to paste text or provide a text-based PDF. **No OCR claim.**
+- Scanned/image-only or empty PDFs fail with PDF_NO_EXTRACTABLE_TEXT unless the user explicitly selects locally enabled OCR. Local OCR is off by default and has separate five-page limits. Text-layer parsing never silently falls back to OCR; see LOCAL-OCR.md.
 
 ## Provenance
 
