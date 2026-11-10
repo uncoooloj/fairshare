@@ -5,10 +5,6 @@ const app = readFileSync(
   new URL("../components/fairshare-app.tsx", import.meta.url),
   "utf8",
 );
-const onboarding = readFileSync(
-  new URL("../components/designer-auth.tsx", import.meta.url),
-  "utf8",
-);
 
 test("workspace selector only offers switching when there is a choice", () => {
   assert.match(app, /workspaces\.length\s*>\s*1\s*\?\s*\(\s*<select/);
@@ -19,48 +15,24 @@ test("account settings and invitations remain accessible before workspace creati
     app,
     /!workspace\s*&&\s*section\s*!==\s*Section\.Settings\s*\?\s*\(/,
   );
-  assert.match(app, /<WorkspaceOnboarding\s+section=\{section\}/);
+  assert.match(app, /<AgreementIntake\s+first\s+busy=\{busy\}/);
 });
-test("successful creation selects server-returned workspace without a fallible second list request", () => {
+test("atomic creation adopts the returned workspace and document before optional refresh", () => {
   const creation = app.slice(
-    app.indexOf("<WorkspaceOnboarding"),
+    app.indexOf("async function createFromAgreement"),
+    app.indexOf("async function refresh"),
+  );
+  assert.match(creation, /api\(\s*"agreements\/intake",\s*"POST"/);
+  assert.match(creation, /commitWorkspace\(result.workspace.id\)/);
+  assert.match(creation, /setDocumentId\(result.document.documentId\)/);
+  assert.doesNotMatch(creation, /await loadWorkspaces|await openAgreement/);
+});
+test("first-run payouts explains its empty state without requiring a workspace name", () => {
+  const firstRun = app.slice(
+    app.indexOf("!workspace && section"),
     app.indexOf("{section === Section.Overview"),
   );
-  assert.match(
-    creation,
-    /const result\s*=\s*await api\(\s*"workspaces",\s*"POST",\s*\{\s*name\s*\}\s*\)/,
-  );
-  assert.match(creation, /commitWorkspace\(result.workspace.id\)/);
-  assert.doesNotMatch(creation, /await loadWorkspaces/);
-});
-test("workspace creation locks synchronously until submission settles", () => {
-  assert.match(
-    onboarding,
-    /busy\s*\|\|\s*submitting\.current\s*\|\|\s*!name\.trim\(\)/,
-  );
-  assert.match(
-    onboarding,
-    /submitting\.current\s*=\s*true;[\s\S]*await onCreate\(\s*name\.trim\(\)\s*\);[\s\S]*finally\s*\{\s*submitting\.current\s*=\s*false;\s*setCreating\(false\);\s*\}/,
-  );
-});
-test("first-run sections explain their own empty state and prioritize real creation over examples", () => {
-  assert.match(
-    onboarding,
-    /case\s+"Agreements":\s*return\s*\{\s*title:\s*"Your agreements start here"/,
-  );
-  assert.match(
-    onboarding,
-    /case\s+"Payouts":\s*return\s*\{\s*title:\s*"No payouts yet"/,
-  );
-  assert.match(
-    onboarding,
-    /default:\s*return\s*\{\s*title:\s*"Create your workspace"/,
-  );
-  assert.match(onboarding, /workspaceOnboardingCopy\(section\)/);
-  assert.ok(
-    onboarding.indexOf("<form") <
-      onboarding.indexOf("<details className={styles.explainer}"),
-  );
-  assert.match(onboarding, /<summary>How Fairshare works<\/summary>/);
-  assert.doesNotMatch(onboarding, /Example: \$3,000 payment/);
+  assert.match(firstRun, /No payouts yet/);
+  assert.match(firstRun, /AgreementIntake\s+first/);
+  assert.doesNotMatch(firstRun, /WorkspaceOnboarding|Workspace name/);
 });

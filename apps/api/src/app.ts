@@ -1,3 +1,4 @@
+import { registerAgreementIntake } from "./agreementIntake.js";
 import { verifyLocalOcrTools } from "./ocr.js";
 import { registerReviewCollaboration } from "./reviewCollaboration.js";
 import {
@@ -439,6 +440,9 @@ export async function buildApp(
   const domainRoutes = registerFairshareRoutes(app, {
     ai: options.ai,
     extract: options.extract,
+    localOcrEnabled: options.localOcrEnabled,
+  });
+  registerAgreementIntake(app, domainRoutes.store, {
     localOcrEnabled: options.localOcrEnabled,
   });
   registerPaymentRoutes(app, domainRoutes.store, options.payment);

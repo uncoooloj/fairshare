@@ -44,7 +44,8 @@ import {
   ContractSourceGuidance,
 } from "./contract-review-guidance";
 import { NewAgreement, AgreementSetup } from "./agreement-setup";
-import { WorkspaceOnboarding, AccessPrompt } from "./designer-auth";
+import { AgreementIntake, type AgreementIntakeInput } from "./agreement-intake";
+import { AccessPrompt } from "./designer-auth";
 import { PaymentRecovery } from "./payment-recovery";
 import { MfaSettings } from "./mfa-settings";
 import { ProfileForm } from "./profile-form";
@@ -259,6 +260,47 @@ export default function FairshareApp() {
     } catch (error) {
       if (request !== openRequest.current) return;
       throw error;
+    }
+  }
+  async function createFromAgreement(input: AgreementIntakeInput) {
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const result = await api("agreements/intake", "POST", {
+        ...input,
+        ...(workspace ? { workspaceId: workspace } : {}),
+      });
+      // Adopt the committed result before any optional refresh. A lost response
+      // is safe to retry with the intake component's original request ID.
+      setWorkspaces((current) => [
+        ...current.filter((item) => item.id !== result.workspace.id),
+        {
+          ...current.find((item) => item.id === result.workspace.id),
+          ...result.workspace,
+        },
+      ]);
+      commitWorkspace(result.workspace.id);
+      setAgreements((current) => [
+        result.agreement,
+        ...current.filter((item) => item.id !== result.agreement.id),
+      ]);
+      openRequest.current++;
+      setSelected(result.agreement);
+      setCreating(false);
+      setSection(Section.Agreements);
+      setTab(AgreementTab.Terms);
+      setSource(result.document.text);
+      setDocumentId(result.document.documentId);
+      setExtraction(null);
+      setPayments([]);
+      setDraftDirty(false);
+      rulesDirty.current = false;
+      setNotice(
+        "Agreement saved. Review the source, then request AI interpretation to suggest terms and a title.",
+      );
+    } finally {
+      setBusy(false);
     }
   }
   async function refresh() {
@@ -510,23 +552,19 @@ export default function FairshareApp() {
           />
         )}
         {!workspace && section !== Section.Settings ? (
-          <WorkspaceOnboarding
-            section={section}
-            busy={busy}
-            onCreate={(name) =>
-              run(async () => {
-                const result = await api("workspaces", "POST", { name });
-                setWorkspaces((current) => [
-                  ...current.filter((item) => item.id !== result.workspace.id),
-                  result.workspace,
-                ]);
-                commitWorkspace(result.workspace.id);
-                setNotice(
-                  "Workspace created. You’re ready to add your first agreement.",
-                );
-              })
-            }
-          />
+          <>
+            {section === Section.Payouts && (
+              <Heading
+                title="No payouts yet"
+                description="Start with an agreement. Payouts appear after approved rules and recorded payments."
+              />
+            )}
+            <AgreementIntake first busy={busy} onCreate={createFromAgreement} />
+            <p className="muted">
+              Already invited? Open Settings to accept your workspace
+              invitation.
+            </p>
+          </>
         ) : (
           <>
             {section === Section.Overview && !selected && (

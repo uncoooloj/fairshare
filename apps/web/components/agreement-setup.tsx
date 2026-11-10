@@ -97,34 +97,36 @@ export function AgreementSetup({
     <section className="setup-progress" aria-label="Agreement setup">
       <div>
         <strong>Finish setting up your agreement</strong>
-        <p>People first, then source-backed terms and everyone’s approval.</p>
+        <p>
+          Review your source, bring everyone in, then approve the same rules.
+        </p>
       </div>
       <div className="setup-steps">
-        <button
-          type="button"
-          className={tab === AgreementTab.People ? "current" : ""}
-          onClick={() => onNavigate(AgreementTab.People)}
-        >
-          <span>1</span>
-          <div>
-            People
-            <small>
-              {agreement.value.members.length} added · confirm before proposing
-            </small>
-          </div>
-        </button>
         <button
           type="button"
           className={tab === AgreementTab.Terms ? "current" : ""}
           onClick={() => onNavigate(AgreementTab.Terms)}
         >
-          <span>2</span>
+          <span>1</span>
           <div>
             Document & rules
             <small>
               {latest
                 ? `Version ${latest.id} proposed`
-                : "Add source and review interpretation"}
+                : "Review the source and interpretation"}
+            </small>
+          </div>
+        </button>
+        <button
+          type="button"
+          className={tab === AgreementTab.People ? "current" : ""}
+          onClick={() => onNavigate(AgreementTab.People)}
+        >
+          <span>2</span>
+          <div>
+            People
+            <small>
+              {agreement.value.members.length} added · confirm before proposing
             </small>
           </div>
         </button>

@@ -290,3 +290,75 @@ test("provider request has schema-constrained enums and no permissive action fie
     ["SHARE", "ADVANCE", "CURRENCY", "REVENUE_BASIS", "RECIPIENT"],
   );
 });
+
+test("title is optional and a verbatim source heading survives the same extraction call", async () => {
+  const heading = "Summer Sessions — Revenue Agreement";
+  const source = { ...document, text: `${heading}\n${document.text}` };
+  let calls = 0;
+  const result = await extractContract(source, {
+    ...config,
+    fetch: async () => {
+      calls++;
+      return response({
+        ...draft,
+        suggestedTitle: heading,
+        facts: [{ ...draft.facts[0], citation: { spanId: "s0" } }],
+        issues: [],
+      });
+    },
+  });
+  assert.equal(calls, 1);
+  assert.equal(result.suggestedTitle, heading);
+  assert.equal(result.requiresHumanReview, true);
+  assert.equal(result.executable, false);
+  assert.equal(Object.hasOwn(await invoke(draft), "suggestedTitle"), false);
+});
+
+test("invalid title suggestions are omitted without losing grounded facts", () => {
+  for (const suggestedTitle of [
+    null,
+    42,
+    "",
+    "Invented Agreement",
+    "Maya",
+    "x".repeat(121),
+    "Maya\nAgreement",
+    "<script>",
+    "https://example.com",
+    { title: "Maya" },
+  ]) {
+    const result = validateDraft({ ...draft, suggestedTitle }, document);
+    assert.equal(Object.hasOwn(result, "suggestedTitle"), false);
+    assert.equal(result.facts.length, 1);
+  }
+});
+
+test("title grounding rejects source-embedded markup, links, controls and late headings", () => {
+  for (const title of [
+    "<script>alert(1)</script>",
+    "https://example.com",
+    "Title\tAgreement",
+    "x".repeat(121),
+  ]) {
+    const source = { ...document, text: `${title}\n${document.text}` };
+    const result = validateDraft(
+      {
+        facts: [],
+        issues: [{ kind: "OTHER", question: "Review terms?", citation: null }],
+        suggestedTitle: title,
+      },
+      source,
+    );
+    assert.equal(Object.hasOwn(result, "suggestedTitle"), false);
+  }
+  const source = { ...document, text: `${" ".repeat(4000)}\nLate Heading` };
+  const result = validateDraft(
+    {
+      facts: [],
+      issues: [{ kind: "OTHER", question: "Review terms?", citation: null }],
+      suggestedTitle: "Late Heading",
+    },
+    source,
+  );
+  assert.equal(Object.hasOwn(result, "suggestedTitle"), false);
+});

@@ -16,7 +16,11 @@ async function handler(
       { error: { message: "Invalid path" } },
       { status: 400 },
     );
-  if (!["auth", "workspaces", "invitations", "health"].includes(parts[0]))
+  if (
+    !["auth", "workspaces", "invitations", "agreements", "health"].includes(
+      parts[0],
+    )
+  )
     return NextResponse.json(
       { error: { message: "Unknown API route" } },
       { status: 404 },
@@ -58,7 +62,8 @@ async function handler(
     if (
       body &&
       body.length >
-        (["pdf", "docx"].includes(parts.at(-1) || "")
+        (["pdf", "docx"].includes(parts.at(-1) || "") ||
+        parts.join("/") === "agreements/intake"
           ? 7 * 1024 * 1024
           : 100000)
     )

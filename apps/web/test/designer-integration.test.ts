@@ -7,11 +7,11 @@ const source = readFileSync(
 );
 test("designer shell retains authoritative payment recovery and onboarding callbacks", () => {
   assert.match(source, /<PaymentRecovery/);
-  assert.match(source, /<WorkspaceOnboarding/);
+  assert.match(source, /<AgreementIntake/);
   assert.match(source, /<AccessPrompt/);
   assert.match(source, /auth\/verification\/confirm/);
   assert.match(source, /invitations\/accept/);
-  assert.match(source, /workspaces", "POST", \{ name \}/);
+  assert.match(source, /agreements\/intake", "POST"/);
   assert.match(source, /no live money/);
 });
 test("export styling uses local licensed Onest fonts without importing export scripts", () => {

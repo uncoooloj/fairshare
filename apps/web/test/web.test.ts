@@ -24,7 +24,15 @@ test("same-origin BFF protects session, rejects cross-origin writes and unsuppor
           token: "server-only-token",
         }),
       );
-    else if (req.url === "/api/auth/me")
+    else if (req.url === "/api/agreements/intake") {
+      req.resume();
+      res.end(
+        JSON.stringify({
+          authorized: req.headers.authorization,
+          accepted: true,
+        }),
+      );
+    } else if (req.url === "/api/auth/me")
       res.end(JSON.stringify({ authorized: req.headers.authorization }));
     else {
       res.statusCode = 401;
@@ -64,6 +72,28 @@ test("same-origin BFF protects session, rejects cross-origin writes and unsuppor
       { params: Promise.resolve({ path: ["auth", "me"] }) },
     );
     assert.equal((await me.json()).authorized, "Bearer server-only-token");
+    const intake = await POST(
+      new NextRequest("http://localhost/api/service/agreements/intake", {
+        method: "POST",
+        headers: {
+          origin: "http://localhost",
+          cookie: "fairshare_session=server-only-token",
+        },
+        body: JSON.stringify({ base64: "a".repeat(120000) }),
+      }),
+      { params: Promise.resolve({ path: ["agreements", "intake"] }) },
+    );
+    assert.equal(intake.status, 200);
+    assert.equal((await intake.json()).authorized, "Bearer server-only-token");
+    const oversized = await POST(
+      new NextRequest("http://localhost/api/service/agreements/intake", {
+        method: "POST",
+        headers: { origin: "http://localhost" },
+        body: "a".repeat(7 * 1024 * 1024 + 1),
+      }),
+      { params: Promise.resolve({ path: ["agreements", "intake"] }) },
+    );
+    assert.equal(oversized.status, 413);
     const unknown = await GET(
       new NextRequest("http://localhost/api/service/evil"),
       { params: Promise.resolve({ path: ["evil"] }) },

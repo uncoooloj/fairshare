@@ -408,6 +408,10 @@ export class IdentityStore {
     });
   }
   createWorkspace(userId: string, name: unknown) {
+    return this.tx(() => this.createWorkspaceInsideTransaction(userId, name));
+  }
+  /** Caller owns the transaction when creating a workspace together with its first agreement. */
+  createWorkspaceInsideTransaction(userId: string, name: unknown) {
     if (typeof name !== "string" || !name.trim() || name.trim().length > 100)
       throw new ApiError(
         400,
@@ -420,16 +424,14 @@ export class IdentityStore {
       mode: this.mode,
       role: Role.OWNER,
     };
-    return this.tx(() => {
-      this.db
-        .prepare("INSERT INTO workspaces VALUES(?,?,?,?)")
-        .run(workspace.id, workspace.name, this.mode, this.now());
-      this.db
-        .prepare("INSERT INTO memberships VALUES(?,?,?)")
-        .run(workspace.id, userId, Role.OWNER);
-      this.audit(userId, workspace.id, "WORKSPACE_CREATED");
-      return workspace;
-    });
+    this.db
+      .prepare("INSERT INTO workspaces VALUES(?,?,?,?)")
+      .run(workspace.id, workspace.name, this.mode, this.now());
+    this.db
+      .prepare("INSERT INTO memberships VALUES(?,?,?)")
+      .run(workspace.id, userId, Role.OWNER);
+    this.audit(userId, workspace.id, "WORKSPACE_CREATED");
+    return workspace;
   }
   workspaces(userId: string) {
     return this.db
