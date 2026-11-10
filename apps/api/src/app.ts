@@ -1,3 +1,5 @@
+import type { DocumentReaders } from './documentReaders.js';
+import type { DatabaseBackend } from './database.js';
 import {registerProfileRoutes} from './profileRoutes.js';
 import {registerPreferences} from './preferences.js';
 import {registerAccountSettings} from './accountSettings.js';
@@ -12,21 +14,21 @@ import {DomainError} from '@fairshare/domain';
 import type {CloudflareConfig,extractContract} from '@fairshare/contract-ai';
 import Fastify, {type FastifyInstance,type FastifyRequest} from 'fastify';
 import {ApiError,DataMode,IdentityStore,Role,digest,type User} from './identity.js';
-export interface AppOptions extends EmailOptions {hackathonMfaSimulation?:boolean;mfaEncryptionKey?:string;dbPath?:string;clock?:()=>number;demo?:boolean;logger?:boolean;localOcrEnabled?:boolean;ai?:CloudflareConfig;extract?:typeof extractContract;payment?:PaymentOptions}
+export interface AppOptions extends EmailOptions {documentReaders?:DocumentReaders;database?:DatabaseBackend;hackathonMfaSimulation?:boolean;mfaEncryptionKey?:string;dbPath?:string;clock?:()=>number;demo?:boolean;logger?:boolean;localOcrEnabled?:boolean;ai?:CloudflareConfig;extract?:typeof extractContract;payment?:PaymentOptions}
 export type FairshareApp=FastifyInstance&{store:IdentityStore;requireSession:(request:FastifyRequest)=>User;requireWorkspace:(request:FastifyRequest,workspaceId:string,roles?:Role[])=>{user:User;workspace:any}};
 export async function buildApp(options:AppOptions={}):Promise<FairshareApp>{
- if(options.localOcrEnabled)await verifyLocalOcrTools();
+ if(options.localOcrEnabled && !options.documentReaders)await verifyLocalOcrTools();
  if(options.payment?.reconciliation?.enabled&&(options.demo||!options.payment.provider))throw new Error('Reconciliation worker requires configured SANDBOX provider');
  const app=Fastify({logger:options.logger??false,bodyLimit:65536,trustProxy:false,ajv:{customOptions:{removeAdditional:false}}}) as unknown as FairshareApp;
  const mode=options.demo?DataMode.DEMO:DataMode.SANDBOX;
- const store=new IdentityStore(options.dbPath??process.env.DATABASE_PATH??'./data/fairshare-sandbox.db',mode,options.clock,options.mfaEncryptionKey,options.hackathonMfaSimulation);
+ const store=new IdentityStore(options.database??options.dbPath??process.env.DATABASE_PATH??'./data/fairshare-sandbox.db',mode,options.clock,options.mfaEncryptionKey,options.hackathonMfaSimulation);
  const bearer=(req:FastifyRequest)=>{const raw=req.headers.authorization;if(!raw?.startsWith('Bearer '))throw new ApiError(401,'UNAUTHORIZED','Sign in to continue.');return raw.slice(7);};
  app.decorate('store',store);
  app.decorate('requireSession',(req:FastifyRequest)=>store.userForToken(bearer(req)));
  app.decorate('requireWorkspace',(req:FastifyRequest,id:string,roles?:Role[])=>{const user=app.requireSession(req);return {user,workspace:store.membership(user.id,id,roles)};});
  app.addHook('onClose',async()=>store.close());
  app.addHook('onSend',async(_req,reply,payload)=>{reply.header('Cache-Control','no-store');reply.header('X-Content-Type-Options','nosniff');return payload;});
- app.setErrorHandler((error,request,reply)=>{if(error instanceof PayPalError)return reply.status(error.status??502).send({error:{code:error.code,message:error.code}});if(error instanceof DomainError){const status=error.code==='PDF_BUSY'?429:['PAYPAL_NOT_CONFIGURED','PAYOUT_NOT_CONFIGURED','CALLBACK_NOT_CONFIGURED'].includes(error.code)?503:error.code==='INVALID_WEBHOOK_SIGNATURE'?401:error.code==='NOT_FOUND'?404:error.code==='FORBIDDEN'?403:['REVISION_CONFLICT','STALE_VERSION','APPROVALS_REQUIRED','INVALID_STATE','MEMBERS_LOCKED'].includes(error.code)?409:400;return reply.status(status).send({error:{code:error.code,message:error.message}});}if(error instanceof ApiError)return reply.status(error.statusCode).send({error:{code:error.code,message:error.message}});if(error instanceof Error && 'statusCode' in error && typeof error.statusCode==='number' && error.statusCode<500)return reply.status(error.statusCode).send({error:{code:'INVALID_REQUEST',message:'Invalid request.'}});request.log.error(error);return reply.status(500).send({error:{code:'INTERNAL_ERROR',message:'Something went wrong.'}});});
+ app.setErrorHandler((error,request,reply)=>{if(error instanceof PayPalError)return reply.status(error.status??502).send({error:{code:error.code,message:error.code}});if(error instanceof DomainError){const status=error.code==='PDF_BUSY'?429:['PARSER_NOT_CONFIGURED','PARSER_UNAVAILABLE','PAYPAL_NOT_CONFIGURED','PAYOUT_NOT_CONFIGURED','CALLBACK_NOT_CONFIGURED'].includes(error.code)?503:error.code==='INVALID_WEBHOOK_SIGNATURE'?401:error.code==='NOT_FOUND'?404:error.code==='FORBIDDEN'?403:['REVISION_CONFLICT','STALE_VERSION','APPROVALS_REQUIRED','INVALID_STATE','MEMBERS_LOCKED'].includes(error.code)?409:400;return reply.status(status).send({error:{code:error.code,message:error.message}});}if(error instanceof ApiError)return reply.status(error.statusCode).send({error:{code:error.code,message:error.message}});if(error instanceof Error && 'statusCode' in error && typeof error.statusCode==='number' && error.statusCode<500)return reply.status(error.statusCode).send({error:{code:'INVALID_REQUEST',message:'Invalid request.'}});request.log.error(error);return reply.status(500).send({error:{code:'INTERNAL_ERROR',message:'Something went wrong.'}});});
  const assertParticipantAccess=(workspaceId:string,userId:string)=>{const rows=store.db.prepare('SELECT value FROM fairshare_collaborations WHERE workspace_id=?').all(workspaceId) as any[];if(rows.some(row=>JSON.parse(row.value).members.some((m:any)=>m.userId===userId)))throw new ApiError(409,'COLLABORATION_MEMBER','Cannot change or remove access while this person belongs to a collaboration.');};
  const limit=(req:FastifyRequest,bucket:string,max=30)=>store.limit(`${bucket}:ip:${digest(req.ip)}`,max);
  const objectBody={type:'object',additionalProperties:false} as const;
@@ -63,8 +65,8 @@ export async function buildApp(options:AppOptions={}):Promise<FairshareApp>{
  registerPreferences(app);
  registerEmailRoutes(app,options);
  registerProfileRoutes(app,options);
- const domainRoutes=registerFairshareRoutes(app,{ai:options.ai,extract:options.extract,localOcrEnabled:options.localOcrEnabled});
- registerAgreementIntake(app,domainRoutes.store,{localOcrEnabled:options.localOcrEnabled});
+ const domainRoutes=registerFairshareRoutes(app,{ai:options.ai,extract:options.extract,localOcrEnabled:options.localOcrEnabled,documentReaders:options.documentReaders});
+ registerAgreementIntake(app,domainRoutes.store,{localOcrEnabled:options.localOcrEnabled,documentReaders:options.documentReaders});
  registerPaymentRoutes(app,domainRoutes.store,options.payment);
  registerReviewCollaboration(app,domainRoutes.store,options);
  registerAccountSettings(app,!!options.payment?.provider);

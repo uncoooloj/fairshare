@@ -1,3 +1,4 @@
+import { localDocumentReaders, type DocumentReaders } from './documentReaders.js';
 import { randomUUID } from 'node:crypto';
 import { createCollaboration, MemberRole } from '@fairshare/domain';
 import { sourceHash, type SourceDocument } from '@fairshare/contract-ai';
@@ -58,7 +59,8 @@ function initialTitle(filename: string | undefined, text: string): string {
 /** Parsing finishes before durable writes. A user-scoped retry key commits alongside
  * workspace, organizer membership, agreement and immutable source in one transaction. */
 export function registerAgreementIntake(app: FairshareApp, aggregates: AggregateStore,
-  options: { localOcrEnabled?: boolean } = {}) {
+  options: { localOcrEnabled?: boolean; documentReaders?: DocumentReaders } = {}) {
+  const readers = options.documentReaders ?? localDocumentReaders;
   const db = app.store.db;
   db.exec(`CREATE TABLE IF NOT EXISTS agreement_intakes(
     user_id TEXT NOT NULL REFERENCES users(id), request_id TEXT NOT NULL,
@@ -96,14 +98,14 @@ export function registerAgreementIntake(app: FairshareApp, aggregates: Aggregate
     let provenance: object = { inputType: 'TEXT', offsetUnit: 'UTF16_CODE_UNITS' };
     if (input.base64 !== undefined) {
       if (input.mimeType === 'application/pdf') {
-        if (input.useLocalOcr && !options.localOcrEnabled) throw new ApiError(400, 'OCR_UNAVAILABLE', 'Local OCR is not enabled. Paste text instead.');
+        if (input.useLocalOcr && !options.localOcrEnabled) throw new ApiError(400, 'OCR_UNAVAILABLE', 'OCR is not enabled. Paste text instead.');
         original = decodePdfBase64(input.base64);
-        const parsed = input.useLocalOcr ? await extractPdfOcr(original) : await extractPdf(original);
+        const parsed = input.useLocalOcr ? await readers.ocr(original) : await readers.pdf(original);
         text = parsed.text;
         provenance = { inputType: 'PDF', sourceFileSha256: parsed.sourceFileSha256, pages: parsed.pages, ...parsed.extraction };
       } else {
         original = decodeDocxBase64(input.base64);
-        const parsed = await extractDocx(original);
+        const parsed = await readers.docx(original);
         text = parsed.text;
         provenance = { inputType: 'DOCX', sourceFileSha256: parsed.sourceFileSha256, ...parsed.extraction };
       }

@@ -1,0 +1,32 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "fairshare-api-sandbox",
+  "main": "dist-cloudflare/worker.mjs",
+  "compatibility_date": "2026-11-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "preview_urls": false,
+  "build": { "command": "node cloudflare/build.mjs" },
+  "durable_objects": {
+    "bindings": [
+      { "name": "AUTHORITY", "class_name": "FairshareAuthority" },
+      { "name": "DOCUMENT_PARSER", "class_name": "FairshareDocumentParser" }
+    ]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["FairshareAuthority", "FairshareDocumentParser"] }],
+  "containers": [{
+    "class_name": "FairshareDocumentParser",
+    "image": "./parser-container/Dockerfile",
+    "image_build_context": "../..",
+    "max_instances": 1,
+    "instance_type": "basic"
+  }],
+  "vars": {
+    "OCR_ENABLED": "false",
+    "HACKATHON_MFA_SIMULATION": "false",
+    "PAYPAL_PAYOUTS_ENABLED": "false",
+    "PAYPAL_PAYOUTS_ELIGIBILITY_CONFIRMED": "false",
+    "PAYPAL_RECONCILIATION_ENABLED": "false"
+  },
+  "observability": { "enabled": false }
+}

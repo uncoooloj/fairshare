@@ -26,7 +26,7 @@ function callbackUrl(value: string) {
 export class PayPalSandbox {
   private token?: { value: string; expiresAt: number };
   private tokenPromise?: Promise<string>;
-  constructor(private config: PayPalConfig, private fetcher: typeof fetch = fetch) {
+  constructor(private config: PayPalConfig, private fetcher: typeof fetch = (...args) => fetch(...args)) {
     if (!config.clientId || !config.clientSecret) throw new PayPalError('PAYPAL_NOT_CONFIGURED', 503);
   }
   private async accessToken(): Promise<string> {

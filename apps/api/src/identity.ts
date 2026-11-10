@@ -1,8 +1,7 @@
 import {MfaService} from './mfa.js';
-import { DatabaseSync } from 'node:sqlite';
+import type { Database, DatabaseBackend } from './database.js';
+import { openNodeDatabase } from './nodeDatabase.js';
 import { createHash, randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'node:crypto';
-import { mkdirSync, chmodSync } from 'node:fs';
-import { dirname } from 'node:path';
 export enum Role { OWNER='OWNER', MEMBER='MEMBER', VIEWER='VIEWER' }
 export enum DataMode { SANDBOX='SANDBOX', DEMO='DEMO' }
 export class ApiError extends Error { constructor(public statusCode:number, public code:string, message:string){super(message);} }
@@ -12,14 +11,17 @@ const opaque=()=>randomBytes(32).toString('base64url');
 const cleanUser=(u:any):User=>({id:u.id,name:u.name,email:u.email,emailVerified:typeof u.email_verified_at==='number'});
 const normalizeEmail=(v:unknown)=>{if(typeof v!=='string'||v.length>254||!/^\S+@\S+\.\S+$/.test(v.trim()))throw new ApiError(400,'INVALID_EMAIL','Enter a valid email.');return v.trim().toLowerCase();};
 function passwordHash(password:string,salt=opaque()){return `${salt}:${scryptSync(password,salt,64).toString('hex')}`;}
-const dummyHash=passwordHash('not-a-real-user-password');
+let cachedDummyHash:string|undefined;
+const dummyPasswordHash=()=>cachedDummyHash??=passwordHash('not-a-real-user-password');
 function matches(password:string,encoded:string){const [salt,hash]=encoded.split(':'); const actual=scryptSync(password,salt!,64);const expected=Buffer.from(hash!,'hex');return expected.length===actual.length&&timingSafeEqual(actual,expected);}
 export class IdentityStore {
- readonly db:DatabaseSync;
+ readonly db:Database;
+ private readonly backend:DatabaseBackend;
  readonly mfa:MfaService;
- constructor(path:string,public mode:DataMode=DataMode.SANDBOX,public now:()=>number=Date.now,mfaEncryptionKey=process.env.FAIRSHARE_MFA_ENCRYPTION_KEY,hackathonMfaSimulation=false){
-  if(path!==':memory:')mkdirSync(dirname(path),{recursive:true}); this.db=new DatabaseSync(path); if(path!==':memory:')chmodSync(path,0o600);
-  this.db.exec(`PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL;
+ constructor(path:string|DatabaseBackend,public mode:DataMode=DataMode.SANDBOX,public now:()=>number=Date.now,mfaEncryptionKey=process.env.FAIRSHARE_MFA_ENCRYPTION_KEY,hackathonMfaSimulation=false){
+  dummyPasswordHash();
+  this.backend=typeof path==='string'?openNodeDatabase(path):path; this.db=this.backend.db;
+  this.db.exec(`
    CREATE TABLE IF NOT EXISTS metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL);
    CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY,name TEXT NOT NULL,email TEXT UNIQUE NOT NULL,password_hash TEXT NOT NULL,created_at INTEGER NOT NULL);
    CREATE TABLE IF NOT EXISTS email_verifications(hash TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),email TEXT NOT NULL,expires_at INTEGER NOT NULL,used_at INTEGER);
@@ -34,15 +36,15 @@ export class IdentityStore {
   if(!(this.db.prepare('PRAGMA table_info(users)').all() as any[]).some(row=>row.name==='email_verified_at'))this.db.exec('ALTER TABLE users ADD COLUMN email_verified_at INTEGER');
   if(!(this.db.prepare('PRAGMA table_info(invitations)').all() as any[]).some(row=>row.name==='delivery'))this.db.exec("ALTER TABLE invitations ADD COLUMN delivery TEXT NOT NULL DEFAULT 'EMAIL'");
   this.mfa=new MfaService(this,mfaEncryptionKey,hackathonMfaSimulation);
-  try { this.tx(()=>{const row=this.db.prepare('SELECT value FROM metadata WHERE key=?').get('mode') as any;if(row&&row.value!==mode)throw new Error('Database mode mismatch. Use a separate database for DEMO and SANDBOX.');this.db.prepare('INSERT OR IGNORE INTO metadata VALUES(?,?)').run('mode',mode);}); } catch(error) {this.db.close();throw error;}
+  try { this.tx(()=>{const row=this.db.prepare('SELECT value FROM metadata WHERE key=?').get('mode') as any;if(row&&row.value!==mode)throw new Error('Database mode mismatch. Use a separate database for DEMO and SANDBOX.');this.db.prepare('INSERT OR IGNORE INTO metadata VALUES(?,?)').run('mode',mode);}); } catch(error) {this.backend.close();throw error;}
  }
- close(){this.db.close();}
- tx<T>(fn:()=>T):T {this.db.exec('BEGIN IMMEDIATE');try{const v=fn();this.db.exec('COMMIT');return v;}catch(e){this.db.exec('ROLLBACK');throw e;}}
+ close(){this.backend.close();}
+ tx<T>(fn:()=>T):T {return this.backend.tx(fn);}
  audit(actor:string,workspace:string|null,action:string,detail:unknown={}){this.db.prepare('INSERT INTO audit VALUES(?,?,?,?,?,?)').run(randomUUID(),workspace,actor,action,JSON.stringify(detail),this.now());}
  limit(key:string,max:number,windowMs=15*60*1000){this.tx(()=>{const now=this.now();this.db.prepare('DELETE FROM rate_limits WHERE reset_at<=?').run(now); const row=this.db.prepare('SELECT count FROM rate_limits WHERE key=?').get(key) as any;if(row?.count>=max)throw new ApiError(429,'RATE_LIMITED','Too many attempts. Try again later.');this.db.prepare('INSERT INTO rate_limits VALUES(?,1,?) ON CONFLICT(key) DO UPDATE SET count=count+1').run(key,now+windowMs);});}
  register(input:{email:unknown;name:unknown;password:unknown}){const email=normalizeEmail(input.email);if(typeof input.name!=='string'||!input.name.trim()||input.name.trim().length>80)throw new ApiError(400,'INVALID_NAME','Name must contain 1–80 characters.');if(typeof input.password!=='string'||input.password.length<12||input.password.length>256)throw new ApiError(400,'INVALID_PASSWORD','Password must contain 12–256 characters.');const user={id:randomUUID(),email,name:input.name.trim(),emailVerified:false},hash=passwordHash(input.password);return this.tx(()=>{if(this.db.prepare('SELECT id FROM users WHERE email=?').get(email))throw new ApiError(409,'ACCOUNT_EXISTS','An account already exists. Sign in instead.');this.db.prepare('INSERT INTO users(id,name,email,password_hash,created_at) VALUES(?,?,?,?,?)').run(user.id,user.name,email,hash,this.now());this.audit(user.id,null,'USER_REGISTERED');return {user,...this.session(user.id)};});}
  private session(userId:string){const token=opaque(),expiresAt=this.now()+7*24*3600000;this.db.prepare('DELETE FROM sessions WHERE expires_at<=?').run(this.now());this.db.prepare('INSERT INTO sessions VALUES(?,?,?)').run(digest(token),userId,expiresAt);return {token,expiresAt};}
- login(emailInput:unknown,password:unknown,mfaCode?:unknown){const email=normalizeEmail(emailInput);if(typeof password!=='string'||password.length>256)throw new ApiError(401,'INVALID_CREDENTIALS','Email or password is incorrect.');const row=this.db.prepare('SELECT * FROM users WHERE email=?').get(email) as any;const ok=matches(password,row?.password_hash??dummyHash);if(!row||!ok)throw new ApiError(401,'INVALID_CREDENTIALS','Email or password is incorrect.');return this.tx(()=>{this.mfa.verify(row.id,mfaCode);return {user:cleanUser(row),...this.session(row.id)};});}
+ login(emailInput:unknown,password:unknown,mfaCode?:unknown){const email=normalizeEmail(emailInput);if(typeof password!=='string'||password.length>256)throw new ApiError(401,'INVALID_CREDENTIALS','Email or password is incorrect.');const row=this.db.prepare('SELECT * FROM users WHERE email=?').get(email) as any;const ok=matches(password,row?.password_hash??dummyPasswordHash());if(!row||!ok)throw new ApiError(401,'INVALID_CREDENTIALS','Email or password is incorrect.');return this.tx(()=>{this.mfa.verify(row.id,mfaCode);return {user:cleanUser(row),...this.session(row.id)};});}
  userForToken(token:string){if(!/^[A-Za-z0-9_-]{43}$/.test(token))throw new ApiError(401,'UNAUTHORIZED','Sign in to continue.');const row=this.db.prepare('SELECT u.* FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.hash=? AND s.expires_at>?').get(digest(token),this.now()) as any;if(!row)throw new ApiError(401,'UNAUTHORIZED','Sign in to continue.');return cleanUser(row);}
  logout(token:string){this.db.prepare('DELETE FROM sessions WHERE hash=?').run(digest(token));}
  createPasswordReset(emailInput:unknown){const email=normalizeEmail(emailInput);return this.tx(()=>{const user=this.db.prepare('SELECT id,email,email_verified_at FROM users WHERE email=?').get(email) as any;if(!user||typeof user.email_verified_at!=='number')return null;const token=opaque(),expiresAt=this.now()+15*60000;this.db.prepare('DELETE FROM password_resets WHERE user_id=? OR expires_at<=?').run(user.id,this.now());this.db.prepare('INSERT INTO password_resets VALUES(?,?,?,?)').run(digest(token),user.id,user.email,expiresAt);return {token,email:user.email,expiresAt};});}

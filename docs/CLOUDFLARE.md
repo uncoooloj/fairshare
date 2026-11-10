@@ -7,16 +7,18 @@ Target: Cloudflare. Status: OpenNext build and Wrangler deployment dry-run pass;
 | Component | Target | Remaining work |
 | --- | --- | --- |
 | Next web + same-origin BFF | Workers with OpenNext | Build/preview acceptance, account access and stable API origin |
-| Agreement/identity/ledger database | Durable Object SQLite candidate | Port synchronous `node:sqlite` stores; test transactions and tenant boundaries |
-| API routes | Worker or container adapter | Fastify and Node assumptions require deliberate migration |
-| PDF/OCR | Stateless Cloudflare Container candidate | Poppler/Tesseract cannot run as Worker subprocesses; bounded private transfer/cleanup |
-| Reconciliation | Durable Object alarms or Queues | Replace interval lifecycle; preserve leases, fencing and idempotency |
+| Agreement/identity/ledger database | Single-authority Durable Object SQLite adapter | Local runtime/restart checks exist; deployed storage, backup and migration acceptance pending |
+| API routes | Optional Worker adapter reusing API handlers | Local workerd verification exists; full deployed acceptance pending |
+| PDF/OCR | Private stateless Container parser adapter | Build/test Container image and deployed bounded private transfer/cleanup |
+| Reconciliation | Opt-in Durable Object alarms | Deployed alarm recovery acceptance pending; existing leases/fencing retained |
 | Original documents | Private R2 candidate | Authorized object access, size limits, deletion and DB/object consistency |
 | AI extraction | Existing Workers AI integration | Retain consent, grounded citations and human approval |
 
 Do not deploy today's SQLite file on a Container disk, Worker temporary filesystem or R2 FUSE and call it durable. A Container's associated Durable Object storage does **not** automatically persist its filesystem. Snapshots are point-in-time copies, not transaction-by-transaction financial durability. D1 is asynchronous; it is not a drop-in replacement for `DatabaseSync` or `BEGIN/COMMIT` code.
 
 The quickest intermediate path is Workers frontend + the existing Node API on a verified persistent host. This is **not** an all-Cloudflare deployment; do not silently substitute it for the requested target. A temporary laptop tunnel remains only a test endpoint. No provider resources, account terms, billing or secret upload is performed by this change.
+
+See `apps/api/cloudflare/README.md` for the optional backend Worker, its local verification and remaining deployment gates. Existing local SQLite data is not automatically migrated.
 
 ## Local build
 

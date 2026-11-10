@@ -1,9 +1,9 @@
 import {randomUUID} from 'node:crypto';
-import type {DatabaseSync} from 'node:sqlite';
+import type {Database} from './database.js';
 
 export interface ReconciliationJob {kind:string;id:string}
 export interface ReconciliationWorkerOptions {
- db:DatabaseSync;
+ db:Database;
  discover:()=>ReconciliationJob[];
  reconcile:(job:ReconciliationJob,assertLease:()=>void)=>Promise<void>;
  clock?:()=>number;intervalMs?:number;leaseMs?:number;batchSize?:number;
@@ -30,7 +30,7 @@ export function createReconciliationWorker(options:ReconciliationWorkerOptions){
    if(!claimed.changes)continue;
    const assertLease=()=>{const row=db.prepare('SELECT lease_token,lease_until FROM fairshare_reconciliation_jobs WHERE kind=? AND id=?').get(job.kind,job.id) as any;if(stopped||!row||row.lease_token!==token||row.lease_until<=clock())throw new Error('RECONCILIATION_LEASE_LOST');};
    // Long network reads renew a lease; a suspended/stale process is fenced at write time.
-   const heartbeat=setInterval(()=>{if(!stopped)db.prepare('UPDATE fairshare_reconciliation_jobs SET lease_until=? WHERE kind=? AND id=? AND lease_token=? AND lease_until>?').run(clock()+lease,job.kind,job.id,token,clock());},Math.max(250,Math.floor(lease/3)));heartbeat.unref();
+   const heartbeat=setInterval(()=>{if(!stopped)db.prepare('UPDATE fairshare_reconciliation_jobs SET lease_until=? WHERE kind=? AND id=? AND lease_token=? AND lease_until>?').run(clock()+lease,job.kind,job.id,token,clock());},Math.max(250,Math.floor(lease/3)));heartbeat.unref?.();
    let ok=false;
    try{await options.reconcile(job,assertLease);assertLease();ok=true;}catch{/* Persist only a safe outcome code, never provider payload or credentials. */}
    finally{clearInterval(heartbeat);const row=db.prepare('SELECT attempts FROM fairshare_reconciliation_jobs WHERE kind=? AND id=? AND lease_token=?').get(job.kind,job.id,token) as any;
@@ -38,6 +38,6 @@ export function createReconciliationWorker(options:ReconciliationWorkerOptions){
   }
  }
  const tick=()=>{if(stopped)return Promise.resolve();if(inFlight)return inFlight;inFlight=run().finally(()=>{inFlight=undefined;});return inFlight;};
- const schedule=()=>{timer=setTimeout(()=>{void tick().catch(()=>{}).finally(()=>{if(!stopped)schedule();});},interval);timer.unref();};
+ const schedule=()=>{timer=setTimeout(()=>{void tick().catch(()=>{}).finally(()=>{if(!stopped)schedule();});},interval);timer.unref?.();};
  return {tick,start(){if(stopped)throw new Error('Worker stopped');if(!timer)schedule();},async stop(){stopped=true;if(timer)clearTimeout(timer);await inFlight;}};
 }

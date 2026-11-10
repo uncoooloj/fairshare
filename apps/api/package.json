@@ -8,9 +8,14 @@
     "start": "node --import tsx src/server.ts",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "node --import tsx --test test/*.test.ts"
+    "test": "node --import tsx --test test/*.test.ts",
+    "build:cloudflare": "node cloudflare/build.mjs",
+    "typecheck:cloudflare": "tsc -p tsconfig.cloudflare.json",
+    "test:cloudflare": "npm run build:cloudflare && node cloudflare/smoke.mjs",
+    "check:cloudflare": "npm run typecheck:cloudflare && npm run test:cloudflare"
   },
   "dependencies": {
+    "@cloudflare/containers": "0.3.7",
     "@fairshare/contract-ai": "*",
     "@fairshare/domain": "*",
     "@fairshare/payments": "*",
@@ -20,9 +25,13 @@
     "pdfjs-dist": "^5.4.624"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "5.20261110.1",
     "@types/node": "^24.10.0",
+    "esbuild": "0.28.2",
+    "miniflare": "5.20261110.0-beta",
     "tsx": "^4.20.6",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "wrangler": "4.160.0"
   },
   "engines": {
     "node": ">=22.13.0"

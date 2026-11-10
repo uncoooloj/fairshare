@@ -9,7 +9,7 @@ import type {FairshareApp} from './app.js';
 import {Role} from './identity.js';
 import {registerPaymentRecovery} from './paymentRecovery.js';
 export type PaymentProvider=Pick<PayPalSandbox,'createOrder'|'captureOrder'|'getOrder'|'createPayout'|'getPayout'|'verifyWebhook'> & Partial<Pick<PayPalSandbox,'refundCapture'|'getRefund'>>;
-export interface PaymentOptions {provider?:PaymentProvider;publicOrigin?:string;reconciliation?:{enabled:boolean;intervalMs?:number}}
+export interface PaymentOptions {provider?:PaymentProvider;publicOrigin?:string;reconciliation?:{enabled:boolean;intervalMs?:number;externalScheduling?:boolean}}
 const fail=(code:string,message:string):never=>{throw new DomainError(code,message);};
 const str=(v:unknown)=>typeof v==='string'&&v.length>0&&v.length<=128?v:fail('INVALID_INPUT','Bounded nonempty string required');
 const now=()=>new Date().toISOString();
@@ -82,6 +82,6 @@ export function registerPaymentRoutes(app:FairshareApp,aggregates:AggregateStore
   }
  } }):undefined;
  app.decorate('paymentReconciliation',worker??null);
- if(worker){app.addHook('onReady',async()=>worker.start());app.addHook('preClose',async()=>worker.stop());}
+ if(worker){if(!options.reconciliation?.externalScheduling)app.addHook('onReady',async()=>worker.start());app.addHook('preClose',async()=>worker.stop());}
  return {processEvent,worker};
 }

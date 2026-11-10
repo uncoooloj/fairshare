@@ -73,7 +73,7 @@ export function AgreementIntake({ busy, first = false, onCreate, onCancel }: {
       <input type="file" accept=".pdf,.docx,.txt" disabled={busy} onChange={event => { changed(); setFile(event.target.files?.[0] || null); }} />
     </Field>
     {file && <p className="muted">Selected: {file.name}. Your document is ready to read.</p>}
-    {file && /\.pdf$/i.test(file.name) && <label className="check"><input type="checkbox" checked={ocr} disabled={busy} onChange={event => { changed(); setOcr(event.target.checked); }} />Use local OCR for a scanned PDF (requires server support, English, up to 5 pages).</label>}
+    {file && /\.pdf$/i.test(file.name) && <label className="check"><input type="checkbox" checked={ocr} disabled={busy} onChange={event => { changed(); setOcr(event.target.checked); }} />Use OCR for a scanned PDF (English, up to 5 pages). Processed on Fairshare’s servers (Cloudflare when hosted); review all extracted names and amounts.</label>}
     </div>
     <div hidden={method !== "paste"}>
     <Field label="Paste agreement text"><textarea rows={9} maxLength={40000} disabled={busy || method !== "paste"} value={text} onChange={event => { changed(); setText(event.target.value); }} placeholder="Paste your agreement here…" /></Field>
