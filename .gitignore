@@ -10,3 +10,8 @@ dist/
 coverage/
 
 *.tsbuildinfo
+
+# Cloudflare local/build artifacts (never commit credentials or bundles)
+.open-next/
+.wrangler/
+.dev.vars*
