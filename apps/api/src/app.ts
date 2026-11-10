@@ -386,14 +386,12 @@ export async function buildApp(
         (req.body as { role: string }).role,
       );
       reply.header("Cache-Control", "no-store");
-      return reply
-        .status(201)
-        .send({
-          invitation,
-          delivery: "PRIVATE_LINK",
-          notice:
-            "Private single-use link. Anyone holding it can join this workspace after signing in. Expires in 48 hours. No email is sent.",
-        });
+      return reply.status(201).send({
+        invitation,
+        delivery: "PRIVATE_LINK",
+        notice:
+          "Private single-use link. Anyone holding it can join this workspace after signing in. Expires in 48 hours. No email is sent.",
+      });
     },
   );
   app.delete<{ Params: { id: string; invitationId: string } }>(
