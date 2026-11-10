@@ -224,27 +224,36 @@ export default function FairshareApp() {
     const workspaceRequestId = workspaceRequest.current;
     const openRequestId = openRequest.current;
     const id = currentWorkspace.current;
-    await loadWorkspace(id);
-    if (
-      workspaceRequestId !== workspaceRequest.current ||
-      openRequestId !== openRequest.current
-    )
-      return;
-    if (selected) {
-      const a = await api<Agreement>(base);
+    try {
+      await loadWorkspace(id);
       if (
         workspaceRequestId !== workspaceRequest.current ||
         openRequestId !== openRequest.current
       )
         return;
-      setSelected(a);
-      const p = await api(`${base}/payments`);
+      if (selected) {
+        const a = await api<Agreement>(base);
+        if (
+          workspaceRequestId !== workspaceRequest.current ||
+          openRequestId !== openRequest.current
+        )
+          return;
+        setSelected(a);
+        const p = await api(`${base}/payments`);
+        if (
+          workspaceRequestId !== workspaceRequest.current ||
+          openRequestId !== openRequest.current
+        )
+          return;
+        setPayments(p.payments);
+      }
+    } catch (error) {
       if (
         workspaceRequestId !== workspaceRequest.current ||
         openRequestId !== openRequest.current
       )
         return;
-      setPayments(p.payments);
+      throw error;
     }
   }
   useEffect(() => {
