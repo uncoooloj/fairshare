@@ -7,33 +7,33 @@ const source = readFileSync(
 );
 
 test("designer auth retains real login/register payloads and registration password policy", () => {
-  assert.ok(
-    source.includes('onSubmit(login ? "login" : "register", prepared.data)'),
+  assert.match(
+    source,
+    /onSubmit\(login \? "login" : "register", prepared\.data\)/,
   );
   for (const name of ["email", "password", "name"])
-    assert.ok(source.includes(`name="${name}"`));
-  assert.ok(source.includes("minLength={login ? 1 : 12}"));
-  assert.ok(source.includes("if (busy) return;"));
-  assert.ok(source.includes('role="alert"'));
+    assert.match(source, new RegExp(`name="${name}"`));
+  assert.match(source, /minLength=\{login \? 1 : 12\}/);
+  assert.match(source, /if \(busy\) return;/);
+  assert.match(source, /role="alert"/);
 });
 test("onboarding never claims provider success or adds unsupported OAuth links", () => {
   assert.doesNotMatch(source, /Example: \$3,000 payment/);
-  assert.ok(
-    source.includes(
-      "It does not approve an agreement or change anyone’s share.",
-    ),
+  assert.match(
+    source,
+    /It does not approve an agreement\s+or change anyone’s share\./,
   );
-  assert.ok(
-    source.includes("if (busy || submitting.current || !name.trim()) return;"),
+  assert.match(
+    source,
+    /if \(busy \|\| submitting\.current \|\| !name\.trim\(\)\) return;/,
   );
-  assert.ok(source.includes("submitting.current = true;"));
-  assert.ok(source.includes("await onCreate(name.trim())"));
-  assert.ok(
-    source.includes(
-      "finally { submitting.current = false; setCreating(false); }",
-    ),
+  assert.match(source, /submitting\.current = true;/);
+  assert.match(source, /await onCreate\(name\.trim\(\)\)/);
+  assert.match(
+    source,
+    /finally\s*\{\s*submitting\.current = false;\s*setCreating\(false\);\s*\}/,
   );
-  assert.ok(source.includes("if (!busy) onContinue()"));
+  assert.match(source, /if \(!busy\) onContinue\(\)/);
   assert.doesNotMatch(
     source,
     /href=.*(?:google|microsoft)|setTimeout|localStorage|Payment successful|Email verified/,

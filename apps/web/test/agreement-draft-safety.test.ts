@@ -12,7 +12,7 @@ const widgets = readFileSync(
 const editor = widgets.slice(widgets.indexOf("export function RulesEditor("));
 
 test("agreement edits guard navigation and closing the browser before discarding work", () => {
-  assert.match(app, /draftDirty && !window.confirm/);
+  assert.match(app, /draftDirty\s*&&\s*!window\.confirm/);
   assert.match(app, /window.addEventListener\("beforeunload", warn\)/);
   assert.match(app, /window.removeEventListener\("beforeunload", warn\)/);
   assert.match(

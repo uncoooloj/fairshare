@@ -109,10 +109,10 @@ test("failed recovery refresh hides stale refund actions and clears success noti
     "utf8",
   );
   assert.match(source, /await flight\.current/);
-  assert.match(source, /setData\(null\); setNotice\(''\);/);
+  assert.match(source, /setData\(null\);\s*setNotice\(""\);/);
   assert.match(source, /Do not resubmit an uncertain transfer/);
   assert.match(
     source,
-    /setConfirmed\(false\); setError\(''\); setNotice\(''\)/,
+    /setConfirmed\(false\);\s*setError\(""\);\s*setNotice\(""\)/,
   );
 });

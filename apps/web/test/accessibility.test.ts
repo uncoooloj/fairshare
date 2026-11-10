@@ -26,7 +26,7 @@ test("tab markup and panel have connected names, roving tab stop and manual acti
   assert.match(tabs, /aria-controls=\{value === tab \? "agreement-panel"/);
   assert.match(
     app,
-    /role="tabpanel" id="agreement-panel" aria-labelledby=\{`agreement-tab-\$\{tab\}`\}/,
+    /role="tabpanel"\s+id="agreement-panel"\s+aria-labelledby=\{`agreement-tab-\$\{tab\}`\}/,
   );
   assert.match(tabs, /buttons.current\[next\]\?\.focus\(\)/);
 });
@@ -41,10 +41,10 @@ test("keyboard skip target and shared notice announcements are present", () => {
 });
 test("small screens retain sign out and overflowing dialog content can scroll", () => {
   const css = source("../app/globals.css");
-  assert.match(css, /\.sidebar-bottom \{ display: flex;/);
+  assert.match(css, /\.sidebar-bottom\s*\{\s*display:\s*flex;/);
   assert.match(css, /prefers-reduced-motion: reduce/);
   assert.match(
     source("../src/components/payouts.module.css"),
-    /\.drawer \{ overflow-y:auto;/,
+    /\.drawer\s*\{\s*overflow-y:\s*auto;/,
   );
 });
