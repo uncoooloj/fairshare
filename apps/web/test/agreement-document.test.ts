@@ -11,7 +11,7 @@ test("document view uses version-pinned API source and clears stale content", ()
     source,
     /recoverSourceDocument\(\s*base,\s*sourceId,\s*api,?\s*\)/,
   );
-  assert.match(source, /setDocument\(null\)/);
+  assert.match(source, /setDocument\(\s*null\s*\)/);
   assert.match(source, /if\s*\(\s*!stale\s*\)/);
   assert.match(source, /stale\s*=\s*true/);
 });

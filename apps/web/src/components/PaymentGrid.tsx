@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useId } from "react";
+import { useMemo, useState, useId, type ReactNode } from "react";
 import { AgGridReact } from "ag-grid-react";
 import {
   AllCommunityModule,
@@ -38,6 +38,9 @@ const theme = themeQuartz.withParams({
 export interface PaymentGridProps {
   rows: readonly PaymentGridRow[];
   loading?: boolean;
+  title?: string;
+  description?: string;
+  emptyActions?: ReactNode;
   error?: string;
   /** Parent controls navigation; no sensitive data or actions are embedded in URLs. */
   onOpenAgreement?: (agreementId: string) => void;
@@ -46,6 +49,9 @@ export interface PaymentGridProps {
 export function PaymentGrid({
   rows,
   loading = false,
+  title,
+  description,
+  emptyActions,
   error,
   onOpenAgreement,
 }: PaymentGridProps) {
@@ -197,6 +203,22 @@ export function PaymentGrid({
     );
   return (
     <section aria-label="Payout history" aria-busy={loading}>
+      {title && (
+        <header className={styles.header}>
+          <div>
+            <h1>{title}</h1>
+            {description && <p>{description}</p>}
+          </div>
+          <button
+            className={styles.control}
+            type="button"
+            onClick={exportCsv}
+            disabled={loading || !filteredRows.length}
+          >
+            Export CSV
+          </button>
+        </header>
+      )}
       <div className={styles.summary} aria-label="Recorded payout totals">
         {(
           [
@@ -276,14 +298,16 @@ export function PaymentGrid({
             Clear filters
           </button>
         )}
-        <button
-          className={styles.control}
-          type="button"
-          onClick={exportCsv}
-          disabled={loading || !filteredRows.length}
-        >
-          Export CSV
-        </button>
+        {!title && (
+          <button
+            className={styles.control}
+            type="button"
+            onClick={exportCsv}
+            disabled={loading || !filteredRows.length}
+          >
+            Export CSV
+          </button>
+        )}
       </div>
       {!loading && !data.rows.length ? (
         <div className={styles.empty}>
@@ -292,6 +316,9 @@ export function PaymentGrid({
             Payouts appear here after a transfer is submitted under an approved
             agreement. An allocation alone does not move money.
           </p>
+          {emptyActions && (
+            <div className={styles.emptyActions}>{emptyActions}</div>
+          )}
         </div>
       ) : !loading && !filteredRows.length ? (
         <div className={styles.empty} role="status">

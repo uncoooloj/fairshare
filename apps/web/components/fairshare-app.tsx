@@ -1,4 +1,5 @@
 "use client";
+import { RevenueRules } from "./revenue-rules";
 import {
   Logo,
   Heading,
@@ -33,6 +34,7 @@ import {
   type Rules,
   type Revenue,
 } from "../lib/model";
+import { AgreementVersions } from "./agreement-versions";
 import { AgreementDocument } from "./agreement-document";
 import {
   ContractReviewPanel,
@@ -665,17 +667,22 @@ export default function FairshareApp() {
                     <>
                       <div className="detail-columns">
                         <section className="panel">
-                          <h2>Revenue rules</h2>
-                          <p className="muted">
-                            {active
-                              ? "The active rules for this agreement."
-                              : "No active rules yet. Review and approve a version to begin."}
-                          </p>
+                          {!active && (
+                            <>
+                              <h2>Revenue rules</h2>
+                              <p className="muted">
+                                No active rules yet. Review and approve a
+                                version to begin.
+                              </p>
+                            </>
+                          )}
                           {active ? (
-                            <SplitTable
-                              agreement={selected}
-                              rules={active.rules}
-                            />
+                            <RevenueRules key={`${selected.id}:${active.id}`}>
+                              <SplitTable
+                                agreement={selected}
+                                rules={active.rules}
+                              />
+                            </RevenueRules>
                           ) : (
                             <Empty
                               title="Agree on the rules first"
@@ -980,6 +987,7 @@ export default function FairshareApp() {
                               }
                             }}
                           />
+                          <AgreementVersions agreement={selected} />
                           <section className="section">
                             <h3>Preview an incoming payment</h3>
                             <p className="muted">
@@ -1022,7 +1030,11 @@ export default function FairshareApp() {
                             </Button>
                           )}
                           <section className="panel">
-                            <h3>Source agreement</h3>
+                            <h3>
+                              {selected.value.versions.length
+                                ? "Upload amended agreement"
+                                : "Source agreement"}
+                            </h3>
                             <ContractSourceGuidance
                               replacement={!!selected.value.versions.length}
                             />
@@ -1415,16 +1427,17 @@ export default function FairshareApp() {
             )}
             {section === Section.Payouts && !selected && (
               <>
-                <Heading
+                <PaymentGrid
                   title="Payouts"
                   description="Track money going to people, across all your agreements."
-                />
-                <Notice>
-                  Allocations are calculated from approved rules. These statuses
-                  describe provider payout operations, not approval of someone’s
-                  share.
-                </Notice>
-                <PaymentGrid
+                  emptyActions={
+                    <Button
+                      variant="secondary"
+                      onClick={() => navigate(Section.Agreements)}
+                    >
+                      View agreements
+                    </Button>
+                  }
                   loading={busy}
                   rows={payouts.map((p) => ({
                     id: p.id,

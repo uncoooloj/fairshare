@@ -184,9 +184,9 @@ export function ContractSourceGuidance({
       </p>
       {replacement && (
         <Notice>
-          Saving a replacement source does not change active rules. Review it,
-          propose a new version, and obtain fresh approval from everyone before
-          activating it.
+          An amended agreement starts a new review. Saving its source does not
+          change active rules or past allocations. Propose a new version and
+          obtain fresh approval from everyone; the organizer then activates it.
         </Notice>
       )}
       <details>
