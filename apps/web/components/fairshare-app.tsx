@@ -1425,6 +1425,36 @@ export default function FairshareApp() {
                             userId={user.id}
                             canCreate={organizer && !!active}
                           />
+                          {organizer && active && (
+                            <SandboxCheckoutForm
+                              key={selected.id}
+                              busy={busy}
+                              onSubmit={(amount, source) =>
+                                run(async () => {
+                                  const amountCents = parseCents(amount);
+                                  const storageKey = `fairshare-checkout:${user.id}:${selected.id}:${amountCents}`;
+                                  const r = await createSandboxCheckout({
+                                    storage: sessionStorage,
+                                    storageKey,
+                                    amountCents,
+                                    createRequestKey: () => crypto.randomUUID(),
+                                    createPayment: (requestKey, cents) =>
+                                      api(`${base}/payments`, "POST", {
+                                        requestKey,
+                                        amountCents: cents,
+                                        source,
+                                      }),
+                                    refresh,
+                                  });
+                                  setNotice(
+                                    r.approval_url
+                                      ? "Sandbox checkout created. Use the approval link below."
+                                      : "Payment request recorded. Check its status before trying again.",
+                                  );
+                                })
+                              }
+                            />
+                          )}
                           <table>
                             <thead>
                               <tr>

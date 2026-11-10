@@ -30,7 +30,7 @@ test("invitation confirmation suppresses competing application forms; creation r
   assert.match(source, /creating\s*&&\s*canCreateAgreement\s*\?\s*\(/);
   assert.match(
     source,
-    /setCreating\(false\);\s*setWorkspace\(e.target.value\)/,
+    /if \(!mayLeaveDraft\(\)\) return;\s*commitWorkspace\(e.target.value\)/,
   );
   assert.equal(source.match(/workspaceRole=\{workspaceRole\}/g)?.length, 2);
 });
