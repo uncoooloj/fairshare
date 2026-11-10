@@ -42,7 +42,7 @@
     }
   ],
   "vars": {
-    "OCR_ENABLED": "false",
+    "OCR_ENABLED": "true",
     "HACKATHON_MFA_SIMULATION": "false",
     "PAYPAL_PAYOUTS_ENABLED": "false",
     "PAYPAL_PAYOUTS_ELIGIBILITY_CONFIRMED": "false",

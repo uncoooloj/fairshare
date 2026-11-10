@@ -160,7 +160,7 @@ export async function extractContract(document: SourceDocument, config: Cloudfla
   try {
     const task = async () => {
       const response = await (config.fetch ?? fetch)(`https://api.cloudflare.com/client/v4/accounts/${config.accountId}/ai/run/${config.model}`, {
-        method:'POST',redirect:'error', headers:{Authorization:`Bearer ${config.apiToken}`,'Content-Type':'application/json'},
+        method:'POST',redirect:'manual', headers:{Authorization:`Bearer ${config.apiToken}`,'Content-Type':'application/json'},
         body:JSON.stringify({messages:buildMessages(document), max_tokens:6000, temperature:0, response_format:{type:"json_schema",json_schema:EXTRACTION_SCHEMA}}), signal:controller.signal,
       });
       if (!response.ok) throw new Error('provider');
