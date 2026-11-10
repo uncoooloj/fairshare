@@ -21,7 +21,7 @@ test("onboarding never claims provider success or adds unsupported OAuth links",
   assert.ok(source.includes("Illustrative amounts, not account activity."));
   assert.match(
     source,
-    /It does not approve an agreement\s+or\s+change anyone’s share\./,
+    /It does not approve an agreement\s+or change anyone’s share\./,
   );
   assert.match(
     source,

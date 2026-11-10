@@ -333,3 +333,61 @@ test("Resend adapter is opt-in, validates origin and sanitizes errors", async ()
     /^Error: EMAIL_PROVIDER_REJECTED$/,
   );
 });
+test("mail network failures and malformed replies are redacted without automatic retry", async () => {
+  const m = {
+    kind: MailKind.VERIFY_EMAIL,
+    to: "a@example.test",
+    link: "https://example.test/verify-email#token=private-token",
+    expiresAt: 1000,
+    operationId: "same-operation",
+  };
+  let calls = 0;
+  const network = createResendTransport({
+    apiKey: "secret",
+    from: "noreply@example.test",
+    fetch: async () => {
+      calls++;
+      throw new Error("private-token secret network detail");
+    },
+  });
+  await assert.rejects(
+    () => network.send(m),
+    /^Error: EMAIL_PROVIDER_UNCONFIRMED$/,
+  );
+  assert.equal(calls, 1);
+  for (const body of ["not-json", "null", "{}", '{"id":123}']) {
+    const malformed = createResendTransport({
+      apiKey: "secret",
+      from: "noreply@example.test",
+      fetch: async () => new Response(body, { status: 200 }),
+    });
+    await assert.rejects(
+      () => malformed.send(m),
+      /^Error: EMAIL_PROVIDER_RESPONSE_INVALID$/,
+    );
+  }
+});
+test("enabled provider requires explicit trusted application origin", () => {
+  const base = {
+    EMAIL_DELIVERY_ENABLED: "true",
+    EMAIL_PROVIDER: "resend",
+    RESEND_API_KEY: "test",
+    EMAIL_FROM: "noreply@example.test",
+  };
+  assert.throws(
+    () => configuredMailTransport(base),
+    /explicit PUBLIC_APP_ORIGIN/,
+  );
+  assert.throws(() =>
+    configuredMailTransport({
+      ...base,
+      PUBLIC_APP_ORIGIN: "https://user:secret@example.test",
+    }),
+  );
+  assert(
+    configuredMailTransport({
+      ...base,
+      PUBLIC_APP_ORIGIN: "https://fairshare.example",
+    }),
+  );
+});
