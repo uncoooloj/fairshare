@@ -1,6 +1,12 @@
 node_modules/
 dist/
+.next/
 .env*
 !.env.example
 *.db*
+*.sqlite*
+*.log
 .DS_Store
+coverage/
+
+*.tsbuildinfo
