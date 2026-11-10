@@ -9,6 +9,7 @@
 Keep draft PRs unmerged pending owner approval. Sponsor tooling use must be genuine and documented. No paid trial or public deployment is implied by this file.
 
 ## Published delivery checkpoints
+
 - PR 1: package foundation.
 - PR 2: durable identity, agreement and sandbox payment orchestration.
 - PR 3: verification mail, bounded PDF ingestion and citation hardening.
