@@ -3,6 +3,7 @@
 Compared decoded templates by screen title, not regenerated UUIDs. Old: 48 states. New: 53 states (47 matched titles; 6 new titles; 1 renamed/replaced).
 
 ## Added/replaced states
+
 - G4 · People, row menu open
 - B6 · Invite accepted, sign in
 - G4 · Reminder sent
@@ -12,6 +13,7 @@ Compared decoded templates by screen title, not regenerated UUIDs. Old: 48 state
 - Previous B6 · Collaborator invite landing replaced by Collaborator invite plus Invite accepted, sign in.
 
 ## Matched screen changes
+
 - B1 · Sign up: visible text unchanged; export styling/runtime may differ.
 - B2 · Verify email: visible text unchanged; export styling/runtime may differ.
 - B3 · Welcome: visible text/structure changed.
@@ -61,14 +63,15 @@ Compared decoded templates by screen title, not regenerated UUIDs. Old: 48 state
 - K · Permission (collaborator): visible text/structure changed.
 
 ## Implementation scope and safeguards
+
 - Applied compact native Status selector to existing agreement search/filter, retaining all current statuses.
 - Added accessible disclosure for active revenue rules only; no-active setup action and recoupment remain visible.
 - First-run workspace placement and functional navigation handled separately by workspace_ux_fix.
 - Export adds a command-key search hint, but no hint should ship without working command search.
-- Reminder dialogs are design additions, not evidence of email delivery support. Do not display a sent state without verified delivery.
+- Reminder dialogs are design additions. Show a sent state only after the configured mail transport's provider accepts the request; provider acceptance is not inbox-delivery evidence.
 - Export removes inline payout error reasons; existing actionable recovery/evidence must remain until equivalent detail view exists.
-- Export says Download original; implementation retains truthful Download extracted text because original binary is not stored.
+- Export says Download original; new PDF/DOCX uploads support a private authenticated original download, while text-only and legacy uploads retain only extracted text.
 - Added read-only version timeline and side-by-side rule comparison, amended-agreement upload language, and a payout header/export action with an empty-state link to Agreements.
-- Other-payment Source name, invite acceptance presentation and People row actions still require focused integration. No blanket HTML replacement.
+- Invite acceptance presentation and People row actions still require focused integration. No blanket HTML replacement.
 - Some label changes remove § from sample clause references. Do not mutate authoritative contract citations to match fixture copy.
 - Repeated global header changes are layout-only; keep functional app routing, identity and guards.

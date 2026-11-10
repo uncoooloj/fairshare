@@ -6,7 +6,7 @@ Implemented: local licensed Onest fonts, neutral/blue design tokens, desktop she
 
 All displayed operational values come from existing API state. The onboarding example is explicitly illustrative. Existing provider reconciliation, refund confirmation, permissions, amount validation and API callbacks are retained. Overview counters intentionally use known agreement/approval/hold data rather than fabricated monthly revenue.
 
-Not claimed: pixel-exact reproduction of all 48 screens, new OAuth, DOCX/OCR support, notification delivery, automatic activation, multi-currency rules, or new backend capabilities. Contract wizard and settings still use existing functional structures styled through tokens. Browser/interaction QA remains required; source-level tests are not a substitute.
+Not claimed: pixel-exact reproduction of all 48 screens, new OAuth, notification delivery, automatic activation, multi-currency rules, or new backend capabilities. Contract wizard and settings still use existing functional structures styled through tokens. Browser/interaction QA remains required; source-level tests are not a substitute.
 
 The design's approval workflow remains governed by backend constraints: accepted members before proposal, unanimous version approval followed by organizer activation, and no routine discretionary payout-amount votes.
 
@@ -15,6 +15,7 @@ The design's approval workflow remains governed by backend constraints: accepted
 Implemented after initial handoff: guided creation/people-first setup, profile/security/invitation settings surfaces, review-readiness/clarification/approval panel, payout details and safe filtered CSV, and dedicated version-pinned Document view with extracted-text download. Source document loading clears stale state and ignores late responses.
 
 Remaining highest-value reference gaps:
+
 1. Distinct Allocations tab with source-linked per-capture calculation view (currently functional within Payments).
 2. Compare proposal versions, showing deterministic differences and unchanged active rules.
 3. Overview attention cards linking directly to pending approvals/holds instead of only counts.

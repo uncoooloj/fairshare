@@ -1,6 +1,6 @@
 # Fairshare payments (sandbox only)
 
-Reuses the tested Kept sandbox provider, not its habit/stake business logic. Hardcoded PayPal sandbox origin; no live mode. Server only; never bundle into the browser. USD integer cents only. Payouts disabled unless enabled **and** eligibility explicitly confirmed. Successful batch creation means pending, not paid. Verify exact recipient, sender IDs, amount, currency and item status on reconciliation.
+Uses a sandbox-only PayPal provider adapter. Hardcoded PayPal sandbox origin; no live mode. Server only; never bundle into the browser. USD integer cents only. Payouts disabled unless enabled **and** eligibility explicitly confirmed. Successful batch creation means pending, not paid. Verify exact recipient, sender IDs, amount, currency and item status on reconciliation.
 
 ## Integration contract
 
@@ -15,7 +15,7 @@ Reuses the tested Kept sandbox provider, not its habit/stake business logic. Har
 
 ## Verification boundary
 
-Package tests use mocked provider responses. Prior Kept sandbox OAuth was authenticated successfully with the user's locally configured app credentials; no Fairshare capture, refund, webhook delivery or payout has yet been performed. Public callback-only tunnel awaits user approval. Real payment lifecycle must be demonstrated with a sandbox buyer and verified recipient item outcomes before marking ready.
+Package tests use mocked provider responses. Historical sandbox OAuth evidence from a separate implementation does not establish Fairshare capture, refund, webhook delivery, or payout behavior. Public callback-only tunnel awaits user approval. Real payment lifecycle must be demonstrated with a sandbox buyer and verified recipient item outcomes before marking ready.
 
 ## API
 

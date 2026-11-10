@@ -6,9 +6,9 @@ test("profile editor guards duplicate writes and explains immutable agreement na
     new URL("../components/profile-form.tsx", import.meta.url),
     "utf8",
   );
-  assert.match(source, /pending.current\|\|busy/);
-  assert.match(source, /pending.current=true/);
-  assert.match(source, /finally\{pending.current=false/);
+  assert.match(source, /pending\.current\s*\|\|\s*busy/);
+  assert.match(source, /pending\.current\s*=\s*true/);
+  assert.match(source, /finally\s*\{\s*pending\.current\s*=\s*false/);
   assert.match(source, /maxLength=\{80\}/);
   assert.match(source, /not names recorded in existing agreements/);
   assert.match(source, /role="alert"/);
