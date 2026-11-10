@@ -317,7 +317,7 @@ export function AccessPrompt({
       <p>
         {kind === "verification"
           ? "Confirm this verification link for"
-          : "Accept the invitation using the account it was sent to:"}{" "}
+          : "You will join using your signed-in account:"}{" "}
         <strong>{email}</strong>.
       </p>
       {kind === "invitation" && (

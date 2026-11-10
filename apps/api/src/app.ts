@@ -364,6 +364,36 @@ export async function buildApp(
         .send(await deliverInvitation(app, options, user, req.params.id, b));
     },
   );
+  app.post<{ Params: { id: string } }>(
+    "/api/workspaces/:id/invitation-links",
+    {
+      schema: {
+        body: {
+          ...objectBody,
+          required: ["role"],
+          properties: {
+            role: { type: "string", enum: [Role.MEMBER, Role.VIEWER] },
+          },
+        },
+      },
+    },
+    async (req, reply) => {
+      const { user } = app.requireWorkspace(req, req.params.id, [Role.OWNER]);
+      limit(req, "invite", 30);
+      const invitation = store.createInvitationLink(
+        user,
+        req.params.id,
+        (req.body as { role: string }).role,
+      );
+      reply.header("Cache-Control", "no-store");
+      return reply.status(201).send({
+        invitation,
+        delivery: "PRIVATE_LINK",
+        notice:
+          "Private single-use link. Anyone holding it can join this workspace after signing in. Expires in 48 hours. No email is sent.",
+      });
+    },
+  );
   app.delete<{ Params: { id: string; invitationId: string } }>(
     "/api/workspaces/:id/invitations/:invitationId",
     async (req) => {
@@ -386,8 +416,7 @@ export async function buildApp(
     async (req) => {
       const user = app.requireSession(req);
       limit(req, "accept", 30);
-      if (mode !== DataMode.DEMO) store.requireVerifiedEmail(user.id);
-      return { workspace: store.accept(user, (req.body as any).token) };
+      return { workspace: store.accept(user, (req.body as any).token, true) };
     },
   );
   app.get<{ Params: { id: string } }>(

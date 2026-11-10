@@ -92,6 +92,14 @@ export class IdentityStore {
       )
     )
       this.db.exec("ALTER TABLE users ADD COLUMN email_verified_at INTEGER");
+    if (
+      !(this.db.prepare("PRAGMA table_info(invitations)").all() as any[]).some(
+        (row) => row.name === "delivery",
+      )
+    )
+      this.db.exec(
+        "ALTER TABLE invitations ADD COLUMN delivery TEXT NOT NULL DEFAULT 'EMAIL'",
+      );
     this.mfa = new MfaService(this, mfaEncryptionKey);
     try {
       this.tx(() => {
@@ -463,13 +471,36 @@ export class IdentityStore {
         )
         .run(this.now(), workspaceId, email);
       this.db
-        .prepare("INSERT INTO invitations VALUES(?,?,?,?,?,?,NULL,NULL,?)")
+        .prepare(
+          "INSERT INTO invitations(id,hash,workspace_id,email,role,expires_at,accepted_at,revoked_at,created_by) VALUES(?,?,?,?,?,?,NULL,NULL,?)",
+        )
         .run(id, digest(token), workspaceId, email, role, expiresAt, user.id);
       this.audit(user.id, workspaceId, "INVITATION_CREATED", { id, role });
       return { id, token, email, role, expiresAt };
     });
   }
-  accept(user: User, token: unknown) {
+  createInvitationLink(user: User, workspaceId: string, role: unknown) {
+    this.membership(user.id, workspaceId, [Role.OWNER]);
+    if (role !== Role.MEMBER && role !== Role.VIEWER)
+      throw new ApiError(400, "INVALID_ROLE", "Invite a member or viewer.");
+    const id = randomUUID(),
+      token = opaque(),
+      expiresAt = this.now() + 48 * 3600000;
+    this.tx(() => {
+      this.db
+        .prepare(
+          "INSERT INTO invitations(id,hash,workspace_id,email,role,expires_at,created_by,delivery) VALUES(?,?,?,'',?,?,?,'LINK')",
+        )
+        .run(id, digest(token), workspaceId, role, expiresAt, user.id);
+      this.audit(user.id, workspaceId, "INVITATION_LINK_CREATED", {
+        id,
+        role,
+        expiresAt,
+      });
+    });
+    return { id, token, role, expiresAt };
+  }
+  accept(user: User, token: unknown, requireVerifiedEmail = false) {
     if (typeof token !== "string" || token.length !== 43)
       throw new ApiError(
         400,
@@ -482,12 +513,18 @@ export class IdentityStore {
           "SELECT * FROM invitations WHERE hash=? AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at>?",
         )
         .get(digest(token), this.now()) as any;
-      if (!row || row.email !== user.email)
+      if (!row || (row.delivery !== "LINK" && row.email !== user.email))
         throw new ApiError(
           400,
           "INVALID_INVITATION",
           "Invitation is invalid, expired, or belongs to another email.",
         );
+      if (
+        requireVerifiedEmail &&
+        row.delivery !== "LINK" &&
+        this.mode !== DataMode.DEMO
+      )
+        this.requireVerifiedEmail(user.id);
       const existing = this.db
         .prepare(
           "SELECT role FROM memberships WHERE workspace_id=? AND user_id=?",
