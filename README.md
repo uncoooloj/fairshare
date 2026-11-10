@@ -64,11 +64,12 @@ These checks provide source-level and build evidence. They do not prove browser 
 - The reconciliation worker exists but is disabled by default and performs reads/reconciliation only; it does not issue money-moving retries.
 - New PDF and DOCX uploads retain an authenticated original alongside extracted text. That private SQLite data is not encrypted at rest by this application.
 - Password recovery needs an authorized email transport; the synthetic DEMO does not provide a reset-link echo.
+- Private workspace invitation links are single-use, 48-hour bearer secrets. They are returned only when an owner creates them, remain in page memory and a URL fragment, and are not proof of mailbox ownership; share and revoke them deliberately.
 - Review discussion records comments without changing rules or approvals.
 - Checkout payment-source labels are organizer-entered metadata, not evidence of external revenue or a confirmed payment.
 - Local scanned-PDF OCR is disabled by default, runs only after a user selects it, and needs host-installed Poppler and Tesseract. It is not a Cloudflare upload or a correctness guarantee.
 - Authenticator MFA needs a separately managed server encryption key; it is not enabled by the synthetic DEMO alone.
-- Private invitation links are single-use bearer links created by a workspace owner. They are shown only at creation, use a URL fragment, expire after 48 hours, and do not send email or prove mailbox ownership.
+- `HACKATHON_MFA_SIMULATION=true` is a separate, explicitly labeled SANDBOX-only synthetic-account mode. It rejects DEMO, production, and live-PayPal configuration; it applies process-wide to accounts without an existing real authenticator, so use a dedicated synthetic-only database. It does not replace normal authenticator-key requirements or protect real accounts.
 
 ## Documentation
 
@@ -82,6 +83,7 @@ These checks provide source-level and build evidence. They do not prove browser 
 - [Password recovery](docs/password-recovery.md)
 - [Local OCR](docs/LOCAL-OCR.md)
 - [Authenticator MFA](docs/mfa.md)
+- [Hackathon MFA simulation](docs/HACKATHON-MFA.md)
 - [Release readiness](docs/RELEASE-READINESS.md)
 - [Contributing](CONTRIBUTING.md)
 

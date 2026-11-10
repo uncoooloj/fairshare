@@ -20,6 +20,7 @@ import {
   type User,
 } from "./identity.js";
 export interface AppOptions extends EmailOptions {
+  hackathonMfaSimulation?: boolean;
   mfaEncryptionKey?: string;
   dbPath?: string;
   clock?: () => number;
@@ -89,6 +90,7 @@ export async function buildApp(
     mode,
     options.clock,
     options.mfaEncryptionKey,
+    options.hackathonMfaSimulation,
   );
   const bearer = (req: FastifyRequest) => {
     const raw = req.headers.authorization;
