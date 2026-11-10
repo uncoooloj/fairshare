@@ -3,29 +3,177 @@ import { useEffect, useState } from "react";
 import { api, type Agreement } from "../lib/model";
 import { recoverSourceDocument } from "../lib/source-recovery";
 import { Button, Empty } from "./ui";
-interface DocumentRecord { documentId: string; text: string; sourceHash?: string; provenance?: { inputType?: string; pages?: number }; }
-export function AgreementDocument({ agreement, base }: { agreement: Agreement; base: string }) {
-  const initial = agreement.value.activeVersionId ?? agreement.value.versions.at(-1)?.id;
-  const [versionId,setVersionId]=useState<number|undefined>(initial);
-  const [document,setDocument]=useState<DocumentRecord|null>(null);
-  const [loading,setLoading]=useState(true),[error,setError]=useState(""),[attempt,setAttempt]=useState(0);
-  const version=agreement.value.versions.find(item=>item.id===versionId);
-  const sourceId=version?.rules.source.documentId;
-  useEffect(()=>{
-    let stale=false; setLoading(true);setError("");setDocument(null);
-    recoverSourceDocument(base,sourceId,api).then(result=>{if(!stale)setDocument(result);}).catch(cause=>{if(!stale)setError(cause instanceof Error?cause.message:"Could not load source document.");}).finally(()=>{if(!stale)setLoading(false);});
-    return ()=>{stale=true;};
-  },[base,sourceId,attempt]);
-  function downloadText(){
-    if(!document)return;
-    const url=URL.createObjectURL(new Blob([document.text],{type:"text/plain;charset=utf-8"}));
-    const link=window.document.createElement("a");link.href=url;link.download=`fairshare-source-${versionId ? `v${versionId}` : "draft"}.txt`;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+interface DocumentRecord {
+  documentId: string;
+  text: string;
+  sourceHash?: string;
+  provenance?: { inputType?: string; pages?: number };
+}
+export function AgreementDocument({
+  agreement,
+  base,
+}: {
+  agreement: Agreement;
+  base: string;
+}) {
+  const initial =
+    agreement.value.activeVersionId ?? agreement.value.versions.at(-1)?.id;
+  const [versionId, setVersionId] = useState<number | undefined>(initial);
+  const [document, setDocument] = useState<DocumentRecord | null>(null);
+  const [loading, setLoading] = useState(true),
+    [error, setError] = useState(""),
+    [attempt, setAttempt] = useState(0);
+  const version = agreement.value.versions.find(
+    (item) => item.id === versionId,
+  );
+  const sourceId = version?.rules.source.documentId;
+  useEffect(() => {
+    let stale = false;
+    setLoading(true);
+    setError("");
+    setDocument(null);
+    recoverSourceDocument(base, sourceId, api)
+      .then((result) => {
+        if (!stale) setDocument(result);
+      })
+      .catch((cause) => {
+        if (!stale)
+          setError(
+            cause instanceof Error
+              ? cause.message
+              : "Could not load source document.",
+          );
+      })
+      .finally(() => {
+        if (!stale) setLoading(false);
+      });
+    return () => {
+      stale = true;
+    };
+  }, [base, sourceId, attempt]);
+  function downloadText() {
+    if (!document) return;
+    const url = URL.createObjectURL(
+      new Blob([document.text], { type: "text/plain;charset=utf-8" }),
+    );
+    const link = window.document.createElement("a");
+    link.href = url;
+    link.download = `fairshare-source-${versionId ? `v${versionId}` : "draft"}.txt`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
-  return <section aria-label="Source document">
-    <div className="document-toolbar"><div><h2>Source document</h2><p className="muted">Review the exact text behind the proposed rules.</p></div><div className="actions">
-      {agreement.value.versions.length>0 && <label className="document-version">Source for version<select aria-label="Document version" value={versionId ?? ""} onChange={event=>setVersionId(Number(event.target.value))}>{agreement.value.versions.map(item=><option key={item.id} value={item.id}>Version {item.id}{item.id===agreement.value.activeVersionId?" · Active":""}</option>)}</select></label>}
-      <Button variant="secondary" onClick={downloadText} disabled={loading || !document}>Download extracted text</Button></div></div>
-    <p className="document-disclaimer">This is saved text, not the original PDF or a signature verification. A newer upload does not replace a version’s source.</p>
-    {loading ? <div className="panel" role="status">Loading source…</div> : error ? <div className="panel" role="alert"><p>{error}</p><Button variant="secondary" onClick={()=>setAttempt(value=>value+1)}>Retry</Button></div> : !document ? <Empty title="No source document yet">Add a PDF or text source in Terms. Saved source text will appear here.</Empty> : <div className="document-layout"><article className="panel source-paper"><span className="eyebrow">{document.provenance?.inputType === "PDF" ? "EXTRACTED PDF TEXT" : "SAVED AGREEMENT TEXT"}</span><pre>{document.text}</pre></article><aside className="panel document-provenance"><h3>Source details</h3><dl><dt>Used by</dt><dd>{version ? `Version ${version.id}` : "Latest saved draft source"}</dd><dt>Document ID</dt><dd><code>{document.documentId}</code></dd>{document.sourceHash && <><dt>Source hash</dt><dd><code>{document.sourceHash}</code></dd></>}{document.provenance?.pages && <><dt>Pages read</dt><dd>{document.provenance.pages}</dd></>}</dl>{version && <><h3>Referenced clause</h3><p>{version.rules.source.clause}</p><blockquote>{version.rules.source.excerpt}</blockquote></>}<small>PDF text reading order can differ from its visual layout. Compare the wording before approving rules.</small></aside></div>}
-  </section>;
+  return (
+    <section aria-label="Source document">
+      <div className="document-toolbar">
+        <div>
+          <h2>Source document</h2>
+          <p className="muted">
+            Review the exact text behind the proposed rules.
+          </p>
+        </div>
+        <div className="actions">
+          {agreement.value.versions.length > 0 && (
+            <label className="document-version">
+              Source for version
+              <select
+                aria-label="Document version"
+                value={versionId ?? ""}
+                onChange={(event) => setVersionId(Number(event.target.value))}
+              >
+                {agreement.value.versions.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    Version {item.id}
+                    {item.id === agreement.value.activeVersionId
+                      ? " · Active"
+                      : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          <Button
+            variant="secondary"
+            onClick={downloadText}
+            disabled={loading || !document}
+          >
+            Download extracted text
+          </Button>
+        </div>
+      </div>
+      <p className="document-disclaimer">
+        This is saved text, not the original PDF or a signature verification. A
+        newer upload does not replace a version’s source.
+      </p>
+      {loading ? (
+        <div className="panel" role="status">
+          Loading source…
+        </div>
+      ) : error ? (
+        <div className="panel" role="alert">
+          <p>{error}</p>
+          <Button
+            variant="secondary"
+            onClick={() => setAttempt((value) => value + 1)}
+          >
+            Retry
+          </Button>
+        </div>
+      ) : !document ? (
+        <Empty title="No source document yet">
+          Add a PDF or text source in Terms. Saved source text will appear here.
+        </Empty>
+      ) : (
+        <div className="document-layout">
+          <article className="panel source-paper">
+            <span className="eyebrow">
+              {document.provenance?.inputType === "PDF"
+                ? "EXTRACTED PDF TEXT"
+                : "SAVED AGREEMENT TEXT"}
+            </span>
+            <pre>{document.text}</pre>
+          </article>
+          <aside className="panel document-provenance">
+            <h3>Source details</h3>
+            <dl>
+              <dt>Used by</dt>
+              <dd>
+                {version
+                  ? `Version ${version.id}`
+                  : "Latest saved draft source"}
+              </dd>
+              <dt>Document ID</dt>
+              <dd>
+                <code>{document.documentId}</code>
+              </dd>
+              {document.sourceHash && (
+                <>
+                  <dt>Source hash</dt>
+                  <dd>
+                    <code>{document.sourceHash}</code>
+                  </dd>
+                </>
+              )}
+              {document.provenance?.pages && (
+                <>
+                  <dt>Pages read</dt>
+                  <dd>{document.provenance.pages}</dd>
+                </>
+              )}
+            </dl>
+            {version && (
+              <>
+                <h3>Referenced clause</h3>
+                <p>{version.rules.source.clause}</p>
+                <blockquote>{version.rules.source.excerpt}</blockquote>
+              </>
+            )}
+            <small>
+              PDF text reading order can differ from its visual layout. Compare
+              the wording before approving rules.
+            </small>
+          </aside>
+        </div>
+      )}
+    </section>
+  );
 }

@@ -23,5 +23,4 @@ Initial live attempts exposed unreliable model-generated offsets, Markdown forma
 
 This is a small synthetic acceptance set, not a broad quality/safety certification. Semantic relationship errors remain possible even when the words are in a cited span. Human review remains mandatory. No private contracts, payment operations, credential output or raw provider logs were included in published evidence. The host HTTP/UI flow and production privacy/retention settings still require separate verification. Cloudflare JSON Schema documentation: https://developers.cloudflare.com/workers-ai/features/json-mode/
 
-
 APIMatic belongs to the PayPal integration context, not this extraction layer. Do not claim its use here.
