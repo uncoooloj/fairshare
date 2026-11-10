@@ -40,8 +40,10 @@ import {
 import { AgreementVersions } from "./agreement-versions";
 import { AgreementDocument } from "./agreement-document";
 import { ContractReviewPanel, ContractSourceGuidance } from "./contract-review-guidance";
-import { NewAgreement, AgreementSetup } from "./agreement-setup";
-import { WorkspaceOnboarding, AccessPrompt } from "./designer-auth";
+import { AgreementName } from "./agreement-name";
+import { AgreementIntake, type AgreementIntakeInput } from "./agreement-intake";
+import { AgreementSetup } from "./agreement-setup";
+import { AccessPrompt } from "./designer-auth";
 import { PaymentRecovery } from "./payment-recovery";
 import { MfaSettings } from "./mfa-settings";
 import { ProfileForm } from "./profile-form";
@@ -181,6 +183,34 @@ export default function FairshareApp() {
       setSource(doc.text);
       setExtraction(doc.extraction);
     }
+  }
+  async function createFromAgreement(input: AgreementIntakeInput) {
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const result = await api("agreements/intake", "POST", {
+        ...input,
+        ...(workspace ? { workspaceId: workspace } : {}),
+      });
+      // Adopt the committed result before any optional refresh. A lost response
+      // is safe to retry with the intake component's original request ID.
+      setWorkspaces(current => [...current.filter(item => item.id !== result.workspace.id), {...current.find(item => item.id === result.workspace.id), ...result.workspace}]);
+      setWorkspace(result.workspace.id);
+      setAgreements(current => [result.agreement, ...current.filter(item => item.id !== result.agreement.id)]);
+      openRequest.current++;
+      setSelected(result.agreement);
+      setCreating(false);
+      setSection(Section.Agreements);
+      setTab(AgreementTab.Terms);
+      setSource(result.document.text);
+      setDocumentId(result.document.documentId);
+      setExtraction(null);
+      setPayments([]);
+      setDraftDirty(false);
+      rulesDirty.current = false;
+      setNotice("Agreement saved. Review the source, then request AI interpretation to suggest terms and a title.");
+    } finally { setBusy(false); }
   }
   async function refresh() {
     await loadWorkspace(workspace);
@@ -378,16 +408,11 @@ export default function FairshareApp() {
           />
         )}
         {!workspace && section !== Section.Settings ? (
-          <WorkspaceOnboarding section={section} busy={busy}
-              onCreate={(name) =>
-                run(async () => {
-                  const result = await api("workspaces", "POST", { name });
-                  setWorkspaces((current) => [...current.filter((item) => item.id !== result.workspace.id), result.workspace]);
-                  setWorkspace(result.workspace.id);
-                  setNotice("Workspace created. You’re ready to add your first agreement.");
-                })
-              }
-          />
+          <>
+            {section === Section.Payouts && <Heading title="No payouts yet" description="Start with an agreement. Payouts appear after approved rules and recorded payments." />}
+            <AgreementIntake first busy={busy} onCreate={createFromAgreement} />
+            <p className="muted">Already invited? Open Settings to accept your workspace invitation.</p>
+          </>
         ) : (
           <>
             {section === Section.Overview && !selected && (
@@ -452,20 +477,7 @@ export default function FairshareApp() {
                   }
                 />
                 {creating ? (
-                  <NewAgreement busy={busy} onCancel={() => setCreating(false)}
-                      onCreate={(name) =>
-                        run(async () => {
-                          const a = await api<Agreement>(
-                            `${workspaceBase(workspace)}/collaborations`,
-                            "POST",
-                            { name },
-                          );
-                          await openAgreement(a);
-                          setTab(AgreementTab.People);
-                          await loadWorkspace(workspace);
-                        })
-                      }
-                    />
+                  <AgreementIntake busy={busy} onCancel={() => setCreating(false)} onCreate={createFromAgreement} />
                 ) : (
                   <AgreementList agreements={agreements} onOpen={(a) => run(() => openAgreement(a))} />
                 )}
@@ -501,6 +513,7 @@ export default function FairshareApp() {
                     </Button>
                   }
                 />
+                {organizer && <AgreementName key={`${selected.id}:${selected.value.name}:${extraction?.suggestedTitle || ""}`} name={selected.value.name} suggestion={extraction?.suggestedTitle} busy={busy} onSave={name => run(() => mutate("/name", {name}))} />}
                 <AgreementSetup agreement={selected} tab={tab} onNavigate={changeAgreementTab} />
                 <AgreementTabs value={tab} onChange={(next) => {
                   changeAgreementTab(next);
@@ -1252,6 +1265,11 @@ export default function FairshareApp() {
                     }
                   />
                   </section>
+                  {workspaces.find(w => w.id === workspace)?.role === "OWNER" && <section className="panel"><h2>Workspace</h2><p className="muted">Rename your workspace without changing its agreements or access.</p><SimpleForm label="Workspace name" button="Save workspace name" busy={busy} onSubmit={name => run(async () => {
+                    const result = await api(`${workspaceBase(workspace)}/name`, "POST", { name });
+                    setWorkspaces(current => current.map(item => item.id === workspace ? {...item, name: result.workspace.name} : item));
+                    setNotice("Workspace name updated.");
+                  })} /></section>}
                   <MfaSettings onSignOut={() => {setUser(null);setWorkspace("");}} />
                   <section className="panel"><h2>Workspace invitations</h2>{workspaces.find(w => w.id === workspace)?.role === "OWNER" && <PrivateInvitation key={workspace} workspace={workspace} />}<p className="muted">Join a workspace using a private invitation shared with your account.</p>
                   <SimpleForm

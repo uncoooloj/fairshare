@@ -10,22 +10,18 @@ test('workspace selector only offers switching when there is a choice', () => {
 });
 test('account settings and invitations remain accessible before workspace creation', () => {
   assert.match(app, /!workspace && section !== Section.Settings \? \(/);
-  assert.match(app, /<WorkspaceOnboarding section=\{section\}/);
+  assert.match(app, /<AgreementIntake first busy=\{busy\}/);
 });
-test('successful creation selects server-returned workspace without a fallible second list request', () => {
-  const creation = app.slice(app.indexOf('<WorkspaceOnboarding'), app.indexOf('{section === Section.Overview'));
-  assert.match(creation, /const result = await api\("workspaces", "POST", \{ name \}\)/);
+test('atomic creation adopts the returned workspace and document before optional refresh', () => {
+  const creation = app.slice(app.indexOf('async function createFromAgreement'), app.indexOf('async function refresh'));
+  assert.match(creation, /api\("agreements\/intake", "POST"/);
   assert.match(creation, /setWorkspace\(result.workspace.id\)/);
-  assert.doesNotMatch(creation, /await loadWorkspaces/);
+  assert.match(creation, /setDocumentId\(result.document.documentId\)/);
+  assert.doesNotMatch(creation, /await loadWorkspaces|await openAgreement/);
 });
-test('workspace creation locks synchronously until submission settles', () => {
-  assert.match(onboarding, /busy \|\| submitting.current \|\| !name.trim\(\)/);
-  assert.match(onboarding, /submitting.current = true;[\s\S]*await onCreate\(name.trim\(\)\);[\s\S]*finally \{ submitting.current = false; setCreating\(false\); \}/);
-});
-test('first-run sections explain their own empty state and prioritize real creation over examples', () => {
-  assert.match(onboarding, /section === "Agreements" \? "Your agreements start here"/);
-  assert.match(onboarding, /section === "Payouts" \? "No payouts yet"/);
-  assert.ok(onboarding.indexOf('<form className={styles.setup}') < onboarding.indexOf('<details className={styles.explainer}'));
-  assert.match(onboarding, /<summary>How Fairshare works<\/summary>/);
-  assert.doesNotMatch(onboarding, /Example: \$3,000 payment/);
+test('first-run payouts explains its empty state without requiring a workspace name', () => {
+  const firstRun = app.slice(app.indexOf('!workspace && section'), app.indexOf('{section === Section.Overview'));
+  assert.match(firstRun, /No payouts yet/);
+  assert.match(firstRun, /AgreementIntake first/);
+  assert.doesNotMatch(firstRun, /WorkspaceOnboarding|Workspace name/);
 });

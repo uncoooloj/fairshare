@@ -1,3 +1,4 @@
+import {registerAgreementIntake} from './agreementIntake.js';
 import {verifyLocalOcrTools} from './ocr.js';
 import {registerReviewCollaboration} from './reviewCollaboration.js';
 import {registerEmailRoutes,deliverInvitation,type EmailOptions} from './emailRoutes.js';
@@ -57,6 +58,7 @@ export async function buildApp(options:AppOptions={}):Promise<FairshareApp>{
  app.get<{Params:{id:string}}>('/api/workspaces/:id/audit',async req=>{app.requireWorkspace(req,req.params.id);return {events:store.db.prepare('SELECT id,actor_id AS actorId,action,detail,created_at AS createdAt FROM audit WHERE workspace_id=? ORDER BY created_at DESC LIMIT 100').all(req.params.id).map((row:any)=>({...row,detail:JSON.parse(row.detail)}))};});
  registerEmailRoutes(app,options);
  const domainRoutes=registerFairshareRoutes(app,{ai:options.ai,extract:options.extract,localOcrEnabled:options.localOcrEnabled});
+ registerAgreementIntake(app,domainRoutes.store,{localOcrEnabled:options.localOcrEnabled});
  registerPaymentRoutes(app,domainRoutes.store,options.payment);
  registerReviewCollaboration(app,domainRoutes.store,options);
  return app;
