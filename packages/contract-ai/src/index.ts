@@ -366,7 +366,7 @@ export async function extractContract(
     reason,
   });
   if (!validDocument(document)) return fallback(FallbackReason.INVALID_INPUT);
-  // Require a text-generation model configured explicitly; Kept's Clef classifier is not suitable.
+  // Require an explicitly configured text-generation model; classifier-only models are unsuitable.
   if (
     !/^[a-f0-9]{32}$/i.test(config.accountId ?? "") ||
     !config.apiToken ||

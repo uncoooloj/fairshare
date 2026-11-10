@@ -1,5 +1,31 @@
 import type { Agreement, Version } from "./model";
 
+function reviewHeading(
+  version: Version,
+  reviewing: boolean,
+  allApproved: boolean,
+  approvedCount: number,
+  memberCount: number,
+  blockerCount: number,
+) {
+  if (version.status === "ACTIVE") return "These rules are active";
+  if (reviewing && allApproved) return "Everyone approved. Ready to activate.";
+  if (reviewing) return `${approvedCount} of ${memberCount} approved`;
+  if (blockerCount) return "Resolve before review";
+  if (version.status === "DRAFT") return "Ready for everyone’s review";
+  return "Historical version";
+}
+
+function reviewEffect(version: Version, activeId: number | undefined) {
+  if (activeId && activeId !== version.id) {
+    return `Version ${activeId} still governs incoming payments. This proposal changes nothing until everyone approves and the organizer activates it.`;
+  }
+  if (version.status === "ACTIVE") {
+    return "Incoming payments use these agreed rules. Approval of terms is not a payment or payout.";
+  }
+  return "No payments can be allocated under this proposal until everyone approves and the organizer activates it.";
+}
+
 /** Presentation gates mirror domain rules, but the API remains authoritative. */
 export function contractReviewState(
   agreement: Agreement,
@@ -35,24 +61,15 @@ export function contractReviewState(
       !!participant && reviewing && !Object.hasOwn(version.approvals, userId),
     canRequestChange: !!participant && reviewing,
     canActivate: participant?.role === "ORGANIZER" && reviewing && allApproved,
-    heading:
-      version.status === "ACTIVE"
-        ? "These rules are active"
-        : reviewing && allApproved
-          ? "Everyone approved. Ready to activate."
-          : reviewing
-            ? `${approved.length} of ${members.length} approved`
-            : blockers.length
-              ? "Resolve before review"
-              : version.status === "DRAFT"
-                ? "Ready for everyone’s review"
-                : "Historical version",
-    effect:
-      activeId && activeId !== version.id
-        ? `Version ${activeId} still governs incoming payments. This proposal changes nothing until everyone approves and the organizer activates it.`
-        : version.status === "ACTIVE"
-          ? "Incoming payments use these agreed rules. Approval of terms is not a payment or payout."
-          : "No payments can be allocated under this proposal until everyone approves and the organizer activates it.",
+    heading: reviewHeading(
+      version,
+      reviewing,
+      allApproved,
+      approved.length,
+      members.length,
+      blockers.length,
+    ),
+    effect: reviewEffect(version, activeId),
   };
 }
 
