@@ -27,6 +27,7 @@ export function AgreementIntake({
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState("");
   const [ocr, setOcr] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const locked = useRef(false);
   // Retain the key across retry after an uncertain response, but not changed input.
   const requestId = useRef("");
@@ -38,6 +39,7 @@ export function AgreementIntake({
     event.preventDefault();
     if (busy || locked.current || (!file && !text.trim())) return;
     locked.current = true;
+    setSubmitting(true);
     setError("");
     try {
       requestId.current ||= crypto.randomUUID();
@@ -82,11 +84,13 @@ export function AgreementIntake({
       );
     } finally {
       locked.current = false;
+      setSubmitting(false);
     }
   }
+  const disabled = busy || submitting;
   return (
     <div className="setup-layout">
-      <form className="panel setup-form" onSubmit={submit} aria-busy={busy}>
+      <form className="panel setup-form" onSubmit={submit} aria-busy={disabled}>
         <span className="eyebrow">
           {first ? "YOUR FIRST AGREEMENT" : "NEW AGREEMENT"}
         </span>
@@ -103,7 +107,7 @@ export function AgreementIntake({
           <input
             type="file"
             accept=".pdf,.docx,.txt"
-            disabled={busy}
+            disabled={disabled}
             onChange={(event) => {
               changed();
               setFile(event.target.files?.[0] || null);
@@ -121,7 +125,7 @@ export function AgreementIntake({
             <input
               type="checkbox"
               checked={ocr}
-              disabled={busy}
+              disabled={disabled}
               onChange={(event) => {
                 changed();
                 setOcr(event.target.checked);
@@ -135,7 +139,7 @@ export function AgreementIntake({
           <textarea
             rows={9}
             maxLength={40000}
-            disabled={busy || !!file}
+            disabled={disabled || !!file}
             value={text}
             onChange={(event) => {
               changed();
@@ -156,14 +160,14 @@ export function AgreementIntake({
             <Button
               type="button"
               variant="secondary"
-              disabled={busy}
+              disabled={disabled}
               onClick={onCancel}
             >
               Cancel
             </Button>
           )}
-          <Button disabled={busy || (!file && !text.trim())}>
-            {busy ? "Reading agreement…" : "Continue with agreement"}
+          <Button disabled={disabled || (!file && !text.trim())}>
+            {disabled ? "Reading agreement…" : "Continue with agreement"}
           </Button>
         </div>
       </form>

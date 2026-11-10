@@ -25,6 +25,14 @@ test("first action is upload or paste, never title or workspace setup", () => {
 test("input survives errors and retries retain idempotency key until input changes", () => {
   assert.match(source, /requestId\.current\s*\|\|=\s*crypto\.randomUUID/);
   assert.match(source, /busy\s*\|\|\s*locked\.current/);
+  assert.match(source, /locked\.current = true;\s*setSubmitting\(true\);/);
+  assert.match(source, /const disabled = busy \|\| submitting;/);
+  assert.match(source, /disabled=\{disabled\}/);
+  assert.match(source, /disabled=\{disabled \|\| !!file\}/);
+  assert.match(
+    source,
+    /finally\s*\{\s*locked\.current\s*=\s*false;\s*setSubmitting\(false\);/,
+  );
   assert.match(source, /finally\s*\{\s*locked\.current\s*=\s*false/);
   assert.match(source, /const changed = \(\) => \{\s*requestId\.current = ""/);
   assert.doesNotMatch(source, /setFile\(null\)|setText\(""\)/);
