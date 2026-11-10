@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-test("OCR choice is opt-in, capability-gated and explicitly local", () => {
+test("OCR choice is opt-in, capability-gated and explicit about processing location", () => {
   const choice = readFileSync(
     new URL("../components/local-ocr-choice.tsx", import.meta.url),
     "utf8",
@@ -9,7 +9,7 @@ test("OCR choice is opt-in, capability-gated and explicitly local", () => {
   assert.match(choice, /setAvailable\(false\)/);
   assert.match(choice, /onChange\(false\)/);
   assert.match(choice, /localOcrEnabled\s*===\s*true/);
-  assert.match(choice, /document\s+stays on this server/);
+  assert.match(choice, /Cloudflare when hosted/);
   const app = readFileSync(
     new URL("../components/fairshare-app.tsx", import.meta.url),
     "utf8",

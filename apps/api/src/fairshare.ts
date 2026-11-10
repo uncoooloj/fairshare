@@ -1,3 +1,7 @@
+import {
+  localDocumentReaders,
+  type DocumentReaders,
+} from "./documentReaders.js";
 import { extractPdfOcr } from "./ocr.js";
 import {
   decodeDocxBase64,
@@ -27,11 +31,11 @@ import {
   type SourceDocument,
   type ExtractionResult,
 } from "@fairshare/contract-ai";
-import type { DatabaseSync } from "node:sqlite";
+import type { Database } from "./database.js";
 import { Role } from "./identity.js";
 export interface FairshareApp extends FastifyInstance {
   store: {
-    db: DatabaseSync;
+    db: Database;
     tx<T>(fn: () => T): T;
     limit(key: string, max: number): void;
   };
@@ -54,7 +58,7 @@ export interface AggregateRow {
 }
 export class AggregateStore {
   constructor(
-    readonly db: DatabaseSync,
+    readonly db: Database,
     readonly tx: <T>(fn: () => T) => T,
   ) {
     db.exec(
@@ -159,8 +163,10 @@ export function registerFairshareRoutes(
     ai?: CloudflareConfig;
     extract?: typeof extractContract;
     localOcrEnabled?: boolean;
+    documentReaders?: DocumentReaders;
   } = {},
 ) {
+  const readers = options.documentReaders ?? localDocumentReaders;
   const store = new AggregateStore(app.store.db, (fn) => app.store.tx(fn));
   if (
     !(
@@ -378,7 +384,8 @@ export function registerFairshareRoutes(
       localOcrEnabled: !!options.localOcrEnabled,
       ocrMaxPages: 5,
       ocrLanguage: "eng",
-      externalUpload: false,
+      processingLocation: readers.processingLocation ?? "SERVER",
+      externalUpload: readers.processingLocation === "CLOUDFLARE_CONTAINER",
     };
   });
   app.post(
@@ -394,12 +401,12 @@ export function registerFairshareRoutes(
       if (b.useLocalOcr === true && !options.localOcrEnabled)
         throw new DomainError(
           "OCR_UNAVAILABLE",
-          "Local OCR is not enabled. Paste text or ask the server operator to enable it.",
+          "OCR is not enabled. Paste text or ask the server operator to enable it.",
         );
       const parsed =
         b.useLocalOcr === true
-          ? await extractPdfOcr(bytes)
-          : await extractPdf(bytes);
+          ? await readers.ocr(bytes)
+          : await readers.pdf(bytes);
       // Recheck membership after asynchronous parsing; revoked sessions/members must not persist documents.
       access(req);
       const documentId = randomUUID();
@@ -453,7 +460,7 @@ export function registerFairshareRoutes(
       if (b.mimeType !== mime)
         throw new DomainError("INVALID_DOCX", "Upload a DOCX document.");
       const bytes = decodeDocxBase64(b.base64);
-      const parsed = await extractDocx(bytes);
+      const parsed = await readers.docx(bytes);
       access(req);
       const documentId = randomUUID();
       const doc: SourceDocument = {

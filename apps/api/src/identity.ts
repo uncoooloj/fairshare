@@ -1,5 +1,6 @@
 import { MfaService } from "./mfa.js";
-import { DatabaseSync } from "node:sqlite";
+import type { Database, DatabaseBackend } from "./database.js";
+import { openNodeDatabase } from "./nodeDatabase.js";
 import {
   createHash,
   randomBytes,
@@ -7,8 +8,6 @@ import {
   scryptSync,
   timingSafeEqual,
 } from "node:crypto";
-import { mkdirSync, chmodSync } from "node:fs";
-import { dirname } from "node:path";
 export enum Role {
   OWNER = "OWNER",
   MEMBER = "MEMBER",
@@ -54,7 +53,9 @@ const normalizeEmail = (v: unknown) => {
 function passwordHash(password: string, salt = opaque()) {
   return `${salt}:${scryptSync(password, salt, 64).toString("hex")}`;
 }
-const dummyHash = passwordHash("not-a-real-user-password");
+let cachedDummyHash: string | undefined;
+const dummyPasswordHash = () =>
+  (cachedDummyHash ??= passwordHash("not-a-real-user-password"));
 function matches(password: string, encoded: string) {
   const [salt, hash] = encoded.split(":");
   const actual = scryptSync(password, salt!, 64);
@@ -62,20 +63,20 @@ function matches(password: string, encoded: string) {
   return expected.length === actual.length && timingSafeEqual(actual, expected);
 }
 export class IdentityStore {
-  readonly db: DatabaseSync;
+  readonly db: Database;
+  private readonly backend: DatabaseBackend;
   readonly mfa: MfaService;
   constructor(
-    path: string,
+    path: string | DatabaseBackend,
     public mode: DataMode = DataMode.SANDBOX,
     public now: () => number = Date.now,
     mfaEncryptionKey = process.env.FAIRSHARE_MFA_ENCRYPTION_KEY,
     hackathonMfaSimulation = false,
   ) {
-    if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
-    this.db = new DatabaseSync(path);
-    if (path !== ":memory:") chmodSync(path, 0o600);
-    this.db
-      .exec(`PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL;
+    dummyPasswordHash();
+    this.backend = typeof path === "string" ? openNodeDatabase(path) : path;
+    this.db = this.backend.db;
+    this.db.exec(`
    CREATE TABLE IF NOT EXISTS metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL);
    CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY,name TEXT NOT NULL,email TEXT UNIQUE NOT NULL,password_hash TEXT NOT NULL,created_at INTEGER NOT NULL);
    CREATE TABLE IF NOT EXISTS email_verifications(hash TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),email TEXT NOT NULL,expires_at INTEGER NOT NULL,used_at INTEGER);
@@ -116,23 +117,15 @@ export class IdentityStore {
           .run("mode", mode);
       });
     } catch (error) {
-      this.db.close();
+      this.backend.close();
       throw error;
     }
   }
   close() {
-    this.db.close();
+    this.backend.close();
   }
   tx<T>(fn: () => T): T {
-    this.db.exec("BEGIN IMMEDIATE");
-    try {
-      const v = fn();
-      this.db.exec("COMMIT");
-      return v;
-    } catch (e) {
-      this.db.exec("ROLLBACK");
-      throw e;
-    }
+    return this.backend.tx(fn);
   }
   audit(
     actor: string,
@@ -236,7 +229,7 @@ export class IdentityStore {
     const row = this.db
       .prepare("SELECT * FROM users WHERE email=?")
       .get(email) as any;
-    const ok = matches(password, row?.password_hash ?? dummyHash);
+    const ok = matches(password, row?.password_hash ?? dummyPasswordHash());
     if (!row || !ok)
       throw new ApiError(
         401,

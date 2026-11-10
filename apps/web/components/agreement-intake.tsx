@@ -164,8 +164,9 @@ export function AgreementIntake({
                   setOcr(event.target.checked);
                 }}
               />
-              Use local OCR for a scanned PDF (requires server support, English,
-              up to 5 pages).
+              Use OCR for a scanned PDF (English, up to 5 pages). Processed on
+              Fairshare’s servers (Cloudflare when hosted); review all extracted
+              names and amounts.
             </label>
           )}
         </div>
