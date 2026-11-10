@@ -2,23 +2,146 @@
 import { useState } from "react";
 import { AgreementTab, type Agreement } from "../lib/model";
 import { Button, Field } from "./ui";
-export function NewAgreement({ busy, onCreate, onCancel }: { busy: boolean; onCreate: (name: string) => void; onCancel: () => void }) {
-  const [name,setName] = useState("");
-  return <div className="setup-layout"><form className="panel setup-form" onSubmit={e => { e.preventDefault(); if (!busy && name.trim()) onCreate(name.trim()); }}>
-    <span className="eyebrow">NEW AGREEMENT</span><h2>Give your collaboration a home</h2><p className="muted">Start with a name everyone will recognise. You’ll add the people and source document next.</p>
-    <Field label="Agreement name" hint="For example, Summer Sessions EP"><input autoFocus required maxLength={200} value={name} onChange={e => setName(e.target.value)} disabled={busy} placeholder="Name your agreement" /></Field>
-    <div className="setup-footer"><Button type="button" variant="secondary" onClick={onCancel} disabled={busy}>Cancel</Button><Button disabled={busy || !name.trim()}>{busy ? "Creating…" : "Create and add people"}</Button></div>
-  </form><aside className="panel setup-explainer"><h3>What happens next</h3><ol><li><strong>Bring everyone in</strong><p>Invite collaborators and add accepted members before proposing terms.</p></li><li><strong>Make the rules clear</strong><p>Add a PDF or text agreement. Review source-linked suggestions and resolve questions.</p></li><li><strong>Agree, then activate</strong><p>Everyone approves the same version. The organizer activates it before payments begin.</p></li></ol><small>Sandbox only. Creating an agreement does not move money.</small></aside></div>;
-}
-export function AgreementSetup({ agreement, tab, onNavigate }: { agreement: Agreement; tab: AgreementTab; onNavigate: (tab: AgreementTab) => void }) {
-  const latest=agreement.value.versions.at(-1);
-  if(agreement.value.activeVersionId) return null;
-  return <section className="setup-progress" aria-label="Agreement setup">
-    <div><strong>Finish setting up your agreement</strong><p>Review your source, bring everyone in, then approve the same rules.</p></div>
-    <div className="setup-steps">
-      <button type="button" className={tab===AgreementTab.Terms ? "current" : ""} onClick={()=>onNavigate(AgreementTab.Terms)}><span>1</span><div>Document & rules<small>{latest ? `Version ${latest.id} proposed` : "Review the source and interpretation"}</small></div></button>
-      <button type="button" className={tab===AgreementTab.People ? "current" : ""} onClick={()=>onNavigate(AgreementTab.People)}><span>2</span><div>People<small>{agreement.value.members.length} added · confirm before proposing</small></div></button>
-      <button type="button" onClick={()=>onNavigate(AgreementTab.Terms)}><span>3</span><div>Review & activate<small>{latest ? `${agreement.value.members.filter(m=>latest.approvals[m.userId]).length} of ${agreement.value.members.length} approved` : "No proposal sent yet"}</small></div></button>
+export function NewAgreement({
+  busy,
+  onCreate,
+  onCancel,
+}: {
+  busy: boolean;
+  onCreate: (name: string) => void;
+  onCancel: () => void;
+}) {
+  const [name, setName] = useState("");
+  return (
+    <div className="setup-layout">
+      <form
+        className="panel setup-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!busy && name.trim()) onCreate(name.trim());
+        }}
+      >
+        <span className="eyebrow">NEW AGREEMENT</span>
+        <h2>Give your collaboration a home</h2>
+        <p className="muted">
+          Start with a name everyone will recognise. You’ll add the people and
+          source document next.
+        </p>
+        <Field label="Agreement name" hint="For example, Summer Sessions EP">
+          <input
+            autoFocus
+            required
+            maxLength={200}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            disabled={busy}
+            placeholder="Name your agreement"
+          />
+        </Field>
+        <div className="setup-footer">
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={onCancel}
+            disabled={busy}
+          >
+            Cancel
+          </Button>
+          <Button disabled={busy || !name.trim()}>
+            {busy ? "Creating…" : "Create and add people"}
+          </Button>
+        </div>
+      </form>
+      <aside className="panel setup-explainer">
+        <h3>What happens next</h3>
+        <ol>
+          <li>
+            <strong>Bring everyone in</strong>
+            <p>
+              Invite collaborators and add accepted members before proposing
+              terms.
+            </p>
+          </li>
+          <li>
+            <strong>Make the rules clear</strong>
+            <p>
+              Add a PDF or text agreement. Review source-linked suggestions and
+              resolve questions.
+            </p>
+          </li>
+          <li>
+            <strong>Agree, then activate</strong>
+            <p>
+              Everyone approves the same version. The organizer activates it
+              before payments begin.
+            </p>
+          </li>
+        </ol>
+        <small>Sandbox only. Creating an agreement does not move money.</small>
+      </aside>
     </div>
-  </section>;
+  );
+}
+export function AgreementSetup({
+  agreement,
+  tab,
+  onNavigate,
+}: {
+  agreement: Agreement;
+  tab: AgreementTab;
+  onNavigate: (tab: AgreementTab) => void;
+}) {
+  const latest = agreement.value.versions.at(-1);
+  if (agreement.value.activeVersionId) return null;
+  return (
+    <section className="setup-progress" aria-label="Agreement setup">
+      <div>
+        <strong>Finish setting up your agreement</strong>
+        <p>
+          Review your source, bring everyone in, then approve the same rules.
+        </p>
+      </div>
+      <div className="setup-steps">
+        <button
+          type="button"
+          className={tab === AgreementTab.Terms ? "current" : ""}
+          onClick={() => onNavigate(AgreementTab.Terms)}
+        >
+          <span>1</span>
+          <div>
+            Document & rules
+            <small>
+              {latest
+                ? `Version ${latest.id} proposed`
+                : "Review the source and interpretation"}
+            </small>
+          </div>
+        </button>
+        <button
+          type="button"
+          className={tab === AgreementTab.People ? "current" : ""}
+          onClick={() => onNavigate(AgreementTab.People)}
+        >
+          <span>2</span>
+          <div>
+            People
+            <small>
+              {agreement.value.members.length} added · confirm before proposing
+            </small>
+          </div>
+        </button>
+        <button type="button" onClick={() => onNavigate(AgreementTab.Terms)}>
+          <span>3</span>
+          <div>
+            Review & activate
+            <small>
+              {latest
+                ? `${agreement.value.members.filter((m) => latest.approvals[m.userId]).length} of ${agreement.value.members.length} approved`
+                : "No proposal sent yet"}
+            </small>
+          </div>
+        </button>
+      </div>
+    </section>
+  );
 }

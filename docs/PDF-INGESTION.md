@@ -7,6 +7,7 @@ Authenticated collaboration members may upload a **text-based PDF** via:
 Body `{ "mimeType": "application/pdf", "base64": "..." }`. It is an API transport envelope, not a data URL. Existing plain-text document endpoint remains available.
 
 ## Bounds and handling
+
 - 5 MiB decoded file limit and bounded HTTP request body.
 - Strict base64 and PDF header checks; malformed, encrypted/password-required and unparseable PDFs fail with safe error codes.
 - 20 pages and 40,000 extracted UTF-16 code units maximum.

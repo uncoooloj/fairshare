@@ -106,7 +106,14 @@ export const title = (s: string) =>
     .replaceAll("_", " ")
     .replace(/^./, (c) => c.toUpperCase());
 export class ApiError extends Error {
-  constructor(message: string, public status: number, public code?: string) { super(message); this.name = "ApiError"; }
+  constructor(
+    message: string,
+    public status: number,
+    public code?: string,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
 }
 export async function api<T = any>(
   path: string,
@@ -122,7 +129,11 @@ export async function api<T = any>(
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok)
-    throw new ApiError(data.error?.message || `Request failed (${res.status}).`, res.status, data.error?.code);
+    throw new ApiError(
+      data.error?.message || `Request failed (${res.status}).`,
+      res.status,
+      data.error?.code,
+    );
   return data;
 }
 export const sampleAgreement =
