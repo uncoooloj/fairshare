@@ -45,7 +45,7 @@ export function ContractReviewPanel({ agreement, version, userId, busy, onAction
 
 export function ContractSourceGuidance({ replacement = false }: {replacement?: boolean}) {
   return <div className="section">
-    <p className="muted">Text-based PDF (up to 20 pages) or DOCX, up to 5 MB, or paste agreement text. Maximum extracted text: 40,000 characters. File text is extracted locally; originals are saved privately for agreement members. Scanned PDFs need manual text; OCR is not enabled.</p>
+    <p className="muted">Text-based PDF (up to 20 pages) or DOCX, up to 5 MB, or paste agreement text. Maximum extracted text: 40,000 characters. File text is extracted locally; originals are saved privately for agreement members. Scanned PDFs need manual text or explicitly selected local OCR when the server supports it. OCR is English-only, up to 5 pages, and requires careful review.</p>
     {replacement && <Notice>An amended agreement starts a new review. Saving its source does not change active rules or past allocations. Propose a new version and obtain fresh approval from everyone; the organizer then activates it.</Notice>}
     <details><summary>What Fairshare can turn into payment rules</summary>
       <p>USD revenue shares, payment processing fees, and a verified advance with recoupment. Compare every proposed rule with the source before approving.</p>

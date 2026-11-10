@@ -100,7 +100,7 @@ async function handler(
       });
     if (
       parts.join("/") === "auth/logout" ||
-      (["auth/password", "auth/password-reset/confirm"].includes(parts.join("/")) && result.ok) ||
+      (["auth/password", "auth/password-reset/confirm", "auth/mfa/activate", "auth/mfa/disable"].includes(parts.join("/")) && result.ok) ||
       result.status === 401
     )
       response.cookies.delete(COOKIE);

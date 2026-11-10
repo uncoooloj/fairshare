@@ -42,6 +42,7 @@ export function Auth({ busy, error, onSubmit }: {
         <label>Password<input name="password" type={showPassword ? "text" : "password"} maxLength={256} autoComplete={login ? "current-password" : "new-password"} minLength={login ? 1 : 12} required disabled={busy} aria-describedby={!login ? "password-hint" : undefined} /></label>
         <button className={styles.reveal} type="button" disabled={busy} aria-pressed={showPassword} onClick={() => setShowPassword(!showPassword)}>{showPassword ? "Hide password" : "Show password"}</button>
         {!login && <p id="password-hint" className={styles.hint}>Use at least 12 characters. Use a synthetic account for sandbox testing.</p>}
+        {login && <label>Authenticator or recovery code (if enabled)<input name="mfaCode" autoComplete="one-time-code" maxLength={80} disabled={busy} /></label>}
         <button className={styles.primary} disabled={busy}>{busy ? "Please wait…" : login ? "Sign in" : "Create account"}</button>
       </form>
       <p className={styles.switch}>{login ? "New to Fairshare? " : "Already have an account? "}<button type="button" disabled={busy} onClick={() => { setLogin(!login); setLocalError(""); setShowServerError(false); setShowPassword(false); }}>{login ? "Create an account" : "Sign in"}</button></p>
