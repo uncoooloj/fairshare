@@ -7,14 +7,14 @@ test("reset UI keeps credentials in fragment memory, clears URL, guards duplicat
     "utf8",
   );
   assert.match(s, /window.location.hash/);
-  assert.match(s, /reset\s*&&\s*!captured\.current/);
+  assert.match(s, /if\s*\(\s*reset\s*&&\s*!captured\.current\s*\)/);
   assert.match(s, /history.replaceState/);
-  assert.match(s, /if\s*\(pending\.current\)\s*return/);
+  assert.match(s, /if\s*\(\s*pending\.current\s*\)\s*return/);
   assert.match(
     s,
     /data\.get\(["']password["']\)\s*!==\s*data\.get\(["']confirm["']\)/,
   );
-  assert.match(s, /setToken\(["']["']\)/);
+  assert.match(s, /setToken\(["']{2}\)/);
   assert(!s.includes("localStorage"));
 });
 test("successful password reset clears BFF cookie and sign-in exposes real recovery route", () => {
