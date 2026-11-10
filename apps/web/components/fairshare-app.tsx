@@ -561,7 +561,8 @@ export default function FairshareApp() {
             )}
             <AgreementIntake first busy={busy} onCreate={createFromAgreement} />
             <p className="muted">
-              Already invited? Open Settings to accept your workspace invitation.
+              Already invited? Open Settings to accept your workspace
+              invitation.
             </p>
           </>
         ) : (
