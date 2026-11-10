@@ -455,11 +455,15 @@ export function registerPaymentRoutes(
     const results = [];
     for (const item of ops) {
       const op = item.op;
-      if (!item.created) {
+      if (op.status !== "RESERVED") {
         results.push({ id: op.id, status: op.status });
         continue;
       } // No retry of an uncertain write.
       const permitted = tx(() => {
+        const current = db
+          .prepare("SELECT status FROM fairshare_payout_ops WHERE id=?")
+          .get(op.id) as { status: string };
+        if (current.status !== "RESERVED") return false;
         const row = aggregates.read(p.workspaceId, p.collaborationId);
         if (row.value.reviewHold) {
           db.prepare(
@@ -467,13 +471,20 @@ export function registerPaymentRoutes(
           ).run(op.id);
           return false;
         }
-        db.prepare(
-          "UPDATE fairshare_payout_ops SET status='SUBMITTING' WHERE id=?",
-        ).run(op.id);
-        return true;
+        // Claim only operations that have never reached the provider. A second
+        // dispatcher must not replay an in-flight or uncertain submission.
+        const claim = db
+          .prepare(
+            "UPDATE fairshare_payout_ops SET status='SUBMITTING' WHERE id=? AND status='RESERVED'",
+          )
+          .run(op.id);
+        return claim.changes === 1;
       });
       if (!permitted) {
-        results.push({ id: op.id, status: "HELD" });
+        const current = db
+          .prepare("SELECT status FROM fairshare_payout_ops WHERE id=?")
+          .get(op.id) as { status: string };
+        results.push({ id: op.id, status: current.status });
         continue;
       }
       try {
@@ -488,6 +499,14 @@ export function registerPaymentRoutes(
         ).run(result.batchId, op.id);
         results.push({ id: op.id, status: "PENDING" });
       } catch (e) {
+        if (e instanceof PayPalError && e.code === "PAYOUT_NOT_CONFIGURED") {
+          // The adapter rejects this before any provider call. Keep the same
+          // immutable reservation available after configuration is corrected.
+          db.prepare(
+            "UPDATE fairshare_payout_ops SET status='RESERVED' WHERE id=? AND status='SUBMITTING' AND batch_id IS NULL",
+          ).run(op.id);
+          throw e;
+        }
         db.prepare(
           "UPDATE fairshare_payout_ops SET status='OUTCOME_UNKNOWN' WHERE id=?",
         ).run(op.id);

@@ -49,6 +49,7 @@ import { PaymentRecovery } from "./payment-recovery";
 import { MfaSettings } from "./mfa-settings";
 import { ProfileForm } from "./profile-form";
 import { recoverSourceDocument } from "../lib/source-recovery";
+import { createSandboxCheckout } from "../lib/checkout-retry";
 import dynamic from "next/dynamic";
 const PaymentGrid = dynamic(
   () => import("../src/components/PaymentGrid").then((m) => m.PaymentGrid),
@@ -85,8 +86,31 @@ export default function FairshareApp() {
     [flowToken, setFlowToken] = useState(""),
     [flowKind, setFlowKind] = useState("");
   const [draftDirty, setDraftDirty] = useState(false);
-  const openRequest = useRef(0);
   const rulesDirty = useRef(false);
+  const workspaceRequest = useRef(0);
+  const currentWorkspace = useRef("");
+  const openRequest = useRef(0);
+  function commitWorkspace(id: string) {
+    workspaceRequest.current++;
+    openRequest.current++;
+    currentWorkspace.current = id;
+    setWorkspace(id);
+    setSelected(null);
+    setCreating(false);
+    setAgreements([]);
+    setMembers([]);
+    setPayments([]);
+    setPayouts([]);
+    setSource("");
+    setDocumentId("");
+    setExtraction(null);
+    setPreview(null);
+    setBreakdown(null);
+    setEditing(false);
+    setInviteLink("");
+    setDraftDirty(false);
+    rulesDirty.current = false;
+  }
   function mayLeaveDraft() {
     if (busy) return false;
     if (
@@ -137,74 +161,140 @@ export default function FairshareApp() {
     }
   }
   async function loadWorkspaces() {
-    const r = await api("workspaces");
-    setWorkspaces(r.workspaces);
-    const id =
-      workspace && r.workspaces.some((w: any) => w.id === workspace)
-        ? workspace
-        : r.workspaces[0]?.id || "";
-    setWorkspace(id);
-    return id;
+    const request = workspaceRequest.current;
+    try {
+      const r = await api("workspaces");
+      if (request !== workspaceRequest.current) return "";
+      const id =
+        currentWorkspace.current &&
+        r.workspaces.some((w: any) => w.id === currentWorkspace.current)
+          ? currentWorkspace.current
+          : r.workspaces[0]?.id || "";
+      setWorkspaces(r.workspaces);
+      if (id !== currentWorkspace.current) commitWorkspace(id);
+      return id;
+    } catch (error) {
+      if (request !== workspaceRequest.current) return "";
+      throw error;
+    }
+  }
+  async function acceptInvitation(token: string) {
+    const result = await api("invitations/accept", "POST", { token });
+    setSelected(null);
+    setCreating(false);
+    setAgreements([]);
+    setMembers([]);
+    setPayouts([]);
+    setWorkspaces((current) => [
+      ...current.filter((item) => item.id !== result.workspace.id),
+      result.workspace,
+    ]);
+    commitWorkspace(result.workspace.id);
+    setSection(Section.Agreements);
+    setFlowToken("");
+    history.replaceState(null, "", "/");
+    setNotice("Invitation accepted.");
   }
   async function loadWorkspace(id: string) {
-    if (!id) return;
-    const [r, m] = await Promise.all([
-      api(`${workspaceBase(id)}/collaborations`),
-      api(`${workspaceBase(id)}/members`),
-    ]);
-    setAgreements(r.collaborations);
-    setMembers(m.members);
-    const all = await Promise.all(
-      r.collaborations.map(async (a: Agreement) => {
-        const p = await api(
-          `${workspaceBase(id)}/collaborations/${a.id}/payouts`,
-        );
-        return p.payouts.map((v: any) => ({ ...v, agreement: a }));
-      }),
-    );
-    setPayouts(all.flat());
+    if (!id || id !== currentWorkspace.current) return;
+    const request = workspaceRequest.current;
+    try {
+      const [r, m] = await Promise.all([
+        api(`${workspaceBase(id)}/collaborations`),
+        api(`${workspaceBase(id)}/members`),
+      ]);
+      if (request !== workspaceRequest.current) return;
+      setAgreements(r.collaborations);
+      setMembers(m.members);
+      const all = await Promise.all(
+        r.collaborations.map(async (a: Agreement) => {
+          const p = await api(
+            `${workspaceBase(id)}/collaborations/${a.id}/payouts`,
+          );
+          return p.payouts.map((v: any) => ({ ...v, agreement: a }));
+        }),
+      );
+      if (request !== workspaceRequest.current) return;
+      setPayouts(all.flat());
+    } catch (error) {
+      if (request !== workspaceRequest.current) return;
+      throw error;
+    }
   }
   async function openAgreement(a: Agreement) {
+    if (a.workspaceId !== currentWorkspace.current) return;
     const request = ++openRequest.current;
     const root = `${workspaceBase(a.workspaceId)}/collaborations/${a.id}`;
-    const [fresh, p] = await Promise.all([
-      api<Agreement>(root),
-      api(`${root}/payments`),
-    ]);
-    if (request !== openRequest.current) return;
-    setDraftDirty(false);
-    rulesDirty.current = false;
-    setTab(AgreementTab.Overview);
-    setSelected(fresh);
-    setPayments(p.payments);
-    setSection(Section.Agreements);
-    setCreating(false);
-    setPreview(null);
-    setBreakdown(null);
-    setEditing(false);
-    setSource("");
-    setDocumentId("");
-    setExtraction(null);
-    const v = fresh.value.versions.at(-1);
-    const doc = await recoverSourceDocument(
-      root,
-      v?.rules.source.documentId,
-      api,
-    );
-    if (request !== openRequest.current) return;
-    if (doc) {
-      setDocumentId(doc.documentId);
-      setSource(doc.text);
-      setExtraction(doc.extraction);
+    try {
+      const [fresh, p] = await Promise.all([
+        api<Agreement>(root),
+        api(`${root}/payments`),
+      ]);
+      if (request !== openRequest.current) return;
+      setDraftDirty(false);
+      rulesDirty.current = false;
+      setTab(AgreementTab.Overview);
+      setSelected(fresh);
+      setPayments(p.payments);
+      setSection(Section.Agreements);
+      setCreating(false);
+      setPreview(null);
+      setBreakdown(null);
+      setEditing(false);
+      setSource("");
+      setDocumentId("");
+      setExtraction(null);
+      const v = fresh.value.versions.at(-1);
+      const doc = await recoverSourceDocument(
+        root,
+        v?.rules.source.documentId,
+        api,
+      );
+      if (request !== openRequest.current) return;
+      if (doc) {
+        setDocumentId(doc.documentId);
+        setSource(doc.text);
+        setExtraction(doc.extraction);
+      }
+    } catch (error) {
+      if (request !== openRequest.current) return;
+      throw error;
     }
   }
   async function refresh() {
-    await loadWorkspace(workspace);
-    if (selected) {
-      const a = await api<Agreement>(base);
-      setSelected(a);
-      const p = await api(`${base}/payments`);
-      setPayments(p.payments);
+    const workspaceRequestId = workspaceRequest.current;
+    const openRequestId = openRequest.current;
+    const id = currentWorkspace.current;
+    try {
+      await loadWorkspace(id);
+      if (
+        workspaceRequestId !== workspaceRequest.current ||
+        openRequestId !== openRequest.current
+      )
+        return;
+      if (selected) {
+        const a = await api<Agreement>(base);
+        if (
+          workspaceRequestId !== workspaceRequest.current ||
+          openRequestId !== openRequest.current
+        )
+          return;
+        setSelected(a);
+        const p = await api(`${base}/payments`);
+        if (
+          workspaceRequestId !== workspaceRequest.current ||
+          openRequestId !== openRequest.current
+        )
+          return;
+        setPayments(p.payments);
+      }
+    } catch (error) {
+      if (
+        workspaceRequestId !== workspaceRequest.current ||
+        openRequestId !== openRequest.current
+      )
+        return;
+      throw error;
     }
   }
   useEffect(() => {
@@ -212,7 +302,8 @@ export default function FairshareApp() {
     if (token && ["/verify-email", "/invitation"].includes(location.pathname)) {
       setFlowKind(location.pathname);
       setFlowToken(decodeURIComponent(token));
-      history.replaceState(null, "", location.pathname);
+      // Keep the fragment until acceptance succeeds so refresh during sign-in
+      // does not lose this one-use link. Fragments are not sent to the server.
     }
     Promise.all([
       api("auth/me")
@@ -242,16 +333,34 @@ export default function FairshareApp() {
     setNotice("");
   }
   async function mutate(action: string, extra: Record<string, unknown> = {}) {
+    const workspaceRequestId = workspaceRequest.current;
+    const openRequestId = openRequest.current;
+    if (selected?.workspaceId !== currentWorkspace.current) return;
     try {
       const a = await api<Agreement>(base + action, "POST", {
         expectedRevision: selected!.revision,
         ...extra,
       });
+      if (
+        workspaceRequestId !== workspaceRequest.current ||
+        openRequestId !== openRequest.current
+      )
+        return;
       setSelected(a);
-      await loadWorkspace(workspace);
+      await loadWorkspace(currentWorkspace.current);
     } catch (cause) {
+      if (
+        workspaceRequestId !== workspaceRequest.current ||
+        openRequestId !== openRequest.current
+      )
+        return;
       if (cause instanceof ApiError && cause.code === "REVISION_CONFLICT") {
         const current = await api<Agreement>(base);
+        if (
+          workspaceRequestId !== workspaceRequest.current ||
+          openRequestId !== openRequest.current
+        )
+          return;
         setSelected(current);
         throw new Error(
           "Agreement changed. Latest version loaded; review before trying again.",
@@ -316,9 +425,7 @@ export default function FairshareApp() {
               return run(async () => {
                 await api("auth/logout", "POST", {});
                 setUser(null);
-                setWorkspace("");
-                setSelected(null);
-                setAgreements([]);
+                commitWorkspace("");
               });
             }}
           >
@@ -335,9 +442,7 @@ export default function FairshareApp() {
               value={workspace}
               onChange={(e) => {
                 if (!mayLeaveDraft()) return;
-                openRequest.current++;
-                setSelected(null);
-                setWorkspace(e.target.value);
+                commitWorkspace(e.target.value);
               }}
             >
               {workspaces.map((w) => (
@@ -392,14 +497,12 @@ export default function FairshareApp() {
                       : "Email verified.",
                   );
                 } else {
-                  await api("invitations/accept", "POST", {
-                    token: flowToken,
-                  });
-                  await loadWorkspaces();
-                  setNotice("Invitation accepted.");
+                  await acceptInvitation(flowToken);
                 }
-                setFlowToken("");
-                history.replaceState(null, "", "/");
+                if (flowKind === "/verify-email") {
+                  setFlowToken("");
+                  history.replaceState(null, "", "/");
+                }
               })
             }
           />
@@ -415,7 +518,7 @@ export default function FairshareApp() {
                   ...current.filter((item) => item.id !== result.workspace.id),
                   result.workspace,
                 ]);
-                setWorkspace(result.workspace.id);
+                commitWorkspace(result.workspace.id);
                 setNotice(
                   "Workspace created. You’re ready to add your first agreement.",
                 );
@@ -1143,19 +1246,20 @@ export default function FairshareApp() {
                             run(async () => {
                               const amountCents = parseCents(amount);
                               const storageKey = `fairshare-checkout:${user.id}:${selected.id}:${amountCents}`;
-                              const requestKey =
-                                sessionStorage.getItem(storageKey) ||
-                                crypto.randomUUID();
-                              sessionStorage.setItem(storageKey, requestKey);
-                              const r = await api(`${base}/payments`, "POST", {
-                                requestKey,
+                              const r = await createSandboxCheckout({
+                                storage: sessionStorage,
+                                storageKey,
                                 amountCents,
                                 source,
+                                createRequestKey: () => crypto.randomUUID(),
+                                createPayment: (requestKey, cents, paymentSource) =>
+                                  api(`${base}/payments`, "POST", {
+                                    requestKey,
+                                    amountCents: cents,
+                                    source: paymentSource,
+                                  }),
+                                refresh,
                               });
-                              // Preserve uncertain requests across refreshes; never blindly issue a new provider write.
-                              if (r.approval_url)
-                                sessionStorage.removeItem(storageKey);
-                              await refresh();
                               setNotice(
                                 r.approval_url
                                   ? "Sandbox checkout created. Use the approval link below."
@@ -1457,7 +1561,7 @@ export default function FairshareApp() {
                             newPassword,
                           });
                           setUser(null);
-                          setWorkspace("");
+                          commitWorkspace("");
                         })
                       }
                     />
@@ -1487,9 +1591,7 @@ export default function FairshareApp() {
                       busy={busy}
                       onSubmit={(token) =>
                         run(async () => {
-                          await api("invitations/accept", "POST", { token });
-                          await loadWorkspaces();
-                          setNotice("Invitation accepted.");
+                          await acceptInvitation(token);
                         })
                       }
                     />
