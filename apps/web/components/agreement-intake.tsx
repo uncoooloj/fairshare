@@ -99,7 +99,11 @@ export function AgreementIntake({
           Upload a document or paste its text. Review the extracted terms next.
           You can edit the name afterward.
         </p>
-        {error && <Notice warning>{error}</Notice>}
+        {error && (
+          <Notice warning announcement="assertive">
+            {error}
+          </Notice>
+        )}
         <Field
           label="Upload agreement"
           hint="PDF, DOCX or TXT · up to 5 MB. Use only documents you’re authorized to upload."
