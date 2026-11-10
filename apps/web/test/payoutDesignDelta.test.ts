@@ -11,14 +11,14 @@ const app = readFileSync(
   "utf8",
 );
 test("payout header owns the export action without duplicating its toolbar action", () => {
-  assert.match(grid, /title && <header/);
-  assert.match(grid, /!title && <button[^\n]+Export CSV/);
-  assert.match(grid, /disabled=\{loading \|\| !filteredRows.length\}/);
+  assert.match(grid, /title\s*&&\s*\(\s*<header/);
+  assert.match(grid, /!title\s*&&\s*\([\s\S]*?<button[\s\S]+?Export CSV/);
+  assert.match(grid, /disabled=\{loading\s*\|\|\s*!filteredRows\.length\}/);
 });
 test("payout empty-state action navigates to real agreements without inventing payment confirmation", () => {
   assert.match(
     app,
-    /emptyActions=\{<Button[^\n]+navigate\(Section.Agreements\)[^\n]+View agreements/,
+    /emptyActions=\{\s*<Button[\s\S]+?navigate\(Section\.Agreements\)[\s\S]+?View agreements/,
   );
   assert.match(grid, /An allocation alone does not move money/);
   assert.match(grid, /!loading && !data.rows.length/);

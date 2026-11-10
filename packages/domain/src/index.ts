@@ -401,17 +401,13 @@ export function splitCents(
     remainder: (BigInt(total) * BigInt(s.basisPoints)) % 10000n,
   }));
   let left = total - rows.reduce((s, x) => s + x.amount, 0);
-  rows.sort((a, b) =>
-    a.remainder === b.remainder
-      ? a.userId < b.userId
-        ? -1
-        : a.userId > b.userId
-          ? 1
-          : 0
-      : a.remainder > b.remainder
-        ? -1
-        : 1,
-  );
+  const compareRows = (a: (typeof rows)[number], b: (typeof rows)[number]) => {
+    if (a.remainder !== b.remainder) return a.remainder > b.remainder ? -1 : 1;
+    if (a.userId < b.userId) return -1;
+    if (a.userId > b.userId) return 1;
+    return 0;
+  };
+  rows.sort(compareRows);
   for (const row of rows)
     if (left > 0) {
       row.amount++;

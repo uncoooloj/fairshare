@@ -19,7 +19,7 @@ AI interprets and explains. Collaborators agree. Deterministic code calculates. 
 ## Decisions to design around
 
 - The product name is Fairshare. Earlier names in concept images are obsolete. Trademark and domain availability remain unchecked.
-- The product is desktop web first. Responsive collaborator review is useful, but the native Kept screens are not the new platform specification.
+- The product is desktop web first. Responsive collaborator review is useful, but earlier native concept screens are not the new platform specification.
 - Use a clean professional SaaS workspace: white surfaces, restrained blue accents, compact typography, thin dividers and generous whitespace.
 - Payouts stays in primary navigation. Clarification is part of agreement setup, not a menu destination.
 - There is no routine approval or rejection of someone’s calculated share after the rules are active.
