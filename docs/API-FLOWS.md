@@ -15,7 +15,7 @@ Every collaboration response is `{workspaceId,id,revision,value}`. Use latest `r
 
 ## Agreement setup
 
-- `POST .../:collaborationId/documents` `{text}` accepts up to40,000 characters; current flow is **text input only**. PDF parsing is not implemented.
+- `POST .../:collaborationId/documents` `{text}` accepts up to40,000 characters; Text-based PDF input is also supported through `POST .../:collaborationId/documents/pdf`; see PDF-INGESTION.md for limits and provenance.
 - `GET .../:collaborationId/documents/:documentId` returns immutable source + any extraction result.
 - `POST .../:collaborationId/documents/:documentId/extract` `{consentToCloudflare:true}` runs configured extraction and returns observations requiring human review. Missing provider configuration returns honest manual-required state. No version is activated or even created by AI.
 - Human review resolves names to participant IDs, exact cents/percentages, fee policy, advance recipient and whether the prior advance was verified. `POST .../:collaborationId/versions` `{expectedRevision,rules}` creates new draft. Source quotes must occur in stored document; human proposals must be explicitly labeled as such. Quote existence is not proof of semantic correctness.
@@ -29,7 +29,7 @@ Every collaboration response is `{workspaceId,id,revision,value}`. Use latest `r
 
 Tenant and collaboration membership are checked on reads and writes. Workspace viewers cannot mutate. Access changes/removal are blocked while someone is a collaboration participant. Membership changes after drafting rules are intentionally not supported in MVP. Application owns recovery/reconciliation for those cases rather than rewriting liabilities.
 
-Immutable documents remain server-side. API does not fetch URLs or parse arbitrary document binaries. Extraction requires explicit Cloudflare processing consent and is rate limited. Do not put personal/legal documents into public demo accounts.
+Immutable documents remain server-side. API does not fetch source URLs. Text-based PDF ingestion uses a bounded local parser; see PDF-INGESTION.md. Extraction requires explicit Cloudflare processing consent and is rate limited. Do not put personal/legal documents into public demo accounts.
 
 SQLite uses serialized transactions, revision guards and a separate capture uniqueness table for payment integration. Do not invoke allocation directly from browser-reported amounts/statuses. Only verified provider data with actual fee accounting may be allocated.
 
