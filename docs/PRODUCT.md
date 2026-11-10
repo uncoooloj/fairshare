@@ -54,6 +54,12 @@ The hackathon implementation uses PayPal sandbox, not live money. PayPal authent
 
 The primary product object is an agreement. Documents, people, clarifications, rule versions and incoming revenue live inside its workspace. Backend collaboration aggregates may retain their internal names. A separate global Collaborators directory and Library are not needed for the first version. A future cross-collaboration search does not require creating empty menu items now.
 
+## Settings boundaries
+
+Display preferences change the presentation of USD amounts and dates; they do not convert money or change agreement inputs. Notification preferences filter the in-app feed and configured approval-request email. Security email remains outside those controls.
+
+Each workspace owner or member manages their own workspace-scoped sandbox payout destination. A saved ID is not provider-verified, is not an OAuth connection, and does not expose server credentials. The activity log is read-only and only shows account activity and agreement events the person may access.
+
 ## Agreement workspace
 
 The workspace should answer: What did we agree? Who has approved? What money has arrived? What is each person owed? Has it been paid?
@@ -69,8 +75,8 @@ The agreement list should show a real metric such as **Revenue received**, with 
 ## Organizer journey
 
 1. **Create account or sign in.** Collect the minimum identity information needed. Show an identifiable current user in the header. Initials are a fallback for a real profile name, not decorative placeholders.
-2. **Create collaboration.** Ask for its name and a short description. Let the organizer save and return. A creative role such as producer is separate from permissions such as organizer or participant.
-3. **Add the source agreement.** Offer upload, paste text and a clearly labeled sample. The implementation supports bounded PDF and DOCX text extraction; local scanned-PDF OCR is an optional, separately configured path and must remain explicit. Formatting, tracked edits and OCR output require comparison against the original.
+2. **Add the source agreement.** Start with upload or pasted text. The first intake creates the workspace, agreement and immutable source together, so a failed source is not a partial collaboration. The implementation supports bounded PDF and DOCX text extraction; local scanned-PDF OCR is an optional, separately configured path and must remain explicit. Formatting, tracked edits and OCR output require comparison against the original.
+3. **Review the generated name.** A filename can provide an initial title; let the organizer rename the workspace or agreement without implying that its terms changed. A creative role such as producer is separate from permissions such as organizer or participant.
 4. **Identify participants.** Match names in the agreement to invited accounts. Unknown or ambiguous names must be resolved rather than silently assigned. Confirm the advance recipient separately from the organizer’s role.
 5. **Review the proposed rules.** Do this before asking people to activate them. Invitations can be drafted during setup; sending one is a distinct action.
 6. **Connect payment capability when needed.** The organizer’s merchant setup and collaborators’ recipient details are different tasks. Do not imply that every participant needs to supply merchant API keys. Provider-specific onboarding depends on the integration chosen and verified.
