@@ -62,16 +62,34 @@ export function PaymentGrid({
   const [status, setStatus] = useState<PaymentGridStatus | "">("");
   const data = useMemo(() => {
     try {
-      return { rows: validatePaymentRows(rows), summary: summarizePayouts(rows), invalid: false };
+      return {
+        rows: validatePaymentRows(rows),
+        summary: summarizePayouts(rows),
+        invalid: false,
+      };
     } catch {
-      return { rows: [] as PaymentGridRow[], summary: summarizePayouts([]), invalid: true };
+      return {
+        rows: [] as PaymentGridRow[],
+        summary: summarizePayouts([]),
+        invalid: true,
+      };
     }
   }, [rows]);
-  const filteredRows = useMemo(() => filterPayouts(data.rows, status, query), [data.rows, status, query]);
-  const selected = !loading ? data.rows.find(row => row.id === selectedId) : undefined;
+  const filteredRows = useMemo(
+    () => filterPayouts(data.rows, status, query),
+    [data.rows, status, query],
+  );
+  const selected = !loading
+    ? data.rows.find((row) => row.id === selectedId)
+    : undefined;
   function exportCsv() {
-    const url = URL.createObjectURL(new Blob([payoutCsv(filteredRows)], { type: 'text/csv;charset=utf-8' }));
-    const link = document.createElement('a'); link.href = url; link.download = 'fairshare-payouts.csv'; link.click();
+    const url = URL.createObjectURL(
+      new Blob([payoutCsv(filteredRows)], { type: "text/csv;charset=utf-8" }),
+    );
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "fairshare-payouts.csv";
+    link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
   const columns = useMemo<ColDef<PaymentGridRow>[]>(
@@ -124,7 +142,12 @@ export function PaymentGrid({
         field: "status",
         headerName: "Status",
         minWidth: 185,
-        cellRenderer: ({ data: row }: { data?: PaymentGridRow }) => row ? <span className={styles.status} data-status={row.status}>{paymentStatusLabels[row.status]}</span> : null,
+        cellRenderer: ({ data: row }: { data?: PaymentGridRow }) =>
+          row ? (
+            <span className={styles.status} data-status={row.status}>
+              {paymentStatusLabels[row.status]}
+            </span>
+          ) : null,
         valueFormatter: (p) =>
           p.data ? paymentStatusLabels[p.data.status] : "",
         filterValueGetter: (p) =>
@@ -145,8 +168,24 @@ export function PaymentGrid({
               })
             : "Not recorded",
       },
-      { headerName: "Details", minWidth: 100, width: 110, sortable: false, filter: false,
-        cellRenderer: ({ data: row }: { data?: PaymentGridRow }) => row ? <button type="button" className={styles.control} aria-label={`View payout to ${row.recipientName}`} onClick={() => setSelectedId(row.id)}>View</button> : null },
+      {
+        headerName: "Details",
+        minWidth: 100,
+        width: 110,
+        sortable: false,
+        filter: false,
+        cellRenderer: ({ data: row }: { data?: PaymentGridRow }) =>
+          row ? (
+            <button
+              type="button"
+              className={styles.control}
+              aria-label={`View payout to ${row.recipientName}`}
+              onClick={() => setSelectedId(row.id)}
+            >
+              View
+            </button>
+          ) : null,
+      },
       {
         field: "providerReference",
         headerName: "Provider reference",
@@ -158,63 +197,179 @@ export function PaymentGrid({
   if (error || data.invalid)
     return (
       <div role="alert">
-        Payouts could not be displayed. Refresh the page to load verified records; do not resubmit any transfers.
+        Payouts could not be displayed. Refresh the page to load verified
+        records; do not resubmit any transfers.
       </div>
     );
   return (
     <section aria-label="Payout history" aria-busy={loading}>
-      {title && <header className={styles.header}>
-        <div><h1>{title}</h1>{description && <p>{description}</p>}</div>
-        <button className={styles.control} type="button" onClick={exportCsv} disabled={loading || !filteredRows.length}>Export CSV</button>
-      </header>}
+      {title && (
+        <header className={styles.header}>
+          <div>
+            <h1>{title}</h1>
+            {description && <p>{description}</p>}
+          </div>
+          <button
+            className={styles.control}
+            type="button"
+            onClick={exportCsv}
+            disabled={loading || !filteredRows.length}
+          >
+            Export CSV
+          </button>
+        </header>
+      )}
       <div className={styles.summary} aria-label="Recorded payout totals">
-        {([
-          ['Paid out', data.summary.paid, data.summary.paidCount, 'Provider-confirmed payouts'],
-          ['Pending or processing', data.summary.processing, data.summary.processingCount, 'Not yet completed transfers'],
-          ['Needs attention', data.summary.attention, data.summary.attentionCount, 'Failed, held, unclaimed or uncertain'],
-        ] as const).map(([label, amount, count, detail]) => <div className={styles.card} key={label}>
-          <span className={styles.label}>{label}</span>
-          <strong className={styles.amount}>{loading ? '—' : formatPaymentAmount(amount, 'USD')}</strong>
-          <span className={styles.caption}>{loading ? 'Loading…' : `${count} payouts · ${detail}`}</span>
-        </div>)}
+        {(
+          [
+            [
+              "Paid out",
+              data.summary.paid,
+              data.summary.paidCount,
+              "Provider-confirmed payouts",
+            ],
+            [
+              "Pending or processing",
+              data.summary.processing,
+              data.summary.processingCount,
+              "Not yet completed transfers",
+            ],
+            [
+              "Needs attention",
+              data.summary.attention,
+              data.summary.attentionCount,
+              "Failed, held, unclaimed or uncertain",
+            ],
+          ] as const
+        ).map(([label, amount, count, detail]) => (
+          <div className={styles.card} key={label}>
+            <span className={styles.label}>{label}</span>
+            <strong className={styles.amount}>
+              {loading ? "—" : formatPaymentAmount(amount, "USD")}
+            </strong>
+            <span className={styles.caption}>
+              {loading ? "Loading…" : `${count} payouts · ${detail}`}
+            </span>
+          </div>
+        ))}
       </div>
       <div className={styles.toolbar}>
-        <label className={styles.field} htmlFor={searchId}>Search payouts
-          <input id={searchId} type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Agreement, person or reference" />
+        <label className={styles.field} htmlFor={searchId}>
+          Search payouts
+          <input
+            id={searchId}
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Agreement, person or reference"
+          />
         </label>
-        <label className={styles.field} htmlFor={statusId}>Status
-          <select id={statusId} value={status} onChange={event => setStatus(event.target.value as PaymentGridStatus | '')}>
+        <label className={styles.field} htmlFor={statusId}>
+          Status
+          <select
+            id={statusId}
+            value={status}
+            onChange={(event) =>
+              setStatus(event.target.value as PaymentGridStatus | "")
+            }
+          >
             <option value="">All statuses</option>
-            {Object.values(PaymentGridStatus).map(value => <option key={value} value={value}>{paymentStatusLabels[value]}</option>)}
+            {Object.values(PaymentGridStatus).map((value) => (
+              <option key={value} value={value}>
+                {paymentStatusLabels[value]}
+              </option>
+            ))}
           </select>
         </label>
-        <span className={styles.count} aria-live="polite">{loading ? 'Loading payouts…' : `${filteredRows.length} of ${data.rows.length} payouts`}</span>
-        {(query || status) && <button className={styles.control} type="button" onClick={() => { setQuery(''); setStatus(''); }}>Clear filters</button>}
-        {!title && <button className={styles.control} type="button" onClick={exportCsv} disabled={loading || !filteredRows.length}>Export CSV</button>}
+        <span className={styles.count} aria-live="polite">
+          {loading
+            ? "Loading payouts…"
+            : `${filteredRows.length} of ${data.rows.length} payouts`}
+        </span>
+        {(query || status) && (
+          <button
+            className={styles.control}
+            type="button"
+            onClick={() => {
+              setQuery("");
+              setStatus("");
+            }}
+          >
+            Clear filters
+          </button>
+        )}
+        {!title && (
+          <button
+            className={styles.control}
+            type="button"
+            onClick={exportCsv}
+            disabled={loading || !filteredRows.length}
+          >
+            Export CSV
+          </button>
+        )}
       </div>
-      {!loading && !data.rows.length ? <div className={styles.empty}><h3>No payouts yet</h3><p>Payouts appear here after a transfer is submitted under an approved agreement. An allocation alone does not move money.</p>{emptyActions && <div className={styles.emptyActions}>{emptyActions}</div>}</div> : !loading && !filteredRows.length ? <div className={styles.empty} role="status"><h3>No matching payouts</h3><p>Try another person, agreement or provider reference, or clear your filters.</p><button className={styles.control} type="button" onClick={() => { setQuery(''); setStatus(''); }}>Clear filters</button></div> : <div style={{ height: 460, width: "100%" }}>
-        <AgGridReact<PaymentGridRow>
-          theme={theme}
-          rowData={loading ? [] : filteredRows}
-          columnDefs={columns}
-          defaultColDef={{ sortable: true, filter: false, resizable: true }}
-          getRowId={(p) => p.data.id}
-          loading={loading}
-          pagination
-          paginationPageSize={20}
-          paginationPageSizeSelector={[20, 50, 100]}
-          overlayNoRowsTemplate="<span>No payouts to display. Payouts appear after submission; try clearing your filters.</span>"
-          suppressCellFocus={false}
-          ensureDomOrder
-          onGridReady={(event) =>
-            event.api.setGridAriaProperty("label", "Agreement payout history")
-          }
+      {!loading && !data.rows.length ? (
+        <div className={styles.empty}>
+          <h3>No payouts yet</h3>
+          <p>
+            Payouts appear here after a transfer is submitted under an approved
+            agreement. An allocation alone does not move money.
+          </p>
+          {emptyActions && (
+            <div className={styles.emptyActions}>{emptyActions}</div>
+          )}
+        </div>
+      ) : !loading && !filteredRows.length ? (
+        <div className={styles.empty} role="status">
+          <h3>No matching payouts</h3>
+          <p>
+            Try another person, agreement or provider reference, or clear your
+            filters.
+          </p>
+          <button
+            className={styles.control}
+            type="button"
+            onClick={() => {
+              setQuery("");
+              setStatus("");
+            }}
+          >
+            Clear filters
+          </button>
+        </div>
+      ) : (
+        <div style={{ height: 460, width: "100%" }}>
+          <AgGridReact<PaymentGridRow>
+            theme={theme}
+            rowData={loading ? [] : filteredRows}
+            columnDefs={columns}
+            defaultColDef={{ sortable: true, filter: false, resizable: true }}
+            getRowId={(p) => p.data.id}
+            loading={loading}
+            pagination
+            paginationPageSize={20}
+            paginationPageSizeSelector={[20, 50, 100]}
+            overlayNoRowsTemplate="<span>No payouts to display. Payouts appear after submission; try clearing your filters.</span>"
+            suppressCellFocus={false}
+            ensureDomOrder
+            onGridReady={(event) =>
+              event.api.setGridAriaProperty("label", "Agreement payout history")
+            }
+          />
+        </div>
+      )}
+      {selected && (
+        <PayoutDetails
+          row={selected}
+          onClose={() => setSelectedId(null)}
+          onOpenAgreement={onOpenAgreement}
         />
-      </div>}
-      {selected && <PayoutDetails row={selected} onClose={() => setSelectedId(null)} onOpenAgreement={onOpenAgreement} />}
+      )}
       <p style={{ fontSize: 12, color: "var(--color-muted)" }}>
-        Totals cover all recorded payouts, not a monthly period. Amounts follow the approved agreement. On-hold and pending entries are
-        not completed transfers.
+        Totals cover all recorded payouts, not a monthly period. Amounts follow
+        the approved agreement. On-hold and pending entries are not completed
+        transfers.
       </p>
     </section>
   );
