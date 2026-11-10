@@ -197,6 +197,25 @@ export async function buildApp(
   });
   app.get("/api/auth/me", async (req) => ({ user: app.requireSession(req) }));
   app.post(
+    "/api/auth/profile",
+    {
+      schema: {
+        body: {
+          ...objectBody,
+          required: ["name"],
+          properties: { name: { type: "string", maxLength: 80 } },
+        },
+      },
+    },
+    async (req) => {
+      const user = app.requireSession(req);
+      limit(req, "profile", 20);
+      return {
+        user: store.updateProfile(user.id, (req.body as { name: string }).name),
+      };
+    },
+  );
+  app.post(
     "/api/auth/password",
     {
       schema: {
