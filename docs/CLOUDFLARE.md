@@ -4,15 +4,15 @@ Target: Cloudflare. Status: OpenNext build and Wrangler deployment dry-run pass;
 
 ## What ships where
 
-| Component | Target | Remaining work |
-| --- | --- | --- |
-| Next web + same-origin BFF | Workers with OpenNext | Build/preview acceptance, account access and stable API origin |
+| Component                          | Target                                         | Remaining work                                                                                |
+| ---------------------------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Next web + same-origin BFF         | Workers with OpenNext                          | Build/preview acceptance, account access and stable API origin                                |
 | Agreement/identity/ledger database | Single-authority Durable Object SQLite adapter | Local runtime/restart checks exist; deployed storage, backup and migration acceptance pending |
-| API routes | Optional Worker adapter reusing API handlers | Local workerd verification exists; full deployed acceptance pending |
-| PDF/OCR | Private stateless Container parser adapter | Build/test Container image and deployed bounded private transfer/cleanup |
-| Reconciliation | Opt-in Durable Object alarms | Deployed alarm recovery acceptance pending; existing leases/fencing retained |
-| Original documents | Private R2 candidate | Authorized object access, size limits, deletion and DB/object consistency |
-| AI extraction | Existing Workers AI integration | Retain consent, grounded citations and human approval |
+| API routes                         | Optional Worker adapter reusing API handlers   | Local workerd verification exists; full deployed acceptance pending                           |
+| PDF/OCR                            | Private stateless Container parser adapter     | Build/test Container image and deployed bounded private transfer/cleanup                      |
+| Reconciliation                     | Opt-in Durable Object alarms                   | Deployed alarm recovery acceptance pending; existing leases/fencing retained                  |
+| Original documents                 | Private R2 candidate                           | Authorized object access, size limits, deletion and DB/object consistency                     |
+| AI extraction                      | Existing Workers AI integration                | Retain consent, grounded citations and human approval                                         |
 
 Do not deploy today's SQLite file on a Container disk, Worker temporary filesystem or R2 FUSE and call it durable. A Container's associated Durable Object storage does **not** automatically persist its filesystem. Snapshots are point-in-time copies, not transaction-by-transaction financial durability. D1 is asynchronous; it is not a drop-in replacement for `DatabaseSync` or `BEGIN/COMMIT` code.
 

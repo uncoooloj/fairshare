@@ -3,6 +3,7 @@
 Compared decoded templates by screen title, not regenerated UUIDs. Old: 48 states. New: 53 states (47 matched titles; 6 new titles; 1 renamed/replaced).
 
 ## Added/replaced states
+
 - G4 · People, row menu open
 - B6 · Invite accepted, sign in
 - G4 · Reminder sent
@@ -12,6 +13,7 @@ Compared decoded templates by screen title, not regenerated UUIDs. Old: 48 state
 - Previous B6 · Collaborator invite landing replaced by Collaborator invite plus Invite accepted, sign in.
 
 ## Matched screen changes
+
 - B1 · Sign up: visible text unchanged; export styling/runtime may differ.
 - B2 · Verify email: visible text unchanged; export styling/runtime may differ.
 - B3 · Welcome: visible text/structure changed.
@@ -61,6 +63,7 @@ Compared decoded templates by screen title, not regenerated UUIDs. Old: 48 state
 - K · Permission (collaborator): visible text/structure changed.
 
 ## Implementation scope and safeguards
+
 - Applied compact native Status selector to existing agreement search/filter, retaining all current statuses.
 - Added accessible disclosure for active revenue rules only; no-active setup action and recoupment remain visible.
 - First-run workspace placement and functional navigation handled separately by workspace_ux_fix.
