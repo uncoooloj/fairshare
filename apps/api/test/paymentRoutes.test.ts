@@ -291,6 +291,385 @@ test("reversal before capture blocks subsequent allocation and retains event", a
   }
 });
 
+test("unknown completed order recovery verifies evidence without replaying create/capture", async () => {
+  const s = await setup();
+  try {
+    s.provider.createOrder = async (input) => {
+      throw new PayPalError("PAYPAL_OUTCOME_UNKNOWN");
+    };
+    await s.post("/payments", { amountCents: 10000, requestKey: "one" });
+    const op = (
+      await s.post("/payments", { amountCents: 10000, requestKey: "one" })
+    ).json();
+    s.provider.getOrder = async () => ({
+      status: "COMPLETED",
+      capture: {
+        id: "CAP1",
+        orderId: "RECOVER1",
+        reference: op.id,
+        amountCents: 10000,
+        currency: "USD",
+        status: "COMPLETED",
+        accounting: { feeCents: 300, netCents: 9700 },
+      },
+    });
+    const r = await s.post(`/payments/${op.id}/recover`, {
+      providerOrderId: "RECOVER1",
+    });
+    assert.equal(r.statusCode, 200, r.body);
+    assert.equal(r.json().confirmed, true);
+    assert.equal(s.agg.read(s.w.id, "collab").value.revenue.length, 1);
+    assert.equal(s.counts().captures, 0);
+    assert.equal(
+      (
+        await s.post(`/payments/${op.id}/recover`, {
+          providerOrderId: "RECOVER1",
+        })
+      ).statusCode,
+      200,
+    );
+    assert.equal(s.agg.read(s.w.id, "collab").value.revenue.length, 1);
+    assert.equal(
+      (await s.post(`/payments/${op.id}/recover`, { providerOrderId: "OTHER" }))
+        .statusCode,
+      400,
+    );
+  } finally {
+    await s.app.close();
+  }
+});
+test("unmatched or uncompleted recovery evidence is rejected and cannot leak tenant data", async () => {
+  const s = await setup();
+  try {
+    s.provider.createOrder = async () => {
+      throw new PayPalError("PAYPAL_OUTCOME_UNKNOWN");
+    };
+    await s.post("/payments", { amountCents: 10000, requestKey: "one" });
+    const op = (
+      await s.post("/payments", { amountCents: 10000, requestKey: "one" })
+    ).json();
+    s.provider.getOrder = async () => ({ status: "CREATED", capture: null });
+    assert.equal(
+      (await s.post(`/payments/${op.id}/recover`, { providerOrderId: "O1" }))
+        .statusCode,
+      400,
+    );
+    s.provider.getOrder = async () => ({
+      status: "COMPLETED",
+      capture: {
+        id: "CAP1",
+        orderId: "O1",
+        reference: "WRONG",
+        amountCents: 10000,
+        currency: "USD",
+        status: "COMPLETED",
+      },
+    });
+    assert.notEqual(
+      (await s.post(`/payments/${op.id}/recover`, { providerOrderId: "O1" }))
+        .statusCode,
+      200,
+    );
+    const r = await s.app.inject({
+      url: s.base + "/recovery",
+      headers: auth(s.other.token),
+    });
+    assert.equal(r.statusCode, 404);
+    assert.equal(s.agg.read(s.w.id, "collab").value.revenue.length, 0);
+  } finally {
+    await s.app.close();
+  }
+});
+async function refundable() {
+  const s = await setup();
+  const id = (
+    await s.post("/payments", { amountCents: 10000, requestKey: "one" })
+  ).json().id;
+  await s.post(`/payments/${id}/capture`);
+  let refunds = 0,
+    request = "";
+  s.provider.refundCapture = async (captureId, amount, currency, key) => {
+    refunds++;
+    assert.equal(captureId, "CAP1");
+    assert.equal(amount, 10000);
+    request = key;
+    return { id: "REF1", status: "COMPLETED", amountCents: amount, currency };
+  };
+  s.provider.getRefund = async (refundId) => ({
+    id: refundId,
+    status: "COMPLETED",
+    amountCents: 10000,
+    currency: "USD",
+    captureId: "CAP1",
+    reference: request,
+  });
+  return { ...s, paymentId: id, refundCount: () => refunds };
+}
+test("full original refund is durable exactly-once and holds liabilities without editing agreed split", async () => {
+  const s = await refundable();
+  try {
+    const before = s.agg.read(s.w.id, "collab").value.revenue[0].allocations[0]
+      .totalCents;
+    const r = await s.post(`/payments/${s.paymentId}/refund`, {
+      confirmFullRefund: true,
+    });
+    assert.equal(r.statusCode, 200, r.body);
+    assert.equal(r.json().status, "COMPLETED");
+    assert.equal(r.json().holdRemains, true);
+    assert.equal(
+      (
+        await s.post(`/payments/${s.paymentId}/refund`, {
+          confirmFullRefund: true,
+        })
+      ).statusCode,
+      200,
+    );
+    assert.equal(s.refundCount(), 1);
+    const c = s.agg.read(s.w.id, "collab").value;
+    assert.equal(c.reviewHold, true);
+    assert.equal(c.revenue[0].allocations[0].totalCents, before);
+    assert.equal(
+      (await s.post("/payouts/dispatch", { captureId: "CAP1" })).statusCode,
+      400,
+    );
+    const recovery = (
+      await s.app.inject({
+        url: s.base + "/recovery",
+        headers: auth(s.owner.token),
+      })
+    ).json();
+    assert.equal(recovery.refunds.length, 1);
+    assert.ok(
+      recovery.audit.some((e: any) => e.kind === "REFUND_EVIDENCE_VERIFIED"),
+    );
+  } finally {
+    await s.app.close();
+  }
+});
+test("refund requires explicit confirmation and rejects arbitrary amounts or reserved payout liabilities", async () => {
+  const s = await refundable();
+  try {
+    assert.equal(
+      (await s.post(`/payments/${s.paymentId}/refund`)).statusCode,
+      400,
+    );
+    assert.equal(
+      (
+        await s.post(`/payments/${s.paymentId}/refund`, {
+          confirmFullRefund: true,
+          amountCents: 1,
+        })
+      ).statusCode,
+      400,
+    );
+    await s.app.inject({
+      method: "PUT",
+      url: s.base + "/recipient",
+      headers: auth(s.owner.token),
+      payload: { paypalId: "ABCDEFGHIJKLM" },
+    });
+    await s.post("/payouts/dispatch", { captureId: "CAP1" });
+    const r = await s.post(`/payments/${s.paymentId}/refund`, {
+      confirmFullRefund: true,
+    });
+    assert.equal(r.statusCode, 400, r.body);
+    assert.equal(s.refundCount(), 0);
+  } finally {
+    await s.app.close();
+  }
+});
+test("unknown refund never replays and can recover only exact refund/capture/request evidence", async () => {
+  const s = await refundable();
+  try {
+    let attempts = 0,
+      key = "";
+    s.provider.refundCapture = async (_c, _a, _cur, k) => {
+      attempts++;
+      key = k;
+      throw new PayPalError("PAYPAL_OUTCOME_UNKNOWN");
+    };
+    const r = await s.post(`/payments/${s.paymentId}/refund`, {
+      confirmFullRefund: true,
+    });
+    assert.equal(r.statusCode, 200, r.body);
+    assert.equal(r.json().status, "OUTCOME_UNKNOWN");
+    const refundId = r.json().id;
+    await s.post(`/payments/${s.paymentId}/refund`, {
+      confirmFullRefund: true,
+    });
+    assert.equal(attempts, 1);
+    s.provider.getRefund = async (id) => ({
+      id,
+      status: "COMPLETED",
+      amountCents: 10000,
+      currency: "USD",
+      captureId: "OTHER",
+      reference: key,
+    });
+    assert.equal(
+      (
+        await s.post(`/refunds/${refundId}/recover`, {
+          providerRefundId: "REF1",
+        })
+      ).statusCode,
+      400,
+    );
+    s.provider.getRefund = async (id) => ({
+      id,
+      status: "COMPLETED",
+      amountCents: 10000,
+      currency: "USD",
+      captureId: "CAP1",
+      reference: key,
+    });
+    const recovered = await s.post(`/refunds/${refundId}/recover`, {
+      providerRefundId: "REF1",
+    });
+    assert.equal(recovered.statusCode, 200, recovered.body);
+    assert.equal(recovered.json().status, "COMPLETED");
+    assert.equal(attempts, 1);
+    assert.equal(s.agg.read(s.w.id, "collab").value.reviewHold, true);
+  } finally {
+    await s.app.close();
+  }
+});
+test("refund reservation blocks concurrent payout while provider write is in flight", async () => {
+  const s = await refundable();
+  try {
+    let release!: () => void, started!: () => void;
+    const began = new Promise<void>((r) => (started = r));
+    const waiting = new Promise<void>((r) => (release = r));
+    const old = s.provider.refundCapture!;
+    s.provider.refundCapture = async (...args) => {
+      started();
+      await waiting;
+      return old(...args);
+    };
+    const pending = s.post(`/payments/${s.paymentId}/refund`, {
+      confirmFullRefund: true,
+    });
+    await began;
+    const payout = await s.post("/payouts/dispatch", { captureId: "CAP1" });
+    assert.equal(payout.statusCode, 400);
+    release();
+    assert.equal((await pending).statusCode, 200);
+    assert.equal(s.counts().payoutWrites, 0);
+  } finally {
+    await s.app.close();
+  }
+});
+test("unknown payout recovery is read-only, adapter verifies frozen operation and status", async () => {
+  const s = await setup();
+  try {
+    const id = (
+      await s.post("/payments", { amountCents: 10000, requestKey: "one" })
+    ).json().id;
+    await s.post(`/payments/${id}/capture`);
+    await s.app.inject({
+      method: "PUT",
+      url: s.base + "/recipient",
+      headers: auth(s.owner.token),
+      payload: { paypalId: "ABCDEFGHIJKLM" },
+    });
+    let writes = 0;
+    s.provider.createPayout = async () => {
+      writes++;
+      throw new PayPalError("PAYPAL_OUTCOME_UNKNOWN");
+    };
+    const payout = (
+      await s.post("/payouts/dispatch", { captureId: "CAP1" })
+    ).json().payouts[0];
+    s.provider.getPayout = async (batch, expected) => {
+      assert.equal(expected.requestId, payout.id);
+      assert.equal(expected.amountCents, 9700);
+      assert.equal(expected.recipientId, "ABCDEFGHIJKLM");
+      return { batchId: batch, itemId: "ITEM1", status: "SUCCESS" };
+    };
+    const r = await s.post(`/payouts/${payout.id}/recover`, {
+      providerBatchId: "BATCH1",
+    });
+    assert.equal(r.statusCode, 200, r.body);
+    assert.equal(r.json().status, "SUCCESS");
+    assert.equal(writes, 1);
+    await s.post("/payouts/dispatch", { captureId: "CAP1" });
+    assert.equal(writes, 1);
+  } finally {
+    await s.app.close();
+  }
+});
+
+test("capture does not charge a buyer after agreement is held or approved rules changed", async () => {
+  for (const reason of ["hold", "version"] as const) {
+    const s = await setup();
+    try {
+      const id = (
+        await s.post("/payments", { amountCents: 10000, requestKey: "one" })
+      ).json().id;
+      const row = s.agg.read(s.w.id, "collab");
+      s.agg.update(s.w.id, "collab", row.revision, (c) => ({
+        ...c,
+        ...(reason === "hold" ? { reviewHold: true } : { activeVersionId: 2 }),
+      }));
+      const r = await s.post(`/payments/${id}/capture`);
+      assert.equal(r.statusCode, 400, r.body);
+      assert.equal(
+        s.counts().captures,
+        0,
+        "must block before provider capture",
+      );
+      assert.equal(
+        (
+          s.app.store.db
+            .prepare("SELECT status FROM fairshare_payment_ops WHERE id=?")
+            .get(id) as any
+        ).status,
+        "AWAITING_BUYER",
+      );
+    } finally {
+      await s.app.close();
+    }
+  }
+});
+test("capture does not issue provider write after matched adverse webhook arrived first", async () => {
+  const s = await setup();
+  try {
+    const id = (
+      await s.post("/payments", { amountCents: 10000, requestKey: "one" })
+    ).json().id;
+    await s.event("known-adverse", "PAYMENT.CAPTURE.REVERSED");
+    const r = await s.post(`/payments/${id}/capture`);
+    assert.equal(r.statusCode, 400, r.body);
+    assert.equal(s.counts().captures, 0);
+  } finally {
+    await s.app.close();
+  }
+});
+test("unrelated adverse provider event does not block an otherwise valid capture", async () => {
+  const s = await setup();
+  try {
+    const id = (
+      await s.post("/payments", { amountCents: 10000, requestKey: "one" })
+    ).json().id;
+    await s.app.inject({
+      method: "POST",
+      url: "/api/paypal/webhook",
+      payload: {
+        id: "unrelated",
+        event_type: "PAYMENT.CAPTURE.REVERSED",
+        resource: {
+          id: "OTHER_CAP",
+          supplementary_data: { related_ids: { order_id: "OTHER_ORDER" } },
+        },
+      },
+    });
+    const r = await s.post(`/payments/${id}/capture`);
+    assert.equal(r.statusCode, 200, r.body);
+    assert.equal(s.counts().captures, 1);
+  } finally {
+    await s.app.close();
+  }
+});
+
 test("disabled payout gates remain retryable without submitting or replaying money", async () => {
   const s = await setup();
   let providerRequests = 0;

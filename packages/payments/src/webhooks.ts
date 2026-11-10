@@ -79,6 +79,7 @@ export async function verifyAndPlanWebhook(
       ...action,
       kind: WebhookActionKind.HoldCapture,
       providerId: captureId,
+      orderId,
       reason: eventType,
     };
   else if (eventType.startsWith("CUSTOMER.DISPUTE."))

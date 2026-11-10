@@ -16,6 +16,7 @@ import {
 } from "@fairshare/payments";
 import { AggregateStore, type FairshareApp } from "./fairshare.js";
 import { Role } from "./identity.js";
+import { registerPaymentRecovery } from "./paymentRecovery.js";
 export type PaymentProvider = Pick<
   PayPalSandbox,
   | "createOrder"
@@ -24,7 +25,8 @@ export type PaymentProvider = Pick<
   | "createPayout"
   | "getPayout"
   | "verifyWebhook"
->;
+> &
+  Partial<Pick<PayPalSandbox, "refundCapture" | "getRefund">>;
 export interface PaymentOptions {
   provider?: PaymentProvider;
   publicOrigin?: string;
@@ -267,6 +269,31 @@ export function registerPaymentRoutes(
     const send = tx(() => {
       const fresh = payment(op.id);
       if (fresh.status !== "AWAITING_BUYER") return false;
+      const current = aggregates.read(op.workspace_id, op.collaboration_id);
+      if (current.value.reviewHold)
+        fail("PAYMENT_HOLD", "Capture blocked while agreement is held");
+      if (current.value.activeVersionId !== fresh.version_id)
+        fail(
+          "PAYMENT_RULES_CHANGED",
+          "Capture blocked because approved rules changed",
+        );
+      const adverse = (
+        db
+          .prepare(
+            "SELECT action FROM fairshare_webhook_inbox WHERE status='PENDING'",
+          )
+          .all() as any[]
+      )
+        .map((r) => JSON.parse(r.action))
+        .some(
+          (a) =>
+            a.kind === WebhookActionKind.HoldCapture &&
+            ((a.orderId && a.orderId === fresh.provider_order_id) ||
+              (fresh.provider_capture_id &&
+                a.providerId === fresh.provider_capture_id)),
+        );
+      if (adverse)
+        fail("PAYMENT_HOLD", "Capture blocked by an adverse provider event");
       db.prepare(
         "UPDATE fairshare_payment_ops SET status='CAPTURING' WHERE id=?",
       ).run(op.id);
@@ -565,6 +592,14 @@ export function registerPaymentRoutes(
     return reply
       .code(stored.status === "DONE" ? 200 : 503)
       .send({ accepted: true, status: stored.status });
+  });
+  registerPaymentRecovery({
+    app,
+    aggregates,
+    provider,
+    access,
+    ownPayment,
+    applyCapture,
   });
   return { processEvent };
 }

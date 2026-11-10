@@ -31,6 +31,7 @@ import {
   type Rules,
   type Revenue,
 } from "../lib/model";
+import { PaymentRecovery } from "./payment-recovery";
 import { recoverSourceDocument } from "../lib/source-recovery";
 import { createSandboxCheckout } from "../lib/checkout-retry";
 import dynamic from "next/dynamic";
@@ -1033,6 +1034,7 @@ export default function FairshareApp() {
                               }
                             />
                             <RulesEditor
+                              extraction={extraction}
                               key={documentId}
                               agreement={selected}
                               source={source}
@@ -1170,6 +1172,16 @@ export default function FairshareApp() {
                         An active, unanimously approved version and a configured
                         sandbox provider are required.
                       </Empty>
+                    )}
+                    {organizer && (
+                      <PaymentRecovery
+                        key={base}
+                        base={base}
+                        payments={payments}
+                        payouts={payouts}
+                        held={!!selected.value.reviewHold}
+                        refresh={refresh}
+                      />
                     )}
                     <section className="section">
                       <h3>Verified allocations</h3>

@@ -324,3 +324,33 @@ test("capture fee accounting is explicit and validated, not assumed zero", async
     code: "CAPTURE_ACCOUNTING_MISMATCH",
   });
 });
+test("refund recovery exposes original capture and request reference only from expected sandbox parent", async () => {
+  const { client } = setup([
+    token,
+    {
+      id: "r1",
+      status: "COMPLETED",
+      invoice_id: "refund-op",
+      amount: { value: "5.00", currency_code: "USD" },
+      links: [
+        {
+          rel: "up",
+          href: "https://api-m.sandbox.paypal.com/v2/payments/captures/CAP1",
+        },
+      ],
+    },
+    {
+      id: "r2",
+      status: "COMPLETED",
+      invoice_id: "refund-op",
+      amount: { value: "5.00", currency_code: "USD" },
+      links: [
+        { rel: "up", href: "https://evil.test/v2/payments/captures/CAP1" },
+      ],
+    },
+  ]);
+  const good = await client.getRefund("r1");
+  assert.equal(good.captureId, "CAP1");
+  assert.equal(good.reference, "refund-op");
+  assert.equal((await client.getRefund("r2")).captureId, undefined);
+});
