@@ -77,10 +77,12 @@ export default function FairshareApp() {
     [flowToken, setFlowToken] = useState(""),
     [flowKind, setFlowKind] = useState("");
   const workspaceRequest = useRef(0);
+  const currentWorkspace = useRef("");
   const openRequest = useRef(0);
   function commitWorkspace(id: string) {
     workspaceRequest.current++;
     openRequest.current++;
+    currentWorkspace.current = id;
     setWorkspace(id);
     setSelected(null);
     setCreating(false);
@@ -124,11 +126,12 @@ export default function FairshareApp() {
       const r = await api("workspaces");
       if (request !== workspaceRequest.current) return "";
       const id =
-        workspace && r.workspaces.some((w: any) => w.id === workspace)
-          ? workspace
+        currentWorkspace.current &&
+        r.workspaces.some((w: any) => w.id === currentWorkspace.current)
+          ? currentWorkspace.current
           : r.workspaces[0]?.id || "";
       setWorkspaces(r.workspaces);
-      if (id !== workspace) commitWorkspace(id);
+      if (id !== currentWorkspace.current) commitWorkspace(id);
       return id;
     } catch (error) {
       if (request !== workspaceRequest.current) return "";
@@ -155,7 +158,7 @@ export default function FairshareApp() {
     setNotice("Invitation accepted.");
   }
   async function loadWorkspace(id: string) {
-    if (!id) return;
+    if (!id || id !== currentWorkspace.current) return;
     const request = workspaceRequest.current;
     try {
       const [r, m] = await Promise.all([
@@ -181,7 +184,7 @@ export default function FairshareApp() {
     }
   }
   async function openAgreement(a: Agreement) {
-    if (a.workspaceId !== workspace) return;
+    if (a.workspaceId !== currentWorkspace.current) return;
     const request = ++openRequest.current;
     const root = `${workspaceBase(a.workspaceId)}/collaborations/${a.id}`;
     try {
@@ -218,11 +221,29 @@ export default function FairshareApp() {
     }
   }
   async function refresh() {
-    await loadWorkspace(workspace);
+    const workspaceRequestId = workspaceRequest.current;
+    const openRequestId = openRequest.current;
+    const id = currentWorkspace.current;
+    await loadWorkspace(id);
+    if (
+      workspaceRequestId !== workspaceRequest.current ||
+      openRequestId !== openRequest.current
+    )
+      return;
     if (selected) {
       const a = await api<Agreement>(base);
+      if (
+        workspaceRequestId !== workspaceRequest.current ||
+        openRequestId !== openRequest.current
+      )
+        return;
       setSelected(a);
       const p = await api(`${base}/payments`);
+      if (
+        workspaceRequestId !== workspaceRequest.current ||
+        openRequestId !== openRequest.current
+      )
+        return;
       setPayments(p.payments);
     }
   }
@@ -261,16 +282,34 @@ export default function FairshareApp() {
     setNotice("");
   }
   async function mutate(action: string, extra: Record<string, unknown> = {}) {
+    const workspaceRequestId = workspaceRequest.current;
+    const openRequestId = openRequest.current;
+    if (selected?.workspaceId !== currentWorkspace.current) return;
     try {
       const a = await api<Agreement>(base + action, "POST", {
         expectedRevision: selected!.revision,
         ...extra,
       });
+      if (
+        workspaceRequestId !== workspaceRequest.current ||
+        openRequestId !== openRequest.current
+      )
+        return;
       setSelected(a);
-      await loadWorkspace(workspace);
+      await loadWorkspace(currentWorkspace.current);
     } catch (cause) {
+      if (
+        workspaceRequestId !== workspaceRequest.current ||
+        openRequestId !== openRequest.current
+      )
+        return;
       if (cause instanceof ApiError && cause.code === "REVISION_CONFLICT") {
         const current = await api<Agreement>(base);
+        if (
+          workspaceRequestId !== workspaceRequest.current ||
+          openRequestId !== openRequest.current
+        )
+          return;
         setSelected(current);
         throw new Error(
           "Agreement changed. Latest version loaded; review before trying again.",
