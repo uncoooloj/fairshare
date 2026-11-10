@@ -98,8 +98,31 @@ export default function FairshareApp() {
     [flowToken, setFlowToken] = useState(""),
     [flowKind, setFlowKind] = useState("");
   const [draftDirty, setDraftDirty] = useState(false);
-  const openRequest = useRef(0);
   const rulesDirty = useRef(false);
+  const workspaceRequest = useRef(0);
+  const currentWorkspace = useRef("");
+  const openRequest = useRef(0);
+  function commitWorkspace(id: string) {
+    workspaceRequest.current++;
+    openRequest.current++;
+    currentWorkspace.current = id;
+    setWorkspace(id);
+    setSelected(null);
+    setCreating(false);
+    setAgreements([]);
+    setMembers([]);
+    setPayments([]);
+    setPayouts([]);
+    setSource("");
+    setDocumentId("");
+    setExtraction(null);
+    setPreview(null);
+    setBreakdown(null);
+    setEditing(false);
+    setInviteLink("");
+    setDraftDirty(false);
+    rulesDirty.current = false;
+  }
   function mayLeaveDraft() {
     if (busy) return false;
     if (
@@ -150,17 +173,37 @@ export default function FairshareApp() {
     }
   }
   async function loadWorkspaces() {
-    const r = await api("workspaces");
-    setWorkspaces(r.workspaces);
-    const id =
-      workspace && r.workspaces.some((w: any) => w.id === workspace)
-        ? workspace
-        : r.workspaces[0]?.id || "";
-    setWorkspace(id);
-    return id;
+    const request = workspaceRequest.current;
+    try {
+      const r = await api("workspaces");
+      if (request !== workspaceRequest.current) return "";
+      const id =
+        currentWorkspace.current &&
+        r.workspaces.some((w: any) => w.id === currentWorkspace.current)
+          ? currentWorkspace.current
+          : r.workspaces[0]?.id || "";
+      setWorkspaces(r.workspaces);
+      if (id !== currentWorkspace.current) commitWorkspace(id);
+      return id;
+    } catch (error) {
+      if (request !== workspaceRequest.current) return "";
+      throw error;
+    }
+  }
+  async function acceptInvitation(token: string) {
+    const result = await api("invitations/accept", "POST", { token });
+    setWorkspaces((current) => [
+      ...current.filter((item) => item.id !== result.workspace.id),
+      result.workspace,
+    ]);
+    commitWorkspace(result.workspace.id);
+    setSection(Section.Agreements);
+    setFlowToken("");
+    history.replaceState(null, "", "/");
+    setNotice("Invitation accepted.");
   }
   async function loadWorkspace(id: string) {
-    if (!id) return;
+    if (!id || id !== currentWorkspace.current) return;
     const [r, m] = await Promise.all([
       api(`${workspaceBase(id)}/collaborations`),
       api(`${workspaceBase(id)}/members`),
@@ -229,7 +272,7 @@ export default function FairshareApp() {
           ...result.workspace,
         },
       ]);
-      setWorkspace(result.workspace.id);
+    commitWorkspace(result.workspace.id);
       setAgreements((current) => [
         result.agreement,
         ...current.filter((item) => item.id !== result.agreement.id),
@@ -370,7 +413,7 @@ export default function FairshareApp() {
               return run(async () => {
                 await api("auth/logout", "POST", {});
                 setUser(null);
-                setWorkspace("");
+                commitWorkspace("");
                 setSelected(null);
                 setAgreements([]);
               });
@@ -391,7 +434,7 @@ export default function FairshareApp() {
                 if (!mayLeaveDraft()) return;
                 openRequest.current++;
                 setSelected(null);
-                setWorkspace(e.target.value);
+                commitWorkspace(e.target.value);
               }}
             >
               {workspaces.map((w) => (
@@ -446,11 +489,7 @@ export default function FairshareApp() {
                       : "Email verified.",
                   );
                 } else {
-                  await api("invitations/accept", "POST", {
-                    token: flowToken,
-                  });
-                  await loadWorkspaces();
-                  setNotice("Invitation accepted.");
+                  await acceptInvitation(flowToken);
                 }
                 setFlowToken("");
                 history.replaceState(null, "", "/");
@@ -1555,7 +1594,7 @@ export default function FairshareApp() {
                               newPassword,
                             });
                             setUser(null);
-                            setWorkspace("");
+                            commitWorkspace("");
                           })
                         }
                       />
@@ -1595,7 +1634,7 @@ export default function FairshareApp() {
                     <MfaSettings
                       onSignOut={() => {
                         setUser(null);
-                        setWorkspace("");
+                        commitWorkspace("");
                       }}
                     />
                     <section className="panel">
@@ -1617,9 +1656,7 @@ export default function FairshareApp() {
                         busy={busy}
                         onSubmit={(token) =>
                           run(async () => {
-                            await api("invitations/accept", "POST", { token });
-                            await loadWorkspaces();
-                            setNotice("Invitation accepted.");
+                            await acceptInvitation(token);
                           })
                         }
                       />
