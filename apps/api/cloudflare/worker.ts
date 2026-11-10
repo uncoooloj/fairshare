@@ -26,7 +26,9 @@ interface Env {
 }
 const MAX_BODY_BYTES = 7 * 1024 * 1024;
 const ALARM_INTERVAL_MS = 30_000;
-async function boundedBody(request: Request): Promise<Uint8Array | undefined> {
+async function readBoundedRequestBody(
+  request: Request,
+): Promise<Uint8Array | undefined> {
   if (!request.body) return undefined;
   const reader = request.body.getReader(),
     chunks: Uint8Array[] = [];
@@ -118,7 +120,7 @@ export class FairshareAuthority extends DurableObject<Env> {
     const url = new URL(request.url);
     let payload: Uint8Array | undefined;
     try {
-      payload = await boundedBody(request);
+      payload = await readBoundedRequestBody(request);
     } catch {
       return Response.json(
         {

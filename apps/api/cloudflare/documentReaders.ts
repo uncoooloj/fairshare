@@ -5,9 +5,9 @@ import type { DocumentReaders } from "../src/documentReaders.js";
 export interface ParserBinding {
   fetch(request: Request): Promise<Response>;
 }
-const LIMIT = 5 * 1024 * 1024;
-const OUTPUT_LIMIT = 300_000;
-const rejectedCodes = new Set([
+const MAX_DOCUMENT_BYTES = 5 * 1024 * 1024;
+const MAX_PARSER_RESPONSE_BYTES = 300_000;
+const REJECTED_DOCUMENT_CODES = new Set([
   "INVALID_PDF",
   "INVALID_DOCX",
   "PDF_PASSWORD_REQUIRED",
@@ -23,7 +23,7 @@ const rejectedCodes = new Set([
   "OCR_TEXT_LIMIT",
   "OCR_NO_TEXT",
 ]);
-const unavailable = () =>
+const parserUnavailable = () =>
   new DomainError(
     "PARSER_UNAVAILABLE",
     "Document processing is unavailable. Retry shortly or paste the agreement text.",
@@ -42,7 +42,7 @@ export function cloudflareDocumentReaders(
         "PARSER_NOT_CONFIGURED",
         "Document processing is not configured. Paste the agreement text.",
       );
-    if (bytes.byteLength > LIMIT)
+    if (bytes.byteLength > MAX_DOCUMENT_BYTES)
       throw new DomainError(
         "DOCUMENT_TOO_LARGE",
         "Use a document no larger than 5 MiB.",
@@ -61,7 +61,7 @@ export function cloudflareDocumentReaders(
           headers: { "Content-Type": "application/octet-stream" },
         }),
       );
-      if (!response.body) throw unavailable();
+      if (!response.body) throw parserUnavailable();
       const reader = response.body.getReader();
       const chunks: Uint8Array[] = [];
       let size = 0;
@@ -70,9 +70,9 @@ export function cloudflareDocumentReaders(
           const { value, done } = await reader.read();
           if (done) break;
           size += value.length;
-          if (size > OUTPUT_LIMIT) {
+          if (size > MAX_PARSER_RESPONSE_BYTES) {
             await reader.cancel();
-            throw unavailable();
+            throw parserUnavailable();
           }
           chunks.push(value);
         }
@@ -87,14 +87,14 @@ export function cloudflareDocumentReaders(
             "PDF_BUSY",
             "Document processing is busy. Retry shortly.",
           );
-        if (response.status === 422 && rejectedCodes.has(result?.error))
+        if (response.status === 422 && REJECTED_DOCUMENT_CODES.has(result?.error))
           throw new DomainError(
             result.error,
             result.error === "PDF_NO_EXTRACTABLE_TEXT"
               ? "This PDF has no readable text layer. Choose OCR if available or paste the agreement text."
               : "This document could not be read safely. Try another file or paste the agreement text.",
           );
-        throw unavailable();
+        throw parserUnavailable();
       }
       if (
         !result ||
@@ -110,14 +110,14 @@ export function cloudflareDocumentReaders(
         result.extraction.readingOrder !==
           { pdf: "PDF_TEXT_LAYER", docx: "DOCUMENT_XML", ocr: "OCR" }[kind]
       )
-        throw unavailable();
+        throw parserUnavailable();
       if (kind !== "docx") {
         if (
           !Array.isArray(result.pages) ||
           !result.pages.length ||
           result.pages.length > (kind === "ocr" ? 5 : 20)
         )
-          throw unavailable();
+          throw parserUnavailable();
         let end = 0;
         for (const [index, page] of result.pages.entries()) {
           if (
@@ -128,7 +128,7 @@ export function cloudflareDocumentReaders(
             page.end < page.start ||
             page.end > result.text.length
           )
-            throw unavailable();
+            throw parserUnavailable();
           end = page.end;
         }
       }
@@ -137,11 +137,11 @@ export function cloudflareDocumentReaders(
         (result.extraction.reviewRequired !== true ||
           result.extraction.language !== "eng")
       )
-        throw unavailable();
+        throw parserUnavailable();
       return result;
     } catch (error) {
       if (error instanceof DomainError) throw error;
-      throw unavailable();
+      throw parserUnavailable();
     } finally {
       clearTimeout(timer);
     }
