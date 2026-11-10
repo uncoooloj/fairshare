@@ -1,22 +1,24 @@
 # Cloudflare deployment
 
-Target: Cloudflare. **Not deployed.** Historical checks recorded a successful OpenNext build and Wrangler deployment dry-run. The optional API Worker's local workerd smoke now passes, including Durable Object restart persistence and mocked provider flow. Hosted/runtime browser acceptance remains pending.
+Hosted sandbox snapshot, November 10, 2026: web and API are deployed at https://fairshare-web.udaleamehoj.workers.dev and https://fairshare-api-sandbox.udaleamehoj.workers.dev. Deployment verification reported sign-in/secure cookies, CSRF rejection, intake replay, activation/stale revision, DOCX/original-byte preservation, real scanned-PDF OCR and Workers AI returning review-required output.
+
+The verified deployed source is `deploy/cloudflare-hackathon` at `679fe6865352546e71e1cf5281867c7004495842` (older PR29 base plus hosted/mobile fixes). Web version: `e94ea5c8-d612-4783-952e-72f231f2559b`. This checkpoint ports those fixes onto the current upstream stack; **exact deployed/checkpoint parity requires redeploying this checkpoint**. Real PayPal capture/payout/refund and signed-webhook acceptance remain separate, not implied by these checks.
 
 ## What ships where
 
 | Component                          | Target                                         | Remaining work                                                                                |
 | ---------------------------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| Next web + same-origin BFF         | Workers with OpenNext                          | Build/preview acceptance, account access and stable API origin                                |
+| Next web + same-origin BFF         | Workers with OpenNext                          | Hosted auth/CSRF verified; current checkpoint redeploy and device QA pending                  |
 | Agreement/identity/ledger database | Single-authority Durable Object SQLite adapter | Local runtime/restart checks exist; deployed storage, backup and migration acceptance pending |
 | API routes                         | Optional Worker adapter reusing API handlers   | Local workerd verification passes; full deployed acceptance pending                           |
-| PDF/OCR                            | Private stateless Container parser adapter     | Build/test Container image and deployed bounded private transfer/cleanup                      |
+| PDF/OCR                            | Private stateless Container parser adapter     | Linux/amd64 image and actual hosted OCR verified; continued load/cleanup acceptance           |
 | Reconciliation                     | Opt-in Durable Object alarms                   | Deployed alarm recovery acceptance pending; existing leases/fencing retained                  |
-| Original documents                 | Private R2 candidate                           | Authorized object access, size limits, deletion and DB/object consistency                     |
+| Original documents                 | Same private authority DO SQL                  | Transactional originals retained with existing authorization and 5 MiB bound; no R2 required  |
 | AI extraction                      | Existing Workers AI integration                | Retain consent, grounded citations and human approval                                         |
 
 Do not deploy today's SQLite file on a Container disk, Worker temporary filesystem or R2 FUSE and call it durable. A Container's associated Durable Object storage does **not** automatically persist its filesystem. Snapshots are point-in-time copies, not transaction-by-transaction financial durability. D1 is asynchronous; it is not a drop-in replacement for `DatabaseSync` or `BEGIN/COMMIT` code.
 
-The quickest intermediate path is Workers frontend + the existing Node API on a verified persistent host. This is **not** an all-Cloudflare deployment; do not silently substitute it for the requested target. A temporary laptop tunnel remains only a test endpoint. No provider resources, account terms, billing or secret upload is performed by this change.
+The deployment uses two Workers, two Durable Object classes and one bounded private parser Container (maximum one instance, one-minute idle sleep, no internet egress). R2 and D1 are not required. Node API hosting remains a local-development option, not a substitute for this all-Cloudflare target.
 
 The optional backend Worker routes every request to one named SQLite Durable Object and reuses the existing API business handlers through a narrow no-eval router. See `apps/api/cloudflare/README.md` for its local verification and remaining deployment gates. Existing local SQLite data is not automatically migrated.
 

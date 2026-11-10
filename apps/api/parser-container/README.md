@@ -25,13 +25,15 @@ The network-disabled command checks startup only; a production request enters th
 
 ## Deployment status
 
-Local HTTP tests pass for DOCX, concurrency, missing bindings and synthetic OCR
-through the macOS native helper. This verifies the Node parser service locally;
-it does not verify the Linux Container image or Cloudflare hosting. No Container
-has been created or deployed, and the Docker image has not been built. Cloudflare Container account
-availability, paid-plan/billing approval, private binding/egress configuration,
-image build and hosted synthetic smoke tests remain required. Do not describe
-these local tests as hosted validation.
+The Linux/amd64 API-only image was built and exercised with actual DOCX and
+scanned-PDF OCR under disabled networking, read-only root, 1 GiB memory and
+0.25 CPU limits. Original hashes and bounded error paths passed. API-only npm
+installation excludes unrelated OpenNext build tooling; its build-time audit
+reported zero vulnerabilities (a point-in-time result, not a permanent guarantee).
+
+Hosted scanned-PDF OCR also returned 201 during the deployment verification.
+See `docs/CLOUDFLARE.md` for the exact deployed-source snapshot; this checkpoint
+still requires its own redeployment before claiming exact source parity.
 
 `apps/api/wrangler.jsonc` now declares the private Container DO binding. Its class
 disables outbound internet and sleeps after one idle minute. Manifest validation

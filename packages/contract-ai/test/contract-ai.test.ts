@@ -199,7 +199,7 @@ test("untrusted embedded instructions stay in user data and no tools requested",
       return response(draft);
     },
   });
-  assert.equal(request.options.redirect, "error");
+  assert.equal(request.options.redirect, "manual");
   assert.equal(JSON.parse(request.options.body).tools, undefined);
   assert.equal(request.url.startsWith("https://api.cloudflare.com/"), true);
 });
@@ -361,4 +361,22 @@ test("title grounding rejects source-embedded markup, links, controls and late h
     source,
   );
   assert.equal(Object.hasOwn(result, "suggestedTitle"), false);
+});
+
+test("provider redirects fail closed without forwarding credentials", async () => {
+  let calls = 0;
+  const result = await extractContract(document, {
+    ...config,
+    fetch: async (_url, options) => {
+      calls++;
+      assert.equal(options?.redirect, "manual");
+      return new Response(null, {
+        status: 302,
+        headers: { location: "https://untrusted.example" },
+      });
+    },
+  });
+  assert.equal(calls, 1);
+  assert.equal(result.reason, FallbackReason.PROVIDER_UNAVAILABLE);
+  assert.equal(result.executable, false);
 });

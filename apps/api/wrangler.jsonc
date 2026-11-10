@@ -4,13 +4,21 @@
   "main": "dist-cloudflare/worker.mjs",
   "compatibility_date": "2026-11-01",
   "compatibility_flags": ["nodejs_compat"],
-  "workers_dev": false,
+  "workers_dev": true,
   "preview_urls": false,
-  "build": { "command": "node cloudflare/build.mjs" },
+  "build": {
+    "command": "node cloudflare/build.mjs"
+  },
   "durable_objects": {
     "bindings": [
-      { "name": "AUTHORITY", "class_name": "FairshareAuthority" },
-      { "name": "DOCUMENT_PARSER", "class_name": "FairshareDocumentParser" }
+      {
+        "name": "AUTHORITY",
+        "class_name": "FairshareAuthority"
+      },
+      {
+        "name": "DOCUMENT_PARSER",
+        "class_name": "FairshareDocumentParser"
+      }
     ]
   },
   "migrations": [
@@ -29,11 +37,19 @@
     }
   ],
   "vars": {
-    "OCR_ENABLED": "false",
+    "OCR_ENABLED": "true",
     "HACKATHON_MFA_SIMULATION": "false",
     "PAYPAL_PAYOUTS_ENABLED": "false",
     "PAYPAL_PAYOUTS_ELIGIBILITY_CONFIRMED": "false",
-    "PAYPAL_RECONCILIATION_ENABLED": "false"
+    "PAYPAL_RECONCILIATION_ENABLED": "false",
+    "PUBLIC_API_URL": "https://fairshare-api-sandbox.udaleamehoj.workers.dev",
+    "PUBLIC_APP_ORIGIN": "https://fairshare-web.udaleamehoj.workers.dev"
   },
-  "observability": { "enabled": false }
+  "observability": {
+    "enabled": false
+  },
+  "account_id": "5f24cf447e80f1b1b67c4c0266f91a56",
+  "limits": {
+    "cpu_ms": 3000
+  }
 }
