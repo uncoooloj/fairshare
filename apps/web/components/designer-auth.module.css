@@ -280,3 +280,21 @@
   opacity: 0.55;
   cursor: not-allowed;
 }
+
+.explainer {
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid var(--auth-border);
+}
+.explainer summary {
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+}
+.explainer summary:focus-visible {
+  outline: 3px solid #bfdbfe;
+  outline-offset: 4px;
+}
+.explainer .steps {
+  margin-top: 20px;
+}

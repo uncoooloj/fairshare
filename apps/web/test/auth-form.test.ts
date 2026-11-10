@@ -52,10 +52,10 @@ test("onboarding matches API workspace limit; auth mode switch dismisses stale e
     new URL("../components/designer-auth.tsx", import.meta.url),
     "utf8",
   );
-  assert.ok(source.includes("maxLength={100}"));
+  assert.match(source, /maxLength=\{100\}/);
   assert.match(
     source,
     /setShowServerError\(false\);\s*setShowPassword\(false\)/,
   );
-  assert.ok(source.includes("aria-pressed={showPassword}"));
+  assert.match(source, /aria-pressed=\{showPassword\}/);
 });

@@ -13,7 +13,7 @@ test("setup does not guess completion or mutate financial state", () => {
   assert.match(source, /latest.approvals\[m.userId\]/);
   assert.match(
     source,
-    /if\s*\(\s*!busy\s*&&\s*name\.trim\(\)\s*\)\s*onCreate\(\s*name\.trim\(\)\s*\)/,
+    /if \(!busy && name.trim\(\)\) onCreate\(name.trim\(\)\)/,
   );
   assert.doesNotMatch(source, /fetch\(|api\(|\/activate|\/payments|\/payouts/);
 });

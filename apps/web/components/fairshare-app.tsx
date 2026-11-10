@@ -430,20 +430,24 @@ export default function FairshareApp() {
       <main className="main" id="main-content" tabIndex={-1}>
         <div className="workspace-bar">
           <span>Workspace</span>
-          <select
-            aria-label="Workspace"
-            value={workspace}
-            onChange={(e) => {
-              if (!mayLeaveDraft()) return;
-              commitWorkspace(e.target.value);
-            }}
-          >
-            {workspaces.map((w) => (
-              <option key={w.id} value={w.id}>
-                {w.name}
-              </option>
-            ))}
-          </select>
+          {workspaces.length > 1 ? (
+            <select
+              aria-label="Workspace"
+              value={workspace}
+              onChange={(e) => {
+                if (!mayLeaveDraft()) return;
+                commitWorkspace(e.target.value);
+              }}
+            >
+              {workspaces.map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.name}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <strong>{workspaces[0]?.name || "No workspace yet"}</strong>
+          )}
           <span className="spacer" />
           <Button variant="quiet" disabled={busy} onClick={() => run(refresh)}>
             ↻ Refresh
@@ -497,13 +501,21 @@ export default function FairshareApp() {
             }
           />
         )}
-        {!workspace ? (
+        {!workspace && section !== Section.Settings ? (
           <WorkspaceOnboarding
+            section={section}
             busy={busy}
             onCreate={(name) =>
               run(async () => {
-                await api("workspaces", "POST", { name });
-                await loadWorkspaces();
+                const result = await api("workspaces", "POST", { name });
+                setWorkspaces((current) => [
+                  ...current.filter((item) => item.id !== result.workspace.id),
+                  result.workspace,
+                ]);
+                commitWorkspace(result.workspace.id);
+                setNotice(
+                  "Workspace created. You’re ready to add your first agreement.",
+                );
               })
             }
           />
