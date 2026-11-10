@@ -141,6 +141,7 @@ export function registerReviewCollaboration(
     reminderId: string,
     createdAt: number,
   ): RecentReminderRow | undefined {
+    // Reserve the daily delivery slot before the external mail-provider call.
     return app.store.tx(() => {
       const existingReminder = db
         .prepare(
