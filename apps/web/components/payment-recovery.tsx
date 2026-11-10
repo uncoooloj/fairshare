@@ -6,6 +6,7 @@ import {
   refundBlocked,
   refundMessage,
 } from "../lib/payment-recovery";
+import styles from "./payment-recovery.module.css";
 import { Badge, Button, Field, Notice } from "./ui";
 export function PaymentRecovery({
   base,
@@ -67,12 +68,22 @@ export function PaymentRecovery({
   }
   const payment = payments.find((p) => p.id === chosen);
   return (
-    <section className="section">
-      <h3>Recovery & refunds</h3>
-      <p>
-        Sandbox only. Recovery reads PayPal evidence; it never retries uncertain
-        transfers or clears an agreement hold.
-      </p>
+    <section
+      className={styles.root}
+      aria-label="Recovery and refunds"
+      aria-busy={busy}
+    >
+      <div className={styles.header}>
+        <div>
+          <h3>Recovery & refunds</h3>
+          <p>
+            Resolve uncertain payment statuses using existing PayPal evidence.
+            Checking a reference never sends another payment or clears an
+            agreement hold.
+          </p>
+        </div>
+        <span className={styles.sandbox}>Sandbox only</span>
+      </div>
       {error && (
         <div role="alert">
           <Notice warning>{error}</Notice>
@@ -84,7 +95,11 @@ export function PaymentRecovery({
         </div>
       )}
       {!data ? (
-        <p>Recovery information is not loaded yet.</p>
+        <p role="status">
+          {error
+            ? "Recovery information is unavailable. Refresh before taking any action."
+            : "Loading recovery information…"}
+        </p>
       ) : (
         <>
           <details>
@@ -186,7 +201,7 @@ export function PaymentRecovery({
           <h4>Refund status</h4>
           {!data.refunds.length && <p>No refunds recorded.</p>}
           {data.refunds.map((r: any) => (
-            <div className="panel" key={r.id}>
+            <div className={styles.evidence} key={r.id}>
               <p>
                 {money(r.amount)} · <code>{r.id}</code>{" "}
                 <Badge value={r.status} />
@@ -257,7 +272,7 @@ function Evidence({
         : "Refund ID";
   return (
     <form
-      className="panel"
+      className={styles.evidence}
       onSubmit={(e) => {
         e.preventDefault();
         run(async () => {

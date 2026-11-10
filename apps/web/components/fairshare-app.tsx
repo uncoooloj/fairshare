@@ -16,8 +16,9 @@ import {
   safePayPalUrl,
   payoutStatus,
 } from "./agreement-widgets";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
+  ApiError,
   AgreementTab,
   Section,
   api,
@@ -31,6 +32,13 @@ import {
   type Rules,
   type Revenue,
 } from "../lib/model";
+import { AgreementDocument } from "./agreement-document";
+import {
+  ContractReviewPanel,
+  ContractSourceGuidance,
+} from "./contract-review-guidance";
+import { NewAgreement, AgreementSetup } from "./agreement-setup";
+import { WorkspaceOnboarding, AccessPrompt } from "./designer-auth";
 import { PaymentRecovery } from "./payment-recovery";
 import { recoverSourceDocument } from "../lib/source-recovery";
 import { createSandboxCheckout } from "../lib/checkout-retry";
@@ -59,7 +67,6 @@ export default function FairshareApp() {
     [payouts, setPayouts] = useState<any[]>([]),
     [mode, setMode] = useState("Unavailable");
   const [creating, setCreating] = useState(false),
-    [search, setSearch] = useState(""),
     [source, setSource] = useState(""),
     [documentId, setDocumentId] = useState(""),
     [extraction, setExtraction] = useState<any>(null),
@@ -69,6 +76,28 @@ export default function FairshareApp() {
     [inviteLink, setInviteLink] = useState(""),
     [flowToken, setFlowToken] = useState(""),
     [flowKind, setFlowKind] = useState("");
+  const workspaceRequest = useRef(0);
+  const currentWorkspace = useRef("");
+  const openRequest = useRef(0);
+  function commitWorkspace(id: string) {
+    workspaceRequest.current++;
+    openRequest.current++;
+    currentWorkspace.current = id;
+    setWorkspace(id);
+    setSelected(null);
+    setCreating(false);
+    setAgreements([]);
+    setMembers([]);
+    setPayments([]);
+    setPayouts([]);
+    setSource("");
+    setDocumentId("");
+    setExtraction(null);
+    setPreview(null);
+    setBreakdown(null);
+    setEditing(false);
+    setInviteLink("");
+  }
   const base = selected
     ? `${workspaceBase(selected.workspaceId)}/collaborations/${selected.id}`
     : "";
@@ -92,68 +121,139 @@ export default function FairshareApp() {
     }
   }
   async function loadWorkspaces() {
-    const r = await api("workspaces");
-    setWorkspaces(r.workspaces);
-    const id =
-      workspace && r.workspaces.some((w: any) => w.id === workspace)
-        ? workspace
-        : r.workspaces[0]?.id || "";
-    setWorkspace(id);
-    return id;
+    const request = workspaceRequest.current;
+    try {
+      const r = await api("workspaces");
+      if (request !== workspaceRequest.current) return "";
+      const id =
+        currentWorkspace.current &&
+        r.workspaces.some((w: any) => w.id === currentWorkspace.current)
+          ? currentWorkspace.current
+          : r.workspaces[0]?.id || "";
+      setWorkspaces(r.workspaces);
+      if (id !== currentWorkspace.current) commitWorkspace(id);
+      return id;
+    } catch (error) {
+      if (request !== workspaceRequest.current) return "";
+      throw error;
+    }
+  }
+  async function acceptInvitation(token: string) {
+    const result = await api("invitations/accept", "POST", { token });
+    // Adopt the committed membership immediately. Do not make a consumed
+    // one-use invitation look unsuccessful if a later workspace fetch fails.
+    setSelected(null);
+    setCreating(false);
+    setAgreements([]);
+    setMembers([]);
+    setPayouts([]);
+    setWorkspaces((current) => [
+      ...current.filter((item) => item.id !== result.workspace.id),
+      result.workspace,
+    ]);
+    commitWorkspace(result.workspace.id);
+    setSection(Section.Agreements);
+    setFlowToken("");
+    history.replaceState(null, "", "/");
+    setNotice("Invitation accepted.");
   }
   async function loadWorkspace(id: string) {
-    if (!id) return;
-    const [r, m] = await Promise.all([
-      api(`${workspaceBase(id)}/collaborations`),
-      api(`${workspaceBase(id)}/members`),
-    ]);
-    setAgreements(r.collaborations);
-    setMembers(m.members);
-    const all = await Promise.all(
-      r.collaborations.map(async (a: Agreement) => {
-        const p = await api(
-          `${workspaceBase(id)}/collaborations/${a.id}/payouts`,
-        );
-        return p.payouts.map((v: any) => ({ ...v, agreement: a }));
-      }),
-    );
-    setPayouts(all.flat());
+    if (!id || id !== currentWorkspace.current) return;
+    const request = workspaceRequest.current;
+    try {
+      const [r, m] = await Promise.all([
+        api(`${workspaceBase(id)}/collaborations`),
+        api(`${workspaceBase(id)}/members`),
+      ]);
+      if (request !== workspaceRequest.current) return;
+      setAgreements(r.collaborations);
+      setMembers(m.members);
+      const all = await Promise.all(
+        r.collaborations.map(async (a: Agreement) => {
+          const p = await api(
+            `${workspaceBase(id)}/collaborations/${a.id}/payouts`,
+          );
+          return p.payouts.map((v: any) => ({ ...v, agreement: a }));
+        }),
+      );
+      if (request !== workspaceRequest.current) return;
+      setPayouts(all.flat());
+    } catch (error) {
+      if (request !== workspaceRequest.current) return;
+      throw error;
+    }
   }
   async function openAgreement(a: Agreement) {
+    if (a.workspaceId !== currentWorkspace.current) return;
+    const request = ++openRequest.current;
     const root = `${workspaceBase(a.workspaceId)}/collaborations/${a.id}`;
-    const [fresh, p] = await Promise.all([
-      api<Agreement>(root),
-      api(`${root}/payments`),
-    ]);
-    setSelected(fresh);
-    setPayments(p.payments);
-    setSection(Section.Agreements);
-    setCreating(false);
-    setPreview(null);
-    setBreakdown(null);
-    setEditing(false);
-    setSource("");
-    setDocumentId("");
-    setExtraction(null);
-    const v = fresh.value.versions.at(-1);
-    const doc = await recoverSourceDocument(
-      root,
-      v?.rules.source.documentId,
-      api,
-    );
-    if (doc) {
-      setDocumentId(doc.documentId);
-      setSource(doc.text);
-      setExtraction(doc.extraction);
+    try {
+      const [fresh, p] = await Promise.all([
+        api<Agreement>(root),
+        api(`${root}/payments`),
+      ]);
+      if (request !== openRequest.current) return;
+      setSelected(fresh);
+      setPayments(p.payments);
+      setSection(Section.Agreements);
+      setCreating(false);
+      setPreview(null);
+      setBreakdown(null);
+      setEditing(false);
+      setSource("");
+      setDocumentId("");
+      setExtraction(null);
+      const v = fresh.value.versions.at(-1);
+      const doc = await recoverSourceDocument(
+        root,
+        v?.rules.source.documentId,
+        api,
+      );
+      if (request !== openRequest.current) return;
+      if (doc) {
+        setDocumentId(doc.documentId);
+        setSource(doc.text);
+        setExtraction(doc.extraction);
+      }
+    } catch (error) {
+      if (request !== openRequest.current) return;
+      throw error;
     }
   }
   async function refresh() {
-    await loadWorkspace(workspace);
-    if (selected) {
-      const a = await api<Agreement>(base);
-      setSelected(a);
-      const p = await api(`${base}/payments`);
-      setPayments(p.payments);
+    const workspaceRequestId = workspaceRequest.current;
+    const openRequestId = openRequest.current;
+    const id = currentWorkspace.current;
+    try {
+      await loadWorkspace(id);
+      if (
+        workspaceRequestId !== workspaceRequest.current ||
+        openRequestId !== openRequest.current
+      )
+        return;
+      if (selected) {
+        const a = await api<Agreement>(base);
+        if (
+          workspaceRequestId !== workspaceRequest.current ||
+          openRequestId !== openRequest.current
+        )
+          return;
+        setSelected(a);
+        const p = await api(`${base}/payments`);
+        if (
+          workspaceRequestId !== workspaceRequest.current ||
+          openRequestId !== openRequest.current
+        )
+          return;
+        setPayments(p.payments);
+      }
+    } catch (error) {
+      if (
+        workspaceRequestId !== workspaceRequest.current ||
+        openRequestId !== openRequest.current
+      )
+        return;
+      throw error;
     }
   }
   useEffect(() => {
@@ -161,7 +261,8 @@ export default function FairshareApp() {
     if (token && ["/verify-email", "/invitation"].includes(location.pathname)) {
       setFlowKind(location.pathname);
       setFlowToken(decodeURIComponent(token));
-      history.replaceState(null, "", location.pathname);
+      // Keep the fragment until acceptance succeeds so refresh during sign-in
+      // does not lose this one-use link. Fragments are not sent to the server.
     }
     Promise.all([
       api("auth/me")
@@ -182,6 +283,7 @@ export default function FairshareApp() {
     if (workspace && user) run(() => loadWorkspace(workspace));
   }, [workspace]);
   function navigate(s: Section) {
+    openRequest.current++;
     setSection(s);
     setSelected(null);
     setCreating(false);
@@ -189,12 +291,41 @@ export default function FairshareApp() {
     setNotice("");
   }
   async function mutate(action: string, extra: Record<string, unknown> = {}) {
-    const a = await api<Agreement>(base + action, "POST", {
-      expectedRevision: selected!.revision,
-      ...extra,
-    });
-    setSelected(a);
-    await loadWorkspace(workspace);
+    const workspaceRequestId = workspaceRequest.current;
+    const openRequestId = openRequest.current;
+    if (selected?.workspaceId !== currentWorkspace.current) return;
+    try {
+      const a = await api<Agreement>(base + action, "POST", {
+        expectedRevision: selected!.revision,
+        ...extra,
+      });
+      if (
+        workspaceRequestId !== workspaceRequest.current ||
+        openRequestId !== openRequest.current
+      )
+        return;
+      setSelected(a);
+      await loadWorkspace(currentWorkspace.current);
+    } catch (cause) {
+      if (
+        workspaceRequestId !== workspaceRequest.current ||
+        openRequestId !== openRequest.current
+      )
+        return;
+      if (cause instanceof ApiError && cause.code === "REVISION_CONFLICT") {
+        const current = await api<Agreement>(base);
+        if (
+          workspaceRequestId !== workspaceRequest.current ||
+          openRequestId !== openRequest.current
+        )
+          return;
+        setSelected(current);
+        throw new Error(
+          "Agreement changed. Latest version loaded; review before trying again.",
+        );
+      }
+      throw cause;
+    }
   }
   if (!ready)
     return (
@@ -224,6 +355,7 @@ export default function FairshareApp() {
           {Object.values(Section).map((s) => (
             <button
               key={s}
+              aria-current={section === s ? "page" : undefined}
               className={section === s ? "nav-item selected" : "nav-item"}
               onClick={() => navigate(s)}
             >
@@ -247,9 +379,7 @@ export default function FairshareApp() {
               run(async () => {
                 await api("auth/logout", "POST", {});
                 setUser(null);
-                setWorkspace("");
-                setSelected(null);
-                setAgreements([]);
+                commitWorkspace("");
               })
             }
           >
@@ -264,8 +394,7 @@ export default function FairshareApp() {
             aria-label="Workspace"
             value={workspace}
             onChange={(e) => {
-              setSelected(null);
-              setWorkspace(e.target.value);
+              commitWorkspace(e.target.value);
             }}
           >
             {workspaces.map((w) => (
@@ -300,64 +429,41 @@ export default function FairshareApp() {
           </div>
         )}
         {flowToken && (
-          <Notice>
-            <h3>
-              {flowKind === "/verify-email"
-                ? "Verify your email"
-                : "Accept your invitation"}
-            </h3>
-            <p>
-              You are signed in as {user.email}. Use the account the invitation
-              was sent to.
-            </p>
-            <Button
-              disabled={busy}
-              onClick={() =>
-                run(async () => {
-                  if (flowKind === "/verify-email") {
-                    const r = await api("auth/verification/confirm", "POST", {
-                      token: flowToken,
-                    });
-                    setUser(r.user);
-                    setNotice(
-                      r.verificationMode === "DEMO_SIMULATION"
-                        ? "Demo verification completed. This does not prove email ownership."
-                        : "Email verified.",
-                    );
-                  } else {
-                    await api("invitations/accept", "POST", {
-                      token: flowToken,
-                    });
-                    await loadWorkspaces();
-                    setNotice("Invitation accepted.");
-                  }
-                  setFlowToken("");
-                  history.replaceState(null, "", "/");
-                })
-              }
-            >
-              Continue
-            </Button>
-          </Notice>
+          <AccessPrompt
+            kind={flowKind === "/verify-email" ? "verification" : "invitation"}
+            email={user.email}
+            busy={busy}
+            onContinue={() =>
+              run(async () => {
+                if (flowKind === "/verify-email") {
+                  const r = await api("auth/verification/confirm", "POST", {
+                    token: flowToken,
+                  });
+                  setUser(r.user);
+                  setNotice(
+                    r.verificationMode === "DEMO_SIMULATION"
+                      ? "Demo verification completed. This does not prove email ownership."
+                      : "Email verified.",
+                  );
+                } else {
+                  await acceptInvitation(flowToken);
+                }
+                setFlowToken("");
+                history.replaceState(null, "", "/");
+              })
+            }
+          />
         )}
         {!workspace ? (
-          <>
-            <Heading
-              title="Welcome to Fairshare"
-              description="Create a workspace to start your first agreement."
-            />
-            <SimpleForm
-              label="Workspace name"
-              button="Create workspace"
-              busy={busy}
-              onSubmit={(name) =>
-                run(async () => {
-                  await api("workspaces", "POST", { name });
-                  await loadWorkspaces();
-                })
-              }
-            />
-          </>
+          <WorkspaceOnboarding
+            busy={busy}
+            onCreate={(name) =>
+              run(async () => {
+                await api("workspaces", "POST", { name });
+                await loadWorkspaces();
+              })
+            }
+          />
         ) : (
           <>
             {section === Section.Overview && !selected && (
@@ -422,46 +528,27 @@ export default function FairshareApp() {
                   }
                 />
                 {creating ? (
-                  <div className="narrow">
-                    <SimpleForm
-                      label="Agreement name"
-                      button="Create agreement"
-                      busy={busy}
-                      onSubmit={(name) =>
-                        run(async () => {
-                          const a = await api<Agreement>(
-                            `${workspaceBase(workspace)}/collaborations`,
-                            "POST",
-                            { name },
-                          );
-                          await openAgreement(a);
-                          setTab(AgreementTab.People);
-                          await loadWorkspace(workspace);
-                        })
-                      }
-                    />
-                    <Button variant="quiet" onClick={() => setCreating(false)}>
-                      Cancel
-                    </Button>
-                  </div>
+                  <NewAgreement
+                    busy={busy}
+                    onCancel={() => setCreating(false)}
+                    onCreate={(name) =>
+                      run(async () => {
+                        const a = await api<Agreement>(
+                          `${workspaceBase(workspace)}/collaborations`,
+                          "POST",
+                          { name },
+                        );
+                        await openAgreement(a);
+                        setTab(AgreementTab.People);
+                        await loadWorkspace(workspace);
+                      })
+                    }
+                  />
                 ) : (
-                  <>
-                    <input
-                      className="search"
-                      aria-label="Search agreements"
-                      placeholder="Search agreements…"
-                      value={search}
-                      onChange={(e) => setSearch(e.target.value)}
-                    />
-                    <AgreementList
-                      agreements={agreements.filter((a) =>
-                        a.value.name
-                          .toLowerCase()
-                          .includes(search.toLowerCase()),
-                      )}
-                      onOpen={(a) => run(() => openAgreement(a))}
-                    />
-                  </>
+                  <AgreementList
+                    agreements={agreements}
+                    onOpen={(a) => run(() => openAgreement(a))}
+                  />
                 )}
               </>
             )}
@@ -495,6 +582,11 @@ export default function FairshareApp() {
                     </Button>
                   }
                 />
+                <AgreementSetup
+                  agreement={selected}
+                  tab={tab}
+                  onNavigate={setTab}
+                />
                 <div className="tabs" role="tablist">
                   {Object.values(AgreementTab).map((t) => (
                     <button
@@ -520,8 +612,8 @@ export default function FairshareApp() {
                 {tab === AgreementTab.Overview && (
                   <>
                     <div className="detail-columns">
-                      <section>
-                        <h2>Agreed split</h2>
+                      <section className="panel">
+                        <h2>Revenue rules</h2>
                         <p className="muted">
                           {active
                             ? "The active rules for this agreement."
@@ -805,71 +897,26 @@ export default function FairshareApp() {
                           {latest.rules.source.excerpt}
                           <footer>{latest.rules.source.clause}</footer>
                         </blockquote>
-                        {latest.rules.unresolvedQuestions.map((q, i) => (
-                          <Notice key={i} warning>
-                            {q}
-                          </Notice>
-                        ))}
-                        <div className="actions">
-                          {latest.status === "DRAFT" && (
-                            <Button
-                              disabled={busy}
-                              onClick={() =>
-                                run(() => mutate(`/versions/${latest.id}/send`))
-                              }
-                            >
-                              Send for everyone’s review
-                            </Button>
-                          )}
-                          {latest.status === "AWAITING_APPROVAL" && (
-                            <>
-                              <Button
-                                disabled={busy || !!latest.approvals[user.id]}
-                                onClick={() =>
-                                  run(() =>
-                                    mutate(`/versions/${latest.id}/approve`),
-                                  )
-                                }
-                              >
-                                {latest.approvals[user.id]
-                                  ? "You approved"
-                                  : "Approve this version"}
-                              </Button>
-                              {organizer && (
-                                <Button
-                                  disabled={
-                                    busy ||
-                                    !selected.value.members.every(
-                                      (m) => latest.approvals[m.userId],
-                                    )
-                                  }
-                                  onClick={() =>
-                                    run(() =>
-                                      mutate(`/versions/${latest.id}/activate`),
-                                    )
-                                  }
-                                >
-                                  Activate agreed rules
-                                </Button>
-                              )}
-                            </>
-                          )}
-                        </div>
-                        {latest.status === "AWAITING_APPROVAL" && (
-                          <SimpleForm
-                            label="Request a change"
-                            button="Send change request"
-                            busy={busy}
-                            onSubmit={(reason) =>
-                              run(() =>
-                                mutate(
-                                  `/versions/${latest.id}/request-change`,
-                                  { reason },
-                                ),
-                              )
+                        <ContractReviewPanel
+                          key={latest.id}
+                          agreement={selected}
+                          version={latest}
+                          userId={user.id}
+                          busy={busy}
+                          onAction={async (action, payload) => {
+                            setBusy(true);
+                            setError("");
+                            setNotice("");
+                            try {
+                              await mutate(
+                                `/versions/${latest.id}/${action}`,
+                                payload,
+                              );
+                            } finally {
+                              setBusy(false);
                             }
-                          />
-                        )}
+                          }}
+                        />
                         <section className="section">
                           <h3>Preview an incoming payment</h3>
                           <p className="muted">
@@ -896,21 +943,14 @@ export default function FairshareApp() {
                             />
                           )}
                         </section>
-                        {latest.changeRequests.map((c, i) => (
-                          <Notice key={i}>
-                            {
-                              selected.value.members.find(
-                                (m) => m.userId === c.userId,
-                              )?.displayName
-                            }{" "}
-                            requested: {c.reason}
-                          </Notice>
-                        ))}
                       </>
                     ) : (
                       <>
                         <section className="panel">
                           <h3>Source agreement</h3>
+                          <ContractSourceGuidance
+                            replacement={!!selected.value.versions.length}
+                          />
                           <Field
                             label="Agreement text"
                             hint="Use synthetic or authorized documents only. Text is stored privately in this workspace."
@@ -992,6 +1032,7 @@ export default function FairshareApp() {
                               onClick={() => {
                                 setSource(sampleAgreement);
                                 setDocumentId("");
+                                setExtraction(null);
                               }}
                             >
                               Use sample text
@@ -1019,6 +1060,7 @@ export default function FairshareApp() {
                         {documentId && (
                           <>
                             <AIReview
+                              key={documentId}
                               busy={busy}
                               extraction={extraction}
                               onExtract={() =>
@@ -1055,6 +1097,13 @@ export default function FairshareApp() {
                       </>
                     )}
                   </>
+                )}
+                {tab === AgreementTab.Document && (
+                  <AgreementDocument
+                    key={selected.id}
+                    agreement={selected}
+                    base={base}
+                  />
                 )}
                 {tab === AgreementTab.Payments && (
                   <>
@@ -1314,9 +1363,13 @@ export default function FairshareApp() {
                   title="Settings"
                   description="Your account and test environment."
                 />
-                <div className="narrow">
-                  <section className="panel">
-                    <h3>{user.name}</h3>
+                <div className="settings-grid">
+                  <section className="panel settings-profile">
+                    <span className="eyebrow">PROFILE</span>
+                    <div className="settings-identity">
+                      <span className="avatar">{user.name.slice(0, 1)}</span>
+                      <h3>{user.name}</h3>
+                    </div>
                     <p>{user.email}</p>
                     <p className="muted">
                       Current environment: {mode}. Live money is disabled.
@@ -1348,31 +1401,43 @@ export default function FairshareApp() {
                       </a>
                     )}
                   </section>
-                  <PasswordForm
-                    busy={busy}
-                    onSubmit={(currentPassword, newPassword) =>
-                      run(async () => {
-                        await api("auth/password", "POST", {
-                          currentPassword,
-                          newPassword,
-                        });
-                        setUser(null);
-                        setWorkspace("");
-                      })
-                    }
-                  />
-                  <SimpleForm
-                    label="Invitation token (if shared manually)"
-                    button="Accept invitation"
-                    busy={busy}
-                    onSubmit={(token) =>
-                      run(async () => {
-                        await api("invitations/accept", "POST", { token });
-                        await loadWorkspaces();
-                        setNotice("Invitation accepted.");
-                      })
-                    }
-                  />
+                  <section className="panel">
+                    <h2>Security</h2>
+                    <p className="muted">
+                      Changing your password signs you out so you can reconnect
+                      securely.
+                    </p>
+                    <PasswordForm
+                      busy={busy}
+                      onSubmit={(currentPassword, newPassword) =>
+                        run(async () => {
+                          await api("auth/password", "POST", {
+                            currentPassword,
+                            newPassword,
+                          });
+                          setUser(null);
+                          commitWorkspace("");
+                        })
+                      }
+                    />
+                  </section>
+                  <section className="panel">
+                    <h2>Workspace invitations</h2>
+                    <p className="muted">
+                      Join a workspace using a private invitation shared with
+                      your account.
+                    </p>
+                    <SimpleForm
+                      label="Invitation token (if shared manually)"
+                      button="Accept invitation"
+                      busy={busy}
+                      onSubmit={(token) =>
+                        run(async () => {
+                          await acceptInvitation(token);
+                        })
+                      }
+                    />
+                  </section>
                 </div>
               </>
             )}

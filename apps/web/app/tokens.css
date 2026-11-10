@@ -1,14 +1,14 @@
 :root {
-  --color-brand: #1f4ee8;
+  --color-brand: #1d4ed8;
   --color-brand-hover: #163cc0;
-  --color-brand-soft: #eff3ff;
-  --color-ink: #101828;
-  --color-muted: #667085;
+  --color-brand-soft: #eff6ff;
+  --color-ink: #171717;
+  --color-muted: #737373;
   --color-canvas: #fff;
-  --color-surface: #f9fafb;
-  --color-line: #e7eaf0;
-  --color-success: #08794d;
-  --color-success-bg: #eaf7f0;
+  --color-surface: #fafafa;
+  --color-line: #e5e5e5;
+  --color-success: #15803d;
+  --color-success-bg: #dcfce7;
   --color-warning: #986000;
   --color-warning-bg: #fff6e6;
   --color-danger: #b42318;
@@ -17,13 +17,13 @@
   --font-mono: ui-monospace, monospace;
   --text-xs: 12px;
   --text-sm: 14px;
-  --text-base: 15px;
+  --text-base: 14px;
   --text-lg: 18px;
   --text-xl: 24px;
-  --text-title: 32px;
+  --text-title: 30px;
   --weight-normal: 400;
   --weight-medium: 500;
-  --weight-bold: 650;
+  --weight-bold: 600;
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -34,11 +34,11 @@
   --space-10: 40px;
   --space-12: 48px;
   --space-16: 64px;
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 12px;
   --radius-pill: 999px;
-  --shadow-panel: 0 12px 40px #10182814;
-  --sidebar-width: 224px;
+  --shadow-panel: 0 12px 40px #17171714;
+  --sidebar-width: 240px;
   --content-max: 1440px;
 }
