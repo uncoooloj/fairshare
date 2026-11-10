@@ -31,7 +31,7 @@ test("successful creation selects server-returned workspace without a fallible s
     creation,
     /const result = await api\("workspaces", "POST", \{ name \}\)/,
   );
-  assert.match(creation, /setWorkspace\(result.workspace.id\)/);
+  assert.match(creation, /commitWorkspace\(result.workspace.id\)/);
   assert.doesNotMatch(creation, /await loadWorkspaces/);
 });
 test("workspace creation locks synchronously until submission settles", () => {
