@@ -151,9 +151,14 @@ export function Auth({
             {login ? "Create an account" : "Sign in"}
           </button>
         </p>
+        {login && (
+          <p className={styles.hint}>
+            <a href="/forgot-password">Forgot your password?</a>
+          </p>
+        )}
         <p className={styles.hint}>
-          Email and password sign-in is available in this build. Password
-          recovery and social sign-in are not yet available.
+          Email and password sign-in. Recovery requires a verified email and
+          configured email delivery. Social sign-in is not available.
         </p>
       </div>
       <footer className={styles.footer}>Sandbox build. No live money.</footer>

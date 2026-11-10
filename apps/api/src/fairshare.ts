@@ -1,3 +1,8 @@
+import {
+  decodeDocxBase64,
+  extractDocx,
+  MAX_DOCX_REQUEST_BYTES,
+} from "./docx.js";
 import { decodePdfBase64, extractPdf, MAX_PDF_REQUEST_BYTES } from "./pdf.js";
 import { randomUUID } from "node:crypto";
 import type { FastifyInstance, FastifyRequest } from "fastify";
@@ -162,6 +167,20 @@ export function registerFairshareRoutes(
     app.store.db.exec(
       "ALTER TABLE fairshare_documents ADD COLUMN provenance TEXT",
     );
+  for (const [name, type] of [
+    ["original", "BLOB"],
+    ["original_mime", "TEXT"],
+  ])
+    if (
+      !(
+        app.store.db
+          .prepare("PRAGMA table_info(fairshare_documents)")
+          .all() as any[]
+      ).some((c) => c.name === name)
+    )
+      app.store.db.exec(
+        `ALTER TABLE fairshare_documents ADD COLUMN ${name} ${type}`,
+      );
   const base = "/api/workspaces/:workspaceId/collaborations";
   function access(req: FastifyRequest) {
     const p = params(req);
@@ -375,7 +394,7 @@ export function registerFairshareRoutes(
       };
       app.store.db
         .prepare(
-          "INSERT INTO fairshare_documents(workspace_id,collaboration_id,id,revision,source,hash,provenance) VALUES(?,?,?,?,?,?,?)",
+          "INSERT INTO fairshare_documents(workspace_id,collaboration_id,id,revision,source,hash,provenance,original,original_mime) VALUES(?,?,?,?,?,?,?,?,?)",
         )
         .run(
           p.workspaceId,
@@ -385,6 +404,8 @@ export function registerFairshareRoutes(
           JSON.stringify(doc),
           sourceHash(doc.text),
           JSON.stringify(provenance),
+          bytes,
+          "application/pdf",
         );
       reply.code(201);
       return {
@@ -398,6 +419,85 @@ export function registerFairshareRoutes(
     },
   );
   // Metadata only; full confidential text stays behind the individual document endpoint.
+  app.post(
+    `${base}/:collaborationId/documents/docx`,
+    { bodyLimit: MAX_DOCX_REQUEST_BYTES },
+    async (req, reply) => {
+      const { p, user } = access(req);
+      app.store.limit(`docx:${user.id}`, 5);
+      const b = body(req);
+      const mime =
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+      if (b.mimeType !== mime)
+        throw new DomainError("INVALID_DOCX", "Upload a DOCX document.");
+      const bytes = decodeDocxBase64(b.base64);
+      const parsed = await extractDocx(bytes);
+      access(req);
+      const documentId = randomUUID();
+      const doc: SourceDocument = {
+        documentId,
+        revision: 1,
+        text: parsed.text,
+      };
+      const provenance = {
+        inputType: "DOCX",
+        sourceFileSha256: parsed.sourceFileSha256,
+        ...parsed.extraction,
+      };
+      app.store.db
+        .prepare(
+          "INSERT INTO fairshare_documents(workspace_id,collaboration_id,id,revision,source,hash,provenance,original,original_mime) VALUES(?,?,?,?,?,?,?,?,?)",
+        )
+        .run(
+          p.workspaceId,
+          p.collaborationId,
+          documentId,
+          1,
+          JSON.stringify(doc),
+          sourceHash(doc.text),
+          JSON.stringify(provenance),
+          bytes,
+          mime,
+        );
+      reply.code(201);
+      return {
+        documentId,
+        revision: 1,
+        sourceHash: sourceHash(doc.text),
+        provenance,
+        notice:
+          "Review extracted text against the original. Formatting, tracked edits and document layout are not preserved. No automatic AI processing occurred.",
+      };
+    },
+  );
+  app.get(
+    `${base}/:collaborationId/documents/:documentId/original`,
+    async (req, reply) => {
+      const { p } = access(req);
+      const row = app.store.db
+        .prepare(
+          "SELECT original,original_mime FROM fairshare_documents WHERE workspace_id=? AND collaboration_id=? AND id=?",
+        )
+        .get(p.workspaceId, p.collaborationId, p.documentId) as any;
+      if (!row?.original)
+        throw new DomainError(
+          "NOT_FOUND",
+          "Original file unavailable for this document. Older uploads retain extracted text only.",
+        );
+      const extension =
+        row.original_mime === "application/pdf" ? "pdf" : "docx";
+      return reply
+        .header("Cache-Control", "private, no-store")
+        .header("X-Content-Type-Options", "nosniff")
+        .header("Content-Security-Policy", "sandbox; default-src 'none'")
+        .header(
+          "Content-Disposition",
+          `attachment; filename="fairshare-original.${extension}"`,
+        )
+        .type(row.original_mime)
+        .send(Buffer.from(row.original));
+    },
+  );
   app.get(`${base}/:collaborationId/documents`, async (req) => {
     const { p } = access(req);
     const query = req.query as Record<string, unknown>;
@@ -438,12 +538,13 @@ export function registerFairshareRoutes(
     const { p } = access(req);
     const row = app.store.db
       .prepare(
-        "SELECT source,hash,extraction,provenance FROM fairshare_documents WHERE workspace_id=? AND collaboration_id=? AND id=?",
+        "SELECT source,hash,extraction,provenance,original IS NOT NULL AS has_original FROM fairshare_documents WHERE workspace_id=? AND collaboration_id=? AND id=?",
       )
       .get(p.workspaceId, p.collaborationId, p.documentId) as any;
     if (!row) throw new DomainError("NOT_FOUND", "Document not found");
     return {
       ...JSON.parse(row.source),
+      hasOriginal: !!row.has_original,
       sourceHash: row.hash,
       extraction: row.extraction ? JSON.parse(row.extraction) : null,
       provenance: row.provenance
