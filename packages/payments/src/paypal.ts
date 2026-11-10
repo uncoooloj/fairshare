@@ -392,7 +392,11 @@ export class PayPalSandbox {
     if (typeof parent === "string") {
       const url = new URL(parent);
       if (
-        url.origin === BASE &&
+        [BASE, "https://api.sandbox.paypal.com"].includes(url.origin) &&
+        !url.username &&
+        !url.password &&
+        !url.search &&
+        !url.hash &&
         /^\/v2\/payments\/captures\/[A-Za-z0-9_-]+$/.test(url.pathname)
       )
         captureId = url.pathname.split("/").at(-1);
