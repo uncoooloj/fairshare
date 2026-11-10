@@ -1,6 +1,6 @@
 # Cloudflare deployment
 
-Target: Cloudflare. Status: OpenNext build and Wrangler deployment dry-run pass; **not deployed**. The optional API Worker's local workerd smoke now passes, including Durable Object restart persistence and mocked provider flow. Hosted/runtime browser acceptance remains pending.
+Target: Cloudflare. **Not deployed.** Historical checks recorded a successful OpenNext build and Wrangler deployment dry-run. The optional API Worker's local workerd smoke now passes, including Durable Object restart persistence and mocked provider flow. Hosted/runtime browser acceptance remains pending.
 
 ## What ships where
 
@@ -30,7 +30,7 @@ node --test deploy/cloudflare/preflight.test.mjs
 npm run check:cloudflare -w @fairshare/api
 ```
 
-OpenNext is deliberately the adapter for the existing Next app, not a simultaneous framework rewrite. Cloudflare now recommends vinext for new Next apps; evaluate that separately rather than combine framework and database migrations before the demo.
+OpenNext adapts the existing Next app. A framework migration is a separate decision from the API and storage work.
 
 The Worker has no shared application cache configured. Keep authenticated responses `private`/`no-store`; do not cache cookies, agreement documents or payment state. `nodejs_compat` supports the web adapter; it does not make the separate Node API Worker-compatible.
 
