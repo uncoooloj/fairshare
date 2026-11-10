@@ -14,3 +14,11 @@ export function reminderNotice(result:{status:string;repeated?:boolean}) {
  const prefix=result.repeated?'A reminder was already attempted in the last 24 hours. No additional email was sent. ':'';
  switch(result.status){case 'PROVIDER_ACCEPTED':return prefix+'The email provider accepted the reminder. Inbox delivery is not confirmed.';case 'SENDING':return prefix+'The reminder request is still processing. Do not resend.';default:return prefix+'Delivery is unconfirmed. Do not resend; another attempt is blocked for 24 hours to avoid duplicates.';}
 }
+
+/** Fall back to the current version if an obsolete selection is no longer present. */
+export function discussionVersion(agreement:Agreement,id:number):Version|undefined {
+ return agreement.value.versions.find(version=>version.id===id)??agreement.value.versions.at(-1);
+}
+export function discussionThreads(comments:ReviewComment[],topic:Topic|'ALL') {
+ return comments.filter(comment=>!comment.parentId&&(topic==='ALL'||comment.ruleKey===topic)).map(root=>({root,replies:comments.filter(reply=>reply.parentId===root.id&&reply.versionId===root.versionId&&reply.ruleKey===root.ruleKey)}));
+}
