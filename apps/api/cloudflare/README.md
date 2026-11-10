@@ -1,6 +1,7 @@
 # Cloudflare API runtime
 
-Not deployed. The optional Worker forwards every request to one SQLite-backed
+Hosted sandbox verification is recorded in `docs/CLOUDFLARE.md`; current checkpoint
+redeployment remains explicit. The optional Worker forwards every request to one SQLite-backed
 `FairshareAuthority` Durable Object. Identity, agreement, payment and webhook
 tables stay in one atomic SQL authority; do not shard workspaces without a global
 capture-reservation design.

@@ -421,7 +421,7 @@ export async function extractContract(
         `https://api.cloudflare.com/client/v4/accounts/${config.accountId}/ai/run/${config.model}`,
         {
           method: "POST",
-          redirect: "error",
+          redirect: "manual",
           headers: {
             Authorization: `Bearer ${config.apiToken}`,
             "Content-Type": "application/json",

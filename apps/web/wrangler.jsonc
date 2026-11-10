@@ -4,6 +4,27 @@
   "main": ".open-next/worker.js",
   "compatibility_date": "2026-11-10",
   "compatibility_flags": ["nodejs_compat"],
-  "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
-  "observability": { "enabled": false },
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS",
+  },
+  "observability": {
+    "enabled": false,
+  },
+  "account_id": "5f24cf447e80f1b1b67c4c0266f91a56",
+  "workers_dev": true,
+  "preview_urls": false,
+  "limits": {
+    "cpu_ms": 10000,
+  },
+  "vars": {
+    "FAIRSHARE_API_URL": "https://fairshare-api-sandbox.udaleamehoj.workers.dev",
+    "FAIRSHARE_WEB_ORIGIN": "https://fairshare-web.udaleamehoj.workers.dev",
+  },
+  "services": [
+    {
+      "binding": "FAIRSHARE_API",
+      "service": "fairshare-api-sandbox",
+    },
+  ],
 }

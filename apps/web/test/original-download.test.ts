@@ -89,3 +89,32 @@ test("BFF preserves pagination query on the fixed API destination", async () => 
     globalThis.fetch = previous;
   }
 });
+
+test("BFF rejects redirects without forwarding the session to another destination", async () => {
+  const previous = globalThis.fetch;
+  let calls = 0;
+  try {
+    globalThis.fetch = async (_url, init) => {
+      calls++;
+      assert.equal(init?.redirect, "manual");
+      return new Response(null, {
+        status: 302,
+        headers: { location: "https://untrusted.example" },
+      });
+    };
+    const response = await GET(
+      new NextRequest("http://localhost/api/service/health", {
+        headers: { cookie: "fairshare_session=private-session" },
+      }),
+      { params: Promise.resolve({ path: ["health"] }) },
+    );
+    assert.equal(response.status, 502);
+    assert.equal(calls, 1);
+    assert.doesNotMatch(
+      await response.text(),
+      /private-session|untrusted.example/,
+    );
+  } finally {
+    globalThis.fetch = previous;
+  }
+});
