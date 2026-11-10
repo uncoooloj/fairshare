@@ -93,4 +93,14 @@ test("workspace changes fence in-flight reads and clear workspace-scoped state",
     (mutate.match(/workspaceRequestId !== workspaceRequest\.current/g) || [])
       .length >= 3,
   );
+
+  const intake = source
+    .split("async function createFromAgreement")[1]
+    .split("async function refresh")[0];
+  assert.match(intake, /commitWorkspace\(result\.workspace\.id\)/);
+  assert.ok(
+    intake.indexOf("commitWorkspace(result.workspace.id)") <
+      intake.indexOf("setSelected(result.agreement)"),
+    "first-workspace intake commits the live workspace before applying its result",
+  );
 });

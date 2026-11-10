@@ -12,6 +12,7 @@ import { ActivityLogSettings } from "./activity-log-settings";
 import { formatDate } from "../lib/preferences";
 import { LocalOcrChoice } from "./local-ocr-choice";
 import { AgreementInvoices } from "./agreement-invoices";
+import { SandboxCheckoutForm } from "./sandbox-checkout-form";
 import { ReviewDiscussion, ReviewReminder } from "./review-discussion";
 import { RevenueRules } from "./revenue-rules";
 import {
@@ -62,6 +63,7 @@ import { PaymentRecovery } from "./payment-recovery";
 import { MfaSettings } from "./mfa-settings";
 import { ProfileForm } from "./profile-form";
 import { recoverSourceDocument } from "../lib/source-recovery";
+import { createSandboxCheckout } from "../lib/checkout-retry";
 import dynamic from "next/dynamic";
 const PaymentGrid = dynamic(
   () => import("../src/components/PaymentGrid").then((m) => m.PaymentGrid),
@@ -296,12 +298,11 @@ export default function FairshareApp() {
           ...result.workspace,
         },
       ]);
-      setWorkspace(result.workspace.id);
+      commitWorkspace(result.workspace.id);
       setAgreements((current) => [
         result.agreement,
         ...current.filter((item) => item.id !== result.agreement.id),
       ]);
-      openRequest.current++;
       setSelected(result.agreement);
       setCreating(false);
       setSection(Section.Agreements);
@@ -1343,6 +1344,36 @@ export default function FairshareApp() {
                         userId={user.id}
                         canCreate={organizer && !!active}
                       />
+                      {organizer && active && (
+                        <SandboxCheckoutForm
+                          key={selected.id}
+                          busy={busy}
+                          onSubmit={(amount, source) =>
+                            run(async () => {
+                              const amountCents = parseCents(amount);
+                              const storageKey = `fairshare-checkout:${user.id}:${selected.id}:${amountCents}`;
+                              const r = await createSandboxCheckout({
+                                storage: sessionStorage,
+                                storageKey,
+                                amountCents,
+                                createRequestKey: () => crypto.randomUUID(),
+                                createPayment: (requestKey, cents) =>
+                                  api(`${base}/payments`, "POST", {
+                                    requestKey,
+                                    amountCents: cents,
+                                    source,
+                                  }),
+                                refresh,
+                              });
+                              setNotice(
+                                r.approval_url
+                                  ? "Sandbox checkout created. Use the approval link below."
+                                  : "Payment request recorded. Check its status before trying again.",
+                              );
+                            })
+                          }
+                        />
+                      )}
                       <table>
                         <thead>
                           <tr>
