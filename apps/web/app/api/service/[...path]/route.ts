@@ -57,7 +57,10 @@ async function handler(
       : await req.text();
     if (
       body &&
-      body.length > (["pdf", "docx"].includes(parts.at(-1) || "") ? 7 * 1024 * 1024 : 100000)
+      body.length >
+        (["pdf", "docx"].includes(parts.at(-1) || "")
+          ? 7 * 1024 * 1024
+          : 100000)
     )
       return NextResponse.json(
         { error: { message: "Request too large" } },
@@ -73,15 +76,25 @@ async function handler(
     });
     if (result.ok && req.method === "GET" && parts.at(-1) === "original") {
       const mime = result.headers.get("content-type")?.split(";")[0];
-      if (mime !== "application/pdf" && mime !== "application/vnd.openxmlformats-officedocument.wordprocessingml.document") throw new Error("Unexpected file type");
+      if (
+        mime !== "application/pdf" &&
+        mime !==
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      )
+        throw new Error("Unexpected file type");
       const bytes = await result.arrayBuffer();
-      if (bytes.byteLength > 5 * 1024 * 1024) throw new Error("Original exceeds size limit");
-      return new NextResponse(bytes, { status: 200, headers: {
-        "Content-Type": mime,
-        "Content-Disposition": `attachment; filename="fairshare-original.${mime === "application/pdf" ? "pdf" : "docx"}"`,
-        "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff",
-        "Content-Security-Policy": "sandbox; default-src 'none'",
-      }});
+      if (bytes.byteLength > 5 * 1024 * 1024)
+        throw new Error("Original exceeds size limit");
+      return new NextResponse(bytes, {
+        status: 200,
+        headers: {
+          "Content-Type": mime,
+          "Content-Disposition": `attachment; filename="fairshare-original.${mime === "application/pdf" ? "pdf" : "docx"}"`,
+          "Cache-Control": "private, no-store",
+          "X-Content-Type-Options": "nosniff",
+          "Content-Security-Policy": "sandbox; default-src 'none'",
+        },
+      });
     }
     const data = await result.json();
     const session = data.token;
@@ -100,7 +113,10 @@ async function handler(
       });
     if (
       parts.join("/") === "auth/logout" ||
-      (["auth/password", "auth/password-reset/confirm"].includes(parts.join("/")) && result.ok) ||
+      (["auth/password", "auth/password-reset/confirm"].includes(
+        parts.join("/"),
+      ) &&
+        result.ok) ||
       result.status === 401
     )
       response.cookies.delete(COOKIE);
