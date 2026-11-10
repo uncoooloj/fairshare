@@ -14,7 +14,7 @@ export async function verifyAndPlanWebhook(client:Pick<PayPalSandbox,'verifyWebh
  let action:WebhookAction={kind:WebhookActionKind.Ignore,eventId,eventType};
  if(eventType==='PAYMENT.CAPTURE.COMPLETED') action={...action,kind:orderId?WebhookActionKind.ReconcileCapture:WebhookActionKind.RecordUnmatched,providerId:captureId,orderId};
  // Hold conservatively; exact matching of an app-reserved refund can resolve the hold downstream.
- else if(['PAYMENT.CAPTURE.REFUNDED','PAYMENT.CAPTURE.REVERSED','PAYMENT.CAPTURE.DENIED','PAYMENT.CAPTURE.PENDING'].includes(eventType))action={...action,kind:WebhookActionKind.HoldCapture,providerId:captureId,reason:eventType};
+ else if(['PAYMENT.CAPTURE.REFUNDED','PAYMENT.CAPTURE.REVERSED','PAYMENT.CAPTURE.DENIED','PAYMENT.CAPTURE.PENDING'].includes(eventType))action={...action,kind:WebhookActionKind.HoldCapture,providerId:captureId,orderId,reason:eventType};
  else if(eventType.startsWith('CUSTOMER.DISPUTE.'))action={...action,kind:WebhookActionKind.HoldCapture,providerId:text(r.disputed_transactions?.[0]?.seller_transaction_id),reason:eventType};
  else if(eventType.startsWith('PAYMENT.PAYOUTS-'))action={...action,kind:WebhookActionKind.ReconcilePayout,providerId:text(r.payout_batch_id)??text(r.batch_header?.payout_batch_id),reason:eventType};
  if(action.kind!==WebhookActionKind.Ignore&&!action.providerId) action={...action,kind:WebhookActionKind.RecordUnmatched};

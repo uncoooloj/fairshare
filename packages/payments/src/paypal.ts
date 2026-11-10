@@ -100,14 +100,20 @@ export class PayPalSandbox {
   }
   async refundCapture(captureId: string, amountCents: number, currency: string, requestId: string) {
     requestKey(requestId);
-    const result = await this.call(`/v2/payments/captures/${encodeURIComponent(captureId)}/refund`, { amount: money(amountCents, currency) }, requestId);
+    const result = await this.call(`/v2/payments/captures/${encodeURIComponent(captureId)}/refund`, { amount: money(amountCents, currency), invoice_id: requestId }, requestId);
     if (!result.id || !result.status || cents(result.amount?.value) !== amountCents || result.amount?.currency_code !== currency) throw new PayPalError('REFUND_MISMATCH');
     return { id: result.id as string, status: result.status as string, amountCents, currency };
   }
   async getRefund(refundId: string) {
     const result = await this.call(`/v2/payments/refunds/${encodeURIComponent(refundId)}`, undefined);
     if (result.id !== refundId || !['COMPLETED', 'PENDING', 'FAILED', 'CANCELLED'].includes(result.status) || result.amount?.currency_code !== 'USD') throw new PayPalError('REFUND_MISMATCH');
-    return { id: result.id as string, status: result.status as string, amountCents: cents(result.amount.value), currency: result.amount.currency_code as string };
+    let captureId: string | undefined;
+    const parent = result.links?.find((link: Json) => link.rel === 'up')?.href;
+    if (typeof parent === 'string') {
+      const url = new URL(parent);
+      if (url.origin === BASE && /^\/v2\/payments\/captures\/[A-Za-z0-9_-]+$/.test(url.pathname)) captureId = url.pathname.split('/').at(-1);
+    }
+    return { id: result.id as string, status: result.status as string, amountCents: cents(result.amount.value), currency: result.amount.currency_code as string, captureId, reference: typeof result.invoice_id === 'string' ? result.invoice_id : undefined };
   }
   /** One recipient per persisted operation. Capability is OFF unless explicitly gated. */
   async createPayout(input: { requestId: string; recipientId: string; amountCents: number; currency: string }) {
