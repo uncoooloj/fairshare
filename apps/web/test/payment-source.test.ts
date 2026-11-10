@@ -23,5 +23,6 @@ test("source changes retain uncertain checkout key rather than silently creating
     /const storageKey = `fairshare-checkout:\$\{user.id\}:\$\{selected.id\}:\$\{amountCents\}`/,
   );
   assert.match(source, /p.source_name \|\| "PayPal"/);
-  assert.match(source, /requestKey,\s*amountCents,\s*source,/);
+  assert.match(source, /createSandboxCheckout\(\{/);
+  assert.match(source, /source: paymentSource/);
 });
