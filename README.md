@@ -69,7 +69,7 @@ These checks provide source-level and build evidence. They do not prove browser 
 - Checkout payment-source labels are organizer-entered metadata, not evidence of external revenue or a confirmed payment.
 - Local scanned-PDF OCR is disabled by default, runs only after a user selects it, and needs host-installed Poppler and Tesseract. It is not a Cloudflare upload or a correctness guarantee.
 - Authenticator MFA needs a separately managed server encryption key; it is not enabled by the synthetic DEMO alone.
-- `HACKATHON_MFA_SIMULATION=true` is a separate, explicitly labeled SANDBOX-only synthetic-account mode. It rejects DEMO, production, and live-PayPal configuration; it does not replace normal authenticator-key requirements or protect real accounts.
+- `HACKATHON_MFA_SIMULATION=true` is a separate, explicitly labeled SANDBOX-only synthetic-account mode. It rejects DEMO, production, and live-PayPal configuration; it applies process-wide to accounts without an existing real authenticator, so use a dedicated synthetic-only database. It does not replace normal authenticator-key requirements or protect real accounts.
 
 ## Documentation
 

@@ -23,22 +23,25 @@ test("successful source save clears source dirty state but preserves unsaved rul
   assert.ok(app.includes("setDraftDirty(!/\\.(pdf|docx)$/i.test(f.name))"));
   assert.match(
     app,
-    /onDirty=\{\(\) => \{ rulesDirty.current = true; setDraftDirty\(true\); \}\}/,
+    /onDirty=\{\(\)\s*=>\s*\{\s*rulesDirty\.current\s*=\s*true;\s*setDraftDirty\(true\);\s*\}\}/,
   );
 });
 test("sample rules show party names and explicit human-review guidance", () => {
   assert.match(widgets, /source.trim\(\) === sampleAgreement/);
   assert.match(widgets, /Sample text is not your participants’ agreement/);
-  assert.match(widgets, /member => member.displayName/);
+  assert.match(widgets, /\(?member\)?\s*=>\s*member\.displayName/);
   assert.match(widgets, /Add the correct people in People/);
   assert.match(widgets, /not extracted or approved terms/);
   assert.match(widgets, /everyone must review and approve/);
 });
 test("sidebar email truncates visibly without losing full address", () => {
   assert.ok(app.includes("<small title={user.email}>{user.email}</small>"));
-  assert.match(css, /\.identity > div \{ min-width: 0; flex: 1; \}/);
   assert.match(
     css,
-    /\.identity small \{ overflow: hidden; text-overflow: ellipsis; white-space: nowrap; \}/,
+    /\.identity\s*>\s*div\s*\{\s*min-width:\s*0;\s*flex:\s*1;\s*\}/,
+  );
+  assert.match(
+    css,
+    /\.identity\s+small\s*\{\s*overflow:\s*hidden;\s*text-overflow:\s*ellipsis;\s*white-space:\s*nowrap;\s*\}/,
   );
 });
