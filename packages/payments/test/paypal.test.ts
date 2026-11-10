@@ -354,3 +354,32 @@ test("refund recovery exposes original capture and request reference only from e
   assert.equal(good.reference, "refund-op");
   assert.equal((await client.getRefund("r2")).captureId, undefined);
 });
+
+test("refund parent accepts exact PayPal sandbox alias but rejects lookalikes", async () => {
+  for (const [origin, valid] of [
+    ["https://api.sandbox.paypal.com", true],
+    ["https://api.sandbox.paypal.com.evil.test", false],
+    ["https://api.paypal.com", false],
+    ["http://api.sandbox.paypal.com", false],
+  ] as const) {
+    const { client, requests } = setup([
+      token,
+      {
+        id: "r1",
+        status: "COMPLETED",
+        invoice_id: "refund-op",
+        amount: { value: "1.00", currency_code: "USD" },
+        links: [{ rel: "up", href: origin + "/v2/payments/captures/CAP1" }],
+      },
+    ]);
+    assert.equal(
+      (await client.getRefund("r1")).captureId,
+      valid ? "CAP1" : undefined,
+    );
+    assert.ok(
+      requests.every((r) =>
+        r.url.startsWith("https://api-m.sandbox.paypal.com/"),
+      ),
+    );
+  }
+});
