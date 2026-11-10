@@ -141,6 +141,8 @@ export default function FairshareApp() {
   const workspaceRole = workspaces.find((item) => item.id === workspace)?.role;
   const canCreateAgreement =
     workspaceRole === "OWNER" || workspaceRole === "MEMBER";
+  const isInvitationFlow = Boolean(flowToken && flowKind === "/invitation");
+  const needsWorkspace = !workspace && section !== Section.Settings;
   const organizer =
     selected?.value.members.find((m) => m.userId === user?.id)?.role ===
     "ORGANIZER";
@@ -325,6 +327,11 @@ export default function FairshareApp() {
     setError("");
     setNotice("");
   }
+  function dismissAccessFlow() {
+    setFlowToken("");
+    setError("");
+    history.replaceState(null, "", "/");
+  }
   async function mutate(action: string, extra: Record<string, unknown> = {}) {
     try {
       const a = await api<Agreement>(base + action, "POST", {
@@ -464,11 +471,7 @@ export default function FairshareApp() {
             kind={flowKind === "/verify-email" ? "verification" : "invitation"}
             email={user.email}
             busy={busy}
-            onCancel={() => {
-              setFlowToken("");
-              setError("");
-              history.replaceState(null, "", "/");
-            }}
+            onCancel={isInvitationFlow ? dismissAccessFlow : undefined}
             onContinue={() =>
               run(async () => {
                 if (flowKind === "/verify-email") {
@@ -490,8 +493,7 @@ export default function FairshareApp() {
             }
           />
         )}
-        {flowToken && flowKind === "/invitation" ? null : !workspace &&
-          section !== Section.Settings ? (
+        {isInvitationFlow ? null : needsWorkspace ? (
           <>
             {section === Section.Payouts && (
               <Heading

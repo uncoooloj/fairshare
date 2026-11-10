@@ -1,6 +1,6 @@
 # Cloudflare deployment
 
-Target: Cloudflare. Status: OpenNext build and Wrangler deployment dry-run pass; **not deployed**. Local workerd preview is blocked in this execution sandbox by `uv_interface_addresses`, including with an explicit loopback bind. Runtime/browser acceptance remains pending.
+Target: Cloudflare. **Not deployed.** Historical checks recorded a successful OpenNext build and Wrangler deployment dry-run. The optional API Worker's local workerd smoke now passes, including Durable Object restart persistence and mocked provider flow. Hosted/runtime browser acceptance remains pending.
 
 ## What ships where
 
@@ -8,7 +8,7 @@ Target: Cloudflare. Status: OpenNext build and Wrangler deployment dry-run pass;
 | ---------------------------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------------- |
 | Next web + same-origin BFF         | Workers with OpenNext                          | Build/preview acceptance, account access and stable API origin                                |
 | Agreement/identity/ledger database | Single-authority Durable Object SQLite adapter | Local runtime/restart checks exist; deployed storage, backup and migration acceptance pending |
-| API routes                         | Optional Worker adapter reusing API handlers   | Local workerd verification exists; full deployed acceptance pending                           |
+| API routes                         | Optional Worker adapter reusing API handlers   | Local workerd verification passes; full deployed acceptance pending                           |
 | PDF/OCR                            | Private stateless Container parser adapter     | Build/test Container image and deployed bounded private transfer/cleanup                      |
 | Reconciliation                     | Opt-in Durable Object alarms                   | Deployed alarm recovery acceptance pending; existing leases/fencing retained                  |
 | Original documents                 | Private R2 candidate                           | Authorized object access, size limits, deletion and DB/object consistency                     |
@@ -18,7 +18,7 @@ Do not deploy today's SQLite file on a Container disk, Worker temporary filesyst
 
 The quickest intermediate path is Workers frontend + the existing Node API on a verified persistent host. This is **not** an all-Cloudflare deployment; do not silently substitute it for the requested target. A temporary laptop tunnel remains only a test endpoint. No provider resources, account terms, billing or secret upload is performed by this change.
 
-See `apps/api/cloudflare/README.md` for the optional backend Worker, its local verification and remaining deployment gates. Existing local SQLite data is not automatically migrated.
+The optional backend Worker routes every request to one named SQLite Durable Object and reuses the existing API business handlers through a narrow no-eval router. See `apps/api/cloudflare/README.md` for its local verification and remaining deployment gates. Existing local SQLite data is not automatically migrated.
 
 ## Local build
 
@@ -27,11 +27,14 @@ npm ci
 npm run cloudflare:build -w @fairshare/web
 npm run cloudflare:preview -w @fairshare/web
 node --test deploy/cloudflare/preflight.test.mjs
+npm run check:cloudflare -w @fairshare/api
 ```
 
-OpenNext is deliberately the adapter for the existing Next app, not a simultaneous framework rewrite. Cloudflare now recommends vinext for new Next apps; evaluate that separately rather than combine framework and database migrations before the demo.
+OpenNext adapts the existing Next app. A framework migration is a separate decision from the API and storage work.
 
 The Worker has no shared application cache configured. Keep authenticated responses `private`/`no-store`; do not cache cookies, agreement documents or payment state. `nodejs_compat` supports the web adapter; it does not make the separate Node API Worker-compatible.
+
+The checked local API smoke covers authentication, validation, tenant isolation, atomic intake/retry, source-bound proposals, approval/activation, stale revisions, Durable Object restart persistence, and mocked PayPal create/capture, net-fee allocation and duplicate retry safety. It does not use merchant credentials or make provider requests, so it is not real provider evidence.
 
 ## Deployment gate
 
@@ -39,9 +42,9 @@ Before running `cloudflare:deploy`, provide stable `FAIRSHARE_API_URL` and `FAIR
 
 Use approved account access and secret storage. No `wrangler login`, secret upload, DNS change or paid-resource creation is automatic. Do not commit `.dev.vars`, `.wrangler`, generated bundles or credentials.
 
-Acceptance: sign-in/cookie/CSRF checks; upload→review→all-party approval; cross-tenant rejection; preserved ledger after restart; duplicate/reordered signed PayPal webhook handling; idempotent payout reconciliation. Register the stable public API webhook URL only after routing and signature checks work. A verified isolated webhook receiver is not proof the app ledger reconciles.
+Hosted acceptance remains: sign-in/cookie/CSRF checks; upload→review→all-party approval; cross-tenant rejection; preserved ledger after restart; duplicate/reordered signed PayPal webhook handling; idempotent payout reconciliation; parser privacy/bounds; alarm recovery; backup, migration and rollback. Register the stable public API webhook URL only after routing and signature checks work. A verified isolated webhook receiver is not proof the app ledger reconciles.
 
-## Sources (checked November 10, 2026)
+## Historical sources (checked November 10, 2026)
 
 - https://developers.cloudflare.com/workers/framework-guides/web-apps/opennext/
 - https://developers.cloudflare.com/workers/framework-guides/web-apps/nextjs/

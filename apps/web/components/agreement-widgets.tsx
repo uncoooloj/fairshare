@@ -130,9 +130,9 @@ export function AgreementList({
       a.value.name.toLowerCase().includes(query.toLowerCase()) &&
       (filter === "All" || agreementStatus(a) === filter),
   );
-  const empty = agreementEmptyState(workspaceRole);
+  const emptyState = agreementEmptyState(workspaceRole);
   if (!agreements.length)
-    return <Empty title={empty.title}>{empty.description}</Empty>;
+    return <Empty title={emptyState.title}>{emptyState.description}</Empty>;
   return (
     <section className="agreement-list" aria-label="Agreements">
       <div className="list-toolbar">

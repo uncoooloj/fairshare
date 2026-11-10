@@ -19,7 +19,7 @@ AI interprets and explains. Collaborators agree. Deterministic code calculates. 
 ## Decisions to design around
 
 - The product name is Fairshare. Earlier names in concept images are obsolete. Trademark and domain availability remain unchecked.
-- The product is desktop web first. Responsive collaborator review is useful, but the native Kept screens are not the new platform specification.
+- The product is desktop web first. Responsive collaborator review is useful, but earlier native concept screens are not the new platform specification.
 - Use a clean professional SaaS workspace: white surfaces, restrained blue accents, compact typography, thin dividers and generous whitespace.
 - Payouts stays in primary navigation. Clarification is part of agreement setup, not a menu destination.
 - There is no routine approval or rejection of someone’s calculated share after the rules are active.
@@ -54,6 +54,12 @@ The hackathon implementation uses PayPal sandbox, not live money. PayPal authent
 
 The primary product object is an agreement. Documents, people, clarifications, rule versions and incoming revenue live inside its workspace. Backend collaboration aggregates may retain their internal names. A separate global Collaborators directory and Library are not needed for the first version. A future cross-collaboration search does not require creating empty menu items now.
 
+## Settings boundaries
+
+Display preferences change the presentation of USD amounts and dates; they do not convert money or change agreement inputs. The current settings UI offers notification preferences for the in-app feed. Legacy saved email preference data can still gate configured approval-request email on the API; security email remains outside those controls.
+
+Each workspace owner or member manages their own workspace-scoped sandbox payout destination. A saved ID is not provider-verified, is not an OAuth connection, and does not expose server credentials. The activity log is read-only and only shows account activity and agreement events the person may access.
+
 ## Agreement workspace
 
 The workspace should answer: What did we agree? Who has approved? What money has arrived? What is each person owed? Has it been paid?
@@ -69,19 +75,21 @@ The agreement list should show a real metric such as **Revenue received**, with 
 ## Organizer journey
 
 1. **Create account or sign in.** Collect the minimum identity information needed. Show an identifiable current user in the header. Initials are a fallback for a real profile name, not decorative placeholders.
-2. **Create collaboration.** Ask for its name and a short description. Let the organizer save and return. A creative role such as producer is separate from permissions such as organizer or participant.
-3. **Add the source agreement.** Offer upload, paste text and a clearly labeled sample. State what formats and size limits the implementation actually supports. Do not promise DOCX, PDF or scanned-document extraction until supported.
-4. **Identify participants.** Match names in the agreement to invited accounts. Unknown or ambiguous names must be resolved rather than silently assigned. Confirm the advance recipient separately from the organizer’s role.
-5. **Review the proposed rules.** Do this before asking people to activate them. Invitations can be drafted during setup; sending one is a distinct action.
+2. **Add the source agreement.** Start with upload or pasted text. The first intake creates the workspace, agreement and immutable source together, so a failed source is not a partial collaboration. The implementation supports bounded PDF and DOCX text extraction; local scanned-PDF OCR is an optional, separately configured path and must remain explicit. Formatting, tracked edits and OCR output require comparison against the original.
+3. **Review the generated name.** A filename can provide an initial title. If there is no filename, a short safe heading from pasted source can do so; clauses, commands and unsafe text must fall back to **Untitled agreement**. This local fallback is not AI interpretation. Let the organizer rename the workspace or agreement without implying that its terms changed. A creative role such as producer is separate from permissions such as organizer or participant.
+4. **Identify participants.** Match names in the agreement to invited accounts, then add every accepted account that needs a share or approval to the agreement. Unknown or ambiguous names must be resolved rather than silently assigned. Confirm the advance recipient separately from the organizer’s role. Accepting a workspace invitation does not add someone to the agreement or make them eligible to review.
+5. **Confirm the roster, then review the proposed rules.** Before the first draft, the person saving it explicitly acknowledges the displayed roster, including an intentional one-person agreement. This acknowledgement is not an approval or an additional membership action. Do this before asking people to activate the rules. Create a private invitation link when access is needed and share it directly; the optional configured legacy email-invitation route is backend-only in the current web experience.
 6. **Connect payment capability when needed.** The organizer’s merchant setup and collaborators’ recipient details are different tasks. Do not imply that every participant needs to supply merchant API keys. Provider-specific onboarding depends on the integration chosen and verified.
+
+The workspace-name field begins with the saved name. Background refreshes may update an untouched field, but must not replace a name someone is currently editing; a failed save leaves that local change available to retry.
 
 ## Invitee journey
 
-The invitation identifies the collaboration and inviter, without exposing the full agreement to an unauthenticated visitor. After the invitee authenticates with the intended identity, show their role, proposed share, recoupment effect and the exact version awaiting review.
+The invitation identifies the collaboration and inviter, without exposing the full agreement to an unauthenticated visitor. Accepting it authenticates the person into the workspace only. The organizer must add that accepted member to the agreement before they can inspect its terms, receive a proposed share or review a version.
 
 Actions are **Approve this version**, **Request a change** and **Ask a question**. A person can inspect the source and example calculation before deciding. Approval of the app’s allocation rules is not presented as signing or legally amending the original agreement.
 
-Show invitation states separately from rule approvals: an invitation may be sent or accepted while approval is still pending. Expired, revoked, wrong-account and already-accepted links need clear recovery paths. A successful sign-in should return the person to the invitation rather than drop them on a generic dashboard.
+Show invitation states separately from rule approvals: a private link may be shared or accepted while approval is still pending. Provide a copied review reminder for direct sharing after a version is ready; it does not send email. Expired, revoked, wrong-account and already-accepted links need clear recovery paths. A successful sign-in should return the person to the invitation rather than drop them on a generic dashboard.
 
 ## Design states to include
 
@@ -93,11 +101,15 @@ Empty collaboration; saved draft; file selected; upload in progress; unsupported
 
 ## Review proposed interpretation
 
+Move through three visible stages: **Source agreement**, **Read the agreement**, then **Proposed rules**. Do not expose proposed-rule editing until a saved source is available and the person has acknowledged the reading step. Returning to a source clause must preserve the rules draft. A source-save failure keeps the edited source available for retry; it does not replace or delete the previously committed document on the server, and does not advance the flow.
+
 The rule-review screen places a source clause beside the structured rule it supports. Selecting a rule reveals its citation and exact excerpt. The document need not occupy half the screen permanently; a source drawer can preserve a calmer working view.
 
 Extract only what is supported. If the agreement does not specify a percentage, advance amount or recipient, show a missing value. Do not turn a plausible guess into a “found” term. Separate source-derived rules, AI suggestions and human clarifications visually.
 
 The proposed rule set should cover participants and shares; eligible revenue; currency; deductions and fees; recoupment amount, recipient and starting balance; payout conditions; and effective version. Percentages, recipients and calculations must pass deterministic validation before activation.
+
+Completing these stages only prepares a draft. It does not send a proposal, record an approval or activate any rules.
 
 ## Resolve ambiguity collaboratively
 

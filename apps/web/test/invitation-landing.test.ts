@@ -20,16 +20,14 @@ test("invitation confirmation suppresses competing application forms; creation r
     new URL("../components/fairshare-app.tsx", import.meta.url),
     "utf8",
   );
-  assert.match(
-    source,
-    /flowToken && flowKind === "\/invitation" \? null : !workspace/,
-  );
+  assert.match(source, /flowToken\s*&&\s*flowKind\s*===\s*"\/invitation"/);
+  assert.match(source, /isInvitationFlow\s*\?\s*null\s*:\s*needsWorkspace/);
   assert.match(
     source,
     /workspaceRole === "OWNER" \|\| workspaceRole === "MEMBER"/,
   );
-  assert.match(source, /!creating && canCreateAgreement/);
-  assert.match(source, /creating && canCreateAgreement \? \(/);
+  assert.match(source, /!creating\s*&&\s*canCreateAgreement/);
+  assert.match(source, /creating\s*&&\s*canCreateAgreement\s*\?\s*\(/);
   assert.match(
     source,
     /setCreating\(false\);\s*setWorkspace\(e.target.value\)/,
@@ -42,14 +40,18 @@ test("expired or unwanted invitations can be dismissed without consuming them", 
     new URL("../components/designer-auth.tsx", import.meta.url),
     "utf8",
   );
-  assert.match(prompt, /kind === "invitation" && onCancel/);
-  assert.match(prompt, /onClick=\{onCancel\}>Not now/);
+  assert.match(prompt, /isInvitation\s*&&\s*onCancel/);
+  assert.match(prompt, /onClick=\{onCancel\}\s*>\s*Not now/);
   const source = readFileSync(
     new URL("../components/fairshare-app.tsx", import.meta.url),
     "utf8",
   );
   assert.match(
     source,
-    /onCancel=\{\(\) => \{setFlowToken\(""\);setError\(""\);history.replaceState/,
+    /onCancel=\{isInvitationFlow\s*\?\s*dismissAccessFlow\s*:\s*undefined\}/,
+  );
+  assert.match(
+    source,
+    /function\s+dismissAccessFlow\s*\(\)\s*\{\s*setFlowToken\(""\);\s*setError\(""\);\s*history\.replaceState/,
   );
 });

@@ -188,6 +188,29 @@ export function Auth({
   );
 }
 
+function workspaceOnboardingCopy(section: string) {
+  switch (section) {
+    case "Agreements":
+      return {
+        title: "Your agreements start here",
+        description:
+          "Create a workspace to upload your first agreement, invite collaborators and agree how revenue is shared.",
+      };
+    case "Payouts":
+      return {
+        title: "No payouts yet",
+        description:
+          "Payouts will appear here when an agreement has approved rules and recorded payments. Start by creating your workspace.",
+      };
+    default:
+      return {
+        title: "Create your workspace",
+        description:
+          "A shared home for your agreements, collaborators and payment activity.",
+      };
+  }
+}
+
 /** Uses the existing POST /workspaces callback; never advances before API success. */
 export function WorkspaceOnboarding({
   busy,
@@ -203,18 +226,7 @@ export function WorkspaceOnboarding({
   const [name, setName] = useState("");
   const submitting = useRef(false);
   const [creating, setCreating] = useState(false);
-  const title =
-    section === "Agreements"
-      ? "Your agreements start here"
-      : section === "Payouts"
-        ? "No payouts yet"
-        : "Create your workspace";
-  const description =
-    section === "Agreements"
-      ? "Create a workspace to upload your first agreement, invite collaborators and agree how revenue is shared."
-      : section === "Payouts"
-        ? "Payouts will appear here when an agreement has approved rules and recorded payments. Start by creating your workspace."
-        : "A shared home for your agreements, collaborators and payment activity.";
+  const { title, description } = workspaceOnboardingCopy(section);
   return (
     <section className={styles.welcome}>
       <h1>{title}</h1>
@@ -310,18 +322,21 @@ export function AccessPrompt({
   onContinue: () => void;
   onCancel?: () => void;
 }) {
+  const isInvitation = kind === "invitation";
+  const handleContinue = () => {
+    if (!busy) onContinue();
+  };
+
   return (
     <section className={styles.access} aria-busy={busy}>
-      <h2>
-        {kind === "verification" ? "Verify your email" : "You’ve been invited"}
-      </h2>
+      <h2>{isInvitation ? "You’ve been invited" : "Verify your email"}</h2>
       <p>
-        {kind === "verification"
-          ? "Confirm this verification link for"
-          : "You will join using your signed-in account:"}{" "}
+        {isInvitation
+          ? "You will join using your signed-in account:"
+          : "Confirm this verification link for"}{" "}
         <strong>{email}</strong>.
       </p>
-      {kind === "invitation" && (
+      {isInvitation && (
         <p className={styles.hint}>
           Joining adds you to the workspace. The organizer must also add you to
           the agreement before you can review and approve its rules. It does not
@@ -331,17 +346,15 @@ export function AccessPrompt({
       <button
         className={styles.primary}
         disabled={busy}
-        onClick={() => {
-          if (!busy) onContinue();
-        }}
+        onClick={handleContinue}
       >
         {busy
           ? "Please wait…"
-          : kind === "verification"
-            ? "Verify email"
-            : "Accept invitation"}
+          : isInvitation
+            ? "Accept invitation"
+            : "Verify email"}
       </button>
-      {kind === "invitation" && onCancel && (
+      {isInvitation && onCancel && (
         <button type="button" disabled={busy} onClick={onCancel}>
           Not now
         </button>
