@@ -4,7 +4,7 @@ type CheckoutDependencies = {
   storage: Pick<Storage, "getItem" | "setItem" | "removeItem">;
   storageKey: string;
   amountCents: number;
-  source: unknown;
+  source?: unknown;
   createRequestKey: () => string;
   createPayment: (
     requestKey: string,
