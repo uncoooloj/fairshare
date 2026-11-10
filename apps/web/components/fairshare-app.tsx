@@ -30,6 +30,7 @@ import {
   payoutStatus,
 } from "./agreement-widgets";
 import { useEffect, useRef, useState } from "react";
+import { AgreementTermsFlow } from "./agreement-terms-flow";
 import { AgreementTabs } from "./agreement-tabs";
 import {
   ApiError,
@@ -954,7 +955,9 @@ export default function FairshareApp() {
                       {!editing && latest ? (
                         <>
                           <div className="row">
-                            <h3>Version {latest.id}</h3>
+                            <h3 id="agreement-proposal-review" tabIndex={-1}>
+                              Version {latest.id}
+                            </h3>
                             <Badge value={latest.status} />
                             <Button
                               variant="secondary"
@@ -1058,219 +1061,245 @@ export default function FairshareApp() {
                               Back to proposed terms
                             </Button>
                           )}
-                          <section className="panel">
-                            <h3>
-                              {selected.value.versions.length
-                                ? "Upload amended agreement"
-                                : "Source agreement"}
-                            </h3>
-                            <ContractSourceGuidance
-                              replacement={!!selected.value.versions.length}
-                            />
-                            <Field
-                              label="Agreement text"
-                              hint="Use synthetic or authorized documents only. Text is stored privately in this workspace."
-                            >
-                              <textarea
-                                rows={8}
-                                disabled={busy}
-                                value={source}
-                                maxLength={40000}
-                                onChange={(e) => {
-                                  if (
-                                    rulesDirty.current &&
-                                    !window.confirm(
-                                      "Changing the source resets your unsaved rules draft. Continue?",
-                                    )
-                                  )
-                                    return;
-                                  rulesDirty.current = false;
-                                  setDraftDirty(true);
-                                  setSource(e.target.value);
-                                  setDocumentId("");
-                                  setExtraction(null);
-                                }}
-                              />
-                            </Field>
-                            <LocalOcrChoice
-                              base={base}
-                              value={useLocalOcr}
-                              onChange={setUseLocalOcr}
-                              disabled={busy}
-                            />
-                            <div className="actions">
-                              <label className="button secondary">
-                                Choose PDF, DOCX or text file
-                                <input
-                                  className="visually-hidden"
-                                  type="file"
-                                  disabled={busy}
-                                  accept=".txt,.pdf,.docx,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                                  onChange={(e) =>
-                                    run(async () => {
-                                      const f = e.target.files?.[0];
-                                      e.target.value = "";
-                                      if (!f) return;
+                          <AgreementTermsFlow
+                            key={selected.id}
+                            documentId={documentId}
+                            busy={busy}
+                            sourceText={source}
+                            source={
+                              <section className="panel">
+                                <h3>
+                                  {selected.value.versions.length
+                                    ? "Upload amended agreement"
+                                    : "Source agreement"}
+                                </h3>
+                                <ContractSourceGuidance
+                                  replacement={!!selected.value.versions.length}
+                                />
+                                <Field
+                                  label="Agreement text"
+                                  hint="Use synthetic or authorized documents only. Text is stored privately in this workspace."
+                                >
+                                  <textarea
+                                    rows={8}
+                                    disabled={busy}
+                                    value={source}
+                                    maxLength={40000}
+                                    onChange={(e) => {
                                       if (
-                                        draftDirty &&
+                                        rulesDirty.current &&
                                         !window.confirm(
-                                          "Replace your unsaved source and rules draft?",
+                                          "Changing the source resets your unsaved rules draft. Continue?",
                                         )
                                       )
                                         return;
-                                      if (/\.(pdf|docx)$/i.test(f.name)) {
-                                        const isDocx = f.name
-                                          .toLowerCase()
-                                          .endsWith(".docx");
-                                        if (f.size > 5 * 1024 * 1024)
-                                          throw new Error(
-                                            "Document must be no larger than 5 MB.",
-                                          );
-                                        const data = await new Promise<string>(
-                                          (resolve, reject) => {
-                                            const reader = new FileReader();
-                                            reader.onload = () =>
-                                              resolve(
-                                                String(reader.result).split(
-                                                  ",",
-                                                )[1],
-                                              );
-                                            reader.onerror = () =>
-                                              reject(
-                                                new Error(
-                                                  "Unable to read file.",
-                                                ),
-                                              );
-                                            reader.readAsDataURL(f);
-                                          },
-                                        );
-                                        const doc = await api(
-                                          `${base}/documents/${isDocx ? "docx" : "pdf"}`,
-                                          "POST",
-                                          {
-                                            mimeType: isDocx
-                                              ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                                              : "application/pdf",
-                                            base64: data,
-                                            ...(!isDocx && useLocalOcr
-                                              ? { useLocalOcr: true }
-                                              : {}),
-                                          },
-                                        );
-                                        const saved = await api(
-                                          `${base}/documents/${doc.documentId}`,
-                                        );
-                                        setSource(saved.text);
-                                        setDocumentId(doc.documentId);
-                                        setNotice(
-                                          "Document text extracted locally. Review every amount and name against the saved original before AI processing; OCR can misread characters.",
-                                        );
-                                      } else {
-                                        if (
-                                          !f.name
-                                            .toLowerCase()
-                                            .endsWith(".txt") &&
-                                          f.type !== "text/plain"
-                                        )
-                                          throw new Error(
-                                            "Choose a PDF, DOCX or plain text file.",
-                                          );
-                                        if (f.size > 40000)
-                                          throw new Error(
-                                            "Text file is too large. Limit: 40 KB.",
-                                          );
-                                        setSource(await f.text());
-                                        setDocumentId("");
-                                      }
                                       rulesDirty.current = false;
+                                      setDraftDirty(true);
+                                      setSource(e.target.value);
+                                      setDocumentId("");
                                       setExtraction(null);
-                                      setDraftDirty(
-                                        !/\.(pdf|docx)$/i.test(f.name),
+                                    }}
+                                  />
+                                </Field>
+                                <LocalOcrChoice
+                                  base={base}
+                                  value={useLocalOcr}
+                                  onChange={setUseLocalOcr}
+                                  disabled={busy}
+                                />
+                                <div className="actions">
+                                  <label className="button secondary">
+                                    Choose PDF, DOCX or text file
+                                    <input
+                                      className="visually-hidden"
+                                      type="file"
+                                      disabled={busy}
+                                      accept=".txt,.pdf,.docx,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                                      onChange={(e) =>
+                                        run(async () => {
+                                          const f = e.target.files?.[0];
+                                          e.target.value = "";
+                                          if (!f) return;
+                                          if (
+                                            draftDirty &&
+                                            !window.confirm(
+                                              "Replace your unsaved source and rules draft?",
+                                            )
+                                          )
+                                            return;
+                                          if (/\.(pdf|docx)$/i.test(f.name)) {
+                                            const isDocx = f.name
+                                              .toLowerCase()
+                                              .endsWith(".docx");
+                                            if (f.size > 5 * 1024 * 1024)
+                                              throw new Error(
+                                                "Document must be no larger than 5 MB.",
+                                              );
+                                            const data =
+                                              await new Promise<string>(
+                                                (resolve, reject) => {
+                                                  const reader =
+                                                    new FileReader();
+                                                  reader.onload = () =>
+                                                    resolve(
+                                                      String(
+                                                        reader.result,
+                                                      ).split(",")[1],
+                                                    );
+                                                  reader.onerror = () =>
+                                                    reject(
+                                                      new Error(
+                                                        "Unable to read file.",
+                                                      ),
+                                                    );
+                                                  reader.readAsDataURL(f);
+                                                },
+                                              );
+                                            const doc = await api(
+                                              `${base}/documents/${isDocx ? "docx" : "pdf"}`,
+                                              "POST",
+                                              {
+                                                mimeType: isDocx
+                                                  ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                                                  : "application/pdf",
+                                                base64: data,
+                                                ...(!isDocx && useLocalOcr
+                                                  ? { useLocalOcr: true }
+                                                  : {}),
+                                              },
+                                            );
+                                            const saved = await api(
+                                              `${base}/documents/${doc.documentId}`,
+                                            );
+                                            setSource(saved.text);
+                                            setDocumentId(doc.documentId);
+                                            setNotice(
+                                              "Document text extracted locally. Review every amount and name against the saved original before AI processing; OCR can misread characters.",
+                                            );
+                                          } else {
+                                            if (
+                                              !f.name
+                                                .toLowerCase()
+                                                .endsWith(".txt") &&
+                                              f.type !== "text/plain"
+                                            )
+                                              throw new Error(
+                                                "Choose a PDF, DOCX or plain text file.",
+                                              );
+                                            if (f.size > 40000)
+                                              throw new Error(
+                                                "Text file is too large. Limit: 40 KB.",
+                                              );
+                                            setSource(await f.text());
+                                            setDocumentId("");
+                                          }
+                                          rulesDirty.current = false;
+                                          setExtraction(null);
+                                          setDraftDirty(
+                                            !/\.(pdf|docx)$/i.test(f.name),
+                                          );
+                                        })
+                                      }
+                                    />
+                                  </label>
+                                  <Button
+                                    variant="quiet"
+                                    disabled={busy}
+                                    onClick={() => {
+                                      if (!mayLeaveDraft()) return;
+                                      setDraftDirty(true);
+                                      setSource(sampleAgreement);
+                                      setDocumentId("");
+                                      setExtraction(null);
+                                    }}
+                                  >
+                                    Use sample text
+                                  </Button>
+                                  <Button
+                                    disabled={
+                                      busy || !source.trim() || !!documentId
+                                    }
+                                    onClick={() =>
+                                      run(async () => {
+                                        const doc = await api(
+                                          `${base}/documents`,
+                                          "POST",
+                                          { text: source },
+                                        );
+                                        setDocumentId(doc.documentId);
+                                        setDraftDirty(rulesDirty.current);
+                                        setNotice(
+                                          "Source saved. You can review rules manually or ask AI for suggestions.",
+                                        );
+                                      })
+                                    }
+                                  >
+                                    {documentId
+                                      ? "Source saved"
+                                      : "Save source"}
+                                  </Button>
+                                </div>
+                              </section>
+                            }
+                            interpretation={
+                              documentId ? (
+                                <AIReview
+                                  key={documentId}
+                                  busy={busy}
+                                  extraction={extraction}
+                                  onExtract={() =>
+                                    run(async () =>
+                                      setExtraction(
+                                        await api(
+                                          `${base}/documents/${documentId}/extract`,
+                                          "POST",
+                                          { consentToCloudflare: true },
+                                        ),
+                                      ),
+                                    )
+                                  }
+                                />
+                              ) : null
+                            }
+                            rules={
+                              documentId ? (
+                                <RulesEditor
+                                  extraction={extraction}
+                                  key={documentId}
+                                  agreement={selected}
+                                  source={source}
+                                  documentId={documentId}
+                                  busy={busy}
+                                  onDirty={() => {
+                                    rulesDirty.current = true;
+                                    setDraftDirty(true);
+                                  }}
+                                  onSave={(rules) =>
+                                    run(async () => {
+                                      await mutate("/versions", { rules });
+                                      setDraftDirty(false);
+                                      rulesDirty.current = false;
+                                      setPreview(null);
+                                      setEditing(false);
+                                      setNotice(
+                                        "New proposal saved. No rules were activated.",
                                       );
+                                      requestAnimationFrame(() => {
+                                        const review = document.getElementById(
+                                          "agreement-proposal-review",
+                                        );
+                                        review?.focus({ preventScroll: true });
+                                        review?.scrollIntoView({
+                                          block: "start",
+                                          behavior: "auto",
+                                        });
+                                      });
                                     })
                                   }
                                 />
-                              </label>
-                              <Button
-                                variant="quiet"
-                                disabled={busy}
-                                onClick={() => {
-                                  if (!mayLeaveDraft()) return;
-                                  setDraftDirty(true);
-                                  setSource(sampleAgreement);
-                                  setDocumentId("");
-                                  setExtraction(null);
-                                }}
-                              >
-                                Use sample text
-                              </Button>
-                              <Button
-                                disabled={
-                                  busy || !source.trim() || !!documentId
-                                }
-                                onClick={() =>
-                                  run(async () => {
-                                    const doc = await api(
-                                      `${base}/documents`,
-                                      "POST",
-                                      { text: source },
-                                    );
-                                    setDocumentId(doc.documentId);
-                                    setDraftDirty(rulesDirty.current);
-                                    setNotice(
-                                      "Source saved. You can review rules manually or ask AI for suggestions.",
-                                    );
-                                  })
-                                }
-                              >
-                                {documentId ? "Source saved" : "Save source"}
-                              </Button>
-                            </div>
-                          </section>
-                          {documentId && (
-                            <>
-                              <AIReview
-                                key={documentId}
-                                busy={busy}
-                                extraction={extraction}
-                                onExtract={() =>
-                                  run(async () =>
-                                    setExtraction(
-                                      await api(
-                                        `${base}/documents/${documentId}/extract`,
-                                        "POST",
-                                        { consentToCloudflare: true },
-                                      ),
-                                    ),
-                                  )
-                                }
-                              />
-                              <RulesEditor
-                                extraction={extraction}
-                                key={documentId}
-                                agreement={selected}
-                                source={source}
-                                documentId={documentId}
-                                busy={busy}
-                                onDirty={() => {
-                                  rulesDirty.current = true;
-                                  setDraftDirty(true);
-                                }}
-                                onSave={(rules) =>
-                                  run(async () => {
-                                    await mutate("/versions", { rules });
-                                    setDraftDirty(false);
-                                    rulesDirty.current = false;
-                                    setPreview(null);
-                                    setEditing(false);
-                                    setNotice(
-                                      "New proposal saved. No rules were activated.",
-                                    );
-                                  })
-                                }
-                              />
-                            </>
-                          )}
+                              ) : null
+                            }
+                          />
                         </>
                       )}
                     </>
@@ -1291,6 +1320,7 @@ export default function FairshareApp() {
                       />
                       {organizer && active && (
                         <SandboxCheckoutForm
+                          key={selected.id}
                           busy={busy}
                           onSubmit={(amount, source) =>
                             run(async () => {

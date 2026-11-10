@@ -23,6 +23,7 @@ export function AgreementIntake({
   onCreate: (input: AgreementIntakeInput) => Promise<void>;
   onCancel?: () => void;
 }) {
+  const [method, setMethod] = useState<"upload" | "paste">("upload");
   const [text, setText] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState("");
@@ -37,14 +38,15 @@ export function AgreementIntake({
   };
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (busy || locked.current || (!file && !text.trim())) return;
+    if (busy || locked.current || (method === "upload" ? !file : !text.trim()))
+      return;
     locked.current = true;
     setSubmitting(true);
     setError("");
     try {
       requestId.current ||= crypto.randomUUID();
       const input: AgreementIntakeInput = { requestId: requestId.current };
-      if (file) {
+      if (method === "upload" && file) {
         if (file.size > 5 * 1024 * 1024)
           throw new Error("Choose a document no larger than 5 MB.");
         input.filename = file.name;
@@ -104,54 +106,84 @@ export function AgreementIntake({
             {error}
           </Notice>
         )}
-        <Field
-          label="Upload agreement"
-          hint="PDF, DOCX or TXT · up to 5 MB. Use only documents you’re authorized to upload."
-        >
-          <input
-            type="file"
-            accept=".pdf,.docx,.txt"
-            disabled={disabled}
-            onChange={(event) => {
-              changed();
-              setFile(event.target.files?.[0] || null);
-            }}
-          />
-        </Field>
-        {file && (
-          <p className="muted">
-            Selected: {file.name}. This file will be used instead of pasted
-            text.
-          </p>
-        )}
-        {file && /\.pdf$/i.test(file.name) && (
-          <label className="check">
+        <fieldset disabled={disabled} aria-label="Agreement input method">
+          <legend>How would you like to add it?</legend>
+          <label>
             <input
-              type="checkbox"
-              checked={ocr}
+              type="radio"
+              name="inputMethod"
+              checked={method === "upload"}
+              onChange={() => {
+                changed();
+                setMethod("upload");
+              }}
+            />{" "}
+            Upload document
+          </label>
+          <label>
+            <input
+              type="radio"
+              name="inputMethod"
+              checked={method === "paste"}
+              onChange={() => {
+                changed();
+                setMethod("paste");
+              }}
+            />{" "}
+            Paste text
+          </label>
+        </fieldset>
+        <div hidden={method !== "upload"}>
+          <Field
+            label="Upload agreement"
+            hint="PDF, DOCX or TXT · up to 5 MB. Use only documents you’re authorized to upload."
+          >
+            <input
+              type="file"
+              accept=".pdf,.docx,.txt"
               disabled={disabled}
               onChange={(event) => {
                 changed();
-                setOcr(event.target.checked);
+                setFile(event.target.files?.[0] || null);
               }}
             />
-            Use local OCR for a scanned PDF (requires server support, English,
-            up to 5 pages).
-          </label>
-        )}
-        <Field label="Or paste agreement text">
-          <textarea
-            rows={9}
-            maxLength={40000}
-            disabled={disabled || !!file}
-            value={text}
-            onChange={(event) => {
-              changed();
-              setText(event.target.value);
-            }}
-            placeholder="Paste your agreement here…"
-          />
-        </Field>
+          </Field>
+          {file && (
+            <p className="muted">
+              Selected: {file.name}. Your document is ready to read.
+            </p>
+          )}
+          {file && /\.pdf$/i.test(file.name) && (
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={ocr}
+                disabled={disabled}
+                onChange={(event) => {
+                  changed();
+                  setOcr(event.target.checked);
+                }}
+              />
+              Use local OCR for a scanned PDF (requires server support, English,
+              up to 5 pages).
+            </label>
+          )}
+        </div>
+        <div hidden={method !== "paste"}>
+          <Field label="Paste agreement text">
+            <textarea
+              rows={9}
+              maxLength={40000}
+              disabled={disabled || method !== "paste"}
+              value={text}
+              onChange={(event) => {
+                changed();
+                setText(event.target.value);
+              }}
+              placeholder="Paste your agreement here…"
+            />
+          </Field>
+        </div>
         <p className="muted">
           {first
             ? "We’ll create your workspace automatically. No setup form needed. "
@@ -170,7 +202,9 @@ export function AgreementIntake({
               Cancel
             </Button>
           )}
-          <Button disabled={disabled || (!file && !text.trim())}>
+          <Button
+            disabled={disabled || (method === "upload" ? !file : !text.trim())}
+          >
             {disabled ? "Reading agreement…" : "Continue with agreement"}
           </Button>
         </div>
