@@ -27,11 +27,19 @@ export class DurableSqlDatabase {
   }
 
   prepare(query: string) {
-    const execute = (bindings: SqlInput[]) => this.storage.sql.exec(query, ...bindings.map(value =>
-      ArrayBuffer.isView(value)
-        ? new Uint8Array(value.buffer, value.byteOffset, value.byteLength).slice().buffer
-        : value,
-    ));
+    const execute = (bindings: SqlInput[]) =>
+      this.storage.sql.exec(
+        query,
+        ...bindings.map((value) =>
+          ArrayBuffer.isView(value)
+            ? new Uint8Array(
+                value.buffer,
+                value.byteOffset,
+                value.byteLength,
+              ).slice().buffer
+            : value,
+        ),
+      );
     return {
       get: (...bindings: SqlInput[]) => execute(bindings).toArray()[0],
       all: (...bindings: SqlInput[]) => execute(bindings).toArray(),
@@ -39,7 +47,9 @@ export class DurableSqlDatabase {
         const cursor = execute(bindings);
         // Materialize the cursor before querying connection-local change count.
         cursor.toArray();
-        const row = this.storage.sql.exec('SELECT changes() AS changes').toArray()[0];
+        const row = this.storage.sql
+          .exec("SELECT changes() AS changes")
+          .toArray()[0];
         return { changes: Number(row?.changes ?? 0) };
       },
     };
@@ -49,8 +59,10 @@ export class DurableSqlDatabase {
   tx<T>(callback: () => T): T {
     return this.storage.transactionSync(() => {
       const result = callback();
-      if (result && typeof (result as { then?: unknown }).then === 'function') {
-        throw new Error('Durable SQL transaction callbacks must be synchronous');
+      if (result && typeof (result as { then?: unknown }).then === "function") {
+        throw new Error(
+          "Durable SQL transaction callbacks must be synchronous",
+        );
       }
       return result;
     });
