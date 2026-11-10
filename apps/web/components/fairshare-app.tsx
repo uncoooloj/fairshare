@@ -62,6 +62,7 @@ import { PaymentRecovery } from "./payment-recovery";
 import { MfaSettings } from "./mfa-settings";
 import { ProfileForm } from "./profile-form";
 import { recoverSourceDocument } from "../lib/source-recovery";
+import { createSandboxCheckout } from "../lib/checkout-retry";
 import dynamic from "next/dynamic";
 const PaymentGrid = dynamic(
   () => import("../src/components/PaymentGrid").then((m) => m.PaymentGrid),
@@ -194,6 +195,8 @@ export default function FairshareApp() {
   }
   async function acceptInvitation(token: string) {
     const result = await api("invitations/accept", "POST", { token });
+    setSelected(null);
+    setAgreements([]);
     setWorkspaces((current) => [
       ...current.filter((item) => item.id !== result.workspace.id),
       result.workspace,
@@ -206,10 +209,12 @@ export default function FairshareApp() {
   }
   async function loadWorkspace(id: string) {
     if (!id || id !== currentWorkspace.current) return;
+    const request = workspaceRequest.current;
     const [r, m] = await Promise.all([
       api(`${workspaceBase(id)}/collaborations`),
       api(`${workspaceBase(id)}/members`),
     ]);
+    if (request !== workspaceRequest.current) return;
     setAgreements(r.collaborations);
     setMembers(m.members);
     const all = await Promise.all(
@@ -220,9 +225,11 @@ export default function FairshareApp() {
         return p.payouts.map((v: any) => ({ ...v, agreement: a }));
       }),
     );
+    if (request !== workspaceRequest.current) return;
     setPayouts(all.flat());
   }
   async function openAgreement(a: Agreement) {
+    if (a.workspaceId !== currentWorkspace.current) return;
     const request = ++openRequest.current;
     const root = `${workspaceBase(a.workspaceId)}/collaborations/${a.id}`;
     const [fresh, p] = await Promise.all([
@@ -313,7 +320,6 @@ export default function FairshareApp() {
     if (token && ["/verify-email", "/invitation"].includes(location.pathname)) {
       setFlowKind(location.pathname);
       setFlowToken(decodeURIComponent(token));
-      history.replaceState(null, "", location.pathname);
     }
     Promise.all([
       api("auth/me")
@@ -1266,19 +1272,20 @@ export default function FairshareApp() {
                             run(async () => {
                               const amountCents = parseCents(amount);
                               const storageKey = `fairshare-checkout:${user.id}:${selected.id}:${amountCents}`;
-                              const requestKey =
-                                sessionStorage.getItem(storageKey) ||
-                                crypto.randomUUID();
-                              sessionStorage.setItem(storageKey, requestKey);
-                              const r = await api(`${base}/payments`, "POST", {
-                                requestKey,
+                              const r = await createSandboxCheckout({
+                                storage: sessionStorage,
+                                storageKey,
                                 amountCents,
                                 source,
+                                createRequestKey: () => crypto.randomUUID(),
+                                createPayment: (requestKey, cents, paymentSource) =>
+                                  api(`${base}/payments`, "POST", {
+                                    requestKey,
+                                    amountCents: cents,
+                                    source: paymentSource,
+                                  }),
+                                refresh,
                               });
-                              // Preserve uncertain requests across refreshes; never blindly issue a new provider write.
-                              if (r.approval_url)
-                                sessionStorage.removeItem(storageKey);
-                              await refresh();
                               setNotice(
                                 r.approval_url
                                   ? "Sandbox checkout created. Use the approval link below."

@@ -32,6 +32,7 @@ test("reuses the checkout key when the local payment refresh fails", async () =>
     storage,
     storageKey: "fairshare-checkout:user:agreement:100",
     amountCents: 100,
+    source: { kind: "sandbox" },
     createRequestKey: () => "stable-request-key",
     createPayment,
   };
