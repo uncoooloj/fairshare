@@ -11,6 +11,8 @@ coverage/
 
 *.tsbuildinfo
 
+.worktrees/
+
 # Cloudflare local/build artifacts (never commit credentials or bundles)
 .open-next/
 .wrangler/

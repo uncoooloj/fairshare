@@ -8,14 +8,17 @@ test("OCR choice is opt-in, capability-gated and explicitly local", () => {
   );
   assert.match(choice, /setAvailable\(false\)/);
   assert.match(choice, /onChange\(false\)/);
-  assert.match(choice, /localOcrEnabled===true/);
-  assert.match(choice, /document stays on this server/);
+  assert.match(choice, /localOcrEnabled\s*===\s*true/);
+  assert.match(choice, /document\s+stays on this server/);
   const app = readFileSync(
     new URL("../components/fairshare-app.tsx", import.meta.url),
     "utf8",
   );
-  assert.match(app, /useLocalOcr,setUseLocalOcr\] = useState\(false\)/);
-  assert.match(app, /!isDocx && useLocalOcr \? \{useLocalOcr:true\}/);
+  assert.match(app, /useLocalOcr,\s*setUseLocalOcr\]\s*=\s*useState\(false\)/);
+  assert.match(
+    app,
+    /!isDocx\s*&&\s*useLocalOcr\s*\?\s*\{\s*useLocalOcr:\s*true\s*\}/,
+  );
 });
 test("document view labels OCR and renders page count rather than page objects", () => {
   const source = readFileSync(
@@ -25,6 +28,6 @@ test("document view labels OCR and renders page count rather than page objects",
   assert.match(source, /OCR TEXT · REVIEW REQUIRED/);
   assert.match(
     source,
-    /Array.isArray\(document.provenance.pages\) \? document.provenance.pages.length/,
+    /Array\.isArray\(document\.provenance\.pages\)\s*\?\s*document\.provenance\.pages\.length/,
   );
 });

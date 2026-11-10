@@ -1,0 +1,10 @@
+node_modules/
+.next/
+.open-next/
+.wrangler/
+.dev.vars*
+dist/
+coverage/
+.worktrees/
+package-lock.json
+*.tsbuildinfo

@@ -5,7 +5,9 @@ const widgets = readFileSync(
   new URL("../components/agreement-widgets.tsx", import.meta.url),
   "utf8",
 );
-const editor = widgets.slice(widgets.indexOf("export function RulesEditor("));
+const editor = widgets
+  .slice(widgets.indexOf("export function RulesEditor("))
+  .replace(/\s+/g, " ");
 test("first proposal requires explicit roster review before locking membership", () => {
   assert.match(
     editor,
@@ -15,13 +17,13 @@ test("first proposal requires explicit roster review before locking membership",
   assert.match(editor, /even in a revised version/);
   assert.match(
     editor,
-    /type="button" variant="secondary" disabled=\{busy\} onClick=\{onReviewPeople\}/,
+    /type="button"[\s\S]*variant="secondary"[\s\S]*disabled=\{busy\}[\s\S]*onClick=\{onReviewPeople\}/,
   );
 });
 test("roster confirmation resets after membership changes and permits intentional solo agreements", () => {
   assert.match(
     editor,
-    /key=\{agreement.value.members.map\(member => member.userId\).join\(":"\)\}/,
+    /key=\{agreement.value.members\s*\.map\(\(member\) => member.userId\)\s*\.join\(":"\)\}/,
   );
   assert.match(
     editor,
