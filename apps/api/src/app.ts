@@ -35,6 +35,31 @@ export type FairshareApp = FastifyInstance & {
     roles?: Role[],
   ) => { user: User; workspace: any };
 };
+function domainErrorStatus(code: string): number {
+  if (code === "PDF_BUSY") return 429;
+  if (
+    [
+      "PAYPAL_NOT_CONFIGURED",
+      "PAYOUT_NOT_CONFIGURED",
+      "CALLBACK_NOT_CONFIGURED",
+    ].includes(code)
+  )
+    return 503;
+  if (code === "INVALID_WEBHOOK_SIGNATURE") return 401;
+  if (code === "NOT_FOUND") return 404;
+  if (code === "FORBIDDEN") return 403;
+  if (
+    [
+      "REVISION_CONFLICT",
+      "STALE_VERSION",
+      "APPROVALS_REQUIRED",
+      "INVALID_STATE",
+      "MEMBERS_LOCKED",
+    ].includes(code)
+  )
+    return 409;
+  return 400;
+}
 export async function buildApp(
   options: AppOptions = {},
 ): Promise<FairshareApp> {
@@ -81,32 +106,8 @@ export async function buildApp(
         .status(error.status ?? 502)
         .send({ error: { code: error.code, message: error.code } });
     if (error instanceof DomainError) {
-      const status =
-        error.code === "PDF_BUSY"
-          ? 429
-          : [
-                "PAYPAL_NOT_CONFIGURED",
-                "PAYOUT_NOT_CONFIGURED",
-                "CALLBACK_NOT_CONFIGURED",
-              ].includes(error.code)
-            ? 503
-            : error.code === "INVALID_WEBHOOK_SIGNATURE"
-              ? 401
-              : error.code === "NOT_FOUND"
-                ? 404
-                : error.code === "FORBIDDEN"
-                  ? 403
-                  : [
-                        "REVISION_CONFLICT",
-                        "STALE_VERSION",
-                        "APPROVALS_REQUIRED",
-                        "INVALID_STATE",
-                        "MEMBERS_LOCKED",
-                      ].includes(error.code)
-                    ? 409
-                    : 400;
       return reply
-        .status(status)
+        .status(domainErrorStatus(error.code))
         .send({ error: { code: error.code, message: error.message } });
     }
     if (error instanceof ApiError)
