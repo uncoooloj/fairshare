@@ -580,6 +580,7 @@ test("worker stale pending refund evidence cannot overwrite manual terminal reco
   for (const status of ["FAILED", "CANCELLED"]) {
     const s = await pendingRefund();
     try {
+      const origin = await s.app.listen({ host: "127.0.0.1", port: 0 });
       let release!: () => void, started!: () => void;
       const waiting = new Promise<void>((resolve) => (release = resolve));
       const began = new Promise<void>((resolve) => (started = resolve));
@@ -594,9 +595,12 @@ test("worker stale pending refund evidence cannot overwrite manual terminal reco
         ...(await s.original(id)),
         status,
       });
-      const recovered = await s.post(`/refunds/${s.refundId}/reconcile`);
-      assert.equal(recovered.statusCode, 200, recovered.body);
-      assert.equal(recovered.json().status, status);
+      const recovered = await fetch(
+        `${origin}${s.base}/refunds/${s.refundId}/reconcile`,
+        { method: "POST", headers: auth(s.owner.token) },
+      );
+      assert.equal(recovered.status, 200);
+      assert.equal((await recovered.json() as any).status, status);
       release();
       await worker;
       assert.equal(
