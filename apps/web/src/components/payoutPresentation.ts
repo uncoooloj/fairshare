@@ -20,27 +20,29 @@ export const payoutGuidance: Record<PaymentGridStatus, string> = {
   UNKNOWN:
     "The outcome is uncertain. Verify existing provider evidence before any further action. Do not retry the transfer.",
 };
+
+function payoutSearchText(row: PaymentGridRow) {
+  return [
+    row.agreementName,
+    row.recipientName,
+    row.providerReference ?? "",
+    paymentStatusLabels[row.status],
+  ]
+    .join(" ")
+    .toLocaleLowerCase();
+}
+
 export function filterPayouts(
   rows: readonly PaymentGridRow[],
   status: PaymentGridStatus | "",
   query: string,
 ) {
   const terms = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
-  return rows.filter(
-    (row) =>
-      (!status || row.status === status) &&
-      terms.every((term) =>
-        [
-          row.agreementName,
-          row.recipientName,
-          row.providerReference ?? "",
-          paymentStatusLabels[row.status],
-        ]
-          .join(" ")
-          .toLocaleLowerCase()
-          .includes(term),
-      ),
-  );
+  return rows.filter((row) => {
+    if (status && row.status !== status) return false;
+    const searchText = payoutSearchText(row);
+    return terms.every((term) => searchText.includes(term));
+  });
 }
 function csvCell(value: string) {
   // Spreadsheet formulas can start after whitespace. Always quote and neutralize user-controlled formulas.
