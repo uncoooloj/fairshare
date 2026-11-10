@@ -101,7 +101,11 @@ export function AgreementIntake({
           Upload a document or paste its text. Review the extracted terms next.
           You can edit the name afterward.
         </p>
-        {error && <Notice warning>{error}</Notice>}
+        {error && (
+          <Notice warning announcement="assertive">
+            {error}
+          </Notice>
+        )}
         <fieldset disabled={disabled} aria-label="Agreement input method">
           <legend>How would you like to add it?</legend>
           <label>
