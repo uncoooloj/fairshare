@@ -1,3 +1,4 @@
+import { verifyLocalOcrTools } from "./ocr.js";
 import { registerReviewCollaboration } from "./reviewCollaboration.js";
 import {
   registerEmailRoutes,
@@ -19,10 +20,12 @@ import {
   type User,
 } from "./identity.js";
 export interface AppOptions extends EmailOptions {
+  mfaEncryptionKey?: string;
   dbPath?: string;
   clock?: () => number;
   demo?: boolean;
   logger?: boolean;
+  localOcrEnabled?: boolean;
   ai?: CloudflareConfig;
   extract?: typeof extractContract;
   payment?: PaymentOptions;
@@ -64,6 +67,7 @@ function domainErrorStatus(code: string): number {
 export async function buildApp(
   options: AppOptions = {},
 ): Promise<FairshareApp> {
+  if (options.localOcrEnabled) await verifyLocalOcrTools();
   if (
     options.payment?.reconciliation?.enabled &&
     (options.demo || !options.payment.provider)
@@ -84,6 +88,7 @@ export async function buildApp(
       "./data/fairshare-sandbox.db",
     mode,
     options.clock,
+    options.mfaEncryptionKey,
   );
   const bearer = (req: FastifyRequest) => {
     const raw = req.headers.authorization;
@@ -162,6 +167,7 @@ export async function buildApp(
     properties: {
       email: { type: "string", maxLength: 254 },
       password: { type: "string", maxLength: 256 },
+      mfaCode: { type: "string", maxLength: 80 },
     },
   };
   app.get("/health", async () => ({
@@ -195,7 +201,7 @@ export async function buildApp(
       limit(req, "login", 30);
       const b = req.body as any;
       store.limit(`login:email:${digest(b.email.trim().toLowerCase())}`, 10);
-      return store.login(b.email, b.password);
+      return store.login(b.email, b.password, b.mfaCode);
     },
   );
   app.post("/api/auth/logout", async (req) => {
@@ -204,6 +210,23 @@ export async function buildApp(
     return { ok: true };
   });
   app.get("/api/auth/me", async (req) => ({ user: app.requireSession(req) }));
+  app.get("/api/auth/mfa", async (req) =>
+    store.mfa.status(app.requireSession(req).id),
+  );
+  app.post("/api/auth/mfa/setup", async (req) =>
+    store.mfa.start(app.requireSession(req).id, (req.body as any)?.password),
+  );
+  app.post("/api/auth/mfa/cancel", async (req) =>
+    store.mfa.cancel(app.requireSession(req).id),
+  );
+  app.post("/api/auth/mfa/activate", async (req) =>
+    store.mfa.activate(app.requireSession(req).id, (req.body as any)?.code),
+  );
+  app.post("/api/auth/mfa/disable", async (req) => {
+    const user = app.requireSession(req),
+      body = req.body as any;
+    return store.mfa.disable(user.id, body?.password, body?.code);
+  });
   app.post(
     "/api/auth/profile",
     {
@@ -385,6 +408,7 @@ export async function buildApp(
   const domainRoutes = registerFairshareRoutes(app, {
     ai: options.ai,
     extract: options.extract,
+    localOcrEnabled: options.localOcrEnabled,
   });
   registerPaymentRoutes(app, domainRoutes.store, options.payment);
   registerReviewCollaboration(app, domainRoutes.store, options);

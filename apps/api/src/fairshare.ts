@@ -1,3 +1,4 @@
+import { extractPdfOcr } from "./ocr.js";
 import {
   decodeDocxBase64,
   extractDocx,
@@ -154,7 +155,11 @@ const membership = (c: Collaboration, id: string) => {
 };
 export function registerFairshareRoutes(
   app: FairshareApp,
-  options: { ai?: CloudflareConfig; extract?: typeof extractContract } = {},
+  options: {
+    ai?: CloudflareConfig;
+    extract?: typeof extractContract;
+    localOcrEnabled?: boolean;
+  } = {},
 ) {
   const store = new AggregateStore(app.store.db, (fn) => app.store.tx(fn));
   if (
@@ -367,6 +372,15 @@ export function registerFairshareRoutes(
       sourceHash: sourceHash(text),
     };
   });
+  app.get(`${base}/:collaborationId/documents/capabilities`, async (req) => {
+    access(req);
+    return {
+      localOcrEnabled: !!options.localOcrEnabled,
+      ocrMaxPages: 5,
+      ocrLanguage: "eng",
+      externalUpload: false,
+    };
+  });
   app.post(
     `${base}/:collaborationId/documents/pdf`,
     { bodyLimit: MAX_PDF_REQUEST_BYTES },
@@ -377,7 +391,15 @@ export function registerFairshareRoutes(
       if (b.mimeType !== "application/pdf")
         throw new DomainError("INVALID_PDF", "Upload a PDF document.");
       const bytes = decodePdfBase64(b.base64);
-      const parsed = await extractPdf(bytes);
+      if (b.useLocalOcr === true && !options.localOcrEnabled)
+        throw new DomainError(
+          "OCR_UNAVAILABLE",
+          "Local OCR is not enabled. Paste text or ask the server operator to enable it.",
+        );
+      const parsed =
+        b.useLocalOcr === true
+          ? await extractPdfOcr(bytes)
+          : await extractPdf(bytes);
       // Recheck membership after asynchronous parsing; revoked sessions/members must not persist documents.
       access(req);
       const documentId = randomUUID();

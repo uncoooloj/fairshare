@@ -1,4 +1,5 @@
 "use client";
+import { LocalOcrChoice } from "./local-ocr-choice";
 import { SandboxCheckoutForm } from "./sandbox-checkout-form";
 import { ReviewDiscussion, ReviewReminder } from "./review-discussion";
 import { RevenueRules } from "./revenue-rules";
@@ -45,6 +46,7 @@ import {
 import { NewAgreement, AgreementSetup } from "./agreement-setup";
 import { WorkspaceOnboarding, AccessPrompt } from "./designer-auth";
 import { PaymentRecovery } from "./payment-recovery";
+import { MfaSettings } from "./mfa-settings";
 import { ProfileForm } from "./profile-form";
 import { recoverSourceDocument } from "../lib/source-recovery";
 import dynamic from "next/dynamic";
@@ -56,6 +58,7 @@ import { PaymentGridStatus } from "../src/components/paymentGridModel";
 import { Badge, Button, Empty, Field, Icon, Notice } from "./ui";
 const workspaceBase = (id: string) => `workspaces/${id}`;
 export default function FairshareApp() {
+  const [useLocalOcr, setUseLocalOcr] = useState(false);
   const [user, setUser] = useState<User | null>(null),
     [ready, setReady] = useState(false),
     [busy, setBusy] = useState(false),
@@ -985,6 +988,12 @@ export default function FairshareApp() {
                                 }}
                               />
                             </Field>
+                            <LocalOcrChoice
+                              base={base}
+                              value={useLocalOcr}
+                              onChange={setUseLocalOcr}
+                              disabled={busy}
+                            />
                             <div className="actions">
                               <label className="button secondary">
                                 Choose PDF, DOCX or text file
@@ -1039,6 +1048,9 @@ export default function FairshareApp() {
                                               ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                                               : "application/pdf",
                                             base64: data,
+                                            ...(!isDocx && useLocalOcr
+                                              ? { useLocalOcr: true }
+                                              : {}),
                                           },
                                         );
                                         const saved = await api(
@@ -1047,7 +1059,7 @@ export default function FairshareApp() {
                                         setSource(saved.text);
                                         setDocumentId(doc.documentId);
                                         setNotice(
-                                          "Document text extracted locally. Review it against the saved original before AI processing. Scanned images are not supported.",
+                                          "Document text extracted locally. Review every amount and name against the saved original before AI processing; OCR can misread characters.",
                                         );
                                       } else {
                                         if (
@@ -1496,6 +1508,12 @@ export default function FairshareApp() {
                       }
                     />
                   </section>
+                  <MfaSettings
+                    onSignOut={() => {
+                      setUser(null);
+                      setWorkspace("");
+                    }}
+                  />
                   <section className="panel">
                     <h2>Workspace invitations</h2>
                     <p className="muted">

@@ -8,7 +8,11 @@ interface DocumentRecord {
   documentId: string;
   text: string;
   sourceHash?: string;
-  provenance?: { inputType?: string; pages?: number };
+  provenance?: {
+    inputType?: string;
+    ocr?: boolean;
+    pages?: number | Array<{ page: number; start: number; end: number }>;
+  };
 }
 export function AgreementDocument({
   agreement,
@@ -137,11 +141,13 @@ export function AgreementDocument({
         <div className="document-layout">
           <article className="panel source-paper">
             <span className="eyebrow">
-              {document.provenance?.inputType === "PDF"
-                ? "EXTRACTED PDF TEXT"
-                : document.provenance?.inputType === "DOCX"
-                  ? "EXTRACTED DOCX TEXT"
-                  : "SAVED AGREEMENT TEXT"}
+              {document.provenance?.ocr
+                ? "OCR TEXT · REVIEW REQUIRED"
+                : document.provenance?.inputType === "PDF"
+                  ? "EXTRACTED PDF TEXT"
+                  : document.provenance?.inputType === "DOCX"
+                    ? "EXTRACTED DOCX TEXT"
+                    : "SAVED AGREEMENT TEXT"}
             </span>
             <pre>{document.text}</pre>
           </article>
@@ -169,7 +175,11 @@ export function AgreementDocument({
               {document.provenance?.pages && (
                 <>
                   <dt>Pages read</dt>
-                  <dd>{document.provenance.pages}</dd>
+                  <dd>
+                    {Array.isArray(document.provenance.pages)
+                      ? document.provenance.pages.length
+                      : document.provenance.pages}
+                  </dd>
                 </>
               )}
             </dl>
