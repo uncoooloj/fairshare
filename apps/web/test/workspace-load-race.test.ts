@@ -12,6 +12,7 @@ test("workspace changes fence in-flight reads and clear workspace-scoped state",
     .split("function commitWorkspace(id: string) {")[1]
     .split("async function run")[0];
   assert.match(commit, /workspaceRequest\.current\+\+/);
+  assert.match(commit, /currentWorkspace\.current = id/);
   for (const state of [
     "setSelected(null)",
     "setAgreements([])",
@@ -33,7 +34,10 @@ test("workspace changes fence in-flight reads and clear workspace-scoped state",
     workspaces,
     /if \(request !== workspaceRequest\.current\) return ""/,
   );
-  assert.match(workspaces, /if \(id !== workspace\) commitWorkspace\(id\)/);
+  assert.match(
+    workspaces,
+    /if \(id !== currentWorkspace\.current\) commitWorkspace\(id\)/,
+  );
   assert.match(
     workspaces,
     /catch \(error\) \{\s*if \(request !== workspaceRequest\.current\) return ""/,
@@ -50,7 +54,10 @@ test("workspace changes fence in-flight reads and clear workspace-scoped state",
   const agreement = source
     .split("async function openAgreement(a: Agreement) {")[1]
     .split("async function refresh")[0];
-  assert.match(agreement, /if \(a\.workspaceId !== workspace\) return/);
+  assert.match(
+    agreement,
+    /if \(a\.workspaceId !== currentWorkspace\.current\) return/,
+  );
   assert.match(agreement, /const request = \+\+openRequest\.current/);
   assert.equal(
     (agreement.match(/request !== openRequest\.current/g) || []).length,
@@ -63,5 +70,27 @@ test("workspace changes fence in-flight reads and clear workspace-scoped state",
   assert.match(
     source,
     /function navigate\(s: Section\) \{\s*openRequest\.current\+\+/,
+  );
+
+  const refresh = source
+    .split("async function refresh() {")[1]
+    .split("useEffect(() => {")[0];
+  assert.match(refresh, /const id = currentWorkspace\.current/);
+  assert.equal(
+    (refresh.match(/workspaceRequestId !== workspaceRequest\.current/g) || [])
+      .length,
+    3,
+  );
+
+  const mutate = source
+    .split("async function mutate(action: string")[1]
+    .split("if (!ready)")[0];
+  assert.match(
+    mutate,
+    /if \(selected\?\.workspaceId !== currentWorkspace\.current\) return/,
+  );
+  assert.ok(
+    (mutate.match(/workspaceRequestId !== workspaceRequest\.current/g) || [])
+      .length >= 3,
   );
 });
