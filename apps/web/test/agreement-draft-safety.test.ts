@@ -17,7 +17,7 @@ test("agreement edits guard navigation and closing the browser before discarding
   assert.match(app, /window.removeEventListener\("beforeunload", warn\)/);
   assert.match(
     app,
-    /function navigate\(s: Section\) \{\s*if \(!mayLeaveDraft\(\)\) return/,
+    /function navigate\(s:\s*Section\)\s*\{\s*if\s*\(\s*!mayLeaveDraft\(\)\s*\)\s*return/,
   );
   assert.match(app, /onNavigate=\{changeAgreementTab\}/);
   assert.match(app, /changeAgreementTab\(next\)/);

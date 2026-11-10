@@ -7,33 +7,32 @@ const source = readFileSync(
 );
 
 test("designer auth retains real login/register payloads and registration password policy", () => {
-  assert.match(
-    source,
-    /onSubmit\(login \? "login" : "register", prepared\.data\)/,
+  assert.ok(
+    source.includes('onSubmit(login ? "login" : "register", prepared.data)'),
   );
   for (const name of ["email", "password", "name"])
-    assert.match(source, new RegExp(`name="${name}"`));
-  assert.match(source, /minLength=\{login \? 1 : 12\}/);
-  assert.match(source, /if \(busy\) return;/);
-  assert.match(source, /role="alert"/);
+    assert.ok(source.includes(`name="${name}"`));
+  assert.ok(source.includes("minLength={login ? 1 : 12}"));
+  assert.ok(source.includes("if (busy) return;"));
+  assert.ok(source.includes('role="alert"'));
 });
 test("onboarding never claims provider success or adds unsupported OAuth links", () => {
   assert.doesNotMatch(source, /Example: \$3,000 payment/);
   assert.match(
     source,
-    /It does not approve an agreement\s+or change anyone’s share\./,
+    /It does not approve an agreement\s+or\s+change anyone’s share\./,
   );
   assert.match(
     source,
-    /if \(busy \|\| submitting\.current \|\| !name\.trim\(\)\) return;/,
+    /if\s*\(\s*busy\s*\|\|\s*submitting\.current\s*\|\|\s*!name\.trim\(\)\s*\)\s*return;/,
   );
-  assert.match(source, /submitting\.current = true;/);
-  assert.match(source, /await onCreate\(name\.trim\(\)\)/);
+  assert.ok(source.includes("submitting.current = true;"));
+  assert.ok(source.includes("await onCreate(name.trim())"));
   assert.match(
     source,
-    /finally\s*\{\s*submitting\.current = false;\s*setCreating\(false\);\s*\}/,
+    /finally\s*\{\s*submitting\.current\s*=\s*false;\s*setCreating\(false\);\s*\}/,
   );
-  assert.match(source, /if \(!busy\) onContinue\(\)/);
+  assert.match(source, /if\s*\(\s*!busy\s*\)\s*onContinue\(\s*\)/);
   assert.doesNotMatch(
     source,
     /href=.*(?:google|microsoft)|setTimeout|localStorage|Payment successful|Email verified/,
