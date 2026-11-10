@@ -512,7 +512,7 @@ export default function FairshareApp() {
                   ...current.filter((item) => item.id !== result.workspace.id),
                   result.workspace,
                 ]);
-                setWorkspace(result.workspace.id);
+                commitWorkspace(result.workspace.id);
                 setNotice(
                   "Workspace created. You’re ready to add your first agreement.",
                 );
