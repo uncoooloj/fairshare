@@ -116,3 +116,10 @@ test("workspace changes fence in-flight reads and clear workspace-scoped state",
     "logout, password, and MFA flows all clear the workspace generation",
   );
 });
+
+test("an old-render refresh cannot adopt the newly selected workspace", () => {
+  assert.match(
+    source,
+    /async function refresh\(\)\s*\{[\s\S]*?if \(workspace !== currentWorkspace\.current\) return;/,
+  );
+});

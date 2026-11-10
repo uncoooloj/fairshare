@@ -326,6 +326,8 @@ export default function FairshareApp() {
     }
   }
   async function refresh() {
+    // An operation started in an older render may finish after navigation.
+    if (workspace !== currentWorkspace.current) return;
     const workspaceRequestId = workspaceRequest.current;
     const openRequestId = openRequest.current;
     const id = currentWorkspace.current;
