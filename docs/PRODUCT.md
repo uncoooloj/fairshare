@@ -58,7 +58,7 @@ The primary product object is an agreement. Documents, people, clarifications, r
 
 Display preferences change the presentation of USD amounts and dates; they do not convert money or change agreement inputs. Notification preferences filter the in-app feed and configured approval-request email. Security email remains outside those controls.
 
-Each collaborator manages their own workspace-scoped sandbox payout destination. A saved ID is not provider-verified, is not an OAuth connection, and does not expose server credentials. The activity log is read-only and only shows account activity and agreement events the person may access.
+Each workspace owner or member manages their own workspace-scoped sandbox payout destination. A saved ID is not provider-verified, is not an OAuth connection, and does not expose server credentials. The activity log is read-only and only shows account activity and agreement events the person may access.
 
 ## Agreement workspace
 
