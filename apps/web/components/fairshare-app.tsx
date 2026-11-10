@@ -33,7 +33,10 @@ import {
   type Revenue,
 } from "../lib/model";
 import { AgreementDocument } from "./agreement-document";
-import { ContractReviewPanel, ContractSourceGuidance } from "./contract-review-guidance";
+import {
+  ContractReviewPanel,
+  ContractSourceGuidance,
+} from "./contract-review-guidance";
 import { NewAgreement, AgreementSetup } from "./agreement-setup";
 import { WorkspaceOnboarding, AccessPrompt } from "./designer-auth";
 import { PaymentRecovery } from "./payment-recovery";
@@ -139,7 +142,11 @@ export default function FairshareApp() {
     setDocumentId("");
     setExtraction(null);
     const v = fresh.value.versions.at(-1);
-    const doc = await recoverSourceDocument(root, v?.rules.source.documentId, api);
+    const doc = await recoverSourceDocument(
+      root,
+      v?.rules.source.documentId,
+      api,
+    );
     if (doc) {
       setDocumentId(doc.documentId);
       setSource(doc.text);
@@ -199,7 +206,9 @@ export default function FairshareApp() {
       if (cause instanceof ApiError && cause.code === "REVISION_CONFLICT") {
         const current = await api<Agreement>(base);
         setSelected(current);
-        throw new Error("Agreement changed. Latest version loaded; review before trying again.");
+        throw new Error(
+          "Agreement changed. Latest version loaded; review before trying again.",
+        );
       }
       throw cause;
     }
@@ -309,40 +318,44 @@ export default function FairshareApp() {
           </div>
         )}
         {flowToken && (
-          <AccessPrompt kind={flowKind === "/verify-email" ? "verification" : "invitation"} email={user.email} busy={busy}
-              onContinue={() =>
-                run(async () => {
-                  if (flowKind === "/verify-email") {
-                    const r = await api("auth/verification/confirm", "POST", {
-                      token: flowToken,
-                    });
-                    setUser(r.user);
-                    setNotice(
-                      r.verificationMode === "DEMO_SIMULATION"
-                        ? "Demo verification completed. This does not prove email ownership."
-                        : "Email verified.",
-                    );
-                  } else {
-                    await api("invitations/accept", "POST", {
-                      token: flowToken,
-                    });
-                    await loadWorkspaces();
-                    setNotice("Invitation accepted.");
-                  }
-                  setFlowToken("");
-                  history.replaceState(null, "", "/");
-                })
-              }
+          <AccessPrompt
+            kind={flowKind === "/verify-email" ? "verification" : "invitation"}
+            email={user.email}
+            busy={busy}
+            onContinue={() =>
+              run(async () => {
+                if (flowKind === "/verify-email") {
+                  const r = await api("auth/verification/confirm", "POST", {
+                    token: flowToken,
+                  });
+                  setUser(r.user);
+                  setNotice(
+                    r.verificationMode === "DEMO_SIMULATION"
+                      ? "Demo verification completed. This does not prove email ownership."
+                      : "Email verified.",
+                  );
+                } else {
+                  await api("invitations/accept", "POST", {
+                    token: flowToken,
+                  });
+                  await loadWorkspaces();
+                  setNotice("Invitation accepted.");
+                }
+                setFlowToken("");
+                history.replaceState(null, "", "/");
+              })
+            }
           />
         )}
         {!workspace ? (
-          <WorkspaceOnboarding busy={busy}
-              onCreate={(name) =>
-                run(async () => {
-                  await api("workspaces", "POST", { name });
-                  await loadWorkspaces();
-                })
-              }
+          <WorkspaceOnboarding
+            busy={busy}
+            onCreate={(name) =>
+              run(async () => {
+                await api("workspaces", "POST", { name });
+                await loadWorkspaces();
+              })
+            }
           />
         ) : (
           <>
@@ -408,22 +421,27 @@ export default function FairshareApp() {
                   }
                 />
                 {creating ? (
-                  <NewAgreement busy={busy} onCancel={() => setCreating(false)}
-                      onCreate={(name) =>
-                        run(async () => {
-                          const a = await api<Agreement>(
-                            `${workspaceBase(workspace)}/collaborations`,
-                            "POST",
-                            { name },
-                          );
-                          await openAgreement(a);
-                          setTab(AgreementTab.People);
-                          await loadWorkspace(workspace);
-                        })
-                      }
-                    />
+                  <NewAgreement
+                    busy={busy}
+                    onCancel={() => setCreating(false)}
+                    onCreate={(name) =>
+                      run(async () => {
+                        const a = await api<Agreement>(
+                          `${workspaceBase(workspace)}/collaborations`,
+                          "POST",
+                          { name },
+                        );
+                        await openAgreement(a);
+                        setTab(AgreementTab.People);
+                        await loadWorkspace(workspace);
+                      })
+                    }
+                  />
                 ) : (
-                  <AgreementList agreements={agreements} onOpen={(a) => run(() => openAgreement(a))} />
+                  <AgreementList
+                    agreements={agreements}
+                    onOpen={(a) => run(() => openAgreement(a))}
+                  />
                 )}
               </>
             )}
@@ -457,7 +475,11 @@ export default function FairshareApp() {
                     </Button>
                   }
                 />
-                <AgreementSetup agreement={selected} tab={tab} onNavigate={setTab} />
+                <AgreementSetup
+                  agreement={selected}
+                  tab={tab}
+                  onNavigate={setTab}
+                />
                 <div className="tabs" role="tablist">
                   {Object.values(AgreementTab).map((t) => (
                     <button
@@ -768,11 +790,26 @@ export default function FairshareApp() {
                           {latest.rules.source.excerpt}
                           <footer>{latest.rules.source.clause}</footer>
                         </blockquote>
-                        <ContractReviewPanel key={latest.id} agreement={selected} version={latest} userId={user.id} busy={busy} onAction={async (action, payload) => {
-                          setBusy(true); setError(""); setNotice("");
-                          try { await mutate(`/versions/${latest.id}/${action}`, payload); }
-                          finally { setBusy(false); }
-                        }} />
+                        <ContractReviewPanel
+                          key={latest.id}
+                          agreement={selected}
+                          version={latest}
+                          userId={user.id}
+                          busy={busy}
+                          onAction={async (action, payload) => {
+                            setBusy(true);
+                            setError("");
+                            setNotice("");
+                            try {
+                              await mutate(
+                                `/versions/${latest.id}/${action}`,
+                                payload,
+                              );
+                            } finally {
+                              setBusy(false);
+                            }
+                          }}
+                        />
                         <section className="section">
                           <h3>Preview an incoming payment</h3>
                           <p className="muted">
@@ -804,7 +841,9 @@ export default function FairshareApp() {
                       <>
                         <section className="panel">
                           <h3>Source agreement</h3>
-                          <ContractSourceGuidance replacement={!!selected.value.versions.length} />
+                          <ContractSourceGuidance
+                            replacement={!!selected.value.versions.length}
+                          />
                           <Field
                             label="Agreement text"
                             hint="Use synthetic or authorized documents only. Text is stored privately in this workspace."
@@ -913,7 +952,8 @@ export default function FairshareApp() {
                         </section>
                         {documentId && (
                           <>
-                            <AIReview key={documentId}
+                            <AIReview
+                              key={documentId}
                               busy={busy}
                               extraction={extraction}
                               onExtract={() =>
@@ -951,7 +991,13 @@ export default function FairshareApp() {
                     )}
                   </>
                 )}
-                {tab === AgreementTab.Document && <AgreementDocument key={selected.id} agreement={selected} base={base} />}
+                {tab === AgreementTab.Document && (
+                  <AgreementDocument
+                    key={selected.id}
+                    agreement={selected}
+                    base={base}
+                  />
+                )}
                 {tab === AgreementTab.Payments && (
                   <>
                     <Heading
@@ -1069,7 +1115,16 @@ export default function FairshareApp() {
                         sandbox provider are required.
                       </Empty>
                     )}
-                    {organizer && <PaymentRecovery key={base} base={base} payments={payments} payouts={payouts} held={!!selected.value.reviewHold} refresh={refresh} />}
+                    {organizer && (
+                      <PaymentRecovery
+                        key={base}
+                        base={base}
+                        payments={payments}
+                        payouts={payouts}
+                        held={!!selected.value.reviewHold}
+                        refresh={refresh}
+                      />
+                    )}
                     <section className="section">
                       <h3>Verified allocations</h3>
                       <RevenueTable
@@ -1204,7 +1259,10 @@ export default function FairshareApp() {
                 <div className="settings-grid">
                   <section className="panel settings-profile">
                     <span className="eyebrow">PROFILE</span>
-                    <div className="settings-identity"><span className="avatar">{user.name.slice(0,1)}</span><h3>{user.name}</h3></div>
+                    <div className="settings-identity">
+                      <span className="avatar">{user.name.slice(0, 1)}</span>
+                      <h3>{user.name}</h3>
+                    </div>
                     <p>{user.email}</p>
                     <p className="muted">
                       Current environment: {mode}. Live money is disabled.
@@ -1236,34 +1294,44 @@ export default function FairshareApp() {
                       </a>
                     )}
                   </section>
-                  <section className="panel"><h2>Security</h2><p className="muted">Changing your password signs you out so you can reconnect securely.</p>
-                  <PasswordForm
-                    busy={busy}
-                    onSubmit={(currentPassword, newPassword) =>
-                      run(async () => {
-                        await api("auth/password", "POST", {
-                          currentPassword,
-                          newPassword,
-                        });
-                        setUser(null);
-                        setWorkspace("");
-                      })
-                    }
-                  />
+                  <section className="panel">
+                    <h2>Security</h2>
+                    <p className="muted">
+                      Changing your password signs you out so you can reconnect
+                      securely.
+                    </p>
+                    <PasswordForm
+                      busy={busy}
+                      onSubmit={(currentPassword, newPassword) =>
+                        run(async () => {
+                          await api("auth/password", "POST", {
+                            currentPassword,
+                            newPassword,
+                          });
+                          setUser(null);
+                          setWorkspace("");
+                        })
+                      }
+                    />
                   </section>
-                  <section className="panel"><h2>Workspace invitations</h2><p className="muted">Join a workspace using a private invitation shared with your account.</p>
-                  <SimpleForm
-                    label="Invitation token (if shared manually)"
-                    button="Accept invitation"
-                    busy={busy}
-                    onSubmit={(token) =>
-                      run(async () => {
-                        await api("invitations/accept", "POST", { token });
-                        await loadWorkspaces();
-                        setNotice("Invitation accepted.");
-                      })
-                    }
-                  />
+                  <section className="panel">
+                    <h2>Workspace invitations</h2>
+                    <p className="muted">
+                      Join a workspace using a private invitation shared with
+                      your account.
+                    </p>
+                    <SimpleForm
+                      label="Invitation token (if shared manually)"
+                      button="Accept invitation"
+                      busy={busy}
+                      onSubmit={(token) =>
+                        run(async () => {
+                          await api("invitations/accept", "POST", { token });
+                          await loadWorkspaces();
+                          setNotice("Invitation accepted.");
+                        })
+                      }
+                    />
                   </section>
                 </div>
               </>
