@@ -18,11 +18,13 @@ export function AgreementIntake({
   first = false,
   onCreate,
   onCancel,
+  onBusyChange,
 }: {
   busy: boolean;
   first?: boolean;
   onCreate: (input: AgreementIntakeInput) => Promise<void>;
   onCancel?: () => void;
+  onBusyChange?: (busy: boolean) => void;
 }) {
   const [method, setMethod] = useState<"upload" | "paste">("upload");
   const [text, setText] = useState("");
@@ -43,6 +45,7 @@ export function AgreementIntake({
       return;
     locked.current = true;
     setSubmitting(true);
+    onBusyChange?.(true);
     setError("");
     try {
       requestId.current ||= crypto.randomUUID();
@@ -88,6 +91,7 @@ export function AgreementIntake({
     } finally {
       locked.current = false;
       setSubmitting(false);
+      onBusyChange?.(false);
     }
   }
   const disabled = busy || submitting;
@@ -212,7 +216,7 @@ export function AgreementIntake({
           <Button
             disabled={disabled || (method === "upload" ? !file : !text.trim())}
           >
-            {busy ? "Reading agreement…" : "Save document & continue"}
+            {disabled ? "Reading agreement…" : "Save document & continue"}
           </Button>
         </div>
       </form>

@@ -602,7 +602,12 @@ export default function FairshareApp() {
                 description="Start with an agreement. Payouts appear after approved rules and recorded payments."
               />
             )}
-            <AgreementIntake first busy={busy} onCreate={createFromAgreement} />
+            <AgreementIntake
+              first
+              busy={busy}
+              onCreate={createFromAgreement}
+              onBusyChange={setBusy}
+            />
             <p className="muted">
               Already invited? Open Settings to accept your workspace
               invitation.
@@ -680,6 +685,7 @@ export default function FairshareApp() {
                     busy={busy}
                     onCancel={() => setCreating(false)}
                     onCreate={createFromAgreement}
+                    onBusyChange={setBusy}
                   />
                 ) : (
                   <AgreementList
