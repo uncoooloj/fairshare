@@ -1,4 +1,5 @@
 "use client";
+import {useEmailDelivery} from '../lib/email-capability';
 import { WorkspaceNameForm } from "./workspace-name-form";
 import {useDisplayPreferences, NotificationsSettings, CurrencyDisplaySettings} from "./settings-preferences";
 import {ProfileContact} from "./profile-contact";
@@ -64,6 +65,7 @@ import { PaymentGridStatus } from "../src/components/paymentGridModel";
 import { Badge, Button, Empty, Field, Icon, Notice } from "./ui";
 const workspaceBase = (id: string) => `workspaces/${id}`;
 export default function FairshareApp() {
+  const emailDelivery = useEmailDelivery();
   const [settingsTab,setSettingsTab] = useState("Profile");
   const [useLocalOcr,setUseLocalOcr] = useState(false);
   const [user, setUser] = useState<User | null>(null),
@@ -1256,7 +1258,7 @@ export default function FairshareApp() {
                     <p className="muted">
                       Current environment: {mode}. Live money is disabled.
                     </p>
-                    <Button
+                    {emailDelivery && <Button
                       variant="secondary"
                       disabled={busy}
                       onClick={() =>
@@ -1276,7 +1278,7 @@ export default function FairshareApp() {
                       }
                     >
                       Verify email
-                    </Button>
+                    </Button>}
                     {inviteLink && (
                       <a className="block-link" href={inviteLink}>
                         Open demo verification/invitation link

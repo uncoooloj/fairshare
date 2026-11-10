@@ -31,6 +31,7 @@ export async function buildApp(options:AppOptions={}):Promise<FairshareApp>{
  const limit=(req:FastifyRequest,bucket:string,max=30)=>store.limit(`${bucket}:ip:${digest(req.ip)}`,max);
  const objectBody={type:'object',additionalProperties:false} as const;
  const credentials={...objectBody,required:['email','password'],properties:{email:{type:'string',maxLength:254},password:{type:'string',maxLength:256},mfaCode:{type:'string',maxLength:80}}};
+ app.get('/api/auth/capabilities',async()=>({emailDelivery:!options.demo&&Boolean(options.mailTransport),invitationDelivery:'LINK'}));
  app.get('/health',async()=>({status:'ok',mode,realMoneyEnabled:false}));
  app.post('/api/auth/register',{schema:{body:{...credentials,required:['email','password','name'],properties:{...credentials.properties,name:{type:'string',maxLength:80}}}}},async(req,reply)=>{limit(req,'register',10);return reply.status(201).send(store.register(req.body as any));});
  app.post('/api/auth/login',{schema:{body:credentials}},async req=>{limit(req,'login',30);const b=req.body as any;store.limit(`login:email:${digest(b.email.trim().toLowerCase())}`,10);return store.login(b.email,b.password,b.mfaCode);});

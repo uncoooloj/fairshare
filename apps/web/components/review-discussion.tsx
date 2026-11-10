@@ -1,7 +1,7 @@
 'use client';
 import {useCallback,useEffect,useRef,useState} from 'react';
-import {api, type Agreement,type Version,ApiError} from '../lib/model';
-import {canRemind,commentPayload,discussionTopics,reminderNotice,discussionVersion,discussionThreads,type ReviewComment,type Topic} from '../lib/review-discussion';
+import {api, type Agreement,type Version} from '../lib/model';
+import {canRemind,commentPayload,discussionTopics,discussionVersion,discussionThreads,type ReviewComment,type Topic} from '../lib/review-discussion';
 import {Button,Field,Notice} from './ui';
 
 type DiscussionProps = {base:string;agreement:Agreement;version:Version;canWrite:boolean;onDirtyChange:(dirty:boolean)=>void};
@@ -44,9 +44,13 @@ function VersionDiscussion({base,agreement,version,canWrite,onDirtyChange,onPost
  {notice&&<p role="status">{notice}</p>}{error&&<div role="alert"><Notice warning>{error}</Notice></div>}</section>;
 }
 
-export function ReviewReminder({base,agreement,version,userId,recipientId}:{base:string;agreement:Agreement;version:Version;userId:string;recipientId:string}) {
- const [confirm,setConfirm]=useState(false),[busy,setBusy]=useState(false),[notice,setNotice]=useState(''),[error,setError]=useState(''),[attempted,setAttempted]=useState(false);const lock=useRef(false);
+export function ReviewReminder({agreement,version,userId,recipientId}:{base:string;agreement:Agreement;version:Version;userId:string;recipientId:string}) {
+ const [notice,setNotice]=useState(''),[fallback,setFallback]=useState('');
  if(!canRemind(agreement,version,userId,recipientId))return null;
  const name=agreement.value.members.find(m=>m.userId===recipientId)?.displayName??'this participant';
- return <div><Button type="button" variant="quiet" disabled={busy||attempted} onClick={()=>setConfirm(true)}>Remind to review</Button>{confirm&&<div role="group" aria-label={`Confirm reminder for ${name}`}><p>Email {name} a reminder to review version {version.id}? This does not approve terms or move money. At most one attempt per person every 24 hours.</p><Button type="button" disabled={busy} onClick={async()=>{if(lock.current)return;lock.current=true;setBusy(true);setError('');try{const result=await api(`${base}/versions/${version.id}/reminders`,'POST',{recipientId});setNotice(reminderNotice(result));setAttempted(true);setConfirm(false);}catch(e){setError(e instanceof Error?e.message:'Reminder status could not be confirmed.');if(!(e instanceof ApiError)||e.code==='EMAIL_DELIVERY_UNCONFIRMED'){setAttempted(true);setConfirm(false);}}finally{lock.current=false;setBusy(false);}}}>{busy?'Requesting…':'Send review reminder'}</Button><Button type="button" variant="quiet" disabled={busy} onClick={()=>setConfirm(false)}>Cancel</Button></div>}{notice&&<p role="status">{notice}</p>}{error&&<p role="alert">{error}</p>}</div>;
+ return <div><Button type="button" variant="quiet" onClick={async()=>{
+  const message=`Hi ${name}, please sign in to Fairshare, open “${agreement.value.name}” in our workspace, and review version ${version.id}. ${window.location.origin}`;
+  try{await navigator.clipboard.writeText(message);setFallback('');setNotice('Review reminder copied. Share it directly with this participant. No email was sent.');}
+  catch{setFallback(message);setNotice('Copy the reminder below and share it directly.');}
+ }}>Copy review reminder</Button>{notice&&<p role="status">{notice}</p>}{fallback&&<textarea aria-label="Review reminder to copy" readOnly value={fallback} onFocus={event=>event.currentTarget.select()}/>}</div>;
 }

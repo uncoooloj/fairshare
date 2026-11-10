@@ -55,13 +55,13 @@ export function NotificationsSettings() {
     <h2>Notifications</h2><p className="muted">Choose how Fairshare tells you about things.</p>
     <Feedback error={state.error} notice={state.notice} />
     {!preferences ? <p>Loading preferences…</p> : <form onSubmit={event => { event.preventDefault(); void state.save(); }}>
-      <div style={{ overflowX: 'auto' }}><table style={{ width: '100%' }}><thead><tr><th scope="col">Notification</th><th scope="col">Email</th><th scope="col">In-app</th></tr></thead><tbody>
+      <div style={{ overflowX: 'auto' }}><table style={{ width: '100%' }}><thead><tr><th scope="col">Notification</th><th scope="col">In-app</th></tr></thead><tbody>
         {(Object.keys(notificationLabels) as NotificationKind[]).map(kind => <tr key={kind}>
           <th scope="row" style={{ textAlign: 'left', padding: '16px 0', fontWeight: 500 }}>{notificationLabels[kind][0]}<p className="muted" style={{ fontWeight: 400 }}>{notificationLabels[kind][1]}</p></th>
-          {(['email', 'inApp'] as const).map(channel => <td key={channel} style={{ textAlign: 'center' }}><input type="checkbox" aria-label={notificationLabels[kind][0] + (channel === 'email' ? ' email' : ' in-app')} disabled={saving} checked={preferences.notifications[kind][channel]} onChange={event => setPreferences({ ...preferences, notifications: { ...preferences.notifications, [kind]: { ...preferences.notifications[kind], [channel]: event.target.checked } } })} /></td>)}
+          {(['inApp'] as const).map(channel => <td key={channel} style={{ textAlign: 'center' }}><input type="checkbox" aria-label={notificationLabels[kind][0] + ' in-app'} disabled={saving} checked={preferences.notifications[kind][channel]} onChange={event => setPreferences({ ...preferences, notifications: { ...preferences.notifications, [kind]: { ...preferences.notifications[kind], [channel]: event.target.checked } } })} /></td>)}
         </tr>)}
       </tbody></table></div>
-      <p className="muted">In-app preferences filter the recent notifications below. Email preferences apply to configured approval reminders. Other email event delivery is not connected yet; these preferences are saved for when it is. Account-security emails are unaffected.</p>
+      <p className="muted">Updates appear here in Fairshare. Share invitation links and copy review reminders to notify collaborators directly; no email is sent.</p>
       <button type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save preferences'}</button>
     </form>}
     <h3 style={{ marginTop: 32 }}>Recent notifications</h3>

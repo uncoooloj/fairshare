@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, type ReactNode } from "react";
+import { useEmailDelivery } from '../lib/email-capability';
 import { prepareAuthForm } from "../lib/auth-form";
 import styles from "./designer-auth.module.css";
 
@@ -13,6 +14,7 @@ export function Auth({ busy, error, onSubmit }: {
   error: string;
   onSubmit: (type: string, data: Record<string, string>) => void;
 }) {
+  const emailDelivery = useEmailDelivery();
   const [login, setLogin] = useState(true);
   const [localError, setLocalError] = useState("");
   const [showServerError, setShowServerError] = useState(true);
@@ -47,8 +49,8 @@ export function Auth({ busy, error, onSubmit }: {
         <button className={styles.primary} disabled={busy}>{busy ? "Please wait…" : login ? "Sign in" : "Create account"}</button>
       </form>
       <p className={styles.switch}>{login ? "New to Fairshare? " : "Already have an account? "}<button type="button" disabled={busy} onClick={() => { setLogin(!login); setLocalError(""); setShowServerError(false); setShowPassword(false); }}>{login ? "Create an account" : "Sign in"}</button></p>
-      {login && <p className={styles.hint}><a href="/forgot-password">Forgot your password?</a></p>}
-      <p className={styles.hint}>Email and password sign-in. Recovery requires a verified email and configured email delivery. Social sign-in is not available.</p>
+      {login && emailDelivery && <p className={styles.hint}><a href="/forgot-password">Forgot your password?</a></p>}
+      <p className={styles.hint}>Email and password sign-in. {emailDelivery ? 'Recovery requires a verified email.' : 'Save your password securely: email recovery is unavailable in this environment.'} Social sign-in is not available.</p>
     </div>
     <footer className={styles.footer}>Sandbox build. No live money.</footer>
   </main>;
