@@ -38,3 +38,21 @@ SQLite uses serialized transactions, revision guards and a separate capture uniq
 Server only constructs the sandbox payment provider when PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET **and PAYPAL_MERCHANT_ID** are present, and DEMO_MODE is not true. PUBLIC_API_URL must be approved HTTPS callback origin. PAYPAL_WEBHOOK_ID is required for signed webhook verification. Payouts remain off until PAYPAL_PAYOUTS_ENABLED and PAYPAL_PAYOUTS_ELIGIBILITY_CONFIRMED are both true. Those flags are not evidence that eligibility has actually been verified.
 
 Payment endpoint wiring is in `paymentRoutes.ts`; HTTP tests exercise injected provider responses, not real sandbox transactions. Actual provider acceptance remains a separate release gate.
+
+### Private invitation links (no email dependency)
+
+Workspace owners can create a single-use member/viewer link using
+`POST /api/workspaces/:id/invitation-links` with `{ "role": "MEMBER" }`.
+Settings → Workspace invitations and an agreement's People section expose
+**Create private invitation link**, **Copy link**, and **Revoke link**.
+Send the link privately to one intended collaborator. The link expires in 48 hours.
+The recipient signs in (or creates an account), then explicitly accepts it.
+
+This is bearer-link authorization, not proof of mailbox ownership: anyone holding
+it can redeem it once as their authenticated account. It grants only the selected
+workspace role, never OWNER, and does not approve agreements or move money.
+Raw tokens are returned only at creation to the authorized owner, held in page
+memory, and placed in the URL fragment, not a query string. The database stores a
+hash; audit events omit secrets. Refreshing loses the displayed link. Existing
+email invitations retain their independently verified-email requirement in
+SANDBOX; private links require no mail provider in either environment.
