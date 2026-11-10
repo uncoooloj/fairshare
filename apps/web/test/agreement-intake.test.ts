@@ -23,10 +23,10 @@ test("first action is upload or paste, never title or workspace setup", () => {
   assert.match(html, /AI interpretation requires your confirmation/);
 });
 test("input survives errors and retries retain idempotency key until input changes", () => {
-  assert.match(source, /requestId.current \|\|= crypto.randomUUID/);
-  assert.match(source, /busy \|\| locked.current/);
-  assert.match(source, /finally \{ locked.current = false/);
-  assert.match(source, /const changed = \(\) => \{ requestId.current = ""/);
+  assert.match(source, /requestId\.current\s*\|\|=\s*crypto\.randomUUID/);
+  assert.match(source, /busy\s*\|\|\s*locked\.current/);
+  assert.match(source, /finally\s*\{\s*locked\.current\s*=\s*false/);
+  assert.match(source, /const changed = \(\) => \{\s*requestId\.current = ""/);
   assert.doesNotMatch(source, /setFile\(null\)|setText\(""\)/);
 });
 test("local reads are bounded and source is not sent automatically to an AI service", () => {
