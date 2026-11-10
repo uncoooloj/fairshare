@@ -10,5 +10,7 @@ export async function recoverSourceDocument(
     documentId = history.documents[0]?.documentId;
   }
   if (!documentId) return null;
-  return request(`${agreementPath}/documents/${encodeURIComponent(documentId)}`);
+  return request(
+    `${agreementPath}/documents/${encodeURIComponent(documentId)}`,
+  );
 }
