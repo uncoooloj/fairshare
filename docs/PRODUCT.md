@@ -30,6 +30,7 @@ AI interprets and explains. Collaborators agree. Deterministic code calculates. 
 The hackathon implementation uses PayPal sandbox, not live money. PayPal authentication has succeeded, but the complete checkout, capture, webhook and payout paths have not yet been verified. This document describes the intended product, not completed functionality. The dashboard is being designed while backend work proceeds in a separate Fairshare repository.
 
 ---PAGE---
+
 # People and product structure
 
 ## Who uses Fairshare
@@ -44,12 +45,12 @@ The hackathon implementation uses PayPal sandbox, not live money. PayPal authent
 
 ## Main navigation
 
-| Destination | Why it exists | Primary content |
-|---|---|---|
-| Overview | Know what needs attention | Pending reviews, payment exceptions, recent activity and concise totals |
-| Agreements | Manage agreements and shared work | Agreement list and each agreement’s workspace, including people and revenue |
-| Payouts | Inspect outgoing money | Recipient amounts, payment status, schedule and exceptions |
-| Settings | Manage account and connections | Profile, merchant connection and relevant preferences |
+| Destination | Why it exists                     | Primary content                                                             |
+| ----------- | --------------------------------- | --------------------------------------------------------------------------- |
+| Overview    | Know what needs attention         | Pending reviews, payment exceptions, recent activity and concise totals     |
+| Agreements  | Manage agreements and shared work | Agreement list and each agreement’s workspace, including people and revenue |
+| Payouts     | Inspect outgoing money            | Recipient amounts, payment status, schedule and exceptions                  |
+| Settings    | Manage account and connections    | Profile, merchant connection and relevant preferences                       |
 
 The primary product object is an agreement. Documents, people, clarifications, rule versions and incoming revenue live inside its workspace. Backend collaboration aggregates may retain their internal names. A separate global Collaborators directory and Library are not needed for the first version. A future cross-collaboration search does not require creating empty menu items now.
 
@@ -62,6 +63,7 @@ Use contextual sections such as Summary, Agreement, People and Activity. Revenue
 The agreement list should show a real metric such as **Revenue received**, with currency and period, not a column that repeats “Revenue share” on every row. Until reliable values exist, omit the metric. Do not combine different currencies into an unlabeled total.
 
 ---PAGE---
+
 # Onboarding and collaboration setup
 
 ## Organizer journey
@@ -86,6 +88,7 @@ Show invitation states separately from rule approvals: an invitation may be sent
 Empty collaboration; saved draft; file selected; upload in progress; unsupported or unreadable document; extraction failed; missing participant match; invitation pending; invitation accepted; access denied; retry without losing completed work.
 
 ---PAGE---
+
 # From agreement to approved rules
 
 ## Review proposed interpretation
@@ -102,10 +105,10 @@ The agent should explain the uncertain term, propose useful alternatives and sho
 
 For a fee ambiguity, the agent might suggest sharing fees proportionally or having the organizer cover them. The person can select an option, edit its wording or propose another approach. Show the proposed wording and financial effect before **Send proposal for review**.
 
-| Example with no recoupment | Maya 50% | Jordan 30% | Riley 20% | Fee |
-|---|---:|---:|---:|---:|
-| $1,000 revenue with $30 deducted before splitting | $485 | $291 | $194 | $30 |
-| Organizer Maya covers the $30 from her gross share | $470 | $300 | $200 | $30 |
+| Example with no recoupment                         | Maya 50% | Jordan 30% | Riley 20% | Fee |
+| -------------------------------------------------- | -------: | ---------: | --------: | --: |
+| $1,000 revenue with $30 deducted before splitting  |     $485 |       $291 |      $194 | $30 |
+| Organizer Maya covers the $30 from her gross share |     $470 |       $300 |      $200 | $30 |
 
 Both examples conserve the original $1,000. Neither option benefits every person equally. Explain that tradeoff plainly. If the organizer’s share cannot cover the fee, require an explicit supported policy rather than silently creating a negative payout.
 
@@ -116,6 +119,7 @@ A material change produces a new version and requires all relevant collaborators
 Once approved and valid, the rules become active for their stated scope. Previous versions, comments and decisions remain inspectable. Historical transactions stay attached to the version used for them. Changing future rules must not silently rewrite old receipts. Any legal amendment or electronic-signature workflow is outside this initial product scope.
 
 ---PAGE---
+
 # How the money works
 
 ## Three distinct concepts
@@ -133,11 +137,11 @@ Use one consistent sample collaboration with Maya, Jordan and Riley. The example
 For this illustration, eligible revenue is $3,000 after any agreed deductions. The fee policy is deliberately separate from this example, so no amount disappears into an unstated fee.
 
 | Recipient | Advance recoupment | Share of remaining $1,000 | Total entitlement |
-|---|---:|---:|---:|
-| Maya | $2,000 | $500 | $2,500 |
-| Jordan | $0 | $300 | $300 |
-| Riley | $0 | $200 | $200 |
-| Total | $2,000 | $1,000 | $3,000 |
+| --------- | -----------------: | ------------------------: | ----------------: |
+| Maya      |             $2,000 |                      $500 |            $2,500 |
+| Jordan    |                 $0 |                      $300 |              $300 |
+| Riley     |                 $0 |                      $200 |              $200 |
+| Total     |             $2,000 |                    $1,000 |            $3,000 |
 
 The $2,000 is not removed from accounting. It belongs to a named recipient and must remain visible in allocation and payout records. If a provider payout fee applies, show its treatment separately under the approved policy.
 
@@ -148,6 +152,7 @@ After this event, the advance remaining is $0. A second $1,000 eligible revenue 
 Participants approve rules before activation. Once revenue is confirmed, the engine applies those rules. Nobody gets a routine approve-or-decline control over another person’s calculated amount. A payout may still wait for its agreed schedule, available funds, valid recipient details or a genuine risk exception. Show the reason without implying that the entitlement has changed.
 
 ---PAGE---
+
 # Revenue and payouts experience
 
 ## Revenue list and detail
@@ -180,6 +185,7 @@ There is no generic “approve share” button. Show contextual actions such as 
 A contextual assistant can answer follow-up questions using these recorded facts. It cannot silently change rules, invent a clause or send another payout through chat. **Flag a discrepancy** creates an auditable issue for review, not an automatic reversal.
 
 ---PAGE---
+
 # States and safeguards to design
 
 ## Rule lifecycle
@@ -188,18 +194,18 @@ Draft → Reading agreement → Needs clarification → Awaiting approvals → A
 
 ## Important exceptions
 
-| Situation | What the person sees | Safe behavior |
-|---|---|---|
-| Missing or ambiguous rule | Exact question and source | No activation until resolved |
-| Shares do not total 100% | Inline validation | No calculation using invalid rules |
-| A collaborator requests a change | Comment and affected version | New proposal needs renewed approval |
-| AI unavailable | Existing source and saved work | Retry or explicit manual review |
-| Duplicate payment event | One existing transaction | No duplicate allocation or payout |
-| Unknown provider outcome | Processing or needs review | Reconcile before retrying |
-| Recipient cannot receive payout | Specific item needs attention | Keep entitlement; do not mark paid |
-| One payout fails | Mixed item-level results | Preserve successes and isolate failure |
-| Refund or reversal arrives | Affected payment needs review | Pause affected outgoing funds safely |
-| Funds already paid before reversal | Visible exception and audit trail | No invented automatic clawback |
+| Situation                          | What the person sees              | Safe behavior                          |
+| ---------------------------------- | --------------------------------- | -------------------------------------- |
+| Missing or ambiguous rule          | Exact question and source         | No activation until resolved           |
+| Shares do not total 100%           | Inline validation                 | No calculation using invalid rules     |
+| A collaborator requests a change   | Comment and affected version      | New proposal needs renewed approval    |
+| AI unavailable                     | Existing source and saved work    | Retry or explicit manual review        |
+| Duplicate payment event            | One existing transaction          | No duplicate allocation or payout      |
+| Unknown provider outcome           | Processing or needs review        | Reconcile before retrying              |
+| Recipient cannot receive payout    | Specific item needs attention     | Keep entitlement; do not mark paid     |
+| One payout fails                   | Mixed item-level results          | Preserve successes and isolate failure |
+| Refund or reversal arrives         | Affected payment needs review     | Pause affected outgoing funds safely   |
+| Funds already paid before reversal | Visible exception and audit trail | No invented automatic clawback         |
 
 ## Access and transparency
 
@@ -212,24 +218,25 @@ Record who proposed a clarification, who approved which version, the timestamp, 
 A preview is labeled **Preview only**. A genuine sandbox operation is labeled **Sandbox**. Waiting for confirmation is not success. A missing integration should not be represented by a green badge. The demo can use a sample agreement, identities and product, but must distinguish those fixtures from actual provider responses.
 
 ---PAGE---
+
 # Screen map and design direction
 
 ## Priority frames
 
-| Frame | Main job | Primary action |
-|---|---|---|
-| Account and sign in | Establish the real user | Create account or sign in |
-| Empty overview | Explain the next meaningful step | Create collaboration |
-| Collaboration setup | Define the work and add source | Review agreement |
-| Proposed rules | Inspect extraction and missing facts | Resolve questions |
-| Clarification proposal | Compare effects on all parties | Send proposal for review |
-| Invitee review | Understand terms and source | Approve version or request change |
-| Allocation preview | Demonstrate the rule logic | Return to review or activate when eligible |
-| Active collaboration | See agreement and current activity | View revenue or people |
-| Revenue detail | Explain incoming money and allocation | View calculation |
-| Payout detail | Track an outgoing item | Resolve a specific exception if needed |
-| Explanation and discrepancy | Trace an amount to evidence | Ask a question or flag issue |
-| Settings and connection | Configure the user and provider | Connect or update configuration |
+| Frame                       | Main job                              | Primary action                             |
+| --------------------------- | ------------------------------------- | ------------------------------------------ |
+| Account and sign in         | Establish the real user               | Create account or sign in                  |
+| Empty overview              | Explain the next meaningful step      | Create collaboration                       |
+| Collaboration setup         | Define the work and add source        | Review agreement                           |
+| Proposed rules              | Inspect extraction and missing facts  | Resolve questions                          |
+| Clarification proposal      | Compare effects on all parties        | Send proposal for review                   |
+| Invitee review              | Understand terms and source           | Approve version or request change          |
+| Allocation preview          | Demonstrate the rule logic            | Return to review or activate when eligible |
+| Active collaboration        | See agreement and current activity    | View revenue or people                     |
+| Revenue detail              | Explain incoming money and allocation | View calculation                           |
+| Payout detail               | Track an outgoing item                | Resolve a specific exception if needed     |
+| Explanation and discrepancy | Trace an amount to evidence           | Ask a question or flag issue               |
+| Settings and connection     | Configure the user and provider       | Connect or update configuration            |
 
 ## Visual system
 
@@ -244,6 +251,7 @@ Keep sidebar labels and positions consistent across every frame. Use Overview, A
 Use Fairshare everywhere. Use one example collaboration and the same people, percentages and amounts across frames. Represent statuses with text as well as color. Align numbers and display currency. Distinguish an empty state from missing data. Do not rely on unexplained initials; show real display names in contextual people lists. Final copy remains open to refinement, but financial meaning must remain exact.
 
 ---PAGE---
+
 # Delivery scope and open decisions
 
 ## What the hackathon version should prove
