@@ -65,7 +65,7 @@ test("workspace form receives server name and resets only when workspace identit
   );
   assert.match(
     form,
-    /useReducer\(\s*workspaceNameDraft,\s*name,\s*initialWorkspaceName\s*,?\s*\)/,
+    /useReducer\(\s*workspaceNameDraft,\s*name,\s*initialWorkspaceName,?\s*\)/,
   );
   assert.match(form, /pending\.current\s*\|\|\s*busy/);
   assert.match(form, /maxLength=\{100\}/);

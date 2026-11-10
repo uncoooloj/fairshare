@@ -37,6 +37,6 @@ test("first-run payouts explains its empty state without requiring a workspace n
     app.indexOf("{section === Section.Overview"),
   );
   assert.match(firstRun, /No payouts yet/);
-  assert.match(firstRun, /AgreementIntake first/);
+  assert.match(firstRun, /AgreementIntake\s+first/);
   assert.doesNotMatch(firstRun, /WorkspaceOnboarding|Workspace name/);
 });

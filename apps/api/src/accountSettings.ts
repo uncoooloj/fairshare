@@ -1,6 +1,23 @@
 import type { FairshareApp } from "./app.js";
 import { ApiError, Role } from "./identity.js";
 
+type PaymentAccountMember = {
+  id: string;
+  name: string;
+  paypalId: string | null;
+};
+type ActivityEvent = {
+  id: string;
+  actorId: string;
+  action: string;
+  createdAt: number;
+  agreementId?: string;
+  agreementName?: string;
+};
+type ActivityAuditRow = ActivityEvent & { detail: string };
+type CollaborationRow = { value: string };
+type UserNameRow = { id: string; name: string };
+
 /** Workspace-scoped payout destinations, never OAuth credentials or verified accounts. */
 export function registerAccountSettings(
   app: FairshareApp,
@@ -16,7 +33,7 @@ export function registerAccountSettings(
       JOIN users u ON u.id=m.user_id LEFT JOIN fairshare_recipients r
       ON r.workspace_id=m.workspace_id AND r.user_id=m.user_id WHERE m.workspace_id=?`,
       )
-      .all(req.params.workspaceId) as any[];
+      .all(req.params.workspaceId) as PaymentAccountMember[];
     return {
       providerConfigured,
       mode: app.store.mode,
@@ -94,20 +111,20 @@ export function registerAccountSettings(
         "INVALID_FILTER",
         "Choose a valid date range and page.",
       );
-    const events: any[] = [];
+    const events: ActivityEvent[] = [];
     if (q.workspaceId) {
       app.requireWorkspace(req, q.workspaceId);
       const rows = db
         .prepare(
           "SELECT id,actor_id AS actorId,action,detail,created_at AS createdAt FROM audit WHERE workspace_id=?",
         )
-        .all(q.workspaceId) as any[];
+        .all(q.workspaceId) as ActivityAuditRow[];
       const visibleAgreements = new Map<string, string>();
       const agreements = db
         .prepare(
           "SELECT value FROM fairshare_collaborations WHERE workspace_id=?",
         )
-        .all(q.workspaceId) as any[];
+        .all(q.workspaceId) as CollaborationRow[];
       for (const row of agreements) {
         const agreement = JSON.parse(row.value);
         // Match agreement visibility: unrelated members cannot inspect private contract events.
@@ -136,17 +153,16 @@ export function registerAccountSettings(
       }
     }
     events.push(
-      ...db
+      ...(db
         .prepare(
           "SELECT id,actor_id AS actorId,action,created_at AS createdAt FROM audit WHERE actor_id=? AND workspace_id IS NULL",
         )
-        .all(user.id),
+        .all(user.id) as ActivityEvent[]),
     );
     const names = new Map(
-      (db.prepare("SELECT id,name FROM users").all() as any[]).map((u) => [
-        u.id,
-        u.name,
-      ]),
+      (db.prepare("SELECT id,name FROM users").all() as UserNameRow[]).map(
+        (u) => [u.id, u.name],
+      ),
     );
     const cutoff = days ? app.store.now() - days * 86400000 : 0;
     const filtered = events
