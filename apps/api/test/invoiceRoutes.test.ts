@@ -167,7 +167,8 @@ const invoiceInput = {
 };
 function install(s: Awaited<ReturnType<typeof setup>>) {
   let creates = 0,
-    publishes = 0;
+    publishes = 0,
+    captureReads = 0;
   let evidence: any = {
     id: "INV1",
     status: "DRAFT",
@@ -190,15 +191,18 @@ function install(s: Awaited<ReturnType<typeof setup>>) {
       return { ...evidence };
     },
     getInvoice: async () => ({ ...evidence }),
-    getCapture: async () => ({
-      id: "ICAP1",
-      status: "COMPLETED",
-      amountCents: 10000,
-      currency: "USD",
-      accounting: { feeCents: 300, netCents: 9700 },
-    }),
+    getCapture: async () => {
+      captureReads++;
+      return {
+        id: "ICAP1",
+        status: "COMPLETED",
+        amountCents: 10000,
+        currency: "USD",
+        accounting: { feeCents: 300, netCents: 9700 },
+      };
+    },
   });
-  return { evidence, counts: () => ({ creates, publishes }) };
+  return { evidence, counts: () => ({ creates, publishes, captureReads }) };
 }
 test("invoice creation publishes without duplicate writes; key binds all immutable input", async () => {
   const s = await setup(),
@@ -211,7 +215,7 @@ test("invoice creation publishes without duplicate writes; key binds all immutab
       (await s.post("/invoices", invoiceInput)).json().invoice.id,
       first.json().invoice.id,
     );
-    assert.deepEqual(p.counts(), { creates: 1, publishes: 1 });
+    assert.deepEqual(p.counts(), { creates: 1, publishes: 1, captureReads: 0 });
     assert.notEqual(
       (await s.post("/invoices", { ...invoiceInput, description: "changed" }))
         .statusCode,
@@ -222,7 +226,7 @@ test("invoice creation publishes without duplicate writes; key binds all immutab
     await s.app.close();
   }
 });
-test("manual marked invoice never allocates; confirmed capture allocates once", async () => {
+test("manual and buyer-paid invoices remain pending without settlement allocation", async () => {
   const s = await setup(),
     p = install(s);
   try {
@@ -244,9 +248,10 @@ test("manual marked invoice never allocates; confirmed capture allocates once", 
     ];
     const result = await s.post(`/invoices/${id}/reconcile`);
     assert.equal(result.statusCode, 200, result.body);
-    assert.equal(result.json().invoice.status, "PAID");
+    assert.equal(result.json().invoice.status, "PAYMENT_PENDING");
     await s.post(`/invoices/${id}/reconcile`);
-    assert.equal(s.agg.read(s.w.id, "collab").value.revenue.length, 1);
+    assert.equal(s.agg.read(s.w.id, "collab").value.revenue.length, 0);
+    assert.equal(p.counts().captureReads, 0);
   } finally {
     await s.app.close();
   }
@@ -270,32 +275,42 @@ test("unknown creation is durable and cannot generate a second invoice", async (
     await s.app.close();
   }
 });
-test("paid invoice without fee proof or mismatched transaction never allocates", async () => {
+test("revoked organizer cannot publish a draft created during an in-flight request", async () => {
   const s = await setup(),
     p = install(s);
+  let release: () => void = () => {};
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  let entered: () => void = () => {};
+  const started = new Promise<void>((resolve) => (entered = resolve));
+  const create = s.provider.createInvoice!;
+  s.provider.createInvoice = async (input) => {
+    entered();
+    await gate;
+    return create(input);
+  };
   try {
-    const id = (await s.post("/invoices", invoiceInput)).json().invoice.id;
-    p.evidence.status = "PAID";
-    p.evidence.payments = [
-      {
-        transactionId: "ICAP1",
-        type: "PAYPAL",
-        amountCents: 10000,
-        currency: "USD",
-      },
-    ];
-    s.provider.getCapture = async () => ({
-      id: "ICAP1",
-      status: "COMPLETED",
-      amountCents: 10000,
-      currency: "USD",
-    });
-    assert.notEqual(
-      (await s.post(`/invoices/${id}/reconcile`)).statusCode,
-      200,
-    );
-    assert.equal(s.agg.read(s.w.id, "collab").value.revenue.length, 0);
+    const pending = s.post("/invoices", invoiceInput);
+    await started;
+    const row = s.agg.read(s.w.id, "collab");
+    s.agg.update(s.w.id, "collab", row.revision, (agreement) => ({
+      ...agreement,
+      members: agreement.members.map((member) =>
+        member.userId === s.owner.user.id
+          ? { ...member, role: MemberRole.COLLABORATOR }
+          : member,
+      ),
+    }));
+    release();
+    const result = await pending;
+    assert.notEqual(result.statusCode, 200);
+    assert.equal(p.counts().publishes, 0);
+    const stored = s.app.store.db
+      .prepare("SELECT provider_id,status FROM fairshare_invoices")
+      .get() as any;
+    assert.equal(stored.provider_id, "INV1");
+    assert.equal(stored.status, "UNKNOWN");
   } finally {
+    release();
     await s.app.close();
   }
 });

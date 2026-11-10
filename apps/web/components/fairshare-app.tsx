@@ -41,6 +41,7 @@ import {
   Section,
   api,
   money,
+  parseCents,
   parseShare,
   title,
   sampleAgreement,
