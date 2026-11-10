@@ -12,7 +12,7 @@ import {
   RuleOrigin,
   FeePolicy,
 } from "@fairshare/domain";
-import { PayPalError } from "@fairshare/payments";
+import { PayPalError, PayPalSandbox } from "@fairshare/payments";
 import type { PaymentProvider } from "../src/paymentRoutes.js";
 const auth = (token: string) => ({ authorization: `Bearer ${token}` });
 async function setup(reconciliation = false) {
@@ -932,6 +932,129 @@ test("invalid source metadata cannot issue a provider write or assert financial 
     });
     assert.equal(legacy.json().source_type, "PAYPAL");
     assert.equal(legacy.json().source_name, "PayPal");
+  } finally {
+    await s.app.close();
+  }
+});
+
+test("disabled payout gates remain retryable without submitting or replaying money", async () => {
+  const s = await setup();
+  let providerRequests = 0;
+  const config = {
+    clientId: "synthetic",
+    clientSecret: "synthetic",
+    payoutsEnabled: false,
+    payoutsEligibilityConfirmed: false,
+  };
+  const client = new PayPalSandbox(config, (async (url, init) => {
+    providerRequests++;
+    if (String(url).endsWith("/v1/oauth2/token"))
+      return Response.json({ access_token: "synthetic", expires_in: 3600 });
+    const body = JSON.parse(String(init?.body));
+    return Response.json({
+      batch_header: {
+        payout_batch_id: "BATCH1",
+        sender_batch_header: body.sender_batch_header,
+      },
+    });
+  }) as typeof fetch);
+  try {
+    const payment = await s.post("/payments", {
+      amountCents: 10000,
+      requestKey: "one",
+    });
+    await s.post(`/payments/${payment.json().id}/capture`);
+    await s.app.inject({
+      method: "PUT",
+      url: s.base + "/recipient",
+      headers: auth(s.owner.token),
+      payload: { paypalId: "ABCDEFGHIJKLM" },
+    });
+    s.provider.createPayout = client.createPayout.bind(client);
+    await s.app.listen({ host: "127.0.0.1", port: 0 });
+    const address = s.app.server.address();
+    assert.ok(address && typeof address !== "string");
+    const dispatch = () =>
+      fetch(`http://127.0.0.1:${address.port}${s.base}/payouts/dispatch`, {
+        method: "POST",
+        headers: { ...auth(s.owner.token), "content-type": "application/json" },
+        body: JSON.stringify({ captureId: "CAP1" }),
+      });
+    const disabled = await dispatch();
+    assert.equal(disabled.status, 503, await disabled.text());
+    assert.equal(providerRequests, 0);
+    assert.equal(
+      (
+        s.app.store.db
+          .prepare("SELECT status FROM fairshare_payout_ops")
+          .get() as { status: string }
+      ).status,
+      "RESERVED",
+    );
+    config.payoutsEnabled = true;
+    config.payoutsEligibilityConfirmed = true;
+    const retried = await dispatch();
+    assert.equal(retried.status, 200);
+    assert.equal(((await retried.json()) as any).payouts[0].status, "PENDING");
+    await dispatch();
+    assert.equal(
+      providerRequests,
+      2,
+      "one OAuth request and one payout submission",
+    );
+  } finally {
+    await s.app.close();
+  }
+});
+
+test("concurrent dispatch claims a recovered reservation once and never replays uncertain writes", async () => {
+  const s = await setup();
+  try {
+    const payment = await s.post("/payments", {
+      amountCents: 10000,
+      requestKey: "one",
+    });
+    await s.post(`/payments/${payment.json().id}/capture`);
+    const payoutId = "recovered-reservation";
+    s.app.store.db
+      .prepare(
+        "INSERT INTO fairshare_payout_ops(id,workspace_id,collaboration_id,capture_id,user_id,recipient_id,amount,status) VALUES(?,?,?,?,?,?,?,?)",
+      )
+      .run(
+        payoutId,
+        s.w.id,
+        "collab",
+        "CAP1",
+        s.owner.user.id,
+        "ABCDEFGHIJKLM",
+        9700,
+        "RESERVED",
+      );
+    let submissions = 0;
+    let release!: () => void;
+    let entered!: () => void;
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    s.provider.createPayout = async () => {
+      submissions++;
+      entered();
+      await pending;
+      throw new PayPalError("PAYPAL_OUTCOME_UNKNOWN");
+    };
+    const first = s.post("/payouts/dispatch", { captureId: "CAP1" });
+    await started;
+    const concurrent = await s.post("/payouts/dispatch", { captureId: "CAP1" });
+    assert.equal(concurrent.json().payouts[0].status, "SUBMITTING");
+    assert.equal(submissions, 1);
+    release();
+    assert.equal((await first).json().payouts[0].status, "OUTCOME_UNKNOWN");
+    const retry = await s.post("/payouts/dispatch", { captureId: "CAP1" });
+    assert.equal(retry.json().payouts[0].status, "OUTCOME_UNKNOWN");
+    assert.equal(submissions, 1);
   } finally {
     await s.app.close();
   }
