@@ -257,11 +257,7 @@ export function registerInvoiceRoutes(
       check(read(op.id), published);
       db.prepare(
         "UPDATE fairshare_invoices SET status=?,share_url=? WHERE id=?",
-      ).run(
-        localStatus(published),
-        published.shareUrl,
-        op.id,
-      );
+      ).run(localStatus(published), published.shareUrl, op.id);
       return { invoice: dto(read(op.id)) };
     } catch (error) {
       db.prepare(
