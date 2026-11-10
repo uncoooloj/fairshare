@@ -263,12 +263,10 @@ export function registerReviewCollaboration(
           },
         );
       });
-      return reply
-        .code(201)
-        .send({
-          comment,
-          notice: "Discussion only. Comments do not change rules or approvals.",
-        });
+      return reply.code(201).send({
+        comment,
+        notice: "Discussion only. Comments do not change rules or approvals.",
+      });
     },
   );
   app.post(

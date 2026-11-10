@@ -128,17 +128,13 @@ export async function buildApp(
       typeof error.statusCode === "number" &&
       error.statusCode < 500
     )
-      return reply
-        .status(error.statusCode)
-        .send({
-          error: { code: "INVALID_REQUEST", message: "Invalid request." },
-        });
-    request.log.error(error);
-    return reply
-      .status(500)
-      .send({
-        error: { code: "INTERNAL_ERROR", message: "Something went wrong." },
+      return reply.status(error.statusCode).send({
+        error: { code: "INVALID_REQUEST", message: "Invalid request." },
       });
+    request.log.error(error);
+    return reply.status(500).send({
+      error: { code: "INTERNAL_ERROR", message: "Something went wrong." },
+    });
   });
   const assertParticipantAccess = (workspaceId: string, userId: string) => {
     const rows = store.db
@@ -266,11 +262,9 @@ export async function buildApp(
     async (req, reply) => {
       const user = app.requireSession(req);
       limit(req, "workspace", 20);
-      return reply
-        .status(201)
-        .send({
-          workspace: store.createWorkspace(user.id, (req.body as any).name),
-        });
+      return reply.status(201).send({
+        workspace: store.createWorkspace(user.id, (req.body as any).name),
+      });
     },
   );
   app.get<{ Params: { id: string } }>("/api/workspaces/:id", async (req) => ({
