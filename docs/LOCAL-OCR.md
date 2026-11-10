@@ -13,9 +13,9 @@ For each scanned PDF, the user must select **Use OCR** before uploading. Text-la
 ## Limits and operations
 
 - English only; at most 5 pages, 5 MiB input and 40,000 extracted characters.
-- One OCR job at a time per API process; maximum 60 seconds total and 15 seconds per subprocess.
+- One OCR job at a time per API process; the default extraction budget is 60 seconds, with at most 15 seconds for each recognition/rasterization subprocess. Native helper compilation is normally warmed during startup and has its own 60-second limit.
 - macOS recognition uses English Apple Vision with language correction disabled and a 15-second recognition subprocess deadline. The local helper compile has a separate 60-second startup deadline.
-- Pages rasterized separately to at most 2,000 pixels on the longest side; generated files checked against a 20 MiB limit. Output and stderr handling are bounded; source-bearing logs are suppressed.
+- Pages are rasterized separately to a target longest edge of 2,000 pixels. Linux checks each generated image file against a 20 MiB limit; macOS keeps its raster in memory. Output is bounded and source-bearing stderr is discarded.
 - Private temporary directory, original file mode 0600; files removed in `finally` after success/failure. Abrupt host/process termination can leave an orphan directory: configure host temp cleanup and protected temporary storage.
 - No shell interpolation. These CLI tools are not a kernel sandbox: deploy with an unprivileged OS user, process/memory/disk quotas and patched packages. Do not expose enabled OCR on an unrestricted public host without those controls.
 - Source hashes, page offsets and `ocr: true` provenance are saved; source remains immutable and all normal agreement/version approvals still apply.
