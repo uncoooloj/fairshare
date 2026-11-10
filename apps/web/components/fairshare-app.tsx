@@ -1,4 +1,5 @@
 "use client";
+import { useEmailDelivery } from "../lib/email-capability";
 import { WorkspaceNameForm } from "./workspace-name-form";
 import {
   useDisplayPreferences,
@@ -72,6 +73,7 @@ import { PaymentGridStatus } from "../src/components/paymentGridModel";
 import { Badge, Button, Empty, Field, Icon, Notice } from "./ui";
 const workspaceBase = (id: string) => `workspaces/${id}`;
 export default function FairshareApp() {
+  const emailDelivery = useEmailDelivery();
   const [settingsTab, setSettingsTab] = useState("Profile");
   const [useLocalOcr, setUseLocalOcr] = useState(false);
   const [user, setUser] = useState<User | null>(null),
@@ -1658,27 +1660,29 @@ export default function FairshareApp() {
                       <p className="muted">
                         Current environment: {mode}. Live money is disabled.
                       </p>
-                      <Button
-                        variant="secondary"
-                        disabled={busy}
-                        onClick={() =>
-                          run(async () => {
-                            const r = await api(
-                              "auth/verification/request",
-                              "POST",
-                              {},
-                            );
-                            setNotice(
-                              r.notice ||
-                                "Verification email requested. Check your inbox.",
-                            );
-                            if (r.demoVerificationLink)
-                              setInviteLink(r.demoVerificationLink);
-                          })
-                        }
-                      >
-                        Verify email
-                      </Button>
+                      {emailDelivery && (
+                        <Button
+                          variant="secondary"
+                          disabled={busy}
+                          onClick={() =>
+                            run(async () => {
+                              const r = await api(
+                                "auth/verification/request",
+                                "POST",
+                                {},
+                              );
+                              setNotice(
+                                r.notice ||
+                                  "Verification email requested. Check your inbox.",
+                              );
+                              if (r.demoVerificationLink)
+                                setInviteLink(r.demoVerificationLink);
+                            })
+                          }
+                        >
+                          Verify email
+                        </Button>
+                      )}
                       {inviteLink && (
                         <a className="block-link" href={inviteLink}>
                           Open demo verification/invitation link

@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, type ReactNode } from "react";
+import { useEmailDelivery } from "../lib/email-capability";
 import { prepareAuthForm } from "../lib/auth-form";
 import styles from "./designer-auth.module.css";
 
@@ -26,6 +27,7 @@ export function Auth({
   error: string;
   onSubmit: (type: string, data: Record<string, string>) => void;
 }) {
+  const emailDelivery = useEmailDelivery();
   const [login, setLogin] = useState(true);
   const [localError, setLocalError] = useState("");
   const [showServerError, setShowServerError] = useState(true);
@@ -168,14 +170,17 @@ export function Auth({
             {login ? "Create an account" : "Sign in"}
           </button>
         </p>
-        {login && (
+        {login && emailDelivery && (
           <p className={styles.hint}>
             <a href="/forgot-password">Forgot your password?</a>
           </p>
         )}
         <p className={styles.hint}>
-          Email and password sign-in. Recovery requires a verified email and
-          configured email delivery. Social sign-in is not available.
+          Email and password sign-in.{" "}
+          {emailDelivery
+            ? "Recovery requires a verified email."
+            : "Save your password securely: email recovery is unavailable in this environment."}{" "}
+          Social sign-in is not available.
         </p>
       </div>
       <footer className={styles.footer}>Sandbox build. No live money.</footer>

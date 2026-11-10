@@ -1,8 +1,10 @@
 # Email delivery acceptance
 
-This is optional server-only configuration. No email has been sent by this change and no mailbox delivery is claimed. Keep synthetic DEMO accounts separate from SANDBOX accounts.
+This is optional server-only configuration for legacy email routes. The primary collaboration flow uses private invitation links and copied review reminders, so it does not depend on email delivery. No email has been sent by this change and no mailbox delivery is claimed. Keep synthetic DEMO accounts separate from SANDBOX accounts.
 
 ## Configure only after authorizing the provider
+
+The public `GET /api/auth/capabilities` response reports `{invitationDelivery:"LINK",emailDelivery:boolean}`. The link value remains available without a mail provider. `emailDelivery` is true only for a configured non-DEMO server transport and gates current web request controls for recovery, verification, and email change; confirmation routes remain registered with their existing token/authentication rules. The web UI does not expose legacy email-invitation creation, although the configured backend route remains available. The capability is not delivery evidence.
 
 Use a sender domain verified with Resend. Store the API key outside Git and never put it in a NEXT_PUBLIC variable. Configure:
 

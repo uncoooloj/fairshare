@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
+import { useEmailDelivery } from "../lib/email-capability";
 import { api } from "../lib/model";
 import { Button, Field } from "./ui";
 
@@ -10,6 +11,7 @@ export function ProfileContact({
   name: string;
   email: string;
 }) {
+  const emailDelivery = useEmailDelivery();
   const [photo, setPhoto] = useState<string | null>(null),
     [busy, setBusy] = useState(false),
     [notice, setNotice] = useState(""),
@@ -125,14 +127,23 @@ export function ProfileContact({
         </Button>
       )}
       <p>{email}</p>
-      <Button
-        variant="secondary"
-        disabled={busy}
-        onClick={() => setChanging(!changing)}
-      >
-        {changing ? "Cancel email change" : "Change email"}
-      </Button>
-      {changing && (
+      {!emailDelivery && (
+        <p className="muted">
+          This is your sign-in address. Email changes are unavailable because
+          email delivery is not enabled. You can still change your password
+          below.
+        </p>
+      )}
+      {emailDelivery && (
+        <Button
+          variant="secondary"
+          disabled={busy}
+          onClick={() => setChanging(!changing)}
+        >
+          {changing ? "Cancel email change" : "Change email"}
+        </Button>
+      )}
+      {emailDelivery && changing && (
         <form
           onSubmit={(event) => {
             event.preventDefault();

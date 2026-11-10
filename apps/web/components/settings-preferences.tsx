@@ -129,7 +129,6 @@ export function NotificationsSettings() {
               <thead>
                 <tr>
                   <th scope="col">Notification</th>
-                  <th scope="col">Email</th>
                   <th scope="col">In-app</th>
                 </tr>
               </thead>
@@ -150,14 +149,11 @@ export function NotificationsSettings() {
                           {notificationLabels[kind][1]}
                         </p>
                       </th>
-                      {(["email", "inApp"] as const).map((channel) => (
+                      {(["inApp"] as const).map((channel) => (
                         <td key={channel} style={{ textAlign: "center" }}>
                           <input
                             type="checkbox"
-                            aria-label={
-                              notificationLabels[kind][0] +
-                              (channel === "email" ? " email" : " in-app")
-                            }
+                            aria-label={notificationLabels[kind][0] + " in-app"}
                             disabled={saving}
                             checked={preferences.notifications[kind][channel]}
                             onChange={(event) =>
@@ -182,10 +178,8 @@ export function NotificationsSettings() {
             </table>
           </div>
           <p className="muted">
-            In-app preferences filter the recent notifications below. Email
-            preferences apply to configured approval reminders. Other email
-            event delivery is not connected yet; these preferences are saved for
-            when it is. Account-security emails are unaffected.
+            Updates appear here in Fairshare. Share invitation links and copy
+            review reminders to notify collaborators directly; no email is sent.
           </p>
           <button type="submit" disabled={saving}>
             {saving ? "Saving…" : "Save preferences"}

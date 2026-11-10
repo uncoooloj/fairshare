@@ -17,9 +17,11 @@ Users are global identities; memberships scope every workspace resource. Roles a
 - GET/POST `/api/workspaces`; POST body `{name}`.
 - GET `/api/workspaces/:id`, `/members`, `/audit` (latest 100 events).
 - PATCH `/api/workspaces/:id/members/:userId` `{role}` and DELETE same path: owner only; owner protected.
-- POST `/api/workspaces/:id/invitations` `{email,role}`: owner only, creates a single-use invitation. DEMO returns a synthetic link only. SANDBOX sends through configured email delivery and does not return the secret token to the inviter. Never log tokens or embed them in analytics. Replacement revokes older unused invitations for that email/workspace.
+- GET `/api/auth/capabilities` is public and returns `{invitationDelivery:"LINK",emailDelivery:boolean}`. `emailDelivery` is false in DEMO and without a configured server mail transport.
+- POST `/api/workspaces/:id/invitation-links` `{role}`: owner only, creates the primary single-use private invitation link. The owner shares it directly; no email is sent. Never log tokens or embed them in analytics.
+- POST `/api/workspaces/:id/invitations` `{email,role}` is an optional legacy email route. DEMO returns a synthetic link only. SANDBOX sends through configured email delivery and does not return the secret token to the inviter. Replacement revokes older unused invitations for that email/workspace.
 - DELETE `/api/workspaces/:id/invitations/:invitationId`: owner revokes.
-- POST `/api/invitations/accept` `{token}`: signed-in recipient with matching email (verified mailbox required in SANDBOX), unexpired/unrevoked token, no existing membership. Replay rejected. Expires in 48h.
+- POST `/api/invitations/accept` `{token}` accepts a signed-in recipient for either invitation type, if the token is unexpired/unrevoked and no membership already exists; replay is rejected. A private bearer link joins the authenticated account without mailbox proof. A legacy email-bound invitation requires the matching email and, in SANDBOX, a verified mailbox. Both expire in 48h.
 
 Authenticated calls use `Authorization: Bearer <token>`. Tokens are 32 random bytes, SHA256-hashed in storage, expire after 7 days and are revoked on logout/password change. Passwords use salted scrypt. Responses have `Cache-Control: no-store`. No auth cookies/CORS are enabled: use a same-origin frontend proxy and keep tokens in memory, not URLs. A later cookie session design needs CSRF and secure cookie settings before adoption.
 
@@ -31,7 +33,7 @@ Authenticated calls use `Authorization: Bearer <token>`. Tokens are 32 random by
 
 ## Known scope limits
 
-Email verification, password recovery, and a server-only Resend adapter are implemented but no real delivery has been exercised. Password recovery requires a verified email and authorized mail configuration; DEMO has no reset-link echo. Authenticator MFA is available only with a valid server-side `FAIRSHARE_MFA_ENCRYPTION_KEY`; password reset does not bypass an enabled authenticator. No owner transfer or production account deletion exists. Demo verification is explicitly simulated and cannot cross into SANDBOX. Use synthetic identities for demo testing; real mail requires explicit operator setup and authorization. Rate limits use the app database and direct socket IP; do not blindly enable trustProxy. Database encryption, backup/restore and deployment quotas require hosting configuration. These are not claims of production readiness.
+Email verification, password recovery, and a server-only Resend adapter are optional legacy email capabilities; no real delivery has been exercised. The primary collaboration path uses private links and copied reminders. Password recovery requires a verified email and authorized mail configuration; DEMO has no reset-link echo. Authenticator MFA is available only with a valid server-side `FAIRSHARE_MFA_ENCRYPTION_KEY`; password reset does not bypass an enabled authenticator. No owner transfer or production account deletion exists. Demo verification is explicitly simulated and cannot cross into SANDBOX. Use synthetic identities for demo testing; real mail requires explicit operator setup and authorization. Rate limits use the app database and direct socket IP; do not blindly enable trustProxy. Database encryption, backup/restore and deployment quotas require hosting configuration. These are not claims of production readiness.
 
 ## Historical verification notes
 
@@ -41,7 +43,7 @@ Email verification, password recovery, and a server-only Resend adapter are impl
 
 - POST `/api/auth/verification/request` with `{}` requires a session. User/IP throttled. Verification token lasts 30 minutes; new request invalidates old unused links.
 - POST `/api/auth/verification/confirm` with `{token}` requires the same signed-in user. Success returns `{user,verificationMode}`.
-- `user.emailVerified` is exposed in auth responses. SANDBOX invitations require verified email both for the inviter and accepting recipient.
+- `user.emailVerified` is exposed in auth responses. SANDBOX legacy email invitations require verified email for both inviter and accepting recipient; private bearer links do not establish mailbox proof.
 - Link fragments are `/verify-email#token=…` and `/invitation#token=…`. Frontend must extract then clear the fragment, never log or send it to analytics. Confirmation uses POST.
 - A failed or ambiguous mail send invalidates the token; an invitation send failure revokes it. A provider acceptance response means `EMAIL_REQUESTED`, not delivery to an inbox. User may safely retry with a new link.
 - DEMO never invokes configured mail, returns `DEMO_ONLY` links and warning, and labels verification `DEMO_SIMULATION`. SANDBOX never falls back to exposed tokens.
