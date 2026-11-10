@@ -8,7 +8,7 @@ test('designer shell retains authoritative payment recovery and onboarding callb
   assert.match(source, /<AccessPrompt/);
   assert.match(source, /auth\/verification\/confirm/);
   assert.match(source, /invitations\/accept/);
-  assert.match(source, /workspaces", "POST", \{ name \}/);
+  assert.match(source, /workspaces",\s*"POST",\s*\{\s*name\s*\}/);
   assert.match(source, /no live money/);
 });
 test('export styling uses local licensed Onest fonts without importing export scripts', () => {
