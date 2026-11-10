@@ -25,9 +25,10 @@ The network-disabled command checks startup only; a production request enters th
 
 ## Deployment status
 
-Source service and local HTTP DOCX/concurrency/missing-binding tests pass. OCR was
-skipped on this host because Poppler is unavailable. No Container has been created
-or deployed, and the Docker image has not been built. Cloudflare Container account
+Local HTTP tests pass for DOCX, concurrency, missing bindings and synthetic OCR
+through the macOS native helper. This verifies the Node parser service locally;
+it does not verify the Linux Container image or Cloudflare hosting. No Container
+has been created or deployed, and the Docker image has not been built. Cloudflare Container account
 availability, paid-plan/billing approval, private binding/egress configuration,
 image build and hosted synthetic smoke tests remain required. Do not describe
 these local tests as hosted validation.

@@ -67,7 +67,7 @@ These checks provide source-level and build evidence. They do not prove browser 
 - Private workspace invitation links are single-use, 48-hour bearer secrets. They are returned only when an owner creates them, remain in page memory and a URL fragment, and are not proof of mailbox ownership; share and revoke them deliberately.
 - Review discussion records comments without changing rules or approvals.
 - Checkout payment-source labels are organizer-entered metadata, not evidence of external revenue or a confirmed payment.
-- Local scanned-PDF OCR is disabled by default, runs only after a user selects it, and needs host-installed Poppler and Tesseract. The optional Cloudflare API sends documents to its private parser Container instead; the upload UI discloses hosted processing. OCR is not a correctness guarantee.
+- Local scanned-PDF OCR is disabled by default, runs only after a user selects it, and uses Apple Vision/PDFKit with Xcode command-line tools on macOS, or host-installed Poppler and Tesseract on Linux. The optional Cloudflare API sends documents to its private parser Container instead; the upload UI discloses hosted processing. OCR is not a correctness guarantee.
 - Authenticator MFA needs a separately managed server encryption key; it is not enabled by the synthetic DEMO alone.
 - `HACKATHON_MFA_SIMULATION=true` is a separate, explicitly labeled SANDBOX-only synthetic-account mode. It rejects DEMO, production, and live-PayPal configuration; it applies process-wide to accounts without an existing real authenticator, so use a dedicated synthetic-only database. It does not replace normal authenticator-key requirements or protect real accounts.
 

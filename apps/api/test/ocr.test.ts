@@ -8,12 +8,17 @@ import { buildApp } from "../src/app.js";
 const bytes = readFileSync(
   new URL("./fixtures/scanned-agreement.pdf", import.meta.url),
 );
-const available = ["pdfinfo", "pdftoppm", "tesseract"].every(
-  (binary) =>
-    spawnSync(binary, [binary === "tesseract" ? "--version" : "-v"], {
-      env: { PATH: "/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin" },
-    }).status === 0,
-);
+const expectedEngine =
+  process.platform === "darwin" ? "apple-vision+pdfkit" : "poppler+tesseract";
+const available =
+  process.platform === "darwin"
+    ? spawnSync("/usr/bin/xcrun", ["--find", "swiftc"]).status === 0
+    : ["pdfinfo", "pdftoppm", "tesseract"].every(
+        (binary) =>
+          spawnSync(binary, [binary === "tesseract" ? "--version" : "-v"], {
+            env: { PATH: "/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin" },
+          }).status === 0,
+      );
 test(
   "local OCR reads an image-only PDF and marks immutable source as OCR requiring review",
   { skip: !available },
@@ -25,6 +30,7 @@ test(
     const result = await extractPdfOcr(bytes);
     assert.match(result.text, /Maya receives 50 percent/);
     assert.match(result.text, /Riley receives 20 percent/);
+    assert.equal(result.extraction.engine, expectedEngine);
     assert.equal(result.extraction.ocr, true);
     assert.equal(result.extraction.reviewRequired, true);
     assert.equal(result.pages.length, 1);
