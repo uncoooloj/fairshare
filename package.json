@@ -15,11 +15,15 @@
     "dev:api": "npm run dev -w @fairshare/api",
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "build": "npm run build --workspaces --if-present"
+    "build": "npm run build --workspaces --if-present",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "devDependencies": {
     "typescript": "^5.9.3",
     "tsx": "^4.20.6",
-    "@types/node": "^22.0.0"
-  }
+    "@types/node": "^22.0.0",
+    "prettier": "3.6.2"
+  },
+  "license": "MIT"
 }
