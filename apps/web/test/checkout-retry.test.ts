@@ -10,7 +10,10 @@ test("checkout retry helper is called by a production component", () => {
   const sources = components
     .filter((entry) => entry.isFile() && entry.name.endsWith(".tsx"))
     .map((entry) =>
-      readFileSync(new URL(`../components/${entry.name}`, import.meta.url), "utf8"),
+      readFileSync(
+        new URL(`../components/${entry.name}`, import.meta.url),
+        "utf8",
+      ),
     );
 
   assert.ok(sources.some((source) => /createSandboxCheckout\(/.test(source)));
