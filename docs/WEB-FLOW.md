@@ -43,6 +43,7 @@ Settings includes display preferences, a filtered read-only activity log, profil
 - The workspace-name editor starts with the server name. Later refreshes replace an untouched draft, but never overwrite a locally edited unsaved name; after a matching save, it returns to the server value. A failed rename keeps the draft for retry.
 - Manual invitation token and email verification links are supported. Sandbox delivery requires configured
   transport; DEMO links are explicitly simulated. No claim of delivered email from accepted requests.
+- For a first proposal, the person saving it must acknowledge the displayed agreement roster before saving. This is a UI check that all share/approval participants were added before membership locks; accepting a workspace invitation alone does not add a person to the agreement or permit their review.
 - UI role errors remain authoritative on server. Real-money mode is absent.
 
 ## Historical verification notes

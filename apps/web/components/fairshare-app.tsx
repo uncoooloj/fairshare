@@ -205,7 +205,9 @@ export default function FairshareApp() {
     setSection(Section.Agreements);
     setFlowToken("");
     history.replaceState(null, "", "/");
-    setNotice("Invitation accepted.");
+    setNotice(
+      "Workspace joined. The organizer must add you to the agreement before you can review and approve its rules.",
+    );
   }
   async function loadWorkspace(id: string) {
     if (!id || id !== currentWorkspace.current) return;
@@ -357,6 +359,8 @@ export default function FairshareApp() {
     if (token && ["/verify-email", "/invitation"].includes(location.pathname)) {
       setFlowKind(location.pathname);
       setFlowToken(decodeURIComponent(token));
+      // Keep the fragment until acceptance succeeds so refresh during sign-in
+      // does not lose this one-use link. Fragments are not sent to the server.
     }
     Promise.all([
       api("auth/me")
@@ -1265,6 +1269,9 @@ export default function FairshareApp() {
                             rules={
                               documentId ? (
                                 <RulesEditor
+                                  onReviewPeople={() =>
+                                    changeAgreementTab(AgreementTab.People)
+                                  }
                                   extraction={extraction}
                                   key={documentId}
                                   agreement={selected}

@@ -328,8 +328,9 @@ export function AccessPrompt({
       </p>
       {kind === "invitation" && (
         <p className={styles.hint}>
-          Joining gives you access to review. It does not approve an agreement
-          or change anyone’s share.
+          Joining adds you to the workspace. The organizer must also add you to
+          the agreement before you can review and approve its rules. It does not
+          approve an agreement or change anyone’s share.
         </p>
       )}
       <button
