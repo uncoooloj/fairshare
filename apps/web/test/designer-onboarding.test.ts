@@ -18,22 +18,21 @@ test("designer auth retains real login/register payloads and registration passwo
 });
 test("onboarding never claims provider success or adds unsupported OAuth links", () => {
   assert.doesNotMatch(source, /Example: \$3,000 payment/);
-  assert.ok(
-    source.includes(
-      "It does not approve an agreement or change anyone’s share.",
-    ),
+  assert.match(
+    source,
+    /It does not approve an agreement\s+or\s+change anyone’s share\./,
   );
-  assert.ok(
-    source.includes("if (busy || submitting.current || !name.trim()) return;"),
+  assert.match(
+    source,
+    /if\s*\(\s*busy\s*\|\|\s*submitting\.current\s*\|\|\s*!name\.trim\(\)\s*\)\s*return;/,
   );
   assert.ok(source.includes("submitting.current = true;"));
   assert.ok(source.includes("await onCreate(name.trim())"));
-  assert.ok(
-    source.includes(
-      "finally { submitting.current = false; setCreating(false); }",
-    ),
+  assert.match(
+    source,
+    /finally\s*\{\s*submitting\.current\s*=\s*false;\s*setCreating\(false\);\s*\}/,
   );
-  assert.ok(source.includes("if (!busy) onContinue()"));
+  assert.match(source, /if\s*\(\s*!busy\s*\)\s*onContinue\(\s*\)/);
   assert.doesNotMatch(
     source,
     /href=.*(?:google|microsoft)|setTimeout|localStorage|Payment successful|Email verified/,

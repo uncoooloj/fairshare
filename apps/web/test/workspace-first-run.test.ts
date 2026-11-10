@@ -11,12 +11,15 @@ const onboarding = readFileSync(
 );
 
 test("workspace selector only offers switching when there is a choice", () => {
-  assert.match(app, /workspaces.length > 1 \? <select/);
-  assert.match(app, /workspaces\[0\]\?\.name \|\| "No workspace yet"/);
+  assert.match(app, /workspaces\.length\s*>\s*1\s*\?\s*\(\s*<select/);
+  assert.match(app, /workspaces\[0\]\?\.name\s*\|\|\s*"No workspace yet"/);
 });
 test("account settings and invitations remain accessible before workspace creation", () => {
-  assert.match(app, /!workspace && section !== Section.Settings \? \(/);
-  assert.match(app, /<AgreementIntake first busy=\{busy\}/);
+  assert.match(
+    app,
+    /!workspace\s*&&\s*section\s*!==\s*Section\.Settings\s*\?\s*\(/,
+  );
+  assert.match(app, /<AgreementIntake\s+first\s+busy=\{busy\}/);
 });
 test("atomic creation adopts the returned workspace and document before optional refresh", () => {
   const creation = app.slice(
@@ -34,6 +37,6 @@ test("first-run payouts explains its empty state without requiring a workspace n
     app.indexOf("{section === Section.Overview"),
   );
   assert.match(firstRun, /No payouts yet/);
-  assert.match(firstRun, /AgreementIntake first/);
+  assert.match(firstRun, /AgreementIntake\s+first/);
   assert.doesNotMatch(firstRun, /WorkspaceOnboarding|Workspace name/);
 });
