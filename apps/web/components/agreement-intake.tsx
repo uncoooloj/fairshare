@@ -1,6 +1,7 @@
 "use client";
 import { useRef, useState } from "react";
 import { Button, Field, Notice } from "./ui";
+import { CreationStepper } from "./agreement-creation-wizard";
 
 export type AgreementIntakeInput = {
   requestId: string;
@@ -91,15 +92,20 @@ export function AgreementIntake({
   }
   const disabled = busy || submitting;
   return (
-    <div className="setup-layout">
-      <form className="panel setup-form" onSubmit={submit} aria-busy={disabled}>
+    <div className="creation-wizard">
+      <header className="creation-header">
+        <h1>New agreement</h1>
+      </header>
+      <CreationStepper step={0} />
+      <form className="creation-body" onSubmit={submit} aria-busy={disabled}>
         <span className="eyebrow">
           {first ? "YOUR FIRST AGREEMENT" : "NEW AGREEMENT"}
         </span>
-        <h2>Start with your agreement</h2>
+        <h2>Document</h2>
         <p className="muted">
-          Upload a document or paste its text. Review the extracted terms next.
-          You can edit the name afterward.
+          Upload a document or paste its text. Then review details, add people
+          and check everything before interpreting the rules. You can edit the
+          name afterward.
         </p>
         {error && (
           <Notice warning announcement="assertive">
@@ -206,34 +212,10 @@ export function AgreementIntake({
           <Button
             disabled={disabled || (method === "upload" ? !file : !text.trim())}
           >
-            {disabled ? "Reading agreement…" : "Continue with agreement"}
+            {busy ? "Reading agreement…" : "Save document & continue"}
           </Button>
         </div>
       </form>
-      <aside className="panel setup-explainer">
-        <h3>From agreement to fair payouts</h3>
-        <ol>
-          <li>
-            <strong>Review the source</strong>
-            <p>Check the extracted text and suggested name.</p>
-          </li>
-          <li>
-            <strong>Bring everyone in</strong>
-            <p>
-              Share a link, add the people and review source-linked rules
-              together.
-            </p>
-          </li>
-          <li>
-            <strong>Approve, then activate</strong>
-            <p>
-              Everyone approves the same version before the organizer activates
-              it.
-            </p>
-          </li>
-        </ol>
-        <small>Creating an agreement does not move money.</small>
-      </aside>
     </div>
   );
 }
