@@ -100,3 +100,10 @@ test("workspace changes fence in-flight reads and clear workspace-scoped state",
       .length >= 3,
   );
 });
+
+test("an old-render refresh cannot adopt the newly selected workspace", () => {
+  assert.match(
+    source,
+    /async function refresh\(\)\s*\{[\s\S]*?if \(workspace !== currentWorkspace\.current\) return;/,
+  );
+});
