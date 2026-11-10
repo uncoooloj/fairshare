@@ -314,24 +314,29 @@ export function AccessPrompt({
   email,
   busy,
   onContinue,
+  onCancel,
 }: {
   kind: "verification" | "invitation";
   email: string;
   busy: boolean;
   onContinue: () => void;
+  onCancel?: () => void;
 }) {
+  const isInvitation = kind === "invitation";
+  const handleContinue = () => {
+    if (!busy) onContinue();
+  };
+
   return (
     <section className={styles.access} aria-busy={busy}>
-      <h2>
-        {kind === "verification" ? "Verify your email" : "You’ve been invited"}
-      </h2>
+      <h2>{isInvitation ? "You’ve been invited" : "Verify your email"}</h2>
       <p>
-        {kind === "verification"
-          ? "Confirm this verification link for"
-          : "You will join using your signed-in account:"}{" "}
+        {isInvitation
+          ? "You will join using your signed-in account:"
+          : "Confirm this verification link for"}{" "}
         <strong>{email}</strong>.
       </p>
-      {kind === "invitation" && (
+      {isInvitation && (
         <p className={styles.hint}>
           Joining adds you to the workspace. The organizer must also add you to
           the agreement before you can review and approve its rules. It does not
@@ -341,16 +346,19 @@ export function AccessPrompt({
       <button
         className={styles.primary}
         disabled={busy}
-        onClick={() => {
-          if (!busy) onContinue();
-        }}
+        onClick={handleContinue}
       >
         {busy
           ? "Please wait…"
-          : kind === "verification"
-            ? "Verify email"
-            : "Accept invitation"}
+          : isInvitation
+            ? "Accept invitation"
+            : "Verify email"}
       </button>
+      {isInvitation && onCancel && (
+        <button type="button" disabled={busy} onClick={onCancel}>
+          Not now
+        </button>
+      )}
     </section>
   );
 }

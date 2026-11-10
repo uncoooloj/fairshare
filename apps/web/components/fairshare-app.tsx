@@ -162,6 +162,11 @@ export default function FairshareApp() {
     active = selected?.value.versions.find(
       (v) => v.id === selected.value.activeVersionId,
     );
+  const workspaceRole = workspaces.find((item) => item.id === workspace)?.role;
+  const canCreateAgreement =
+    workspaceRole === "OWNER" || workspaceRole === "MEMBER";
+  const isInvitationFlow = Boolean(flowToken && flowKind === "/invitation");
+  const needsWorkspace = !workspace && section !== Section.Settings;
   const organizer =
     selected?.value.members.find((m) => m.userId === user?.id)?.role ===
     "ORGANIZER";
@@ -391,6 +396,11 @@ export default function FairshareApp() {
     setError("");
     setNotice("");
   }
+  function dismissAccessFlow() {
+    setFlowToken("");
+    setError("");
+    history.replaceState(null, "", "/");
+  }
   async function mutate(action: string, extra: Record<string, unknown> = {}) {
     const workspaceRequestId = workspaceRequest.current;
     const openRequestId = openRequest.current;
@@ -547,6 +557,7 @@ export default function FairshareApp() {
             kind={flowKind === "/verify-email" ? "verification" : "invitation"}
             email={user.email}
             busy={busy}
+            onCancel={isInvitationFlow ? dismissAccessFlow : undefined}
             onContinue={() =>
               run(async () => {
                 if (flowKind === "/verify-email") {
@@ -568,7 +579,7 @@ export default function FairshareApp() {
             }
           />
         )}
-        {!workspace && section !== Section.Settings ? (
+        {isInvitationFlow ? null : needsWorkspace ? (
           <>
             {section === Section.Payouts && (
               <Heading
@@ -590,14 +601,16 @@ export default function FairshareApp() {
                   title={`Good ${new Date().getHours() < 12 ? "morning" : "afternoon"}, ${user.name.split(" ")[0]}`}
                   description="Your agreements, and what needs your attention."
                   action={
-                    <Button
-                      onClick={() => {
-                        setSection(Section.Agreements);
-                        setCreating(true);
-                      }}
-                    >
-                      + New agreement
-                    </Button>
+                    canCreateAgreement && (
+                      <Button
+                        onClick={() => {
+                          setSection(Section.Agreements);
+                          setCreating(true);
+                        }}
+                      >
+                        + New agreement
+                      </Button>
+                    )
                   }
                 />
                 <div className="metrics">
@@ -624,6 +637,7 @@ export default function FairshareApp() {
                 </div>
                 <AgreementList
                   agreements={agreements}
+                  workspaceRole={workspaceRole}
                   onOpen={(a) => run(() => openAgreement(a))}
                 />
               </>
@@ -638,14 +652,15 @@ export default function FairshareApp() {
                       : "Every agreement has a clear money trail."
                   }
                   action={
-                    !creating && (
+                    !creating &&
+                    canCreateAgreement && (
                       <Button onClick={() => setCreating(true)}>
                         + New agreement
                       </Button>
                     )
                   }
                 />
-                {creating ? (
+                {creating && canCreateAgreement ? (
                   <AgreementIntake
                     busy={busy}
                     onCancel={() => setCreating(false)}
@@ -654,6 +669,7 @@ export default function FairshareApp() {
                 ) : (
                   <AgreementList
                     agreements={agreements}
+                    workspaceRole={workspaceRole}
                     onOpen={(a) => run(() => openAgreement(a))}
                   />
                 )}
