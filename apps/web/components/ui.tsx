@@ -3,12 +3,13 @@ import { title } from "../lib/model";
 export function Button({
   children,
   variant = "primary",
+  className = "",
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: "primary" | "secondary" | "quiet";
 }) {
   return (
-    <button className={`button ${variant}`} {...props}>
+    <button className={`button ${variant} ${className}`.trim()} {...props}>
       {children}
     </button>
   );
@@ -56,7 +57,9 @@ export function Empty({
 }) {
   return (
     <div className="empty">
-      <span className="empty-icon">◇</span>
+      <span className="empty-icon" aria-hidden="true">
+        ◇
+      </span>
       <h3>{heading}</h3>
       <p>{children}</p>
       {action}
@@ -70,7 +73,14 @@ export function Notice({
   children: ReactNode;
   warning?: boolean;
 }) {
-  return <div className={`notice ${warning ? "warning" : ""}`}>{children}</div>;
+  return (
+    <div
+      role={warning ? "alert" : "status"}
+      className={`notice ${warning ? "warning" : ""}`}
+    >
+      {children}
+    </div>
+  );
 }
 export function Icon({ name }: { name: string }) {
   const paths: Record<string, ReactNode> = {

@@ -1,10 +1,11 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, money } from "../lib/model";
 import {
   recoveryRequest,
   refundBlocked,
   refundMessage,
+  createSingleFlight,
 } from "../lib/payment-recovery";
 import styles from "./payment-recovery.module.css";
 import { Badge, Button, Field, Notice } from "./ui";
@@ -27,6 +28,7 @@ export function PaymentRecovery({
     [notice, setNotice] = useState("");
   const [chosen, setChosen] = useState(""),
     [confirmed, setConfirmed] = useState(false);
+  const flight = useRef(createSingleFlight());
   async function load() {
     const result = await api(`${base}/recovery`);
     setData(result);
@@ -34,6 +36,8 @@ export function PaymentRecovery({
   useEffect(() => {
     let active = true;
     setData(null);
+    setError("");
+    setNotice("");
     setConfirmed(false);
     api(`${base}/recovery`)
       .then((r) => {
@@ -47,24 +51,32 @@ export function PaymentRecovery({
     };
   }, [base, payments]);
   async function run(action: () => Promise<void>) {
-    setBusy(true);
-    setError("");
-    setNotice("");
-    try {
-      await action();
-    } catch (e) {
-      setError(
-        e instanceof Error ? e.message : "Unable to verify provider status.",
-      );
-    } finally {
+    // A synchronous lock also catches rapid clicks before React renders disabled controls.
+    await flight.current(async () => {
+      setBusy(true);
+      setConfirmed(false);
+      setError("");
+      setNotice("");
+      let actionError = "";
       try {
-        await load();
-        await refresh();
-      } catch {
-        setError("Unable to refresh. Reload before taking another action.");
+        await action();
+      } catch (e) {
+        actionError =
+          e instanceof Error ? e.message : "Unable to verify provider status.";
+      } finally {
+        try {
+          await load();
+          await refresh();
+        } catch {
+          // Never offer a refund from stale evidence after a failed refresh.
+          setData(null);
+          setNotice("");
+          actionError = `${actionError ? `${actionError} ` : ""}Unable to refresh. Refresh recovery information before taking another action. Do not resubmit an uncertain transfer.`;
+        }
+        setError(actionError);
+        setBusy(false);
       }
-      setBusy(false);
-    }
+    });
   }
   const payment = payments.find((p) => p.id === chosen);
   return (
@@ -198,6 +210,11 @@ export function PaymentRecovery({
                 </>
               ))}
           </details>
+          {busy && (
+            <p role="status">
+              Checking payment information… Do not submit another transfer.
+            </p>
+          )}
           <h4>Refund status</h4>
           {!data.refunds.length && <p>No refunds recorded.</p>}
           {data.refunds.map((r: any) => (
