@@ -6,7 +6,7 @@ Status: application integration, sandbox only. Actual provider payments require 
 
 1. `POST /api/auth/register` `{name,email,password}` → user + bearer token.
 2. `POST /api/workspaces` `{name}` → workspace. Use bearer token for all subsequent calls.
-3. `POST /api/workspaces/:id/invitations` `{email,role:"MEMBER"}` → one-use email-bound invite token, **manual share only**, no email sent.
+3. `POST /api/workspaces/:id/invitations` `{email,role:"MEMBER"}` → one-use email-bound invite. DEMO returns a synthetic link; SANDBOX requests configured mail delivery and never returns the secret token. Provider acceptance is not inbox-delivery evidence.
 4. Recipient signs up/signs in and `POST /api/invitations/accept` `{token}`.
 5. Organizer creates collaboration `POST /api/workspaces/:workspaceId/collaborations` `{name}`.
 6. Add accepted workspace participant `POST .../collaborations/:collaborationId/members` `{userId,expectedRevision}`. Display name comes from verified user profile, never caller-supplied impersonation. Add members before rules are drafted.
