@@ -119,9 +119,7 @@ function prepareNativeTool(): Promise<string> {
 }
 async function nativePages(source: string, timeout: number): Promise<string[]> {
   const binary = await prepareNativeTool();
-  const response = JSON.parse(
-    await command(binary, [source], timeout, 320200),
-  );
+  const response = JSON.parse(await command(binary, [source], timeout, 320200));
   const messages: Record<string, string> = {
     INVALID_PDF: "Choose a readable PDF no larger than 5 MiB.",
     OCR_PAGE_LIMIT:

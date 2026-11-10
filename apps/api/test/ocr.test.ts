@@ -9,9 +9,7 @@ const bytes = readFileSync(
   new URL("./fixtures/scanned-agreement.pdf", import.meta.url),
 );
 const expectedEngine =
-  process.platform === "darwin"
-    ? "apple-vision+pdfkit"
-    : "poppler+tesseract";
+  process.platform === "darwin" ? "apple-vision+pdfkit" : "poppler+tesseract";
 const available =
   process.platform === "darwin"
     ? spawnSync("/usr/bin/xcrun", ["--find", "swiftc"]).status === 0
