@@ -831,3 +831,14 @@ th:last-child, td:last-child { padding-right: 20px; }
 .revenue-rules-disclosure > summary:focus-visible { outline: 2px solid var(--color-primary, #1d4ed8); outline-offset: 4px; border-radius: 4px; }
 
 .settings-tabs { display:flex; flex-wrap:wrap; gap:8px; margin:20px 0; }
+
+/* Agreement preparation has one visible task, with editable previous steps. */
+.terms-flow-progress { display: flex; flex-wrap: wrap; gap: 12px; list-style: none; padding: 0; margin: 20px 0; }
+.terms-flow-progress button { border: 1px solid var(--color-line); border-radius: 8px; background: white; padding: 10px 14px; color: var(--color-ink); font: inherit; cursor: pointer; }
+.terms-flow-progress [aria-current="step"] button { border-color: #1f4ee8; background: #eff6ff; }
+.terms-flow-progress button:disabled { opacity: .5; cursor: default; }
+.terms-flow-heading { scroll-margin-top: 24px; }
+.terms-flow-heading:focus { outline: 2px solid #1f4ee8; outline-offset: 6px; }
+.terms-source-text { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 360px; overflow-y: auto; font: inherit; }
+.terms-flow > [hidden] { display: none !important; }
+@media (max-width: 600px) { .terms-flow-progress { flex-direction: column; } .terms-flow-progress button { width: 100%; text-align: left; } }

@@ -13,12 +13,12 @@ export function NewAgreement({ busy, onCreate, onCancel }: { busy: boolean; onCr
 export function AgreementSetup({ agreement, tab, onNavigate }: { agreement: Agreement; tab: AgreementTab; onNavigate: (tab: AgreementTab) => void }) {
   const latest=agreement.value.versions.at(-1);
   if(agreement.value.activeVersionId) return null;
-  return <section className="setup-progress" aria-label="Agreement setup">
-    <div><strong>Finish setting up your agreement</strong><p>Review your source, bring everyone in, then approve the same rules.</p></div>
-    <div className="setup-steps">
-      <button type="button" className={tab===AgreementTab.Terms ? "current" : ""} onClick={()=>onNavigate(AgreementTab.Terms)}><span>1</span><div>Document & rules<small>{latest ? `Version ${latest.id} proposed` : "Review the source and interpretation"}</small></div></button>
-      <button type="button" className={tab===AgreementTab.People ? "current" : ""} onClick={()=>onNavigate(AgreementTab.People)}><span>2</span><div>People<small>{agreement.value.members.length} added · confirm before proposing</small></div></button>
-      <button type="button" onClick={()=>onNavigate(AgreementTab.Terms)}><span>3</span><div>Review & activate<small>{latest ? `${agreement.value.members.filter(m=>latest.approvals[m.userId]).length} of ${agreement.value.members.length} approved` : "No proposal sent yet"}</small></div></button>
-    </div>
+  const target = AgreementTab.Terms;
+  return <section className="setup-progress" aria-label="Agreement setup status">
+    <strong>{latest ? "Review the proposal together" : "Finish setting up your agreement"}</strong>
+    <p>{latest
+      ? `${agreement.value.members.filter(m=>latest.approvals[m.userId]).length} of ${agreement.value.members.length} approved this version. Everyone must approve before the organizer activates it.`
+      : "Review the source in Terms. Add collaborators in People before saving a proposal for everyone to review."}</p>
+    {tab !== target && <Button variant="secondary" onClick={() => onNavigate(target)}>{latest ? "Review proposed terms" : "Continue setting up terms"}</Button>}
   </section>;
 }

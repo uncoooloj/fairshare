@@ -18,6 +18,7 @@ export function AgreementIntake({ busy, first = false, onCreate, onCancel }: {
   onCreate: (input: AgreementIntakeInput) => Promise<void>;
   onCancel?: () => void;
 }) {
+  const [method, setMethod] = useState<"upload" | "paste">("upload");
   const [text, setText] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState("");
@@ -28,13 +29,13 @@ export function AgreementIntake({ busy, first = false, onCreate, onCancel }: {
   const changed = () => { requestId.current = ""; setError(""); };
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (busy || locked.current || (!file && !text.trim())) return;
+    if (busy || locked.current || (method === "upload" ? !file : !text.trim())) return;
     locked.current = true;
     setError("");
     try {
       requestId.current ||= crypto.randomUUID();
       const input: AgreementIntakeInput = { requestId: requestId.current };
-      if (file) {
+      if (method === "upload" && file) {
         if (file.size > 5 * 1024 * 1024) throw new Error("Choose a document no larger than 5 MB.");
         input.filename = file.name;
         if (/\.txt$/i.test(file.name) || file.type === "text/plain") {
@@ -62,13 +63,22 @@ export function AgreementIntake({ busy, first = false, onCreate, onCancel }: {
     <h2>Start with your agreement</h2>
     <p className="muted">Upload a document or paste its text. Review the extracted terms next. You can edit the name afterward.</p>
     {error && <Notice warning>{error}</Notice>}
+    <fieldset disabled={busy} aria-label="Agreement input method">
+      <legend>How would you like to add it?</legend>
+      <label><input type="radio" name="inputMethod" checked={method === "upload"} onChange={() => { changed(); setMethod("upload"); }} /> Upload document</label>
+      <label><input type="radio" name="inputMethod" checked={method === "paste"} onChange={() => { changed(); setMethod("paste"); }} /> Paste text</label>
+    </fieldset>
+    <div hidden={method !== "upload"}>
     <Field label="Upload agreement" hint="PDF, DOCX or TXT · up to 5 MB. Use only documents you’re authorized to upload.">
       <input type="file" accept=".pdf,.docx,.txt" disabled={busy} onChange={event => { changed(); setFile(event.target.files?.[0] || null); }} />
     </Field>
-    {file && <p className="muted">Selected: {file.name}. This file will be used instead of pasted text.</p>}
+    {file && <p className="muted">Selected: {file.name}. Your document is ready to read.</p>}
     {file && /\.pdf$/i.test(file.name) && <label className="check"><input type="checkbox" checked={ocr} disabled={busy} onChange={event => { changed(); setOcr(event.target.checked); }} />Use local OCR for a scanned PDF (requires server support, English, up to 5 pages).</label>}
-    <Field label="Or paste agreement text"><textarea rows={9} maxLength={40000} disabled={busy || !!file} value={text} onChange={event => { changed(); setText(event.target.value); }} placeholder="Paste your agreement here…" /></Field>
+    </div>
+    <div hidden={method !== "paste"}>
+    <Field label="Paste agreement text"><textarea rows={9} maxLength={40000} disabled={busy || method !== "paste"} value={text} onChange={event => { changed(); setText(event.target.value); }} placeholder="Paste your agreement here…" /></Field>
+    </div>
     <p className="muted">{first ? "We’ll create your workspace automatically. No setup form needed. " : "Saved in the selected workspace. "}Documents stay private on this server. AI interpretation requires your confirmation on the next screen.</p>
-    <div className="setup-footer">{onCancel && <Button type="button" variant="secondary" disabled={busy} onClick={onCancel}>Cancel</Button>}<Button disabled={busy || (!file && !text.trim())}>{busy ? "Reading agreement…" : "Continue with agreement"}</Button></div>
+    <div className="setup-footer">{onCancel && <Button type="button" variant="secondary" disabled={busy} onClick={onCancel}>Cancel</Button>}<Button disabled={busy || (method === "upload" ? !file : !text.trim())}>{busy ? "Reading agreement…" : "Continue with agreement"}</Button></div>
   </form><aside className="panel setup-explainer"><h3>From agreement to fair payouts</h3><ol><li><strong>Review the source</strong><p>Check the extracted text and suggested name.</p></li><li><strong>Bring everyone in</strong><p>Share a link, add the people and review source-linked rules together.</p></li><li><strong>Approve, then activate</strong><p>Everyone approves the same version before the organizer activates it.</p></li></ol><small>Creating an agreement does not move money.</small></aside></div>;
 }

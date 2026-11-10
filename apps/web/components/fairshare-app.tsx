@@ -26,6 +26,7 @@ import {
   payoutStatus,
 } from "./agreement-widgets";
 import { useEffect, useRef, useState } from "react";
+import { AgreementTermsFlow } from "./agreement-terms-flow";
 import { AgreementTabs } from "./agreement-tabs";
 import {
   ApiError,
@@ -740,7 +741,7 @@ export default function FairshareApp() {
                     {!editing && latest ? (
                       <>
                         <div className="row">
-                          <h3>Version {latest.id}</h3>
+                          <h3 id="agreement-proposal-review" tabIndex={-1}>Version {latest.id}</h3>
                           <Badge value={latest.status} />
                           <Button
                             variant="secondary"
@@ -802,7 +803,8 @@ export default function FairshareApp() {
                     ) : (
                       <>
                         {editing && <Button variant="secondary" disabled={busy} onClick={() => { if (mayLeaveDraft()) setEditing(false); }}>Back to proposed terms</Button>}
-                        <section className="panel">
+                        <AgreementTermsFlow key={selected.id} documentId={documentId} busy={busy} sourceText={source}
+                          source={<section className="panel">
                           <h3>{selected.value.versions.length ? "Upload amended agreement" : "Source agreement"}</h3>
                           <ContractSourceGuidance replacement={!!selected.value.versions.length} />
                           <Field
@@ -927,10 +929,8 @@ export default function FairshareApp() {
                               {documentId ? "Source saved" : "Save source"}
                             </Button>
                           </div>
-                        </section>
-                        {documentId && (
-                          <>
-                            <AIReview key={documentId}
+                        </section>}
+                          interpretation={documentId ? <AIReview key={documentId}
                               busy={busy}
                               extraction={extraction}
                               onExtract={() =>
@@ -944,8 +944,8 @@ export default function FairshareApp() {
                                   ),
                                 )
                               }
-                            />
-                            <RulesEditor
+                            /> : null}
+                          rules={documentId ? <RulesEditor
                               extraction={extraction}
                               key={documentId}
                               agreement={selected}
@@ -963,11 +963,15 @@ export default function FairshareApp() {
                                   setNotice(
                                     "New proposal saved. No rules were activated.",
                                   );
+                                  requestAnimationFrame(() => {
+                                    const review = document.getElementById("agreement-proposal-review");
+                                    review?.focus({ preventScroll: true });
+                                    review?.scrollIntoView({ block: "start", behavior: "auto" });
+                                  });
                                 })
                               }
-                            />
-                          </>
-                        )}
+                            /> : null}
+                        />
                       </>
                     )}
                   </>
@@ -981,7 +985,7 @@ export default function FairshareApp() {
                       description="Confirmed provider data is used to calculate each allocation. Browser returns are not proof of payment."
                     />
                     {organizer && active && (
-                      <SandboxCheckoutForm
+                      <SandboxCheckoutForm key={selected.id}
                         busy={busy}
                         onSubmit={(amount, source) =>
                           run(async () => {
