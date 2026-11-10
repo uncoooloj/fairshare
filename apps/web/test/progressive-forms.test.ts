@@ -52,7 +52,7 @@ test("checkout review validates without API calls, retains edits, moves focus an
   assert.match(source, /target\?\.focus\(\)/);
   assert.match(source, /Edit checkout details/);
   assert.match(source, /role="alert"/);
-  assert.match(source, /busy \|\| pending.current/);
+  assert.match(source, /busy\s*\|\|\s*pending\.current/);
   assert.doesNotMatch(source, /setAmount\(''\)|setSourceName\(''\)/);
 });
 
