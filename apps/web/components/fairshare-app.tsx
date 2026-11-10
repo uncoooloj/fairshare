@@ -347,16 +347,34 @@ export default function FairshareApp() {
     setNotice("");
   }
   async function mutate(action: string, extra: Record<string, unknown> = {}) {
+    const workspaceRequestId = workspaceRequest.current;
+    const openRequestId = openRequest.current;
+    if (selected?.workspaceId !== currentWorkspace.current) return;
     try {
       const a = await api<Agreement>(base + action, "POST", {
         expectedRevision: selected!.revision,
         ...extra,
       });
+      if (
+        workspaceRequestId !== workspaceRequest.current ||
+        openRequestId !== openRequest.current
+      )
+        return;
       setSelected(a);
-      await loadWorkspace(workspace);
+      await loadWorkspace(currentWorkspace.current);
     } catch (cause) {
+      if (
+        workspaceRequestId !== workspaceRequest.current ||
+        openRequestId !== openRequest.current
+      )
+        return;
       if (cause instanceof ApiError && cause.code === "REVISION_CONFLICT") {
         const current = await api<Agreement>(base);
+        if (
+          workspaceRequestId !== workspaceRequest.current ||
+          openRequestId !== openRequest.current
+        )
+          return;
         setSelected(current);
         throw new Error(
           "Agreement changed. Latest version loaded; review before trying again.",
