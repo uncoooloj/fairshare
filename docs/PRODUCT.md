@@ -99,11 +99,15 @@ Empty collaboration; saved draft; file selected; upload in progress; unsupported
 
 ## Review proposed interpretation
 
+Move through three visible stages: **Source agreement**, **Read the agreement**, then **Proposed rules**. Do not expose proposed-rule editing until a saved source is available and the person has acknowledged the reading step. Returning to a source clause must preserve the rules draft. A source-save failure keeps the edited source available for retry; it does not replace or delete the previously committed document on the server, and does not advance the flow.
+
 The rule-review screen places a source clause beside the structured rule it supports. Selecting a rule reveals its citation and exact excerpt. The document need not occupy half the screen permanently; a source drawer can preserve a calmer working view.
 
 Extract only what is supported. If the agreement does not specify a percentage, advance amount or recipient, show a missing value. Do not turn a plausible guess into a “found” term. Separate source-derived rules, AI suggestions and human clarifications visually.
 
 The proposed rule set should cover participants and shares; eligible revenue; currency; deductions and fees; recoupment amount, recipient and starting balance; payout conditions; and effective version. Percentages, recipients and calculations must pass deterministic validation before activation.
+
+Completing these stages only prepares a draft. It does not send a proposal, record an approval or activate any rules.
 
 ## Resolve ambiguity collaboratively
 

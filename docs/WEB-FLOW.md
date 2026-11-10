@@ -39,6 +39,7 @@ Settings includes display preferences, a filtered read-only activity log, profil
 - AI observations are displayed with source quotations; reviewed human rules are entered explicitly.
   Semantic correctness of clauses requires human review. No automatic legal signature.
 - A first agreement starts from its source, not an empty name form. The API saves its workspace, agreement and source together; an uncertain request can be retried with the same request ID. Filename-derived names are suggestions only and can be changed after creation.
+- Terms preparation is progressive: choose the source, read the saved agreement and then prepare proposed rules. The third step stays unavailable until the saved source has been read. Moving between steps preserves the rules draft. If saving an edited source fails, keep that edited source available for retry; it neither replaces nor deletes the previously committed document, and the flow does not advance. Continuing through this flow does not approve or activate a version.
 - Manual invitation token and email verification links are supported. Sandbox delivery requires configured
   transport; DEMO links are explicitly simulated. No claim of delivered email from accepted requests.
 - UI role errors remain authoritative on server. Real-money mode is absent.
