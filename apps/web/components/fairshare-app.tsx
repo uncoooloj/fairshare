@@ -126,6 +126,11 @@ export default function FairshareApp() {
     setEditing(false);
     setInviteLink("");
   }
+  function clearSession() {
+    commitWorkspace("");
+    setWorkspaces([]);
+    setUser(null);
+  }
   function mayLeaveDraft() {
     if (busy) return false;
     if (
@@ -488,10 +493,7 @@ export default function FairshareApp() {
               if (!mayLeaveDraft()) return;
               return run(async () => {
                 await api("auth/logout", "POST", {});
-                setUser(null);
-                setWorkspace("");
-                setSelected(null);
-                setAgreements([]);
+                clearSession();
               });
             }}
           >
@@ -1714,8 +1716,7 @@ export default function FairshareApp() {
                               currentPassword,
                               newPassword,
                             });
-                            setUser(null);
-                            setWorkspace("");
+                            clearSession();
                           })
                         }
                       />
@@ -1757,8 +1758,7 @@ export default function FairshareApp() {
                     )}
                     <MfaSettings
                       onSignOut={() => {
-                        setUser(null);
-                        setWorkspace("");
+                        clearSession();
                       }}
                     />
                     <section className="panel">

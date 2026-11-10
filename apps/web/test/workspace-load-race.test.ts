@@ -103,4 +103,16 @@ test("workspace changes fence in-flight reads and clear workspace-scoped state",
       intake.indexOf("setSelected(result.agreement)"),
     "first-workspace intake commits the live workspace before applying its result",
   );
+
+  const session = source
+    .split("function clearSession() {")[1]
+    .split("function mayLeaveDraft")[0];
+  assert.match(session, /commitWorkspace\(""\)/);
+  assert.match(session, /setWorkspaces\(\[\]\)/);
+  assert.match(session, /setUser\(null\)/);
+  assert.equal(
+    (source.match(/clearSession\(\)/g) || []).length,
+    4,
+    "logout, password, and MFA flows all clear the workspace generation",
+  );
 });
