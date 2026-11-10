@@ -31,6 +31,7 @@ import {
   type Rules,
   type Revenue,
 } from "../lib/model";
+import { recoverSourceDocument } from "../lib/source-recovery";
 import dynamic from "next/dynamic";
 const PaymentGrid = dynamic(
   () => import("../src/components/PaymentGrid").then((m) => m.PaymentGrid),
@@ -133,8 +134,8 @@ export default function FairshareApp() {
     setDocumentId("");
     setExtraction(null);
     const v = fresh.value.versions.at(-1);
-    if (v) {
-      const doc = await api(`${root}/documents/${v.rules.source.documentId}`);
+    const doc = await recoverSourceDocument(root, v?.rules.source.documentId, api);
+    if (doc) {
       setDocumentId(doc.documentId);
       setSource(doc.text);
       setExtraction(doc.extraction);
