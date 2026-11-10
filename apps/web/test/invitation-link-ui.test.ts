@@ -27,7 +27,7 @@ test("acceptance adopts the returned workspace and consumes the link before back
   const accept = source
     .split("async function acceptInvitation(token: string) {")[1]
     .split("async function loadWorkspace")[0];
-  assert.match(accept, /setWorkspace\(result.workspace.id\)/);
+  assert.match(accept, /commitWorkspace\(result.workspace.id\)/);
   assert.match(accept, /setSelected\(null\)/);
   assert.match(accept, /setAgreements\(\[\]\)/);
   assert.match(accept, /setFlowToken\(""\)/);

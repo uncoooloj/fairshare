@@ -207,28 +207,6 @@ export default function FairshareApp() {
     history.replaceState(null, "", "/");
     setNotice("Invitation accepted.");
   }
-  async function acceptInvitation(token: string) {
-    const result = await api("invitations/accept", "POST", { token });
-    // Adopt the committed membership immediately. Do not make a consumed
-    // one-use invitation look unsuccessful if a later workspace fetch fails.
-    openRequest.current++;
-    setSelected(null);
-    setCreating(false);
-    setAgreements([]);
-    setMembers([]);
-    setPayouts([]);
-    setWorkspaces((current) => [
-      ...current.filter((item) => item.id !== result.workspace.id),
-      result.workspace,
-    ]);
-    setWorkspace(result.workspace.id);
-    setSection(Section.Agreements);
-    setFlowToken("");
-    history.replaceState(null, "", "/");
-    setNotice(
-      "Workspace joined. The organizer must add you to the agreement before you can review and approve its rules.",
-    );
-  }
   async function loadWorkspace(id: string) {
     if (!id || id !== currentWorkspace.current) return;
     const request = workspaceRequest.current;
