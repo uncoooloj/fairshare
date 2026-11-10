@@ -105,7 +105,7 @@ export function AccessPrompt({ kind, email, busy, onContinue }: {
   return <section className={styles.access} aria-busy={busy}>
     <h2>{kind === "verification" ? "Verify your email" : "You’ve been invited"}</h2>
     <p>{kind === "verification" ? "Confirm this verification link for" : "You will join using your signed-in account:"} <strong>{email}</strong>.</p>
-    {kind === "invitation" && <p className={styles.hint}>Joining gives you access to review. It does not approve an agreement or change anyone’s share.</p>}
+    {kind === "invitation" && <p className={styles.hint}>Joining adds you to the workspace. The organizer must also add you to the agreement before you can review and approve its rules. It does not approve an agreement or change anyone’s share.</p>}
     <button className={styles.primary} disabled={busy} onClick={() => { if (!busy) onContinue(); }}>{busy ? "Please wait…" : kind === "verification" ? "Verify email" : "Accept invitation"}</button>
   </section>;
 }

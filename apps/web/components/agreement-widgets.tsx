@@ -394,6 +394,7 @@ export function RulesEditor({
   extraction,
   onSave,
   onDirty,
+  onReviewPeople,
 }: {
   agreement: Agreement;
   source: string;
@@ -402,6 +403,7 @@ export function RulesEditor({
   extraction?: unknown;
   onSave: (r: Rules) => void;
   onDirty?: () => void;
+  onReviewPeople?: () => void;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const [prefilled, setPrefilled] = useState(false);
@@ -421,6 +423,8 @@ export function RulesEditor({
         e.preventDefault();
         try {
           const f = new FormData(e.currentTarget);
+          if (!agreement.value.versions.length && f.get("rosterConfirmed") !== "on")
+            throw new Error("Confirm everyone is included before saving the first proposal.");
           const shares = agreement.value.members.map((m) => ({
             userId: m.userId,
             basisPoints: parseShare(String(f.get(m.userId))),
@@ -477,6 +481,16 @@ export function RulesEditor({
         All participants review this version. Add people first; membership is
         locked once a proposal exists.
       </p>
+      {!agreement.value.versions.length && <section className="panel" aria-label="Confirm agreement participants">
+        <h4>Is everyone included?</h4>
+        <p>This proposal will include {agreement.value.members.map(member => member.displayName).join(", ")}. Once saved, people cannot be added to this agreement, even in a revised version.</p>
+        {agreement.value.members.length === 1 && <p>Only you are included. If the document names other parties, add them in People before continuing. A one-person agreement is allowed when that is intentional.</p>}
+        {onReviewPeople && <Button type="button" variant="secondary" disabled={busy} onClick={onReviewPeople}>Review or add people</Button>}
+        <label className="check">
+          <input key={agreement.value.members.map(member => member.userId).join(":")} type="checkbox" name="rosterConfirmed" required />
+          Everyone who needs a share or approval is included.
+        </label>
+      </section>}
       {Object.keys(suggestions).length > 0 && (
         <Notice>
           <p>AI found source-backed shares for {Object.keys(suggestions).length} people. Copy them into this draft, then check every value and complete any missing terms.</p>
