@@ -63,11 +63,14 @@ test("private parser rejects unsupported routes and oversized input, reads actua
     );
   });
 });
-const ocrAvailable = ["pdfinfo", "pdftoppm", "tesseract"].every(
-  (binary) =>
-    spawnSync(binary, [binary === "tesseract" ? "--version" : "-v"]).status ===
-    0,
-);
+const ocrAvailable =
+  process.platform === "darwin"
+    ? spawnSync("/usr/bin/xcrun", ["--find", "swiftc"]).status === 0
+    : ["pdfinfo", "pdftoppm", "tesseract"].every(
+        (binary) =>
+          spawnSync(binary, [binary === "tesseract" ? "--version" : "-v"])
+            .status === 0,
+      );
 test(
   "private parser runs actual OCR and preserves immutable hash and review provenance",
   { skip: !ocrAvailable },
