@@ -46,7 +46,7 @@ export function ContractReviewPanel({ agreement, version, userId, busy, onAction
 export function ContractSourceGuidance({ replacement = false }: {replacement?: boolean}) {
   return <div className="section">
     <p className="muted">Text-based PDF, up to 5 MB and 20 pages, or paste agreement text. Maximum extracted text: 40,000 characters. Scanned PDFs and DOCX are not supported.</p>
-    {replacement && <Notice>Saving a replacement source does not change active rules. Review it, propose a new version, and obtain fresh approval from everyone before activating it.</Notice>}
+    {replacement && <Notice>An amended agreement starts a new review. Saving its source does not change active rules or past allocations. Propose a new version and obtain fresh approval from everyone; the organizer then activates it.</Notice>}
     <details><summary>What Fairshare can turn into payment rules</summary>
       <p>USD revenue shares, payment processing fees, and a verified advance with recoupment. Compare every proposed rule with the source before approving.</p>
       <p>Other expenses, tax obligations, effective dates, payment deadlines and automatic refund offsets are not executed by this engine. If the agreement depends on them, request clarification rather than treating them as implemented.</p>

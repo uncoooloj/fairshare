@@ -820,3 +820,10 @@ th:last-child, td:last-child { padding-right: 20px; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation: none !important; transition: none !important; }
 }
+
+/* Revised designer export: compact, keyboard-native status filtering. */
+.agreement-status-filter { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--color-line); border-radius: var(--radius-sm); padding: 0 10px; min-height: 36px; color: var(--color-muted); font-size: 14px; background: var(--color-surface, #fff); }
+.agreement-status-filter select { width: auto; min-height: 34px; padding: 4px 20px 4px 0; border: 0; background-color: transparent; color: var(--color-ink); font: inherit; cursor: pointer; }
+.agreement-status-filter:focus-within { outline: 2px solid var(--color-primary, #1d4ed8); outline-offset: 2px; }
+.revenue-rules-disclosure > summary { cursor: pointer; font-size: 18px; font-weight: 600; line-height: 28px; padding-bottom: 12px; }
+.revenue-rules-disclosure > summary:focus-visible { outline: 2px solid var(--color-primary, #1d4ed8); outline-offset: 4px; border-radius: 4px; }

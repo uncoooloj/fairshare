@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useId } from "react";
+import { useMemo, useState, useId, type ReactNode } from "react";
 import { AgGridReact } from "ag-grid-react";
 import {
   AllCommunityModule,
@@ -38,6 +38,9 @@ const theme = themeQuartz.withParams({
 export interface PaymentGridProps {
   rows: readonly PaymentGridRow[];
   loading?: boolean;
+  title?: string;
+  description?: string;
+  emptyActions?: ReactNode;
   error?: string;
   /** Parent controls navigation; no sensitive data or actions are embedded in URLs. */
   onOpenAgreement?: (agreementId: string) => void;
@@ -46,6 +49,9 @@ export interface PaymentGridProps {
 export function PaymentGrid({
   rows,
   loading = false,
+  title,
+  description,
+  emptyActions,
   error,
   onOpenAgreement,
 }: PaymentGridProps) {
@@ -157,6 +163,10 @@ export function PaymentGrid({
     );
   return (
     <section aria-label="Payout history" aria-busy={loading}>
+      {title && <header className={styles.header}>
+        <div><h1>{title}</h1>{description && <p>{description}</p>}</div>
+        <button className={styles.control} type="button" onClick={exportCsv} disabled={loading || !filteredRows.length}>Export CSV</button>
+      </header>}
       <div className={styles.summary} aria-label="Recorded payout totals">
         {([
           ['Paid out', data.summary.paid, data.summary.paidCount, 'Provider-confirmed payouts'],
@@ -180,9 +190,9 @@ export function PaymentGrid({
         </label>
         <span className={styles.count} aria-live="polite">{loading ? 'Loading payouts…' : `${filteredRows.length} of ${data.rows.length} payouts`}</span>
         {(query || status) && <button className={styles.control} type="button" onClick={() => { setQuery(''); setStatus(''); }}>Clear filters</button>}
-        <button className={styles.control} type="button" onClick={exportCsv} disabled={loading || !filteredRows.length}>Export CSV</button>
+        {!title && <button className={styles.control} type="button" onClick={exportCsv} disabled={loading || !filteredRows.length}>Export CSV</button>}
       </div>
-      {!loading && !data.rows.length ? <div className={styles.empty}><h3>No payouts yet</h3><p>Payouts appear here after a transfer is submitted under an approved agreement. An allocation alone does not move money.</p></div> : !loading && !filteredRows.length ? <div className={styles.empty} role="status"><h3>No matching payouts</h3><p>Try another person, agreement or provider reference, or clear your filters.</p><button className={styles.control} type="button" onClick={() => { setQuery(''); setStatus(''); }}>Clear filters</button></div> : <div style={{ height: 460, width: "100%" }}>
+      {!loading && !data.rows.length ? <div className={styles.empty}><h3>No payouts yet</h3><p>Payouts appear here after a transfer is submitted under an approved agreement. An allocation alone does not move money.</p>{emptyActions && <div className={styles.emptyActions}>{emptyActions}</div>}</div> : !loading && !filteredRows.length ? <div className={styles.empty} role="status"><h3>No matching payouts</h3><p>Try another person, agreement or provider reference, or clear your filters.</p><button className={styles.control} type="button" onClick={() => { setQuery(''); setStatus(''); }}>Clear filters</button></div> : <div style={{ height: 460, width: "100%" }}>
         <AgGridReact<PaymentGridRow>
           theme={theme}
           rowData={loading ? [] : filteredRows}

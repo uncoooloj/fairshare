@@ -112,9 +112,12 @@ export function AgreementList({ agreements, onOpen }: {
   return <section className="agreement-list" aria-label="Agreements">
     <div className="list-toolbar">
       <label className="search-field"><span className="sr-only">Search agreements</span><input type="search" placeholder="Search agreements" value={query} onChange={e => setQuery(e.target.value)} /></label>
-      <div className="filter-tabs" role="group" aria-label="Filter agreements by status">
-        {["All", "Draft", "In review", "Approved", "Needs attention"].map(value => <button key={value} type="button" className={filter === value ? "selected" : ""} aria-pressed={filter === value} onClick={() => setFilter(value)}>{value}</button>)}
-      </div>
+      <label className="agreement-status-filter">
+        <span>Status:</span>
+        <select aria-label="Filter agreements by status" value={filter} onChange={event => setFilter(event.target.value)}>
+          {["All", "Draft", "In review", "Approved", "Needs attention"].map(value => <option key={value} value={value}>{value}</option>)}
+        </select>
+      </label>
     </div>
     {filtered.length ? <div className="table-scroll"><table>
       <thead><tr><th>Agreement</th><th>Status</th><th>People</th><th>Split</th><th className="numeric">Received</th><th><span className="sr-only">Open agreement</span></th></tr></thead>
