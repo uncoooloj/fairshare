@@ -1,3 +1,8 @@
+import {
+  changedRuleFields,
+  changedShares,
+  type ComparisonField,
+} from "../lib/version-comparison";
 import type { Agreement, Version } from "../lib/model";
 import { money, title } from "../lib/model";
 import { versionSummary } from "../lib/version-summary";
@@ -5,17 +10,27 @@ import styles from "./agreement-versions.module.css";
 function RuleSummary({
   agreement,
   version,
+  changed = [],
 }: {
   agreement: Agreement;
   version: Version;
+  changed?: ComparisonField[];
 }) {
   const rules = version.rules;
   const name = (id: string) =>
     agreement.value.members.find((member) => member.userId === id)
       ?.displayName ?? "Former participant";
+  const label = (field: ComparisonField, text: string) => (
+    <dt className={changed.includes(field) ? styles.changed : undefined}>
+      {text}
+      {changed.includes(field) && (
+        <span className={styles.changeBadge}>Changed</span>
+      )}
+    </dt>
+  );
   return (
     <dl className={styles.rules}>
-      <dt>Revenue split</dt>
+      {label("shares", "Revenue split")}
       <dd>
         {rules.shares.map((share) => (
           <div key={share.userId}>
@@ -23,23 +38,35 @@ function RuleSummary({
           </div>
         ))}
       </dd>
-      <dt>Processing fees</dt>
+      {label("fees", "Processing fees")}
       <dd>
         {rules.feePolicy === "BEFORE_SPLIT"
           ? "Deducted before the split"
           : `Covered by ${rules.feeBearerId ? name(rules.feeBearerId) : "the designated fee bearer"}`}
       </dd>
-      <dt>Recoupment</dt>
+      {label("advance", "Recoupment")}
       <dd>
         {rules.advance
           ? `${money(rules.advance.amountCents)} to ${name(rules.advance.recipientId)} · ${rules.advance.verified ? "verified advance" : "unverified advance"}`
           : "No advance"}
+        {rules.advance && (
+          <div className="muted">
+            {rules.advance.source.clause}: {rules.advance.source.excerpt}
+          </div>
+        )}
       </dd>
-      <dt>Source clause</dt>
+      {label("source", "Source clause")}
       <dd>{rules.source.clause}</dd>
-      <dt>Source wording</dt>
+
+      <dt>Interpretation</dt>
+      <dd>
+        {rules.source.origin === "HUMAN_PROPOSAL"
+          ? "Edited by a person"
+          : "Read from the agreement"}
+      </dd>
+      {label("source", "Source wording")}
       <dd>{rules.source.excerpt}</dd>
-      <dt>Clarifications</dt>
+      {label("questions", "Clarifications")}
       <dd>
         {rules.unresolvedQuestions.length
           ? rules.unresolvedQuestions.join(" · ")
@@ -65,6 +92,8 @@ export function AgreementVersions({ agreement }: { agreement: Agreement }) {
       </div>
       {[...versions].reverse().map((version) => {
         const state = versionSummary(agreement, version);
+        const changed = changedRuleFields(version.rules, latest.rules);
+        const shareChanges = changedShares(version.rules, latest.rules);
         return (
           <article key={version.id} className={styles.version}>
             <div className={styles.heading}>
@@ -81,19 +110,55 @@ export function AgreementVersions({ agreement }: { agreement: Agreement }) {
             {!state.latest && (
               <details className={styles.compare}>
                 <summary>Compare with v{latest.id}</summary>
+                <p className={styles.changeSummary}>
+                  {changed.length
+                    ? `${changed.length} ${changed.length === 1 ? "section changed" : "sections changed"}`
+                    : "No rule changes"}
+                </p>
+                {shareChanges.length > 0 && (
+                  <ul
+                    aria-label="Share changes"
+                    className={styles.shareChanges}
+                  >
+                    {shareChanges.map((change) => (
+                      <li key={change.userId}>
+                        {agreement.value.members.find(
+                          (member) => member.userId === change.userId,
+                        )?.displayName ?? "Former participant"}
+                        :{" "}
+                        {change.before === undefined
+                          ? "Not included"
+                          : `${change.before / 100}%`}{" "}
+                        →{" "}
+                        {change.after === undefined
+                          ? "Removed"
+                          : `${change.after / 100}%`}
+                      </li>
+                    ))}
+                  </ul>
+                )}
                 <div className={styles.columns}>
                   <div>
                     <h4>Version {version.id}</h4>
-                    <RuleSummary agreement={agreement} version={version} />
+                    <RuleSummary
+                      agreement={agreement}
+                      version={version}
+                      changed={changed}
+                    />
                   </div>
                   <div>
                     <h4>Version {latest.id} · latest</h4>
-                    <RuleSummary agreement={agreement} version={latest} />
+                    <RuleSummary
+                      agreement={agreement}
+                      version={latest}
+                      changed={changed}
+                    />
                   </div>
                 </div>
                 <p className="muted">
-                  Read-only comparison. It does not change approvals, active
-                  rules or historical allocations.
+                  {latest.status === "ACTIVE"
+                    ? `Version ${latest.id} is active. Incoming payments use it; earlier payments keep their original rules.`
+                    : "These changes apply only after everyone approves the new version. Earlier payments keep their original rules."}
                 </p>
               </details>
             )}
