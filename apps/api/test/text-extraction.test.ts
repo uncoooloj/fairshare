@@ -80,6 +80,14 @@ test("layout joins soft wraps but never merges across clause numbers or headings
   );
 });
 
+test("layout joins a trailing soft hyphen at a line wrap", () => {
+  const { text } = layoutPage([
+    line("The non­", 800, 495),
+    line("exclusive licence applies.", 788, 200),
+  ]);
+  assert.equal(text, "The nonexclusive licence applies.");
+});
+
 test("normalization expands ligatures but keeps meaning-bearing characters", () => {
   assert.equal(
     normalizeExtractedText(

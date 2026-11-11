@@ -56,6 +56,17 @@ test("DOCX rejects malformed, macro, empty, excessive text and timeout", async (
     (e: any) => e.code === "DOCX_EXTRACTION_TIMEOUT",
   );
 });
+test("DOCX applies the text limit after normalization", async () => {
+  const normalizedAtLimit = "a".repeat(40000) + "\u00ad";
+  assert.equal(
+    (await extractDocx(await docx(normalizedAtLimit))).text.length,
+    40000,
+  );
+  await assert.rejects(
+    extractDocx(await docx("a".repeat(40001) + "\u00ad")),
+    (e: any) => e.code === "DOCX_TEXT_LIMIT",
+  );
+});
 test("original downloads preserve bytes, require agreement membership, are attachments and remain pinned", async () => {
   const app = await buildApp({ dbPath: ":memory:" });
   try {
