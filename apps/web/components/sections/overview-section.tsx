@@ -2,7 +2,12 @@ import type { Dispatch, SetStateAction } from "react";
 import { OverviewDashboard } from "../overview-dashboard";
 import { PlusIcon } from "../icons";
 import { Heading } from "../agreement-widgets";
-import { Section, type Agreement, type User } from "../../lib/model";
+import {
+  AgreementTab,
+  Section,
+  type Agreement,
+  type User,
+} from "../../lib/model";
 import { Button } from "../ui";
 import type { Run } from "./types";
 
@@ -16,7 +21,10 @@ export interface OverviewSectionProps {
   setSection: Dispatch<SetStateAction<Section>>;
   setCreating: Dispatch<SetStateAction<boolean>>;
   run: Run;
-  openAgreement: (a: Agreement) => Promise<void>;
+  openAgreement: (
+    a: Agreement,
+    initialTab?: AgreementTab,
+  ) => Promise<void>;
 }
 
 /** Overview greeting, dashboard and link to all agreements. */
@@ -58,6 +66,9 @@ export function OverviewSection({
         payoutsUnavailable={payoutsUnavailable}
         userId={user.id}
         onOpen={(a) => run(() => openAgreement(a))}
+        onSendReminder={(a) =>
+          run(() => openAgreement(a, AgreementTab.People))
+        }
       />
       <p className="ov-footer-link">
         <button

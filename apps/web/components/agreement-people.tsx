@@ -8,7 +8,7 @@ import { Drawer } from "./allocation-drawer";
 import { PayoutEmailStep } from "./payout-email-step";
 import { Avatar } from "./person";
 import { toneInRoster } from "../lib/person";
-import { oldLinkWarning, PersonShare } from "./person-share";
+import { oldLinkWarning, PersonShare, ShareMode } from "./person-share";
 
 export { personInviteLink } from "../lib/share-link";
 
@@ -233,6 +233,11 @@ export function AgreementPeople({
                 loading && !destinations
                   ? "Loading…"
                   : payoutReadinessLabel(destination?.status);
+              const needsReminder =
+                organizer &&
+                member.userId !== userId &&
+                currentVersion?.status === "AWAITING_APPROVAL" &&
+                !currentVersion.approvals[member.userId];
               return (
                 <tr key={member.userId}>
                   <th scope="row">
@@ -270,6 +275,7 @@ export function AgreementPeople({
                         member={member}
                         viewerId={userId}
                         organizer={organizer}
+                        mode={needsReminder ? ShareMode.Nudge : ShareMode.Link}
                         onAgreementChange={adopt}
                       />
                       {((organizer && isPendingMember(member)) ||

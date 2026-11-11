@@ -71,6 +71,7 @@ test("details guidance and CSV use the same plain labels; uncertain sends say do
     "utf8",
   );
   assert.match(details, /paymentStatusLabel\(row\)/);
+  assert.match(details, /<AllocationCalculation[\s\S]*compact/);
 });
 
 test("Received means before PayPal's fee in both the overview and the agreement", () => {
