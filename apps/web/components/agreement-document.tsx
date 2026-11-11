@@ -115,8 +115,9 @@ export function AgreementDocument({
         </div>
       </div>
       <p className="document-disclaimer">
-        Read the saved agreement text below, or download the original. Each
-        version keeps the document it was created from.
+        This view shows extracted text, not a signature verification. Original
+        downloads are available for new PDF and DOCX uploads. Each version keeps
+        the document it was created from.
       </p>
       {loading ? (
         <div className="panel" role="status">
@@ -159,6 +160,36 @@ export function AgreementDocument({
             document={document}
             version={version}
           />
+          <section
+            className="panel document-provenance"
+            aria-label="Source details"
+          >
+            <h3>Source details</h3>
+            <dl>
+              <dt>Used by</dt>
+              <dd>
+                {version
+                  ? `Version ${version.id}`
+                  : "Latest saved draft source"}
+              </dd>
+              <dt>Document ID</dt>
+              <dd>
+                <code>{document.documentId}</code>
+              </dd>
+              {document.sourceHash && (
+                <>
+                  <dt>Source hash</dt>
+                  <dd>
+                    <code>{document.sourceHash}</code>
+                  </dd>
+                </>
+              )}
+            </dl>
+            <small>
+              PDF text reading order can differ from its visual layout. Compare
+              the wording before approving rules.
+            </small>
+          </section>
         </>
       )}
     </section>
