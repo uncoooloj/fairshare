@@ -1,6 +1,23 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readdirSync, readFileSync } from "node:fs";
 import { createSandboxCheckout } from "../lib/checkout-retry";
+
+test("checkout retry helper is called by a production component", () => {
+  const components = readdirSync(new URL("../components/", import.meta.url), {
+    withFileTypes: true,
+  });
+  const sources = components
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".tsx"))
+    .map((entry) =>
+      readFileSync(
+        new URL(`../components/${entry.name}`, import.meta.url),
+        "utf8",
+      ),
+    );
+
+  assert.ok(sources.some((source) => /createSandboxCheckout\(/.test(source)));
+});
 
 test("reuses the checkout key when the local payment refresh fails", async () => {
   const values = new Map<string, string>();
@@ -18,6 +35,7 @@ test("reuses the checkout key when the local payment refresh fails", async () =>
     storage,
     storageKey: "fairshare-checkout:user:agreement:100",
     amountCents: 100,
+    source: { kind: "sandbox" },
     createRequestKey: () => "stable-request-key",
     createPayment,
   };

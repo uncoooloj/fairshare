@@ -21,7 +21,7 @@ test("email delivery is unavailable by default while private link sharing remain
 test("email capability only advertises configured server transport", async () => {
   const app = await buildApp({
     dbPath: ":memory:",
-    publicAppOrigin: "https://fairshare.example",
+    publicAppOrigin: "https://app.example.test",
     mailTransport: {
       async send() {
         return { providerId: "test" };
