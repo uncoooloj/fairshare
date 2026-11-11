@@ -7,6 +7,8 @@ import "./design-polish.css";
 import "./overview-polish.css";
 import "./agreement-polish.css";
 import "./settings-polish.css";
+import "./document-polish.css";
+import "./mobile-polish.css";
 export const metadata: Metadata = {
   title: "Fairshare · The money follows the agreement",
   description: "Agreements, clear allocations and traceable payouts.",

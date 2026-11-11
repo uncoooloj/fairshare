@@ -10,6 +10,7 @@ import { Button } from "./ui";
 export interface NotificationEvent {
   id: string;
   kind: NotificationKind;
+  workspaceId: string;
   agreementId: string;
   agreementName: string;
   at: string | null;
@@ -18,12 +19,12 @@ export interface NotificationEvent {
 
 /** A real event feed, not an unread counter: the API does not persist read receipts. */
 export function NotificationPanel({
-  agreementIds,
+  agreements,
   onOpenAgreement,
   onPreferences,
 }: {
-  agreementIds: string[];
-  onOpenAgreement: (id: string) => boolean;
+  agreements: { workspaceId: string; id: string }[];
+  onOpenAgreement: (workspaceId: string, id: string) => boolean;
   onPreferences: () => boolean;
 }) {
   const [open, setOpen] = useState(false);
@@ -83,8 +84,8 @@ export function NotificationPanel({
         type="button"
         aria-expanded={open}
         aria-controls="notification-panel"
-        aria-label="Notifications"
-        title="Notifications"
+        aria-label="Open notifications"
+        title="Open notifications"
         onClick={() => setOpen(!open)}
       >
         <svg
@@ -154,7 +155,7 @@ export function NotificationPanel({
           ) : (
             <ul className="notification-events">
               {events.map((event) => (
-                <li key={event.id}>
+                <li key={`${event.workspaceId}:${event.id}`}>
                   <small>
                     {notificationLabels[event.kind]?.[0] ?? "Agreement update"}
                   </small>
@@ -163,12 +164,19 @@ export function NotificationPanel({
                   {event.at && (
                     <time dateTime={event.at}>{formatDate(event.at)}</time>
                   )}
-                  {agreementIds.includes(event.agreementId) ? (
+                  {agreements.some(
+                    (agreement) =>
+                      agreement.workspaceId === event.workspaceId &&
+                      agreement.id === event.agreementId,
+                  ) ? (
                     <Button
                       type="button"
                       variant="quiet"
                       onClick={() => {
-                        if (onOpenAgreement(event.agreementId)) setOpen(false);
+                        if (
+                          onOpenAgreement(event.workspaceId, event.agreementId)
+                        )
+                          setOpen(false);
                       }}
                     >
                       View agreement

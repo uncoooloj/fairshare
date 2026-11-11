@@ -16,16 +16,45 @@ export function AllocationCalculation({
 }) {
   const a = trace.allocation;
   const percent = trace.shareBasisPoints / 100;
-  const reason = trace.poolCents
-    ? `${percent}% of the ${money(trace.poolCents)} left${
-        trace.recoupedCents
-          ? ` after ${money(trace.recoupedCents)} went to the advance`
-          : ""
-      }.`
-    : trace.recoupedCents > 0
-      ? `This payment went entirely to the advance.`
-      : `No money remained to split after processing fees.`;
+  const reasonParts = [
+    trace.advanceSource && a.recoupmentCents > 0
+      ? `${money(a.recoupmentCents)} was allocated to advance recoupment.`
+      : undefined,
+    trace.poolCents > 0
+      ? `${money(a.shareCents)} is this person's recorded ${percent}% share of the ${money(trace.poolCents)} split pool.`
+      : undefined,
+    a.feeCents > 0
+      ? `${money(a.feeCents)} recipient fee was deducted from that share.`
+      : undefined,
+  ].filter(Boolean);
+  const reason = reasonParts.length
+    ? reasonParts.join(" ")
+    : trace.netCents === 0
+      ? "No money remained to split after processing fees."
+      : "No amount was allocated to this person from the recorded rules.";
+  const waterfallDescription = [
+    `${money(trace.netCents)} received`,
+    trace.advanceSource && trace.recoupedCents > 0
+      ? `${money(trace.recoupedCents)} to the advance`
+      : undefined,
+    trace.poolCents > 0 ? `${money(trace.poolCents)} split` : undefined,
+    `${money(a.shareCents)} to ${name}`,
+    a.feeCents > 0 ? `${money(a.feeCents)} recipient fee` : undefined,
+  ]
+    .filter(Boolean)
+    .join(", ");
   const base = trace.netCents || 1;
+  const ownsAdvance = a.recoupmentCents > 0;
+  const toneClass = `tone-${tone ?? 0}`;
+  const advanceHolder = ownsAdvance ? name : advanceTo;
+  const showAdvanceClause = Boolean(
+    trace.advanceSource && (ownsAdvance || trace.poolCents === 0),
+  );
+  const showSplitClause = a.shareCents > 0 || !showAdvanceClause;
+  const showTrailingAdvanceClause = Boolean(
+    trace.advanceSource && !showAdvanceClause && trace.recoupedCents > 0,
+  );
+  let step = 1;
   return (
     <section className="calculation" aria-label={`Calculation for ${name}`}>
       <p className="calculation-headline">
@@ -41,14 +70,10 @@ export function AllocationCalculation({
         </span>
       </div>
 
-      <div
-        className="waterfall"
-        role="img"
-        aria-label={`${money(trace.netCents)} received: ${money(trace.recoupedCents)} to the advance, ${money(trace.poolCents)} split, ${money(a.shareCents)} to ${name}.`}
-      >
-        {trace.recoupedCents > 0 && (
+      <div className="waterfall" role="img" aria-label={waterfallDescription}>
+        {trace.advanceSource && trace.recoupedCents > 0 && (
           <span
-            className="waterfall-advance"
+            className={`waterfall-advance ${ownsAdvance ? `is-own ${toneClass}` : ""}`}
             style={{ flexGrow: trace.recoupedCents / base }}
           />
         )}
@@ -65,11 +90,17 @@ export function AllocationCalculation({
         )}
       </div>
       <div className="waterfall-legend" aria-hidden="true">
-        {trace.recoupedCents > 0 && (
-          <span className="key-advance">Advance</span>
+        {trace.advanceSource && trace.recoupedCents > 0 && (
+          <span
+            className={`key-advance ${ownsAdvance ? `is-own ${toneClass}` : ""}`}
+          >
+            {advanceHolder ? `Advance → ${advanceHolder}` : "Advance"}
+          </span>
         )}
         {trace.poolCents > 0 && <span className="key-pool">Split pool</span>}
-        <span className={`key-share tone-${tone ?? 0}`}>{name}</span>
+        {a.shareCents > 0 && (
+          <span className={`key-share ${toneClass}`}>{name}&rsquo;s share</span>
+        )}
       </div>
 
       <h3 className="calculation-label">From payment</h3>
@@ -97,12 +128,16 @@ export function AllocationCalculation({
         <tbody>
           {trace.advanceSource && (
             <tr>
-              <td>1</td>
+              <td>{step++}</td>
               <td>
-                Recoup advance
-                {trace.advanceSource?.clause && (
-                  <small> · clause {trace.advanceSource.clause}</small>
-                )}
+                <span className="calculation-step-title">
+                  Recoup advance
+                  {trace.advanceSource.clause && (
+                    <span className="clause-chip">
+                      § {trace.advanceSource.clause}
+                    </span>
+                  )}
+                </span>
                 <small>
                   {a.recoupmentCents > 0
                     ? `${name} is paid back first`
@@ -120,19 +155,28 @@ export function AllocationCalculation({
               </td>
             </tr>
           )}
-          <tr>
-            <td>{trace.advanceSource ? 2 : 1}</td>
-            <td>
-              Split {percent}% of {money(trace.poolCents)}
-              {trace.source.clause && (
-                <small> · clause {trace.source.clause}</small>
-              )}
-            </td>
-            <td className="numeric">{money(a.shareCents)}</td>
-          </tr>
+          {trace.poolCents > 0 ? (
+            <tr>
+              <td>{step++}</td>
+              <td>
+                <span className="calculation-step-title">
+                  Split {percent}% of {money(trace.poolCents)}
+                  {trace.source.clause && (
+                    <span className="clause-chip">§ {trace.source.clause}</span>
+                  )}
+                </span>
+              </td>
+              <td className="numeric">{money(a.shareCents)}</td>
+            </tr>
+          ) : (
+            <tr className="calculation-skipped">
+              <td />
+              <td colSpan={2}>No split from this payment</td>
+            </tr>
+          )}
           {a.feeCents > 0 && (
             <tr>
-              <td>{trace.advanceSource ? 3 : 2}</td>
+              <td>{step++}</td>
               <td>Recipient fee</td>
               <td className="numeric">−{money(a.feeCents)}</td>
             </tr>
@@ -145,14 +189,26 @@ export function AllocationCalculation({
         </tbody>
       </table>
 
-      <h3 className="calculation-label">Source clause</h3>
-      <figure className="clause-card">
-        <span className="clause-chip">§ {trace.source.clause || "—"}</span>
-        <blockquote>
-          {trace.source.excerpt || "Source excerpt not recorded."}
-        </blockquote>
-      </figure>
-      {trace.advanceSource && (
+      <h3 className="calculation-label">
+        {(showAdvanceClause && showSplitClause) || showTrailingAdvanceClause
+          ? "Source clauses"
+          : "Source clause"}
+      </h3>
+      {showAdvanceClause && trace.advanceSource && (
+        <figure className="clause-card">
+          <span className="clause-chip">§ {trace.advanceSource.clause}</span>
+          <blockquote>{trace.advanceSource.excerpt}</blockquote>
+        </figure>
+      )}
+      {showSplitClause && (
+        <figure className="clause-card">
+          <span className="clause-chip">§ {trace.source.clause || "—"}</span>
+          <blockquote>
+            {trace.source.excerpt || "Source excerpt not recorded."}
+          </blockquote>
+        </figure>
+      )}
+      {showTrailingAdvanceClause && trace.advanceSource && (
         <figure className="clause-card">
           <span className="clause-chip">§ {trace.advanceSource.clause}</span>
           <blockquote>{trace.advanceSource.excerpt}</blockquote>

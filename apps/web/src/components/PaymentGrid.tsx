@@ -43,7 +43,7 @@ export interface PaymentGridProps {
   emptyActions?: ReactNode;
   error?: string;
   /** Parent controls navigation; no sensitive data or actions are embedded in URLs. */
-  onOpenAgreement?: (agreementId: string) => void;
+  onOpenAgreement?: (agreementKey: string) => void;
 }
 /** Community-only grid. No enterprise modules, licensing, trial or provider writes. */
 export function PaymentGrid({
@@ -103,7 +103,7 @@ export function PaymentGrid({
           row && onOpenAgreement ? (
             <button
               type="button"
-              onClick={() => onOpenAgreement(row.agreementId)}
+              onClick={() => onOpenAgreement(row.agreementKey)}
               style={{
                 border: 0,
                 padding: 0,

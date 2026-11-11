@@ -302,6 +302,7 @@ export function AgreementHeader({
   renameSuggested?: boolean;
 }) {
   const menu = useRef<HTMLDetailsElement>(null);
+  const menuButton = useRef<HTMLElement>(null);
   const [open, setOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const versions = agreement.value.versions;
@@ -359,7 +360,11 @@ export function AgreementHeader({
           className="ag-menu"
           onToggle={(event) => setOpen(event.currentTarget.open)}
         >
-          <summary className="icon-button" aria-label="Agreement actions">
+          <summary
+            ref={menuButton}
+            className="icon-button"
+            aria-label="Agreement actions"
+          >
             <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
               <circle cx="3" cy="8" r="1.4" fill="currentColor" />
               <circle cx="8" cy="8" r="1.4" fill="currentColor" />
@@ -388,7 +393,10 @@ export function AgreementHeader({
       </div>
       {rename &&
         (renaming || renameSuggested) &&
-        rename(renaming, () => setRenaming(false))}
+        rename(renaming, () => {
+          setRenaming(false);
+          menuButton.current?.focus();
+        })}
     </header>
   );
 }
@@ -437,11 +445,15 @@ export interface PayoutRecord {
 export function MoneyCard({
   agreement,
   payouts,
+  payoutsComplete,
+  payoutsUnavailable,
   userId,
   footer,
 }: {
   agreement: Agreement;
   payouts: OverviewPayout[];
+  payoutsComplete: boolean;
+  payoutsUnavailable: boolean;
   userId: string;
   footer?: ReactNode;
 }) {
@@ -449,7 +461,12 @@ export function MoneyCard({
   const allocations = revenue.flatMap((r) => r.allocations);
   const received = revenue.reduce((t, r) => t + r.grossCents, 0);
   const fees = revenue.reduce((t, r) => t + r.feeCents, 0);
-  const summary = overviewSummary([agreement], payouts, userId);
+  const summary = overviewSummary(
+    [agreement],
+    payouts,
+    userId,
+    payoutsComplete,
+  );
   const personal = summary.scope === "personal";
   const display = (value: number | null) =>
     value === null ? "Needs reconciliation" : money(value);
@@ -460,56 +477,72 @@ export function MoneyCard({
   return (
     <aside className="panel ag-card ag-money" aria-label="Money">
       <h2>Money</h2>
-      <dl className="ag-money-lines">
-        <div>
-          <dt>Agreement revenue</dt>
-          <dd className="numeric">{money(received)}</dd>
-        </div>
-        {fees > 0 && (
-          <div>
-            <dt>Processing fees</dt>
-            <dd className="numeric">{money(fees)}</dd>
-          </div>
-        )}
-        <div>
-          <dt>{personal ? "Your allocated share" : "Allocated"}</dt>
-          <dd className="numeric">{display(summary.allocated)}</dd>
-        </div>
-        <div>
-          <dt>{personal ? "Paid to you" : "Confirmed paid out"}</dt>
-          <dd className="numeric">{display(summary.paid)}</dd>
-        </div>
-        <div className="ag-money-total">
-          <dt>Not confirmed paid</dt>
-          <dd className="numeric">{display(summary.remaining)}</dd>
-        </div>
-      </dl>
-      <p className="muted ag-money-note">
-        {personal
-          ? "Your shares only. Revenue and fees above describe the whole agreement."
-          : "Recorded shares, not an available balance."}
-      </p>
-      <h3 className="ag-eyebrow">By person</h3>
-      <ul className="ag-by-person">
-        {visibleMembers.map((m) => {
-          const owed = allocations
-            .filter((a) => a.userId === m.userId)
-            .reduce((t, a) => t + a.totalCents, 0);
-          return (
-            <li key={m.userId}>
-              <Avatar
-                name={m.displayName}
-                tone={toneInRoster(m.userId, roster)}
-                label={false}
-              />
-              <span>
-                <strong>{m.displayName}</strong>
-                <small className="muted numeric">{money(owed)} allocated</small>
-              </span>
-            </li>
-          );
-        })}
-      </ul>
+      {payoutsUnavailable ? (
+        <p className="muted" role="alert">
+          Payout status is unavailable. Refresh to try again. Financial totals
+          remain hidden until the payout history is available.
+        </p>
+      ) : !payoutsComplete ? (
+        <p className="muted" role="status">
+          Loading payout records… Financial totals will appear when the payout
+          history is ready.
+        </p>
+      ) : (
+        <>
+          <dl className="ag-money-lines">
+            <div>
+              <dt>Agreement revenue</dt>
+              <dd className="numeric">{money(received)}</dd>
+            </div>
+            {fees > 0 && (
+              <div>
+                <dt>Processing fees</dt>
+                <dd className="numeric">{money(fees)}</dd>
+              </div>
+            )}
+            <div>
+              <dt>{personal ? "Your allocated share" : "Allocated"}</dt>
+              <dd className="numeric">{display(summary.allocated)}</dd>
+            </div>
+            <div>
+              <dt>{personal ? "Paid to you" : "Confirmed paid out"}</dt>
+              <dd className="numeric">{display(summary.paid)}</dd>
+            </div>
+            <div className="ag-money-total">
+              <dt>Not confirmed paid</dt>
+              <dd className="numeric">{display(summary.remaining)}</dd>
+            </div>
+          </dl>
+          <p className="muted ag-money-note">
+            {personal
+              ? "Your shares only. Revenue and fees above describe the whole agreement."
+              : "Recorded shares, not an available balance."}
+          </p>
+          <h3 className="ag-eyebrow">By person</h3>
+          <ul className="ag-by-person">
+            {visibleMembers.map((m) => {
+              const owed = allocations
+                .filter((a) => a.userId === m.userId)
+                .reduce((t, a) => t + a.totalCents, 0);
+              return (
+                <li key={m.userId}>
+                  <Avatar
+                    name={m.displayName}
+                    tone={toneInRoster(m.userId, roster)}
+                    label={false}
+                  />
+                  <span>
+                    <strong>{m.displayName}</strong>
+                    <small className="muted numeric">
+                      {money(owed)} allocated
+                    </small>
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </>
+      )}
       {footer}
     </aside>
   );
