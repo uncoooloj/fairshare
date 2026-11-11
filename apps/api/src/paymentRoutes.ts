@@ -18,6 +18,7 @@ import {
   PayPalSandbox,
   PayPalError,
   verifyAndPlanWebhook,
+  canRepairRefundPlan,
   reconcileCapture,
   WebhookActionKind,
 } from "@fairshare/payments";
@@ -562,6 +563,8 @@ export function registerPaymentRoutes(
         if (!result.confirmed)
           fail("CAPTURE_NOT_CONFIRMED", "Provider capture is not completed");
       } else if (action.kind === WebhookActionKind.HoldCapture) {
+        if (!action.providerId)
+          fail("UNMATCHED_EVENT", "Capture provenance needs verification");
         const match = db
           .prepare(
             "SELECT * FROM fairshare_captures WHERE provider_capture_id=?",
@@ -614,7 +617,9 @@ export function registerPaymentRoutes(
     }
     tx(() => {
       const old = db
-        .prepare("SELECT fingerprint FROM fairshare_webhook_inbox WHERE id=?")
+        .prepare(
+          "SELECT fingerprint,action,status FROM fairshare_webhook_inbox WHERE id=?",
+        )
         .get(planned!.eventId) as any;
       if (old) {
         if (old.fingerprint !== planned!.fingerprint)
@@ -622,6 +627,14 @@ export function registerPaymentRoutes(
             "WEBHOOK_EVENT_ID_CONFLICT",
             "Event ID reused with changed payload",
           );
+        if (
+          old.status === "PENDING" &&
+          canRepairRefundPlan(JSON.parse(old.action), planned!.action)
+        ) {
+          db.prepare(
+            "UPDATE fairshare_webhook_inbox SET action=? WHERE id=? AND status='PENDING'",
+          ).run(JSON.stringify(planned!.action), planned!.eventId);
+        }
         return;
       }
       db.prepare(
