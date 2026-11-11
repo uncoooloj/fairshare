@@ -115,6 +115,29 @@ test("real adapter injection gets verification link; correct signed-in owner onl
     await app.close();
   }
 });
+test("non-demo transport requires an explicit HTTPS origin before any email can send", async () => {
+  let sends = 0;
+  const transport: MailTransport = {
+    async send() {
+      sends++;
+      return { providerId: "test" };
+    },
+  };
+  await assert.rejects(
+    () => buildApp({ dbPath: ":memory:", mailTransport: transport }),
+    /explicit PUBLIC_APP_ORIGIN/,
+  );
+  await assert.rejects(
+    () =>
+      buildApp({
+        dbPath: ":memory:",
+        mailTransport: transport,
+        publicAppOrigin: "http://localhost:3000",
+      }),
+    /trusted HTTPS PUBLIC_APP_ORIGIN/,
+  );
+  assert.equal(sends, 0);
+});
 test("sandbox email-bound invitations require independently verified recipient and do not expose token to inviter", async () => {
   const messages: MailMessage[] = [];
   const app = await buildApp({
@@ -125,6 +148,7 @@ test("sandbox email-bound invitations require independently verified recipient a
         return { providerId: "sent" };
       },
     },
+    publicAppOrigin: "https://fairshare.example",
   });
   try {
     const a = await reg(app),
@@ -168,7 +192,11 @@ test("failed mail revokes invitation and verification token; no provider body or
       throw new Error("SECRET_PROVIDER_BODY");
     },
   };
-  const app = await buildApp({ dbPath: ":memory:", mailTransport: transport });
+  const app = await buildApp({
+    dbPath: ":memory:",
+    mailTransport: transport,
+    publicAppOrigin: "https://fairshare.example",
+  });
   try {
     const a = await reg(app);
     let r = await app.inject({
@@ -242,8 +270,24 @@ test("Resend adapter is opt-in, validates origin and sanitizes errors", async ()
     configuredMailTransport({ RESEND_API_KEY: "not-enabled" }),
     undefined,
   );
+  const enabled = {
+    EMAIL_DELIVERY_ENABLED: "true",
+    EMAIL_PROVIDER: "resend",
+    RESEND_API_KEY: "test",
+    EMAIL_FROM: "noreply@example.test",
+  };
+  assert.throws(() => configuredMailTransport(enabled));
   assert.throws(() =>
-    configuredMailTransport({ EMAIL_DELIVERY_ENABLED: "true" }),
+    configuredMailTransport({
+      ...enabled,
+      PUBLIC_APP_ORIGIN: "http://localhost:3000",
+    }),
+  );
+  assert(
+    configuredMailTransport({
+      ...enabled,
+      PUBLIC_APP_ORIGIN: "https://fairshare.example",
+    }),
   );
   for (const u of [
     "http://public.example",

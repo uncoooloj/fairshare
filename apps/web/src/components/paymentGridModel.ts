@@ -16,6 +16,7 @@ export interface PaymentGridRow {
   /** Provider-facing payout operation identifier shown in exports and details. */
   payoutId: string;
   agreementId: string;
+  agreementKey: string;
   agreementName: string;
   recipientName: string;
   amountCents: number;
@@ -52,6 +53,7 @@ export function validatePaymentRows(
       ids.has(row.id) ||
       !row.payoutId ||
       !row.agreementId ||
+      !row.agreementKey ||
       !row.agreementName ||
       !row.recipientName ||
       !Number.isSafeInteger(row.amountCents) ||

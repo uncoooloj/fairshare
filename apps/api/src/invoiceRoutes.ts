@@ -1,10 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { FastifyRequest } from "fastify";
-import {
-  allocateConfirmedRevenue,
-  DomainError,
-  MemberRole,
-} from "@fairshare/domain";
+import { DomainError, MemberRole } from "@fairshare/domain";
 import type { AggregateStore } from "./fairshare.js";
 import type { FairshareApp } from "./app.js";
 import { Role } from "./identity.js";
@@ -36,13 +32,6 @@ export interface InvoiceProvider {
   }): Promise<InvoiceEvidence>;
   publishInvoice(id: string, requestId: string): Promise<InvoiceEvidence>;
   getInvoice(id: string): Promise<InvoiceEvidence>;
-  getCapture(id: string): Promise<{
-    id: string;
-    status: string;
-    currency: string;
-    amountCents: number;
-    accounting?: { feeCents: number; netCents: number };
-  }>;
 }
 const fail = (code: string, message: string): never => {
   throw new DomainError(code, message);
@@ -100,7 +89,7 @@ export function registerInvoiceRoutes(
     "/api/workspaces/:workspaceId/collaborations/:collaborationId/invoices";
   function provider(): InvoiceProvider {
     const p = getProvider();
-    if (!p.createInvoice || !p.publishInvoice || !p.getInvoice || !p.getCapture)
+    if (!p.createInvoice || !p.publishInvoice || !p.getInvoice)
       fail("PAYPAL_NOT_CONFIGURED", "Invoice provider is not configured");
     return p as InvoiceProvider;
   }
@@ -154,6 +143,13 @@ export function registerInvoiceRoutes(
         fail("INVOICE_MISMATCH", "Invalid sandbox invoice link");
     }
   }
+  function localStatus(evidence: InvoiceEvidence) {
+    if (evidence.status === "DRAFT") return "DRAFT";
+    return ["SENT", "SCHEDULED", "UNPAID"].includes(evidence.status) &&
+      evidence.shareUrl
+      ? "SHARED"
+      : "PAYMENT_PENDING";
+  }
   async function reconcile(id: string, assertLease: () => void = () => {}) {
     const op = read(id);
     if (!op.provider_id || op.status === "PAID") return { invoice: dto(op) };
@@ -162,14 +158,7 @@ export function registerInvoiceRoutes(
     assertLease();
     // A manually marked invoice or an external payment is never money evidence.
     if (evidence.status !== "PAID") {
-      const status =
-        evidence.status === "DRAFT"
-          ? "DRAFT"
-          : ["CANCELLED", "REFUNDED", "MARKED_AS_PAID"].includes(
-                evidence.status,
-              )
-            ? "PAYMENT_PENDING"
-            : "SHARED";
+      const status = localStatus(evidence);
       db.prepare(
         "UPDATE fairshare_invoices SET status=?,share_url=? WHERE id=? AND status!='PAID'",
       ).run(status, evidence.shareUrl, id);
@@ -178,76 +167,11 @@ export function registerInvoiceRoutes(
     db.prepare(
       "UPDATE fairshare_invoices SET status='PAYMENT_PENDING',share_url=? WHERE id=? AND status!='PAID'",
     ).run(evidence.shareUrl, id);
-    const payments = evidence.payments;
-    if (
-      payments.length !== 1 ||
-      payments[0].type !== "PAYPAL" ||
-      payments[0].amountCents !== evidence.amountCents ||
-      payments[0].currency !== "USD"
-    )
-      return { invoice: dto(read(id)) };
-    const capture = await provider().getCapture(payments[0].transactionId);
-    if (
-      capture.id !== payments[0].transactionId ||
-      capture.status !== "COMPLETED" ||
-      capture.amountCents !== evidence.amountCents ||
-      capture.currency !== "USD" ||
-      !capture.accounting ||
-      !Number.isSafeInteger(capture.accounting.feeCents) ||
-      capture.accounting.feeCents < 0 ||
-      capture.accounting.netCents + capture.accounting.feeCents !==
-        capture.amountCents
-    )
-      fail(
-        "INVOICE_CAPTURE_UNVERIFIED",
-        "Invoice capture and fee accounting must be verified",
-      );
-    assertLease();
-    return app.store.tx(() => {
-      const fresh = read(id);
-      if (fresh.status === "PAID") return { invoice: dto(fresh) };
-      const row = aggregates.read(op.workspace_id, op.collaboration_id);
-      if (row.value.reviewHold || row.value.activeVersionId !== op.version_id)
-        fail("PAYMENT_HOLD", "Invoice rules changed or agreement is held");
-      const used = db
-        .prepare("SELECT * FROM fairshare_captures WHERE provider_capture_id=?")
-        .get(capture.id);
-      if (used) fail("CAPTURE_ALREADY_USED", "Capture already allocated");
-      const adverse = (
-        db
-          .prepare(
-            "SELECT action FROM fairshare_webhook_inbox WHERE status='PENDING'",
-          )
-          .all() as any[]
-      ).some((r) => JSON.parse(r.action).providerId === capture.id);
-      if (adverse)
-        fail("PAYMENT_HOLD", "Provider event requires reconciliation");
-      aggregates.updateInsideTransaction(
-        op.workspace_id,
-        op.collaboration_id,
-        row.revision,
-        (c) =>
-          allocateConfirmedRevenue(
-            c,
-            {
-              providerCaptureId: capture.id,
-              currency: "USD",
-              grossCents: capture.amountCents,
-              feeCents: capture.accounting!.feeCents,
-            },
-            new Date().toISOString(),
-          ),
-      );
-      db.prepare("INSERT INTO fairshare_captures VALUES(?,?,?)").run(
-        capture.id,
-        op.workspace_id,
-        op.collaboration_id,
-      );
-      db.prepare(
-        "UPDATE fairshare_invoices SET status='PAID',capture_id=? WHERE id=?",
-      ).run(capture.id, id);
-      return { invoice: dto(read(id)) };
-    });
+    // PayPal's invoice transaction ID is not documented as a capture ID, and
+    // capture.invoice_id is an external caller reference rather than INV2 ID.
+    // Keep buyer-paid invoices pending until the provider supplies a verifiable
+    // invoice-to-settlement correlation; never allocate revenue on this evidence.
+    return { invoice: dto(read(id)) };
   }
   app.get(base, async (req) => {
     const p = access(req);
@@ -314,6 +238,15 @@ export function registerInvoiceRoutes(
         "UPDATE fairshare_invoices SET provider_id=?,status='DRAFT' WHERE id=?",
       ).run(draft.id, op.id);
       check(read(op.id), draft);
+      // Creating a draft is irreversible; publishing it is a separate provider
+      // write and must use current agreement authorization and version state.
+      access(req, true);
+      const current = aggregates.read(p.workspaceId, p.collaborationId);
+      if (
+        current.value.reviewHold ||
+        current.value.activeVersionId !== op.version_id
+      )
+        fail("PAYMENT_HOLD", "Active approved agreement required");
       db.prepare(
         "UPDATE fairshare_invoices SET status='PUBLISHING' WHERE id=?",
       ).run(op.id);
@@ -324,11 +257,7 @@ export function registerInvoiceRoutes(
       check(read(op.id), published);
       db.prepare(
         "UPDATE fairshare_invoices SET status=?,share_url=? WHERE id=?",
-      ).run(
-        published.shareUrl ? "SHARED" : "PAYMENT_PENDING",
-        published.shareUrl,
-        op.id,
-      );
+      ).run(localStatus(published), published.shareUrl, op.id);
       return { invoice: dto(read(op.id)) };
     } catch (error) {
       db.prepare(

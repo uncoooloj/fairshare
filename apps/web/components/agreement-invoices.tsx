@@ -16,7 +16,7 @@ const statusLabels: Record<string, string> = {
   PUBLISHING: "Preparing link",
   SHARED: "Ready to share",
   PAYMENT_PENDING: "Payment pending",
-  PAID: "Paid and allocated",
+  PAID: "Paid",
   FAILED: "Needs attention",
   UNKNOWN: "Check status",
 };
@@ -137,8 +137,8 @@ export function AgreementInvoices({
         <p role="status">Loading invoices…</p>
       ) : !invoices.length ? (
         <p className="muted">
-          No invoices yet. Confirmed payments will appear below once your
-          customer pays.
+          No invoices yet. Buyer-paid invoices remain pending settlement
+          verification and never create an allocation automatically.
         </p>
       ) : (
         <div className="table-wrap">

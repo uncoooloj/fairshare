@@ -10,6 +10,7 @@ const row: PaymentGridRow = {
   id: "p1",
   payoutId: "payout-1",
   agreementId: "a1",
+  agreementKey: '["w1","a1"]',
   agreementName: "Album",
   recipientName: "OJ",
   amountCents: 101,

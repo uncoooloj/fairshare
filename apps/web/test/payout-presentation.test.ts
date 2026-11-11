@@ -13,6 +13,7 @@ const row: PaymentGridRow = {
   id: '["workspace","agreement","p1"]',
   payoutId: "p1",
   agreementId: "a",
+  agreementKey: '["w","a"]',
   agreementName: "Album",
   recipientName: "Riley",
   currency: "USD",
