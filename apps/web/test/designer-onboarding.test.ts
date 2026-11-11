@@ -29,3 +29,16 @@ test("onboarding never claims provider success or adds unsupported OAuth links",
     /href=.*(?:google|microsoft)|setTimeout|localStorage|Payment successful|Email verified/,
   );
 });
+
+test("email-token verification keeps its existing API contract on the standalone auth canvas", () => {
+  const app = readFileSync(
+    new URL("../components/fairshare-app.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(app, /flowToken && flowKind === "\/verify-email"/);
+  assert.match(app, /<AccessPrompt\s+standalone\s+kind="verification"/);
+  assert.match(
+    app,
+    /api\("auth\/verification\/confirm", "POST", \{\s+token: flowToken,/,
+  );
+});

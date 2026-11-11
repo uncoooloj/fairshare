@@ -239,19 +239,22 @@ export function AccessPrompt({
   busy,
   onContinue,
   onCancel,
+  standalone = false,
 }: {
   kind: "verification" | "invitation";
   email: string;
   busy: boolean;
   onContinue: () => void;
   onCancel?: () => void;
+  /** Email verification has no application context, so it uses the auth canvas. */
+  standalone?: boolean;
 }) {
   const isInvitation = kind === "invitation";
   const handleContinue = () => {
     if (!busy) onContinue();
   };
 
-  return (
+  const prompt = (
     <section className={styles.access} aria-busy={busy}>
       <h2>{isInvitation ? "You’ve been invited" : "Verify your email"}</h2>
       <p>
@@ -283,5 +286,14 @@ export function AccessPrompt({
         </button>
       )}
     </section>
+  );
+  return standalone ? (
+    <main className={styles.accessPage}>
+      <Brand />
+      <div className={styles.accessColumn}>{prompt}</div>
+      <footer className={styles.footer}>Sandbox build. No live money.</footer>
+    </main>
+  ) : (
+    prompt
   );
 }
