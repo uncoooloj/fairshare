@@ -57,3 +57,33 @@ test("navigation is not a second conflicting global setup stepper", () => {
   assert.match(flow, /previousDocument.current === documentId/);
   assert.doesNotMatch(flow, /fetch\(|api\(|\/activate|\/approvals/);
 });
+
+test("a wizard reading result opens Proposed rules, never without a saved source", () => {
+  assert.equal(initialTermsStep("saved", true), 2);
+  assert.equal(initialTermsStep("", true), 0);
+  assert.equal(initialTermsStep("saved", false), 1);
+  const html = renderToStaticMarkup(
+    createElement(AgreementTermsFlow, {
+      ...props,
+      documentId: "saved",
+      openRules: true,
+    }),
+  );
+  assert.match(html, /Step 3 of 3: Proposed rules/);
+  const unsaved = renderToStaticMarkup(
+    createElement(AgreementTermsFlow, {
+      ...props,
+      documentId: "",
+      openRules: true,
+    }),
+  );
+  assert.match(unsaved, /Step 1 of 3: Source agreement/);
+  const tab = readFileSync(
+    new URL(
+      "../components/sections/agreement-tabs/terms-tab.tsx",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  assert.match(tab, /openRules=\{rulesLanding && !!extraction\}/);
+});

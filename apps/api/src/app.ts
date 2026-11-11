@@ -71,6 +71,15 @@ function domainErrorStatus(code: string): number {
       "APPROVALS_REQUIRED",
       "INVALID_STATE",
       "MEMBERS_LOCKED",
+      "PENDING_MEMBER",
+      "PENDING_MEMBERS",
+      "PAYOUT_DESTINATION_CONFLICT",
+      "NOT_A_DRAFT",
+      "DUPLICATE_PERSON",
+      "NOT_PENDING",
+      "ALREADY_MEMBER",
+      "ADVANCE_RECIPIENT_CHANGED",
+      "ADVANCE_BELOW_RECOUPED",
     ].includes(code)
   )
     return 409;

@@ -81,6 +81,17 @@ test("AI extraction adds one concise polite result announcement", () => {
   );
   assert.equal((markup.match(/\srole="(?:alert|status)"/g) || []).length, 1);
 });
+test("AI extraction consent discloses its primary provider and optional fallback", () => {
+  const markup = renderToStaticMarkup(
+    createElement(AIReview, {
+      busy: false,
+      extraction: null,
+      onExtract: () => {},
+    }),
+  );
+  assert.match(markup, /Cloudflare AI/);
+  assert.match(markup, /Anthropic as an optional fallback if configured/);
+});
 test("small screens retain sign out and overflowing dialog content can scroll", () => {
   const css = source("../app/globals.css");
   assert.match(css, /\.sidebar-bottom\s*\{\s*display:\s*flex;/);

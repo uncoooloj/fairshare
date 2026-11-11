@@ -1,13 +1,8 @@
 import type { Dispatch, SetStateAction } from "react";
 import { AgreementPeople } from "../../agreement-people";
 import { AgreementInvitation } from "../../agreement-invitation";
-import { Heading, SimpleForm } from "../../agreement-widgets";
-import {
-  api,
-  type Agreement,
-  type User,
-  type Version,
-} from "../../../lib/model";
+import { Heading } from "../../agreement-widgets";
+import type { Agreement, User, Version } from "../../../lib/model";
 import { Button } from "../../ui";
 import type { Mutate, Run } from "../types";
 
@@ -23,10 +18,12 @@ export interface AgreementPeopleTabProps {
   workspace: string;
   run: Run;
   mutate: Mutate;
+  onAgreementChange: (agreement: Agreement) => void;
+  /** Unused since the payout email moved to its own step; kept for callers. */
   setNotice: Dispatch<SetStateAction<string>>;
 }
 
-/** People on the agreement, invitations and the viewer's payout destination. */
+/** People on the agreement and invitations. Your own payout email opens from your row. */
 export function AgreementPeopleTab({
   selected,
   latest,
@@ -39,7 +36,7 @@ export function AgreementPeopleTab({
   workspace,
   run,
   mutate,
-  setNotice,
+  onAgreementChange,
 }: AgreementPeopleTabProps) {
   return (
     <>
@@ -49,11 +46,13 @@ export function AgreementPeopleTab({
         description="Add everyone before drafting rules. Each person approves their own account’s decision."
       />
       <AgreementPeople
-        key={selected.id}
+        key={`${selected.workspaceId}:${selected.id}`}
         agreement={selected}
         version={latest}
         userId={user.id}
         base={base}
+        organizer={organizer}
+        onAgreementChange={onAgreementChange}
       />
       {organizer && !selected.value.versions.length && (
         <section className="section">
@@ -87,26 +86,6 @@ export function AgreementPeopleTab({
           )}
         </section>
       )}
-      <section className="section" id="agreement-payout-destination">
-        <h3>Your payout destination</h3>
-        <p className="muted">
-          Only you can set your destination. This is a PayPal sandbox merchant
-          ID, not an email.
-        </p>
-        <SimpleForm
-          label="Your sandbox PayPal recipient ID"
-          button="Save destination"
-          busy={busy}
-          onSubmit={(paypalId) =>
-            run(async () => {
-              await api(`${base}/recipient`, "PUT", {
-                paypalId,
-              });
-              setNotice("Your sandbox payout destination was saved.");
-            })
-          }
-        />
-      </section>
     </>
   );
 }

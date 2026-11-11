@@ -5,16 +5,18 @@ import { appSource } from "./app-source";
 const read = (name: string) =>
   readFileSync(new URL(`../components/${name}.tsx`, import.meta.url), "utf8");
 test("upload paths let the server choose how to read a document without an OCR checkbox", () => {
-  for (const source of [read("agreement-intake"), appSource()]) {
+  for (const source of [
+    read("agreement-intake"),
+    read("wizard-intake"),
+    read("agreement-creation-wizard"),
+    appSource(),
+  ]) {
     assert.doesNotMatch(
       source,
       /LocalOcrChoice|setOcr|setUseLocalOcr|Use OCR|useLocalOcr:/,
     );
   }
-  assert.match(
-    read("agreement-intake"),
-    /We’ll read your document when you continue/,
-  );
+  assert.match(read("agreement-creation-wizard"), /Nothing is saved until/);
 });
 test("scanned source is clearly distinguished and page counts remain readable", () => {
   const source = read("agreement-document");

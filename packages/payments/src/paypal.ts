@@ -32,6 +32,30 @@ export type CreateOrder = {
   requestId?: string;
 };
 const BASE = "https://api-m.sandbox.paypal.com";
+/** Payouts `recipient_type`. EMAIL is the default for new destinations; PAYPAL_ID is
+ * kept for destinations saved before email payouts. Add a verified payer type here
+ * when "Connect with PayPal" lands. */
+export enum RecipientType {
+  EMAIL = "EMAIL",
+  PAYPAL_ID = "PAYPAL_ID",
+}
+// PayPal caps EMAIL receivers at 127 characters. Shape check only: PayPal is the authority.
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// PayPal documents no fixed length for encrypted account IDs; accept legacy uppercase IDs.
+const PAYPAL_ID_PATTERN = /^[A-Z0-9]{8,20}$/;
+/** Trimmed, lowercased payout email, or null when it is not a plausible address. */
+export function normalizePayoutEmail(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const email = value.trim().toLowerCase();
+  return email.length <= 127 && EMAIL_PATTERN.test(email) ? email : null;
+}
+export function isValidRecipient(type: unknown, receiver: unknown): boolean {
+  if (typeof receiver !== "string") return false;
+  if (type === RecipientType.EMAIL)
+    return normalizePayoutEmail(receiver) === receiver;
+  if (type === RecipientType.PAYPAL_ID) return PAYPAL_ID_PATTERN.test(receiver);
+  return false;
+}
 function cents(value: unknown): number {
   if (typeof value !== "string" || !/^\d+\.\d{2}$/.test(value))
     throw new PayPalError("INVALID_PROVIDER_AMOUNT");
@@ -392,13 +416,17 @@ export class PayPalSandbox {
   /** One recipient per persisted operation. Capability is OFF unless explicitly gated. */
   async createPayout(input: {
     requestId: string;
+    recipientType: RecipientType;
     recipientId: string;
     amountCents: number;
     currency: string;
   }) {
     this.requirePayouts();
     const key = requestKey(input.requestId);
-    if (key.length > 30 || !/^[A-Z0-9]{13}$/.test(input.recipientId))
+    if (
+      key.length > 30 ||
+      !isValidRecipient(input.recipientType, input.recipientId)
+    )
       throw new PayPalError("INVALID_PAYOUT_ID", 400);
     const result = await this.call(
       "/v1/payments/payouts",
@@ -406,7 +434,7 @@ export class PayPalSandbox {
         sender_batch_header: { sender_batch_id: key },
         items: [
           {
-            recipient_type: "PAYPAL_ID",
+            recipient_type: input.recipientType,
             receiver: input.recipientId,
             amount: {
               currency: input.currency,
@@ -435,6 +463,7 @@ export class PayPalSandbox {
     batchId: string,
     expected: {
       requestId: string;
+      recipientType: RecipientType;
       recipientId: string;
       amountCents: number;
       currency: string;
@@ -458,8 +487,11 @@ export class PayPalSandbox {
     if (
       typeof item.payout_item_id !== "string" ||
       payout?.sender_item_id !== expected.requestId ||
-      payout?.recipient_type !== "PAYPAL_ID" ||
-      payout?.receiver !== expected.recipientId ||
+      payout?.recipient_type !== expected.recipientType ||
+      typeof payout?.receiver !== "string" ||
+      (expected.recipientType === RecipientType.EMAIL
+        ? payout.receiver.toLowerCase() !== expected.recipientId.toLowerCase()
+        : payout.receiver !== expected.recipientId) ||
       payout?.amount?.currency !== expected.currency ||
       cents(payout?.amount?.value) !== expected.amountCents
     )

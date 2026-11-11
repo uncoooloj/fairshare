@@ -12,7 +12,7 @@ import {
   RuleOrigin,
   FeePolicy,
 } from "@fairshare/domain";
-import { PayPalError, PayPalSandbox } from "@fairshare/payments";
+import { PayPalError, PayPalSandbox, RecipientType } from "@fairshare/payments";
 import type { PaymentProvider } from "../src/paymentRoutes.js";
 const auth = (token: string) => ({ authorization: `Bearer ${token}` });
 async function setup(reconciliation = false) {
@@ -235,9 +235,9 @@ test("payout dispatch uses exact allocation once and reversal blocks further dis
     );
     await s.app.inject({
       method: "PUT",
-      url: s.base + "/recipient",
+      url: "/api/auth/payout-account",
       headers: auth(s.owner.token),
-      payload: { paypalId: "ABCDEFGHIJKLM" },
+      payload: { email: " Owner.Pay@Example.test " },
     });
     let r = await s.post("/payouts/dispatch", { captureId: "CAP1" });
     assert.equal(r.statusCode, 200, r.body);
@@ -482,9 +482,9 @@ test("refund requires explicit confirmation and rejects arbitrary amounts or res
     );
     await s.app.inject({
       method: "PUT",
-      url: s.base + "/recipient",
+      url: "/api/auth/payout-account",
       headers: auth(s.owner.token),
-      payload: { paypalId: "ABCDEFGHIJKLM" },
+      payload: { email: " Owner.Pay@Example.test " },
     });
     await s.post("/payouts/dispatch", { captureId: "CAP1" });
     const r = await s.post(`/payments/${s.paymentId}/refund`, {
@@ -659,9 +659,9 @@ test("unknown payout recovery is read-only, adapter verifies frozen operation an
     await s.post(`/payments/${id}/capture`);
     await s.app.inject({
       method: "PUT",
-      url: s.base + "/recipient",
+      url: "/api/auth/payout-account",
       headers: auth(s.owner.token),
-      payload: { paypalId: "ABCDEFGHIJKLM" },
+      payload: { email: " Owner.Pay@Example.test " },
     });
     let writes = 0;
     s.provider.createPayout = async () => {
@@ -674,7 +674,8 @@ test("unknown payout recovery is read-only, adapter verifies frozen operation an
     s.provider.getPayout = async (batch, expected) => {
       assert.equal(expected.requestId, payout.id);
       assert.equal(expected.amountCents, 9700);
-      assert.equal(expected.recipientId, "ABCDEFGHIJKLM");
+      assert.equal(expected.recipientId, "owner.pay@example.test");
+      assert.equal(expected.recipientType, RecipientType.EMAIL);
       return { batchId: batch, itemId: "ITEM1", status: "SUCCESS" };
     };
     const r = await s.post(`/payouts/${payout.id}/recover`, {
@@ -864,9 +865,9 @@ test("worker verifies payout and refund evidence, preserves refund hold and reje
     await p.post(`/payments/${id}/capture`);
     await p.app.inject({
       method: "PUT",
-      url: p.base + "/recipient",
+      url: "/api/auth/payout-account",
       headers: auth(p.owner.token),
-      payload: { paypalId: "ABCDEFGHIJKLM" },
+      payload: { email: " Owner.Pay@Example.test " },
     });
     await p.post("/payouts/dispatch", { captureId: "CAP1" });
     await (p.app as any).paymentReconciliation.tick();
@@ -1120,9 +1121,9 @@ test("disabled payout gates remain retryable without submitting or replaying mon
     await s.post(`/payments/${payment.json().id}/capture`);
     await s.app.inject({
       method: "PUT",
-      url: s.base + "/recipient",
+      url: "/api/auth/payout-account",
       headers: auth(s.owner.token),
-      payload: { paypalId: "ABCDEFGHIJKLM" },
+      payload: { email: " Owner.Pay@Example.test " },
     });
     s.provider.createPayout = client.createPayout.bind(client);
     await s.app.listen({ host: "127.0.0.1", port: 0 });
@@ -1280,5 +1281,53 @@ test("verified refund redelivery repairs only pending legacy mapping and stays i
     );
   } finally {
     await s.app.close();
+  }
+});
+test("account-level email is sent as EMAIL; legacy workspace PayPal ID still pays; UNCLAIMED is not retried", async () => {
+  for (const legacy of [false, true]) {
+    const s = await setup();
+    try {
+      const id = (
+        await s.post("/payments", { amountCents: 10000, requestKey: "one" })
+      ).json().id;
+      await s.post(`/payments/${id}/capture`);
+      if (legacy)
+        s.app.store.db
+          .prepare("INSERT INTO fairshare_recipients VALUES(?,?,?)")
+          .run(s.w.id, s.owner.user.id, "ABCDEFGHIJKLM");
+      else
+        await s.app.inject({
+          method: "PUT",
+          url: "/api/auth/payout-account",
+          headers: auth(s.owner.token),
+          payload: { email: "Owner.Pay@Example.test" },
+        });
+      const sent: any[] = [];
+      s.provider.createPayout = async (input) => {
+        sent.push(input);
+        return { batchId: "BATCH1", status: "PENDING" as const };
+      };
+      s.provider.getPayout = async (batchId, expected) => {
+        assert.equal(expected.recipientType, sent[0].recipientType);
+        return { batchId, itemId: "ITEM1", status: "UNCLAIMED" };
+      };
+      const payout = (
+        await s.post("/payouts/dispatch", { captureId: "CAP1" })
+      ).json().payouts[0];
+      assert.deepEqual(
+        [sent[0].recipientType, sent[0].recipientId],
+        legacy
+          ? [RecipientType.PAYPAL_ID, "ABCDEFGHIJKLM"]
+          : [RecipientType.EMAIL, "owner.pay@example.test"],
+      );
+      assert.equal(
+        (await s.post(`/payouts/${payout.id}/reconcile`)).json().status,
+        "UNCLAIMED",
+      );
+      await s.post("/payouts/dispatch", { captureId: "CAP1" });
+      assert.equal(sent.length, 1);
+    } finally {
+      await s.app.close();
+    }
   }
 });

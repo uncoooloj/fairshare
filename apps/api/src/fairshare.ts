@@ -16,8 +16,12 @@ import {
   createCollaboration,
   proposeVersion,
   sendForReview,
-  approveVersion,
+  approveAndSwitchOn,
   activateVersion,
+  addMember,
+  assertDraftDeletable,
+  assertMembersEditable,
+  submitForApproval,
   requestChange,
   previewVersion,
   DomainError,
@@ -154,6 +158,24 @@ const params = (req: FastifyRequest) =>
     collaborationId: string;
     documentId: string;
   };
+const now = () => new Date().toISOString();
+/** Tables holding money movements; any row means the agreement is not a disposable draft. */
+const MONEY_TABLES = [
+  "fairshare_captures",
+  "fairshare_payment_ops",
+  "fairshare_invoices",
+  "fairshare_refund_ops",
+  "fairshare_payout_ops",
+];
+/** Everything a discarded draft owns, as [table, agreement column]. Fixed names, never user input. */
+const DRAFT_TABLES: Array<[string, string]> = [
+  ["fairshare_documents", "collaboration_id"],
+  ["fairshare_agreement_invites", "agreement_id"],
+  ["agreement_intakes", "agreement_id"],
+  ["agreement_comments", "agreement_id"],
+  ["agreement_reminders", "agreement_id"],
+  ["fairshare_collaborations", "id"],
+];
 const membership = (c: Collaboration, id: string) => {
   if (!c.members.some((m) => m.userId === id))
     throw new DomainError("FORBIDDEN", "Not a collaboration member");
@@ -194,6 +216,37 @@ export function registerFairshareRoutes(
         `ALTER TABLE fairshare_documents ADD COLUMN ${name} ${type}`,
       );
   const base = "/api/workspaces/:workspaceId/collaborations";
+  /** Rule sources must point at this agreement's documents; quoted clauses must be verbatim. */
+  function sourcedRules(
+    p: { workspaceId: string; collaborationId: string },
+    r: Rules,
+  ): Rules {
+    if (!r || typeof r !== "object")
+      throw new DomainError("INVALID_RULES", "Rules required");
+    const refs = [r.source, ...(r.advance ? [r.advance.source] : [])];
+    for (const ref of refs) {
+      if (!ref) throw new DomainError("INVALID_SOURCE", "Source required");
+      const doc = app.store.db
+        .prepare(
+          "SELECT source FROM fairshare_documents WHERE workspace_id=? AND collaboration_id=? AND id=?",
+        )
+        .get(p.workspaceId, p.collaborationId, ref.documentId) as any;
+      if (!doc)
+        throw new DomainError(
+          "INVALID_SOURCE",
+          "Source document must belong to this collaboration",
+        );
+      if (
+        ref.origin === "SOURCE_CLAUSE" &&
+        !JSON.parse(doc.source).text.includes(ref.excerpt)
+      )
+        throw new DomainError(
+          "INVALID_SOURCE",
+          "Source excerpt does not occur in document",
+        );
+    }
+    return r;
+  }
   function access(req: FastifyRequest) {
     const p = params(req);
     const { user } = app.requireWorkspace(
@@ -242,16 +295,7 @@ export function registerFairshareRoutes(
     const b = body(req);
     const userId = required(b.userId, "User ID");
     return store.update(p.workspaceId, p.collaborationId, revision(b), (c) => {
-      if (
-        c.members.find((m) => m.userId === user.id)?.role !==
-        MemberRole.ORGANIZER
-      )
-        throw new DomainError("FORBIDDEN", "Organizer required");
-      if (c.versions.length)
-        throw new DomainError(
-          "MEMBERS_LOCKED",
-          "Add collaborators before drafting rules",
-        );
+      assertMembersEditable(c, user.id);
       if (c.members.some((m) => m.userId === userId)) return c;
       // Schema-independent identity authorization: pass an authenticated synthetic request is NOT allowed.
       // Host supplies explicit lookup below rather than trusting supplied membership claims.
@@ -265,50 +309,70 @@ export function registerFairshareRoutes(
           "NOT_WORKSPACE_MEMBER",
           "Recipient must accept the workspace invitation first",
         );
-      const next = structuredClone(c);
-      next.members.push({
-        userId,
-        displayName: target.name,
-        role: MemberRole.COLLABORATOR,
-      });
-      return next;
+      return addMember(c, { userId, displayName: target.name }, user.id, now());
     });
   });
   app.post(`${base}/:collaborationId/versions`, async (req) => {
     const { p, user } = access(req);
     const b = body(req);
-    return store.update(p.workspaceId, p.collaborationId, revision(b), (c) => {
-      const r = b.rules as Rules;
-      if (!r || typeof r !== "object")
-        throw new DomainError("INVALID_RULES", "Rules required");
-      const refs = [r.source, ...(r.advance ? [r.advance.source] : [])];
-      for (const ref of refs) {
-        if (!ref) throw new DomainError("INVALID_SOURCE", "Source required");
-        const doc = app.store.db
-          .prepare(
-            "SELECT source FROM fairshare_documents WHERE workspace_id=? AND collaboration_id=? AND id=?",
-          )
-          .get(p.workspaceId, p.collaborationId, ref.documentId) as any;
-        if (!doc)
-          throw new DomainError(
-            "INVALID_SOURCE",
-            "Source document must belong to this collaboration",
-          );
+    return store.update(p.workspaceId, p.collaborationId, revision(b), (c) =>
+      proposeVersion(c, sourcedRules(p, b.rules), user.id, now()),
+    );
+  });
+  // Organizer's "Send for approval": propose, approve as sender and send in one transaction.
+  // If nobody else needs to approve, the rules switch on in the same transaction.
+  app.post(`${base}/:collaborationId/submit`, async (req) => {
+    const { p, user } = access(req);
+    const b = body(req);
+    return store.update(p.workspaceId, p.collaborationId, revision(b), (c) =>
+      submitForApproval(c, sourcedRules(p, b.rules), user.id, now()),
+    );
+  });
+  // Discard a private draft: organizer only, never sent, nothing paid.
+  app.delete(`${base}/:collaborationId`, async (req) => {
+    const { p, user } = access(req);
+    const expected = Number(
+      (req.query as Record<string, unknown>)?.expectedRevision,
+    );
+    if (!Number.isSafeInteger(expected) || expected < 1)
+      throw new DomainError("INVALID_INPUT", "expectedRevision required");
+    app.store.tx(() => {
+      const row = store.read(p.workspaceId, p.collaborationId);
+      if (row.revision !== expected)
+        throw new DomainError(
+          "REVISION_CONFLICT",
+          "Reload the latest state before changing it",
+        );
+      assertDraftDeletable(row.value, user.id);
+      const db = app.store.db;
+      const exists = (table: string) =>
+        !!db
+          .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?")
+          .get(table);
+      for (const table of MONEY_TABLES)
         if (
-          ref.origin === "SOURCE_CLAUSE" &&
-          !JSON.parse(doc.source).text.includes(ref.excerpt)
+          exists(table) &&
+          db
+            .prepare(
+              `SELECT 1 FROM ${table} WHERE workspace_id=? AND collaboration_id=? LIMIT 1`,
+            )
+            .get(p.workspaceId, p.collaborationId)
         )
           throw new DomainError(
-            "INVALID_SOURCE",
-            "Source excerpt does not occur in document",
+            "NOT_A_DRAFT",
+            "Agreements with payments are kept",
           );
-      }
-      return proposeVersion(c, r, user.id, new Date().toISOString());
+      for (const [table, column] of DRAFT_TABLES)
+        if (exists(table))
+          db.prepare(
+            `DELETE FROM ${table} WHERE workspace_id=? AND ${column}=?`,
+          ).run(p.workspaceId, p.collaborationId);
     });
+    return { deleted: true, id: p.collaborationId };
   });
   for (const [action, transition] of Object.entries({
     send: sendForReview,
-    approve: approveVersion,
+    approve: approveAndSwitchOn,
     activate: activateVersion,
   })) {
     app.post(

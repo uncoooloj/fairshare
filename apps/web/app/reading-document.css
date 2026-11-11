@@ -1,0 +1,133 @@
+.reading-document {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding: var(--space-6) var(--space-4);
+  color: var(--color-ink);
+  background:
+    radial-gradient(
+      ellipse 60% 40% at 50% 0%,
+      var(--color-brand-soft),
+      transparent
+    ),
+    var(--color-canvas);
+}
+.reading-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+}
+.reading-body {
+  width: 100%;
+  max-width: 440px;
+  margin: auto;
+  padding: var(--space-10) 0;
+}
+.reading-file-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin-bottom: var(--space-4);
+  border-radius: var(--radius-md);
+  color: var(--color-brand);
+  background: var(--color-brand-soft);
+}
+.reading-body h1 {
+  margin: 0;
+  font-size: var(--text-title);
+  line-height: 1.2;
+  font-weight: var(--weight-bold);
+}
+.reading-file {
+  margin: var(--space-2) 0 var(--space-8);
+  overflow: hidden;
+  color: var(--color-muted);
+  font-size: var(--text-lg);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.reading-steps {
+  display: grid;
+  gap: var(--space-5);
+  margin: 0;
+  padding: var(--space-6);
+  list-style: none;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  background: var(--color-canvas);
+}
+.reading-step {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--text-sm);
+}
+.reading-step.pending {
+  color: var(--color-muted);
+}
+.reading-step.active {
+  font-weight: var(--weight-bold);
+}
+.reading-step-mark {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: 1.5px solid var(--color-line);
+  border-radius: 50%;
+}
+.reading-step.done .reading-step-mark {
+  border-color: var(--color-success);
+  color: var(--color-canvas);
+  background: var(--color-success);
+}
+.reading-step.active .reading-step-mark {
+  border-color: var(--color-line);
+  border-top-color: var(--color-brand);
+  border-right-color: var(--color-brand);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .reading-step.active .reading-step-mark {
+    animation: reading-spin 0.9s linear infinite;
+  }
+}
+@keyframes reading-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.reading-hint {
+  margin: var(--space-4) 0 0;
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+}
+.reading-fallback {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-3);
+  margin-top: var(--space-6);
+}
+.reading-fallback p {
+  margin: 0;
+}
+.reading-error {
+  color: var(--color-danger);
+  font-size: var(--text-sm);
+}
+@media (max-width: 640px) {
+  .reading-body h1 {
+    font-size: var(--text-xl);
+  }
+  .reading-fallback .button {
+    width: 100%;
+  }
+}

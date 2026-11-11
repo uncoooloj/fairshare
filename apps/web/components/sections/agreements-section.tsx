@@ -1,54 +1,50 @@
 import type { Dispatch, SetStateAction } from "react";
 import { PlusIcon } from "../icons";
 import { Heading, AgreementList } from "../agreement-widgets";
-import {
-  AgreementIntake,
-  type AgreementIntakeInput,
-} from "../agreement-intake";
 import type { Agreement } from "../../lib/model";
 import { Button } from "../ui";
 import type { Run } from "./types";
 
+/** Never sent, and yours: it reopens in the wizard instead of the agreement page. */
+export function isDraftAgreement(a: Agreement, userId: string) {
+  return (
+    a.value.versions.length === 0 &&
+    a.value.members.some((m) => m.userId === userId && m.role === "ORGANIZER")
+  );
+}
+
 export interface AgreementsSectionProps {
-  creating: boolean;
+  userId: string;
   canCreateAgreement: boolean;
-  busy: boolean;
   agreements: Agreement[];
   workspaces: any[];
   workspace: string;
+  /** Opens the full-screen creation wizard (rendered by FairshareApp outside the shell). */
   setCreating: Dispatch<SetStateAction<boolean>>;
-  setBusy: Dispatch<SetStateAction<boolean>>;
-  createFromAgreement: (input: AgreementIntakeInput) => Promise<void>;
   run: Run;
+  /** Drafts reopen in the wizard; everything else opens the agreement page. */
   openAgreement: (a: Agreement) => Promise<void>;
 }
 
-/** Agreement list, or the intake form while creating one. */
+/** Agreement list, with unsent drafts first. Creating one happens in the full-screen wizard. */
 export function AgreementsSection({
-  creating,
+  userId,
   canCreateAgreement,
-  busy,
   agreements,
   workspaces,
   workspace,
   setCreating,
-  setBusy,
-  createFromAgreement,
   run,
   openAgreement,
 }: AgreementsSectionProps) {
   const workspaceRole = workspaces.find((item) => item.id === workspace)?.role;
+  const drafts = agreements.filter((a) => isDraftAgreement(a, userId));
+  const sent = agreements.filter((a) => !drafts.includes(a));
   return (
     <>
       <Heading
-        title={creating ? "Create an agreement" : "Agreements"}
-        description={
-          creating
-            ? "Bring the people, terms and money into one place."
-            : undefined
-        }
+        title="Agreements"
         action={
-          !creating &&
           canCreateAgreement && (
             <Button onClick={() => setCreating(true)}>
               <PlusIcon />
@@ -57,16 +53,29 @@ export function AgreementsSection({
           )
         }
       />
-      {creating && canCreateAgreement ? (
-        <AgreementIntake
-          busy={busy}
-          onCancel={() => setCreating(false)}
-          onCreate={createFromAgreement}
-          onBusyChange={setBusy}
-        />
-      ) : (
+      {drafts.length > 0 && (
+        <section className="wiz-drafts" aria-label="Not sent yet">
+          <ul>
+            {drafts.map((a) => (
+              <li key={JSON.stringify([a.workspaceId, a.id])}>
+                <span className="wiz-drafts-name">
+                  <strong>{a.value.name}</strong>
+                  <small>Not sent yet</small>
+                </span>
+                <Button
+                  variant="secondary"
+                  onClick={() => run(() => openAgreement(a))}
+                >
+                  Finish setting up
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {(sent.length > 0 || drafts.length === 0) && (
         <AgreementList
-          agreements={agreements}
+          agreements={sent}
           workspaceRole={workspaceRole}
           onOpen={(a) => run(() => openAgreement(a))}
         />

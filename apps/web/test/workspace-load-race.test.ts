@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { appSource } from "./app-source";
+import { mutationIsCurrent } from "../lib/mutation-generation";
 
 const source = appSource();
 
@@ -58,7 +59,7 @@ test("workspace changes fence in-flight reads and clear workspace-scoped state",
 
   const agreement = source
     .split("async function openAgreement(a: Agreement) {")[1]
-    .split("async function refresh")[0];
+    .split(/async function (?:resumeDraft|refresh)/)[0];
   assert.match(
     agreement,
     /if \(a\.workspaceId !== currentWorkspace\.current\)\s*commitWorkspace\(a\.workspaceId\)/,
@@ -93,11 +94,11 @@ test("workspace changes fence in-flight reads and clear workspace-scoped state",
   );
 
   const mutate = source
-    .split("async function mutate(action: string")[1]
-    .split("if (!ready)")[0];
+    .split("async function mutateWithResult(")[1]
+    .split("async function mutate(action: string")[0];
   assert.match(
     mutate,
-    /if \(selected\?\.workspaceId !== currentWorkspace\.current\) return/,
+    /if \(selected\?\.workspaceId !== currentWorkspace\.current\) return false/,
   );
   assert.ok(
     (mutate.match(/workspaceRequestId !== workspaceRequest\.current/g) || [])
@@ -107,29 +108,13 @@ test("workspace changes fence in-flight reads and clear workspace-scoped state",
   const intake = source
     .split("async function createFromAgreement")[1]
     .split("async function refresh")[0];
-  assert.match(intake, /commitWorkspace\(result\.workspace\.id\)/);
-  assert.ok(
-    intake.indexOf("commitWorkspace(result.workspace.id)") <
-      intake.indexOf("setSelected(result.agreement)"),
-  );
+  // The wizard keeps the draft until it is sent; intake adopts the workspace but selects nothing.
   assert.match(
     intake,
-    /const intakeWorkspaceRequest = workspaceRequest\.current/,
+    /if \(currentWorkspace\.current !== result\.workspace\.id\)\s*commitWorkspace\(result\.workspace\.id\)/,
   );
-  assert.equal(
-    (
-      intake.match(/intakeWorkspaceRequest !== workspaceRequest\.current/g) ||
-      []
-    ).length,
-    2,
-    "a deferred intake member refresh cannot update members after a workspace switch",
-  );
-  assert.equal(
-    (intake.match(/currentWorkspace\.current !== intakeWorkspaceId/g) || [])
-      .length,
-    2,
-    "both successful and failed deferred member refreshes stay with the intake workspace",
-  );
+  assert.doesNotMatch(intake, /setSelected\(result\.agreement\)/);
+  assert.match(intake, /void loadWorkspace\(intakeWorkspaceId\)\.catch/);
 
   const session = source
     .split("function clearSession() {")[1]
@@ -145,6 +130,12 @@ test("an old-render refresh cannot adopt the newly selected workspace", () => {
     source,
     /async function refresh\(\)\s*\{[\s\S]*?if \(workspace !== currentWorkspace\.current\) return;/,
   );
+});
+
+test("a mutation finishing after its workspace refresh cannot report success after navigation", () => {
+  assert.equal(mutationIsCurrent(4, 9, 4, 9), true);
+  assert.equal(mutationIsCurrent(4, 9, 5, 9), false);
+  assert.equal(mutationIsCurrent(4, 9, 4, 10), false);
 });
 
 test("delayed payout loads cannot overwrite or clear a newer workspace", () => {

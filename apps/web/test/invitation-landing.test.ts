@@ -24,8 +24,14 @@ test("invitation confirmation suppresses competing application forms; creation r
   assert.match(source, /flowToken\s*&&\s*flowKind\s*===\s*"\/invitation"/);
   assert.match(source, /isInvitationFlow\s*\?\s*null\s*:\s*needsWorkspace/);
   assert.match(source, /item.role === "OWNER" \|\| item.role === "MEMBER"/);
-  assert.match(source, /!creating\s*&&\s*canCreateAgreement/);
-  assert.match(source, /creating\s*&&\s*canCreateAgreement\s*\?\s*\(/);
+  assert.match(
+    source,
+    /\(creating && \(canCreateAgreement \|\| needsWorkspace\)\)/,
+  );
+  assert.match(
+    source,
+    /canCreateAgreement && \(\s*<Button onClick=\{\(\) => setCreating\(true\)\}>/,
+  );
   assert.match(
     source,
     /if \(a.workspaceId !== currentWorkspace.current\)\s*commitWorkspace\(a.workspaceId\)/,

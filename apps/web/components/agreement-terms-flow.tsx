@@ -12,6 +12,7 @@ const labels = ["Source agreement", "Read the agreement", "Proposed rules"];
 /** Keep panels mounted: moving back to read a clause must not erase a rules draft. */
 export function AgreementTermsFlow({
   documentId,
+  openRules = false,
   busy,
   sourceText,
   source,
@@ -19,6 +20,8 @@ export function AgreementTermsFlow({
   rules,
 }: {
   documentId: string;
+  /** Open on Proposed rules: only honoured when a document and its suggestion exist. */
+  openRules?: boolean;
   busy: boolean;
   sourceText: string;
   source: ReactNode;
@@ -26,9 +29,9 @@ export function AgreementTermsFlow({
   rules: ReactNode;
 }) {
   const [step, setStep] = useState<TermsStep>(() =>
-    initialTermsStep(documentId),
+    initialTermsStep(documentId, openRules),
   );
-  const [read, setRead] = useState(false);
+  const [read, setRead] = useState(() => !!documentId && openRules);
   const heading = useRef<HTMLHeadingElement>(null);
   const previousDocument = useRef(documentId);
   const shouldFocus = useRef(false);

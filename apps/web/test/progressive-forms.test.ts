@@ -7,20 +7,36 @@ import { AgreementIntake } from "../components/agreement-intake";
 import { SandboxCheckoutForm } from "../components/sandbox-checkout-form";
 import { appSource } from "./app-source";
 
-test("intake starts with one input method, with paste available without losing either draft", () => {
+test("creation starts with one step at a time, and switching upload/paste keeps both drafts", () => {
   const html = renderToStaticMarkup(
-    createElement(AgreementIntake, { busy: false, onCreate: async () => {} }),
+    createElement(AgreementIntake, {
+      owner: { id: "o", name: "Maya", email: "maya@example.test" },
+      onCreate: async () => ({
+        workspaceId: "w",
+        agreementId: "a",
+        documentId: "d",
+        documentText: "",
+        agreement: {} as never,
+      }),
+      onFinish: () => {},
+      onKeepDraft: () => {},
+      onClose: () => {},
+      onBusyChange: () => {},
+    }),
   );
-  assert.match(html, /Upload document/);
-  assert.match(html, /Paste text/);
-  assert.match(html, /<div hidden=""><label[^>]*>[\s\S]*?Paste agreement text/);
+  assert.match(html, /Upload your agreement/);
+  assert.match(html, /type="file"/);
+  assert.doesNotMatch(html, /<textarea/);
   const source = readFileSync(
-    new URL("../components/agreement-intake.tsx", import.meta.url),
+    new URL("../components/wizard-intake.tsx", import.meta.url),
     "utf8",
   );
-  assert.match(source, /if \(method === "upload" && file\)/);
-  assert.match(source, /method === "upload" \? !file : !text.trim\(\)/);
-  assert.doesNotMatch(source, /setFile\(null\)|setText\(""\)/);
+  assert.match(source, /if \(mode === DocumentMode.UPLOAD\)/);
+  const wizard = readFileSync(
+    new URL("../components/agreement-creation-wizard.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.doesNotMatch(wizard, /setFileState\(null\)|setTextState\(""\)/);
 });
 
 test("checkout starts with details and does not expose final action before review", () => {

@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { fileURLToPath, URL } from "node:url";
 import { DomainError } from "@fairshare/domain";
+import { normalizeExtractedText } from "./textLayout.js";
 export const MAX_DOCX_BYTES = 5 * 1024 * 1024;
 export const MAX_DOCX_REQUEST_BYTES = Math.ceil(MAX_DOCX_BYTES / 3) * 4 + 1024;
 export interface DocxExtraction {
@@ -133,11 +134,21 @@ export async function extractDocx(
           );
           return;
         }
-        if (typeof result.text !== "string" || result.text.length > 40000) {
+        if (typeof result.text !== "string") {
           failure("DOCX_EXTRACTION_FAILED");
           return;
         }
         const { ok, ...extracted } = result;
+        // One blank line between paragraphs; empty Word paragraphs add no extra gaps.
+        extracted.text = normalizeExtractedText(extracted.text);
+        if (extracted.text.length > 40000) {
+          failure("DOCX_TEXT_LIMIT");
+          return;
+        }
+        if (!extracted.text) {
+          failure("DOCX_NO_EXTRACTABLE_TEXT");
+          return;
+        }
         finish(undefined, extracted);
       } catch {
         failure("DOCX_EXTRACTION_FAILED");

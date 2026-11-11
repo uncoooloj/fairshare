@@ -6,6 +6,15 @@ import { publicWebOrigin } from "../lib/public-web-origin";
 import { Avatar, AvatarSize } from "./person";
 import { SettingsPaneHeader } from "./settings-preferences";
 import { Button } from "./ui";
+import {
+  PayoutEmailStep,
+  PayoutReadiness,
+  PayoutRecipientType,
+  PayoutStepResult,
+  PAYOUT_ACCOUNT_PATH,
+  payoutReadinessLabel,
+  type PayoutDestination,
+} from "./payout-email-step";
 
 function WalletIcon() {
   return (
@@ -27,13 +36,8 @@ function WalletIcon() {
 }
 type Accounts = {
   providerConfigured: boolean;
-  ownPaypalId: string | null;
-  members: {
-    id: string;
-    name: string;
-    status: string;
-    accountHint: string | null;
-  }[];
+  own: PayoutDestination | null;
+  members: { id: string; name: string; status: PayoutReadiness }[];
 };
 export function PaymentAccountsSettings({
   workspace,
@@ -43,16 +47,14 @@ export function PaymentAccountsSettings({
   canEdit?: boolean;
 }) {
   const [data, setData] = useState<Accounts | null>(null),
-    [paypalId, setPaypalId] = useState(""),
     [message, setMessage] = useState(""),
     [busy, setBusy] = useState(false),
+    [changing, setChanging] = useState(false),
     [confirm, setConfirm] = useState(false);
   const pending = useRef(false),
-    path = `workspaces/${encodeURIComponent(workspace)}/payment-accounts`;
+    path = `workspaces/${encodeURIComponent(workspace)}/payment-accounts?version=2`;
   async function load() {
-    const next = await api(path);
-    setData(next);
-    setPaypalId(next.ownPaypalId ?? "");
+    setData(await api(path));
   }
   useEffect(() => {
     let active = true;
@@ -61,10 +63,7 @@ export function PaymentAccountsSettings({
     if (workspace)
       api(path)
         .then((next) => {
-          if (active) {
-            setData(next);
-            setPaypalId(next.ownPaypalId ?? "");
-          }
+          if (active) setData(next);
         })
         .catch((e) => {
           if (active) setMessage(e.message);
@@ -73,26 +72,18 @@ export function PaymentAccountsSettings({
       active = false;
     };
   }, [path, workspace]);
-  async function save(remove = false) {
+  async function remove() {
     if (pending.current) return;
     pending.current = true;
     setBusy(true);
     setMessage("");
     try {
-      await api(
-        `${path}/mine`,
-        remove ? "DELETE" : "PUT",
-        remove ? undefined : { paypalId },
-      );
+      await api(PAYOUT_ACCOUNT_PATH, "DELETE");
       await load();
       setConfirm(false);
-      setMessage(
-        remove
-          ? "Payout destination removed. Previously submitted payouts are unchanged."
-          : "Payout destination saved. PayPal has not verified account ownership.",
-      );
+      setMessage("PayPal email removed.");
     } catch (e) {
-      setMessage(e instanceof Error ? e.message : "Could not save account.");
+      setMessage(e instanceof Error ? e.message : "Couldn’t remove it.");
     } finally {
       pending.current = false;
       setBusy(false);
@@ -105,7 +96,7 @@ export function PaymentAccountsSettings({
           title="Payment accounts"
           description="Where money comes in and where shares go out."
         />
-        <p>Upload your first agreement before adding a payout destination.</p>
+        <p>Upload your first agreement before adding a payout email.</p>
       </section>
     );
   return (
@@ -142,81 +133,70 @@ export function PaymentAccountsSettings({
             </div>
           </section>
           <section className="settings-card">
-            <h3>Sending payouts</h3>
+            <h3>Getting paid</h3>
             <p className="muted">
-              Save where your agreed share should be sent in the sandbox. Saving
-              a destination does not establish that server payout sending is
-              available or schedule a payout.
+              Your share from every agreement is sent to this PayPal email.
             </p>
             <div className="settings-provider">
               <WalletIcon />
               <div>
-                <strong>PayPal payouts</strong>
+                <strong>Your PayPal email</strong>
                 <span className="muted">
-                  {data.ownPaypalId
-                    ? `Your destination · ${data.ownPaypalId}`
-                    : "No payout destination saved for you yet"}
+                  {data.own?.type === PayoutRecipientType.EMAIL
+                    ? data.own.value
+                    : data.own
+                      ? "No email yet. Payouts go to the PayPal account you saved earlier until you add one."
+                      : "Not set"}
                 </span>
               </div>
-              <span
-                className={`status-chip ${data.ownPaypalId ? "" : "warning"}`}
-              >
-                {data.ownPaypalId ? "Saved · unverified" : "Missing"}
-              </span>
-            </div>
-            <p className="muted">
-              This destination applies to the selected agreement and other
-              agreements with the same team. Saving it does not verify account
-              ownership.
-            </p>
-            <form
-              className="settings-inline-form"
-              onSubmit={(e) => {
-                e.preventDefault();
-                void save();
-              }}
-            >
-              <label>
-                <span>Sandbox merchant ID</span>
-                <input
-                  value={paypalId}
-                  onChange={(e) =>
-                    setPaypalId(e.target.value.toUpperCase().trim())
-                  }
-                  maxLength={13}
-                  pattern="[A-Z0-9]{13}"
-                  required
-                  autoComplete="off"
-                  disabled={!canEdit || busy}
-                />
-              </label>
-              <Button disabled={!canEdit || busy} type="submit">
-                {busy ? "Saving…" : "Save destination"}
-              </Button>
-              {data.ownPaypalId && canEdit && (
+              {canEdit && !changing && (
                 <Button
                   type="button"
-                  variant="quiet"
+                  variant="secondary"
                   disabled={busy}
-                  onClick={() => setConfirm(true)}
+                  onClick={() => {
+                    setMessage("");
+                    setChanging(true);
+                  }}
                 >
-                  Remove
+                  Change
                 </Button>
               )}
-            </form>
+            </div>
+            {changing && (
+              <PayoutEmailStep
+                autoFocus={false}
+                onDone={(result) => {
+                  setChanging(false);
+                  if (result === PayoutStepResult.SAVED) {
+                    setMessage("PayPal email saved.");
+                    void load();
+                  }
+                }}
+              />
+            )}
+            {data.own && canEdit && !changing && (
+              <Button
+                type="button"
+                variant="quiet"
+                disabled={busy}
+                onClick={() => setConfirm(true)}
+              >
+                Remove
+              </Button>
+            )}
             <p className="muted settings-footnote">
               {canEdit
-                ? "Saving an ID is not an OAuth connection or ownership check."
-                : "Viewers cannot change payout destinations."}
+                ? "Payments already on their way keep the address they were sent to. Test mode: use a PayPal sandbox email."
+                : "Viewers can’t change payout details here."}
             </p>
             {confirm && (
               <div role="alert" className="settings-confirm">
                 <p>
-                  Remove your saved destination? Future payouts to you need a
-                  destination added again. Already submitted payouts cannot be
-                  canceled here.
+                  Remove your PayPal email? We can’t send you new payouts until
+                  you add one.
                 </p>
-                <Button disabled={busy} onClick={() => void save(true)}>
+                <Button disabled={busy} onClick={() => void remove()}>
                   Yes, remove
                 </Button>
                 <Button
@@ -224,7 +204,7 @@ export function PaymentAccountsSettings({
                   disabled={busy}
                   onClick={() => setConfirm(false)}
                 >
-                  Keep account
+                  Keep it
                 </Button>
               </div>
             )}
@@ -232,15 +212,13 @@ export function PaymentAccountsSettings({
           <section className="settings-collaborators">
             <h3>Collaborator accounts</h3>
             <p className="muted">
-              People need an account before their payouts can go out. Saved
-              doesn’t mean PayPal verified it.
+              Everyone needs a PayPal email before their share can be sent.
             </p>
             <div className="settings-table">
               <table>
                 <thead>
                   <tr>
                     <th scope="col">Person</th>
-                    <th scope="col">Account</th>
                     <th scope="col">Status</th>
                     <th scope="col">
                       <span className="visually-hidden">Reminder</span>
@@ -261,34 +239,29 @@ export function PaymentAccountsSettings({
                           {m.name}
                         </span>
                       </td>
-                      <td className={m.accountHint ? "" : "muted"}>
-                        {m.accountHint ? `PayPal · ${m.accountHint}` : "None"}
-                      </td>
                       <td>
                         <span
-                          className={`status-chip ${m.status === "MISSING" ? "warning" : ""}`}
+                          className={`status-chip ${m.status === PayoutReadiness.READY ? "" : "warning"}`}
                         >
-                          {m.status === "MISSING"
-                            ? "Missing"
-                            : "Saved · unverified"}
+                          {payoutReadinessLabel(m.status)}
                         </span>
                       </td>
                       <td className="settings-cell-action">
-                        {m.status === "MISSING" && (
+                        {m.status === PayoutReadiness.NEEDS_EMAIL && (
                           <Button
                             type="button"
                             variant="secondary"
                             onClick={async () => {
                               try {
                                 await navigator.clipboard.writeText(
-                                  `Hi ${m.name}, please open Fairshare, open our agreement, and add your sandbox merchant ID under Settings → Payment accounts so your agreed share can be paid. ${publicWebOrigin(location.origin)}/app`,
+                                  `Hi ${m.name}, please open Fairshare, open our agreement, and add your PayPal email under Settings → Payment accounts so your agreed share can be paid. ${publicWebOrigin(location.origin)}/app`,
                                 );
                                 setMessage(
                                   "Reminder copied. Share it directly with this collaborator. No email was sent.",
                                 );
                               } catch {
                                 setMessage(
-                                  "Couldn’t copy the message. Ask this person to add their PayPal account in Settings → Payment accounts.",
+                                  "Couldn’t copy the message. Ask this person to add their PayPal email in Settings → Payment accounts.",
                                 );
                               }
                             }}

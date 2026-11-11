@@ -1,5 +1,6 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import { PostApprovalPayout } from "../../post-approval-payout";
+import { CollaboratorTerms } from "../../collaborator-review";
 import { ReviewDiscussion } from "../../review-discussion";
 import { RuleSteps, RuleStepsLayout } from "../../agreement-workspace";
 import {
@@ -41,10 +42,16 @@ export interface AgreementTermsTabProps {
   source: string;
   documentId: string;
   extraction: any;
+  /** Just created by the wizard with a reading result: open on Proposed rules. */
+  rulesLanding?: boolean;
   draftDirty: boolean;
   rulesDirty: MutableRefObject<boolean>;
   run: Run;
   mutate: Mutate;
+  mutateWithResult: (
+    action: string,
+    extra?: Record<string, unknown>,
+  ) => Promise<boolean>;
   mayLeaveDraft: () => boolean;
   changeAgreementTab: (next: AgreementTab) => void;
   setBusy: Dispatch<SetStateAction<boolean>>;
@@ -74,10 +81,12 @@ export function AgreementTermsTab({
   source,
   documentId,
   extraction,
+  rulesLanding = false,
   draftDirty,
   rulesDirty,
   run,
   mutate,
+  mutateWithResult,
   mayLeaveDraft,
   changeAgreementTab,
   setBusy,
@@ -91,6 +100,47 @@ export function AgreementTermsTab({
   setDocumentId,
   setExtraction,
 }: AgreementTermsTabProps) {
+  const isOrganizer =
+    selected.value.members.find((m) => m.userId === user.id)?.role ===
+    "ORGANIZER";
+  // Collaborators see what they get and approve; drafting, sending and
+  // proposing revised terms stay with the organizer.
+  if (!isOrganizer)
+    return (
+      <div className="collab-terms">
+        <CollaboratorTerms
+          agreement={selected}
+          version={latest}
+          userId={user.id}
+          base={base}
+          busy={busy}
+          justApproved={approvedForPayout === selected.id}
+          onApprove={async () => {
+            if (!latest) return;
+            if (await mutateWithResult(`/versions/${latest.id}/approve`))
+              setApprovedForPayout(selected.id);
+          }}
+          onRequestChange={async (reason) => {
+            if (!latest) return;
+            await mutate(`/versions/${latest.id}/request-change`, { reason });
+          }}
+          onOpenDocument={() => changeAgreementTab(AgreementTab.Document)}
+          onPayoutDone={() => setApprovedForPayout("")}
+        />
+        {latest && (
+          <ReviewDiscussion
+            key={`${selected.id}:${latest.id}`}
+            base={base}
+            agreement={selected}
+            version={latest}
+            canWrite={
+              workspaces.find((w) => w.id === workspace)?.role !== "VIEWER"
+            }
+            onDirtyChange={setDraftDirty}
+          />
+        )}
+      </div>
+    );
   return (
     <>
       {(editing || !latest) && (
@@ -172,8 +222,12 @@ export function AgreementTermsTab({
                 setError("");
                 setNotice("");
                 try {
-                  await mutate(`/versions/${latest.id}/${action}`, payload);
-                  if (action === "approve") setApprovedForPayout(selected.id);
+                  const committed = await mutateWithResult(
+                    `/versions/${latest.id}/${action}`,
+                    payload,
+                  );
+                  if (action === "approve" && committed)
+                    setApprovedForPayout(selected.id);
                 } finally {
                   setBusy(false);
                 }
@@ -182,11 +236,7 @@ export function AgreementTermsTab({
             {approvedForPayout === selected.id && (
               <PostApprovalPayout
                 base={base}
-                onDismiss={() => setApprovedForPayout("")}
-                onSetup={() => {
-                  setApprovedForPayout("");
-                  changeAgreementTab(AgreementTab.People);
-                }}
+                onDone={() => setApprovedForPayout("")}
               />
             )}
             <ReviewDiscussion
@@ -246,6 +296,7 @@ export function AgreementTermsTab({
           <AgreementTermsFlow
             key={selected.id}
             documentId={documentId}
+            openRules={rulesLanding && !!extraction}
             busy={busy}
             sourceText={source}
             source={

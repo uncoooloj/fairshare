@@ -4,6 +4,7 @@ import { api } from "../lib/model";
 import { publicWebOrigin } from "../lib/public-web-origin";
 import { Button, Notice } from "./ui";
 import { formatExact } from "../lib/dates";
+import { LogoMark } from "./logo-mark";
 
 export const AGREEMENT_INVITE_PREFIX = "agreement:";
 export function AgreementInvitation({
@@ -110,6 +111,89 @@ export function AgreementInvitation({
   );
 }
 
+function firstName(name: string) {
+  return name.trim().split(/\s+/)[0] || name;
+}
+
+/** Brand mark for the standalone invite pages. */
+function InviteBrand() {
+  return (
+    <div className="collab-invite-brand">
+      <LogoMark />
+      Fairshare
+    </div>
+  );
+}
+
+/** What the token-only preview returns. Nothing about amounts, people or rules. */
+export type InvitePreview = {
+  agreementName: string;
+  inviterName: string;
+  expiresAt: number;
+};
+
+/** The agreement-invite token in `#token=agreement:…` (or `#agreement:…`), without the prefix. */
+export function agreementInviteTokenFromHash(hash: string): string | null {
+  const raw = hash.replace(/^#/, "").replace(/^token=/, "");
+  let token: string;
+  try {
+    token = decodeURIComponent(raw);
+  } catch {
+    return null;
+  }
+  return token.startsWith(AGREEMENT_INVITE_PREFIX)
+    ? token.slice(AGREEMENT_INVITE_PREFIX.length)
+    : null;
+}
+
+export function InvitationSignInCopy({
+  preview,
+}: {
+  preview: InvitePreview | null;
+}) {
+  return (
+    <aside className="collab-signin-context" aria-label="Your invitation">
+      <strong>
+        {preview
+          ? `${preview.inviterName} invited you to ${preview.agreementName}`
+          : "You’ve been invited to review an agreement."}
+      </strong>
+      <span>
+        Sign in or create an account to review it. We’ll bring you straight back
+        here.
+      </span>
+    </aside>
+  );
+}
+
+/**
+ * Shown above sign-in when someone opens an agreement invite while signed out.
+ * The preview is token-only, so it names the inviter and agreement before
+ * sign-in. The link stays in the URL fragment (never sent to the server) so the
+ * full invite opens after sign-in.
+ */
+export function InvitationSignInContext({ token }: { token?: string }) {
+  const [preview, setPreview] = useState<InvitePreview | null>(null);
+  useEffect(() => {
+    const current = token ?? agreementInviteTokenFromHash(location.hash);
+    if (!current) return;
+    let live = true;
+    api<InvitePreview>("agreement-invitations/preview", "POST", {
+      token: current,
+    })
+      .then((r) => {
+        if (live) setPreview(r);
+      })
+      // An invalid or expired link is explained after sign-in; keep sign-in usable.
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [token]);
+  return <InvitationSignInCopy preview={preview} />;
+}
+
+/** The invite landing: who invited you, to what, and one button to review it. */
 export function AgreementInvitationPreview({
   token,
   email,
@@ -123,12 +207,9 @@ export function AgreementInvitationPreview({
   onAccept: () => void;
   onCancel: () => void;
 }) {
-  const [preview, setPreview] = useState<{
-    agreementName: string;
-    inviterName: string;
-    expiresAt: number;
-  } | null>(null);
+  const [preview, setPreview] = useState<InvitePreview | null>(null);
   const [error, setError] = useState("");
+  const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     let live = true;
     setPreview(null);
@@ -144,37 +225,60 @@ export function AgreementInvitationPreview({
       live = false;
     };
   }, [token]);
+  useEffect(() => {
+    heading.current?.focus();
+  }, [preview, error]);
   return (
-    <section className="panel" aria-label="Agreement invitation">
-      <h2>
-        {preview ? `Join ${preview.agreementName}` : "Agreement invitation"}
-      </h2>
-      {error ? (
-        <Notice warning>{error}</Notice>
-      ) : preview ? (
-        <>
-          <p>
-            {preview.inviterName} invited you to collaborate on this agreement.
-          </p>
-          <p>
-            Joining as <strong>{email}</strong>.
-          </p>
-          <p>
-            Accepting adds you to the team and as a collaborator on this
-            agreement. It does not grant access to other agreements. You will
-            review and approve rules separately. No payment is made.
-          </p>
-          <p className="muted">Expires {formatExact(preview.expiresAt)}.</p>
-          <Button disabled={busy} onClick={onAccept}>
-            Accept and open agreement
-          </Button>
-        </>
-      ) : (
-        <p role="status">Checking this invitation…</p>
-      )}
-      <Button variant="secondary" disabled={busy} onClick={onCancel}>
-        Not now
-      </Button>
-    </section>
+    <div className="collab-invite-page">
+      <InviteBrand />
+      <section className="collab-invite-card" aria-labelledby="invite-title">
+        {error ? (
+          <>
+            <h1 id="invite-title" ref={heading} tabIndex={-1}>
+              This invite can’t be opened
+            </h1>
+            <Notice warning>{error}</Notice>
+            <p className="muted">
+              Ask the person who invited you to send a new link.
+            </p>
+          </>
+        ) : preview ? (
+          <>
+            <h1 id="invite-title" ref={heading} tabIndex={-1}>
+              {preview.inviterName} invited you to {preview.agreementName}
+            </h1>
+            <p className="collab-invite-lede">
+              {firstName(preview.inviterName)}’s asking you to approve how its
+              money is split.
+            </p>
+            <Button
+              className="collab-invite-primary"
+              disabled={busy}
+              onClick={onAccept}
+            >
+              {busy ? "Opening…" : "Review"}
+            </Button>
+            <p className="collab-invite-safe">
+              Nothing is paid until everyone approves.
+            </p>
+            <p className="collab-invite-meta muted">
+              Joining as <strong>{email}</strong>, as a collaborator on this
+              agreement only. {"It does not grant access to other agreements."}{" "}
+              Link expires {formatExact(preview.expiresAt)}.
+            </p>
+          </>
+        ) : (
+          <p role="status">Opening your invite…</p>
+        )}
+        <Button
+          variant="quiet"
+          className="collab-invite-later"
+          disabled={busy}
+          onClick={onCancel}
+        >
+          Not now
+        </Button>
+      </section>
+    </div>
   );
 }

@@ -117,15 +117,17 @@ test("designer clarification gate cannot send unresolved rules; preview persists
   }
 });
 
-test("designer review preserves active terms, resets approvals on change request, and requires explicit organizer activation", async () => {
+test("designer review preserves active terms, resets approvals on change request, and switches on only after the last approval", async () => {
   const f = await fixture();
   try {
     await f.ok("/versions", { rules: f.rules });
     await f.ok("/versions/1/send");
     await f.ok("/versions/1/approve");
     await f.ok("/versions/1/approve", {}, f.peer.token);
-    assert.equal((await f.read()).value.activeVersionId, undefined);
+    // The last approval switches the rules on; the manual route is a harmless repeat.
+    assert.equal((await f.read()).value.activeVersionId, 1);
     await f.ok("/versions/1/activate");
+    assert.equal((await f.read()).value.activeVersionId, 1);
     await f.ok("/versions", {
       rules: {
         ...f.rules,
@@ -159,7 +161,6 @@ test("designer review preserves active terms, resets approvals on change request
     await f.ok("/versions/2/send");
     await f.ok("/versions/2/approve", {}, f.peer.token);
     assert.ok((await f.mutate("/versions/2/activate")).statusCode >= 400);
-    await f.ok("/versions/2/approve");
     current = (await f.read()).value;
     assert.equal(current.activeVersionId, 1);
     assert.equal(current.versions[1].status, VersionStatus.AWAITING_APPROVAL);
@@ -167,7 +168,7 @@ test("designer review preserves active terms, resets approvals on change request
       (await f.mutate("/versions/2/activate", {}, f.peer.token)).statusCode >=
         400,
     );
-    await f.ok("/versions/2/activate");
+    await f.ok("/versions/2/approve");
     current = (await f.read()).value;
     assert.equal(current.activeVersionId, 2);
     assert.equal(current.versions[0].status, VersionStatus.SUPERSEDED);
