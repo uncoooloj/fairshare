@@ -57,8 +57,11 @@ test("legacy tenant errors never expose implementation language", () => {
   );
 });
 
-test("generic invitations do not promise agreement participation; scoped ones do", () => {
-  assert.match(app, /Send this link to one person to add them to your team\./);
+test("settings no longer offers generic invitations; scoped ones remain agreement-specific", () => {
+  assert.doesNotMatch(
+    app,
+    /Send this link to one person to add them to your team\./,
+  );
   const scoped = readFileSync(
     new URL("../components/agreement-invitation.tsx", import.meta.url),
     "utf8",

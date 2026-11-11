@@ -35,10 +35,7 @@ import {
 } from "./wizard-check-step";
 import { WizardFrame } from "./wizard-chrome";
 import { WizardQuestionsStep } from "./wizard-questions-step";
-import {
-  originalDocumentUrl,
-  type DocumentRecord,
-} from "./agreement-document";
+import { originalDocumentUrl, type DocumentRecord } from "./agreement-document";
 
 /** The screens of a change to a sent agreement. Questions only when something is open. */
 export enum ReviseStage {
@@ -246,9 +243,7 @@ export function AgreementReviseWizard({
     const documentId = rules?.source.documentId;
     if (!documentId) return;
     let live = true;
-    api<DocumentRecord>(
-      `${root}/documents/${encodeURIComponent(documentId)}`,
-    )
+    api<DocumentRecord>(`${root}/documents/${encodeURIComponent(documentId)}`)
       .then((doc) => {
         if (live && typeof doc?.text === "string") {
           setDocumentText(doc.text);
@@ -503,7 +498,10 @@ export function AgreementReviseWizard({
         document={sourceDocument}
         originalUrl={
           sourceDocument
-            ? originalDocumentUrl(workspaceBase(agreement.workspaceId), sourceDocument)
+            ? originalDocumentUrl(
+                workspaceBase(agreement.workspaceId),
+                sourceDocument,
+              )
             : undefined
         }
         fileName="Original agreement"

@@ -58,6 +58,9 @@ test("standalone verification renders a failed confirmation and keeps retry or c
     renderToStaticMarkup(createElement(AuthErrorNotice, { message: "" })),
     "",
   );
-  assert.match(source, /AuthErrorNotice className=\{styles\.error\} message=\{error\}/);
+  assert.match(
+    source,
+    /AuthErrorNotice className=\{styles\.error\} message=\{error\}/,
+  );
   assert.match(source, /Back to Fairshare/);
 });

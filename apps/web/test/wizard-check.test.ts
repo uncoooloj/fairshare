@@ -133,15 +133,19 @@ test("Check reader only maps unique exact document quotes to highlights", () => 
       quote: "Maya 50%, Jordan 30%, Riley 20%.",
     },
   });
-  const citations = wizardCitations(answers, {
-    documentId: "draft-source",
-    text,
-    provenance: { pages: [{ page: 1, start: 0, end: text.length }] },
-  }, { agreement: "draft-source", advance: "draft-source" });
-  assert.deepEqual(citations.map((citation) => citation.id), [
-    "wizard-agreement",
-    "wizard-split",
-  ]);
+  const citations = wizardCitations(
+    answers,
+    {
+      documentId: "draft-source",
+      text,
+      provenance: { pages: [{ page: 1, start: 0, end: text.length }] },
+    },
+    { agreement: "draft-source", advance: "draft-source" },
+  );
+  assert.deepEqual(
+    citations.map((citation) => citation.id),
+    ["wizard-agreement", "wizard-split"],
+  );
   assert.equal(citations[1].highlight?.start, text.indexOf("Maya"));
   assert.equal(citations[1].page, 1);
   assert.deepEqual(

@@ -284,8 +284,8 @@ export function AccessPrompt({
             ? "Accept invitation"
             : "Verify email"}
       </button>
-      {onCancel && (
-        isInvitation ? (
+      {onCancel &&
+        (isInvitation ? (
           <button type="button" disabled={busy} onClick={onCancel}>
             Not now
           </button>
@@ -293,8 +293,7 @@ export function AccessPrompt({
           <button type="button" disabled={busy} onClick={onCancel}>
             Back to Fairshare
           </button>
-        )
-      )}
+        ))}
     </section>
   );
   return standalone ? (
