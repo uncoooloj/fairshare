@@ -126,6 +126,8 @@ export default function FairshareApp() {
     setBreakdown(null);
     setEditing(false);
     setInviteLink("");
+    setDraftDirty(false);
+    rulesDirty.current = false;
   }
   function clearSession() {
     commitWorkspace("");
@@ -1361,12 +1363,17 @@ export default function FairshareApp() {
                                 storage: sessionStorage,
                                 storageKey,
                                 amountCents,
+                                source,
                                 createRequestKey: () => crypto.randomUUID(),
-                                createPayment: (requestKey, cents) =>
+                                createPayment: (
+                                  requestKey,
+                                  cents,
+                                  paymentSource,
+                                ) =>
                                   api(`${base}/payments`, "POST", {
                                     requestKey,
                                     amountCents: cents,
-                                    source,
+                                    source: paymentSource,
                                   }),
                                 refresh,
                               });

@@ -8,6 +8,7 @@ const source = readFileSync(
 );
 
 test("workspace changes fence in-flight reads and clear workspace-scoped state", () => {
+  assert.equal((source.match(/setWorkspace\(/g) || []).length, 1);
   const commit = source
     .split("function commitWorkspace(id: string) {")[1]
     .split("async function run")[0];
@@ -20,6 +21,7 @@ test("workspace changes fence in-flight reads and clear workspace-scoped state",
     "setPayments([])",
     "setPayouts([])",
     'setInviteLink("")',
+    "setDraftDirty(false)",
   ])
     assert.ok(
       commit.includes(state),
@@ -67,9 +69,10 @@ test("workspace changes fence in-flight reads and clear workspace-scoped state",
     agreement,
     /catch \(error\) \{\s*if \(request !== openRequest\.current\) return/,
   );
-  assert.match(
-    source,
-    /function navigate\(s: Section\) \{\s*if \(!mayLeaveDraft\(\)\) return;\s*openRequest\.current\+\+/,
+  assert.ok(
+    source.includes(
+      "function navigate(s: Section) {\n    if (!mayLeaveDraft()) return;\n    openRequest.current++;",
+    ),
   );
 
   const refresh = source
@@ -80,6 +83,10 @@ test("workspace changes fence in-flight reads and clear workspace-scoped state",
     (refresh.match(/workspaceRequestId !== workspaceRequest\.current/g) || [])
       .length,
     4,
+  );
+  assert.match(
+    refresh,
+    /catch \(error\) \{\s*if \(\s*workspaceRequestId !== workspaceRequest\.current/,
   );
 
   const mutate = source
@@ -101,7 +108,6 @@ test("workspace changes fence in-flight reads and clear workspace-scoped state",
   assert.ok(
     intake.indexOf("commitWorkspace(result.workspace.id)") <
       intake.indexOf("setSelected(result.agreement)"),
-    "first-workspace intake commits the live workspace before applying its result",
   );
 
   const session = source
@@ -110,11 +116,7 @@ test("workspace changes fence in-flight reads and clear workspace-scoped state",
   assert.match(session, /commitWorkspace\(""\)/);
   assert.match(session, /setWorkspaces\(\[\]\)/);
   assert.match(session, /setUser\(null\)/);
-  assert.equal(
-    (source.match(/clearSession\(\)/g) || []).length,
-    4,
-    "logout, password, and MFA flows all clear the workspace generation",
-  );
+  assert.equal((source.match(/clearSession\(\)/g) || []).length, 4);
 });
 
 test("an old-render refresh cannot adopt the newly selected workspace", () => {

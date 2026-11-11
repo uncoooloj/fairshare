@@ -36,6 +36,7 @@ test("input survives errors and retries retain idempotency key until input chang
   assert.match(source, /finally\s*\{\s*locked\.current\s*=\s*false/);
   assert.match(source, /const changed = \(\) => \{\s*requestId\.current = ""/);
   assert.doesNotMatch(source, /setFile\(null\)|setText\(""\)/);
+  assert.match(source, /<Notice warning announcement="assertive">/);
 });
 test("local reads are bounded and source is not sent automatically to an AI service", () => {
   assert.match(source, /file.size > 5 \* 1024 \* 1024/);
