@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   verifyAndPlanWebhook,
+  canRepairRefundPlan,
   enqueueVerifiedWebhook,
   reconcileCapture,
   WebhookActionKind,
@@ -160,4 +161,114 @@ test("provider failure leaves persisted inbox available to retry", async () => {
     ),
   );
   assert.equal(state.pending.length, 1);
+});
+
+const refundEvent = {
+  id: "WH-8HU03054XT607883S-368388653L941641N",
+  event_type: "PAYMENT.CAPTURE.REFUNDED",
+  resource: {
+    id: "6F067495EH305030E",
+    links: [
+      {
+        href: "https://api.sandbox.paypal.com/v2/payments/refunds/6F067495EH305030E",
+        rel: "self",
+        method: "GET",
+      },
+      {
+        href: "https://api.sandbox.paypal.com/v2/payments/captures/05682940JT397591R",
+        rel: "up",
+        method: "GET",
+      },
+    ],
+  },
+};
+test("real refund payload holds its parent capture, not its refund ID; duplicates stay idempotent", async () => {
+  const plan = await verifyAndPlanWebhook(client, {}, refundEvent);
+  assert.equal(plan.action.providerId, "05682940JT397591R");
+  assert.equal(plan.action.refundId, "6F067495EH305030E");
+  assert.equal(plan.action.captureProvenance, "parent_link");
+  assert.equal(plan.action.kind, WebhookActionKind.HoldCapture);
+  const first = enqueueVerifiedWebhook({ events: {}, pending: [] }, plan);
+  assert.equal(
+    enqueueVerifiedWebhook(first.state, plan).state.pending.length,
+    1,
+  );
+});
+test("unknown and hostile refund parent links retain a blocking hold without guessing", async () => {
+  for (const href of [
+    undefined,
+    "https://api.sandbox.paypal.com.evil.test/v2/payments/captures/CAP",
+    "https://evil@api.sandbox.paypal.com/v2/payments/captures/CAP",
+    "https://api.sandbox.paypal.com:443/v2/payments/captures/CAP",
+    "https://api.paypal.com/v2/payments/captures/CAP",
+    "http://api.sandbox.paypal.com/v2/payments/captures/CAP",
+    "https://api.sandbox.paypal.com/v2/payments/refunds/CAP",
+    "https://api.sandbox.paypal.com/v2/payments/captures/CAP?x=1",
+    "https://api.sandbox.paypal.com/v2/payments/captures/%43AP",
+    "https://api.sandbox.paypal.com/v2/payments/captures/../captures/CAP",
+  ]) {
+    const plan = await verifyAndPlanWebhook(
+      client,
+      {},
+      {
+        ...refundEvent,
+        resource: {
+          id: refundEvent.resource.id,
+          links: href ? [{ rel: "up", href }] : [],
+        },
+      },
+    );
+    assert.equal(plan.action.kind, WebhookActionKind.HoldCapture);
+    assert.equal(plan.action.providerId, undefined, String(href));
+  }
+});
+test("sandbox alias accepted; contradictory parent evidence rejected", async () => {
+  const parent = refundEvent.resource.links[1];
+  const plan = await verifyAndPlanWebhook(
+    client,
+    {},
+    {
+      ...refundEvent,
+      resource: {
+        id: refundEvent.resource.id,
+        links: [{ ...parent, href: parent.href.replace("api.", "api-m.") }],
+      },
+    },
+  );
+  assert.equal(plan.action.providerId, "05682940JT397591R");
+  const conflict = await verifyAndPlanWebhook(
+    client,
+    {},
+    {
+      ...refundEvent,
+      resource: {
+        ...refundEvent.resource,
+        supplementary_data: { related_ids: { capture_id: "OTHER" } },
+      },
+    },
+  );
+  assert.equal(conflict.action.providerId, undefined);
+  assert.equal(conflict.action.kind, WebhookActionKind.HoldCapture);
+});
+
+test("repair requires precise legacy refund identity and verified capture provenance", async () => {
+  const next = (await verifyAndPlanWebhook(client, {}, refundEvent)).action;
+  const old = {
+    kind: WebhookActionKind.HoldCapture,
+    eventId: next.eventId,
+    eventType: next.eventType,
+    providerId: next.refundId,
+  };
+  assert.equal(canRepairRefundPlan(old, next), true);
+  for (const change of [
+    { providerId: "OTHER" },
+    { eventId: "OTHER" },
+    { eventType: "PAYMENT.CAPTURE.REVERSED" },
+    { captureProvenance: "parent_link" as const },
+  ])
+    assert.equal(canRepairRefundPlan({ ...old, ...change }, next), false);
+  assert.equal(
+    canRepairRefundPlan(old, { ...next, captureProvenance: undefined }),
+    false,
+  );
 });

@@ -1213,3 +1213,72 @@ test("concurrent dispatch claims a recovered reservation once and never replays 
     await s.app.close();
   }
 });
+test("verified refund redelivery repairs only pending legacy mapping and stays idempotent", async () => {
+  const s = await setup();
+  try {
+    const payment = (
+      await s.post("/payments", {
+        amountCents: 10000,
+        requestKey: "refund-parent",
+      })
+    ).json();
+    await s.post(`/payments/${payment.id}/capture`);
+    const payload = {
+      id: "refund-parent-event",
+      event_type: "PAYMENT.CAPTURE.REFUNDED",
+      resource: {
+        id: "REF1",
+        links: [
+          {
+            rel: "self",
+            href: "https://api.sandbox.paypal.com/v2/payments/refunds/REF1",
+            method: "GET",
+          },
+          {
+            rel: "up",
+            href: "https://api.sandbox.paypal.com/v2/payments/captures/CAP1",
+            method: "GET",
+          },
+        ],
+      },
+    };
+    const { verifyAndPlanWebhook } = await import("@fairshare/payments");
+    const plan = await verifyAndPlanWebhook(s.provider, {}, payload);
+    const db = s.app.store.db;
+    db.prepare("INSERT INTO fairshare_webhook_inbox VALUES(?,?,?,?,NULL)").run(
+      payload.id,
+      plan.fingerprint,
+      JSON.stringify({
+        kind: "HOLD_CAPTURE",
+        eventId: payload.id,
+        eventType: payload.event_type,
+        providerId: "REF1",
+        reason: payload.event_type,
+      }),
+      "PENDING",
+    );
+    const before = s.counts();
+    for (let i = 0; i < 2; i++) {
+      const result = await s.app.inject({
+        method: "POST",
+        url: "/api/paypal/webhook",
+        payload,
+      });
+      assert.equal(result.statusCode, 200, result.body);
+    }
+    const row = db
+      .prepare("SELECT * FROM fairshare_webhook_inbox WHERE id=?")
+      .get(payload.id) as any;
+    assert.equal(row.status, "DONE");
+    assert.equal(JSON.parse(row.action).providerId, "CAP1");
+    assert.equal(JSON.parse(row.action).refundId, "REF1");
+    assert.equal(s.agg.read(s.w.id, "collab").value.revenue.length, 1);
+    assert.deepEqual(
+      s.counts(),
+      before,
+      "replay must never submit money writes",
+    );
+  } finally {
+    await s.app.close();
+  }
+});

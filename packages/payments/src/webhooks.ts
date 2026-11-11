@@ -13,6 +13,8 @@ export type WebhookAction = {
   eventType: string;
   providerId?: string;
   orderId?: string;
+  refundId?: string;
+  captureProvenance?: "related_id" | "parent_link";
   reason?: string;
 };
 export type VerifiedWebhook = {
@@ -27,6 +29,59 @@ type Event = {
 };
 const text = (v: unknown): string | undefined =>
   typeof v === "string" && v.length > 0 && v.length <= 256 ? v : undefined;
+/** Refund resources have their own ID. Only explicit parent evidence identifies a capture. */
+function refundCapture(
+  resource: Record<string, any>,
+): Pick<WebhookAction, "providerId" | "captureProvenance"> {
+  const ids = new Set<string>();
+  const related = resource.supplementary_data?.related_ids?.capture_id;
+  if (related !== undefined) {
+    if (typeof related !== "string" || !/^[A-Za-z0-9]+$/.test(related))
+      return {};
+    ids.add(related);
+  }
+  let parent = false;
+  if (Array.isArray(resource.links)) {
+    for (const link of resource.links) {
+      if (link?.rel !== "up") continue;
+      // Compare the raw URL too: URL normalization must not admit credentials,
+      // encoded paths, dot segments, ports, queries, or untrusted lookalike hosts.
+      const match =
+        typeof link.href === "string" &&
+        link.href.match(
+          /^https:\/\/(?:api|api-m)\.sandbox\.paypal\.com\/v2\/payments\/captures\/([A-Za-z0-9]+)$/,
+        );
+      if (!match || (link.method !== undefined && link.method !== "GET"))
+        return {};
+      ids.add(match[1]);
+      parent = true;
+    }
+  }
+  if (ids.size !== 1) return {};
+  return {
+    providerId: [...ids][0],
+    captureProvenance: parent ? "parent_link" : "related_id",
+  };
+}
+
+/** Only repair a pending legacy refund plan after the identical payload is reverified. */
+export function canRepairRefundPlan(
+  old: WebhookAction,
+  next: WebhookAction,
+): boolean {
+  return (
+    old.kind === WebhookActionKind.HoldCapture &&
+    old.eventType === "PAYMENT.CAPTURE.REFUNDED" &&
+    old.eventId === next.eventId &&
+    next.eventType === old.eventType &&
+    next.kind === WebhookActionKind.HoldCapture &&
+    !!next.captureProvenance &&
+    !!next.providerId &&
+    !!next.refundId &&
+    !old.captureProvenance &&
+    old.providerId === next.refundId
+  );
+}
 function canonical(v: unknown): string {
   if (Array.isArray(v)) return `[${v.map(canonical).join(",")}]`;
   if (v && typeof v === "object")
@@ -67,9 +122,17 @@ export async function verifyAndPlanWebhook(
       orderId,
     };
   // Hold conservatively; exact matching of an app-reserved refund can resolve the hold downstream.
+  else if (eventType === "PAYMENT.CAPTURE.REFUNDED")
+    action = {
+      ...action,
+      kind: WebhookActionKind.HoldCapture,
+      refundId: captureId,
+      ...refundCapture(r),
+      orderId,
+      reason: eventType,
+    };
   else if (
     [
-      "PAYMENT.CAPTURE.REFUNDED",
       "PAYMENT.CAPTURE.REVERSED",
       "PAYMENT.CAPTURE.DENIED",
       "PAYMENT.CAPTURE.PENDING",
@@ -97,7 +160,11 @@ export async function verifyAndPlanWebhook(
         text(r.payout_batch_id) ?? text(r.batch_header?.payout_batch_id),
       reason: eventType,
     };
-  if (action.kind !== WebhookActionKind.Ignore && !action.providerId)
+  if (
+    action.kind !== WebhookActionKind.Ignore &&
+    action.kind !== WebhookActionKind.HoldCapture &&
+    !action.providerId
+  )
     action = { ...action, kind: WebhookActionKind.RecordUnmatched };
   return {
     eventId,
