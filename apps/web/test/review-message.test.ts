@@ -45,7 +45,7 @@ test("a committed review remains shareable if the optional workspace refresh fai
   );
   assert.match(
     app,
-    /setSelected\(a\);\s*try\s*\{\s*await loadWorkspace\(workspace\);\s*\}\s*catch\s*\{\s*setNotice\(/,
+    /workspaceRequestId !== workspaceRequest\.current[\s\S]*setSelected\(a\);\s*try\s*\{\s*await loadWorkspace\(currentWorkspace\.current\);\s*\}\s*catch\s*\{\s*setNotice\(/,
   );
   assert.match(app, /Agreement updated\. Refresh to reload the rest/);
 });
