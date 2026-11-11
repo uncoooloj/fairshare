@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type MutableRefObject } from "react";
 import { api, type Agreement, type Version } from "../lib/model";
 import { formatDate, formatMoneyHeadline } from "../lib/preferences";
 import { toneInRoster } from "../lib/person";
@@ -187,12 +187,14 @@ function WhatYouGet({
   userId,
   base,
   onOpenDocument,
+  openDocumentRef,
 }: {
   agreement: Agreement;
   version: Version;
   userId: string;
   base: string;
   onOpenDocument: () => void;
+  openDocumentRef?: MutableRefObject<HTMLButtonElement | null>;
 }) {
   const summary = collaboratorSummary(agreement, version, userId);
   const example = useExampleAmount(base, version, userId);
@@ -226,7 +228,12 @@ function WhatYouGet({
           <li key={sentence}>{sentence}</li>
         ))}
       </ul>
-      <button type="button" className="collab-link" onClick={onOpenDocument}>
+      <button
+        ref={openDocumentRef}
+        type="button"
+        className="collab-link"
+        onClick={onOpenDocument}
+      >
         See the full agreement
       </button>
     </>
@@ -245,6 +252,8 @@ export interface CollaboratorTermsProps {
   onRequestChange: (reason: string) => Promise<void>;
   onOpenDocument: () => void;
   onPayoutDone: () => void;
+  openDocumentRef?: MutableRefObject<HTMLButtonElement | null>;
+  reviewHeadingRef?: MutableRefObject<HTMLHeadingElement | null>;
 }
 
 /** The collaborator's Terms view: what you get, approve or flag a problem, then get paid. */
@@ -259,6 +268,8 @@ export function CollaboratorTerms({
   onRequestChange,
   onOpenDocument,
   onPayoutDone,
+  openDocumentRef,
+  reviewHeadingRef,
 }: CollaboratorTermsProps) {
   const [drawer, setDrawer] = useState(false);
   const [error, setError] = useState("");
@@ -310,7 +321,15 @@ export function CollaboratorTerms({
       aria-labelledby="collab-title"
     >
       {reviewing && <p className="collab-eyebrow">{agreement.value.name}</p>}
-      <h2 ref={title} id="collab-title" className="collab-title" tabIndex={-1}>
+      <h2
+        ref={(element) => {
+          title.current = element;
+          if (reviewHeadingRef) reviewHeadingRef.current = element;
+        }}
+        id="collab-title"
+        className="collab-title"
+        tabIndex={-1}
+      >
         {reviewing ? "What you get" : status}
       </h2>
       {reviewing && <p className="muted">{status}</p>}
@@ -320,6 +339,7 @@ export function CollaboratorTerms({
         userId={userId}
         base={base}
         onOpenDocument={onOpenDocument}
+        openDocumentRef={openDocumentRef}
       />
       {myRequests.length > 0 && stage === CollaboratorStage.UPDATING && (
         <div className="collab-note">

@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useRef,
   useState,
   type Dispatch,
   type MutableRefObject,
@@ -31,9 +32,10 @@ import {
 import { CollaboratorStage, collaboratorStage } from "../collaborator-review";
 import { AgreementPaymentsTab } from "./agreement-tabs/payments-tab";
 import { PaymentBreakdown } from "./agreement-tabs/payment-breakdown";
-
-/** History state for a collaborator's full-agreement view, so browser Back returns to the review. */
-const FULL_AGREEMENT_VIEW = "full-agreement";
+import {
+  fullAgreementHistoryState,
+  isFullAgreementHistoryState,
+} from "../../lib/full-agreement-history";
 
 export interface AgreementDetailProps {
   selected: Agreement;
@@ -144,6 +146,10 @@ export function AgreementDetail({
     !organizer &&
     collaboratorStage(selected, latest, user.id) === CollaboratorStage.REVIEW;
   const [reviewPinned, setReviewPinned] = useState("");
+  const fullHeading = useRef<HTMLHeadingElement>(null);
+  const openDocument = useRef<HTMLButtonElement>(null);
+  const reviewHeading = useRef<HTMLHeadingElement>(null);
+  const wasFullAgreement = useRef(fullAgreement);
   const reviewAbove =
     !organizer &&
     tab === AgreementTab.Terms &&
@@ -158,20 +164,62 @@ export function AgreementDetail({
     if (reviewAbove) window.scrollTo({ top: 0 });
   }, [reviewAbove]);
   useEffect(() => {
-    if (!fullAgreement) return;
-    if (window.history.state?.fairshareView !== FULL_AGREEMENT_VIEW)
-      // Keep the router's own state so it treats Back as a same-page step.
-      window.history.pushState(
-        { ...window.history.state, fairshareView: FULL_AGREEMENT_VIEW },
-        "",
-      );
-    window.scrollTo({ top: 0 });
-    const onPop = () => setTab(AgreementTab.Terms);
+    const onPop = (event: PopStateEvent) => {
+      if (
+        isFullAgreementHistoryState(
+          event.state,
+          selected.workspaceId,
+          selected.id,
+        )
+      )
+        setTab(AgreementTab.Document);
+      else if (wasFullAgreement.current) setTab(AgreementTab.Terms);
+    };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
-  }, [fullAgreement, setTab]);
+  }, [selected.workspaceId, selected.id, setTab]);
+  useEffect(() => {
+    const leavingFullAgreement = wasFullAgreement.current && !fullAgreement;
+    wasFullAgreement.current = fullAgreement;
+    if (fullAgreement) {
+      if (
+        !isFullAgreementHistoryState(
+          window.history.state,
+          selected.workspaceId,
+          selected.id,
+        )
+      )
+        window.history.pushState(
+          fullAgreementHistoryState(
+            window.history.state,
+            selected.workspaceId,
+            selected.id,
+          ),
+          "",
+        );
+      window.scrollTo({ top: 0 });
+      const frame = requestAnimationFrame(() =>
+        fullHeading.current?.focus({ preventScroll: true }),
+      );
+      return () => cancelAnimationFrame(frame);
+    }
+    if (leavingFullAgreement) {
+      const frame = requestAnimationFrame(() =>
+        (openDocument.current ?? reviewHeading.current)?.focus({
+          preventScroll: true,
+        }),
+      );
+      return () => cancelAnimationFrame(frame);
+    }
+  }, [fullAgreement, selected.workspaceId, selected.id]);
   const leaveFullAgreement = () => {
-    if (window.history.state?.fairshareView === FULL_AGREEMENT_VIEW)
+    if (
+      isFullAgreementHistoryState(
+        window.history.state,
+        selected.workspaceId,
+        selected.id,
+      )
+    )
       window.history.back();
     else setTab(AgreementTab.Terms);
   };
@@ -215,7 +263,12 @@ export function AgreementDetail({
           <span aria-hidden="true">←</span> Back to what you get
         </button>
         <p className="collab-eyebrow">{selected.value.name}</p>
-        <h2 id="collab-full-title" className="collab-full-title">
+        <h2
+          ref={fullHeading}
+          id="collab-full-title"
+          className="collab-full-title"
+          tabIndex={-1}
+        >
           The full agreement
         </h2>
         <AgreementDocument agreement={selected} base={base} />
@@ -236,6 +289,8 @@ export function AgreementDetail({
               mutate={mutate}
               changeAgreementTab={changeAgreementTab}
               setApprovedForPayout={setApprovedForPayout}
+              openDocumentRef={openDocument}
+              reviewHeadingRef={reviewHeading}
             />
           </div>
         )}
@@ -354,6 +409,8 @@ export function AgreementDetail({
                 setSource={setSource}
                 setDocumentId={setDocumentId}
                 setExtraction={setExtraction}
+                openDocumentRef={openDocument}
+                reviewHeadingRef={reviewHeading}
               />
               {!editing && selected.value.versions.length > 0 && (
                 <>

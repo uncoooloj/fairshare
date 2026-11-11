@@ -267,9 +267,9 @@ test("a pending review comes first; the full agreement has a way back", () => {
       detail.indexOf("<AgreementHeader"),
   );
   assert.match(detail, /CollaboratorStage\.REVIEW/);
-  // Browser Back closes the full agreement instead of leaving the app, and
-  // the router's own history state is kept.
-  assert.match(detail, /pushState\(\s*\{ \.\.\.window\.history\.state/);
+  // Browser Back and Forward use a scoped marker, with a persistent listener.
+  assert.match(detail, /fullAgreementHistoryState/);
+  assert.match(detail, /isFullAgreementHistoryState/);
   assert.match(detail, /addEventListener\("popstate"/);
   assert.match(detail, /window\.history\.back\(\)/);
   assert.match(detail, /Back to what you get/);

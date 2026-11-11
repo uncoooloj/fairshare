@@ -62,6 +62,8 @@ export interface AgreementTermsTabProps {
   setSource: Dispatch<SetStateAction<string>>;
   setDocumentId: Dispatch<SetStateAction<string>>;
   setExtraction: Dispatch<SetStateAction<any>>;
+  openDocumentRef?: MutableRefObject<HTMLButtonElement | null>;
+  reviewHeadingRef?: MutableRefObject<HTMLHeadingElement | null>;
 }
 
 export type CollaboratorReviewCardProps = Pick<
@@ -75,7 +77,10 @@ export type CollaboratorReviewCardProps = Pick<
   | "mutate"
   | "changeAgreementTab"
   | "setApprovedForPayout"
->;
+> & {
+  openDocumentRef?: MutableRefObject<HTMLButtonElement | null>;
+  reviewHeadingRef?: MutableRefObject<HTMLHeadingElement | null>;
+};
 
 /** A collaborator's What you get card, wired to approve and flag a problem. */
 export function CollaboratorReviewCard({
@@ -88,6 +93,8 @@ export function CollaboratorReviewCard({
   mutate,
   changeAgreementTab,
   setApprovedForPayout,
+  openDocumentRef,
+  reviewHeadingRef,
 }: CollaboratorReviewCardProps) {
   return (
     <CollaboratorTerms
@@ -108,6 +115,8 @@ export function CollaboratorReviewCard({
       }}
       onOpenDocument={() => changeAgreementTab(AgreementTab.Document)}
       onPayoutDone={() => setApprovedForPayout("")}
+      openDocumentRef={openDocumentRef}
+      reviewHeadingRef={reviewHeadingRef}
     />
   );
 }
@@ -145,6 +154,8 @@ export function AgreementTermsTab({
   setSource,
   setDocumentId,
   setExtraction,
+  openDocumentRef,
+  reviewHeadingRef,
 }: AgreementTermsTabProps) {
   const isOrganizer =
     selected.value.members.find((m) => m.userId === user.id)?.role ===
@@ -165,6 +176,8 @@ export function AgreementTermsTab({
             mutate={mutate}
             changeAgreementTab={changeAgreementTab}
             setApprovedForPayout={setApprovedForPayout}
+            openDocumentRef={openDocumentRef}
+            reviewHeadingRef={reviewHeadingRef}
           />
         )}
         {latest && (
