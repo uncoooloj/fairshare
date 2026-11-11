@@ -143,15 +143,18 @@ export function AgreementPeople({
     } catch (cause) {
       if (agreementIdentityRef.current !== requestIdentity) return;
       if (cause instanceof ApiError && cause.code === "REVISION_CONFLICT") {
+        let refreshFailed = false;
         try {
           const current = await api<Agreement>(base);
           if (agreementIdentityRef.current === requestIdentity) adopt(current);
         } catch {
-          // Keep the retry message when the refresh itself is unavailable.
+          refreshFailed = true;
         }
         if (agreementIdentityRef.current !== requestIdentity) return;
         setInviteNotice(
-          "Someone else just changed this. Here’s the latest; try again.",
+          refreshFailed
+            ? "Couldn’t load the latest agreement. Reload and try again."
+            : "Someone else just changed this. Here’s the latest; try again.",
         );
       } else {
         setInviteNotice(

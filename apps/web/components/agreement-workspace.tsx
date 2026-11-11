@@ -477,16 +477,19 @@ export function AgreementHeader({
       setConfirming(false);
     } catch (cause) {
       if (cause instanceof ApiError && cause.code === "REVISION_CONFLICT") {
+        let refreshFailed = false;
         try {
           const current = await api<Agreement>(
             `workspaces/${encodeURIComponent(agreement.workspaceId)}/collaborations/${encodeURIComponent(agreement.id)}`,
           );
           onAgreementChange?.(current);
         } catch {
-          // Keep the retry message when the refresh itself is unavailable.
+          refreshFailed = true;
         }
         setConfirmError(
-          "Someone else just changed this. Here’s the latest; try again.",
+          refreshFailed
+            ? "Couldn’t load the latest agreement. Reload and try again."
+            : "Someone else just changed this. Here’s the latest; try again.",
         );
       } else {
         setConfirmError(
