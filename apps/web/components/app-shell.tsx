@@ -1,4 +1,10 @@
-import type { Dispatch, ReactNode, SetStateAction } from "react";
+import {
+  useEffect,
+  useState,
+  type Dispatch,
+  type ReactNode,
+  type SetStateAction,
+} from "react";
 import { Avatar } from "./person";
 import { toneForId } from "../lib/person";
 import { NotificationPanel } from "./notification-panel";
@@ -51,59 +57,167 @@ export function AppShell({
   const guardedRefresh = () => {
     if (mayLeaveDraft()) void run(refresh);
   };
+  // Phones: the nav is a sheet behind a menu button, and search opens from an icon.
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const close = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setMenuOpen(false);
+      document.getElementById("app-menu-button")?.focus();
+    };
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, [menuOpen]);
+  useEffect(() => {
+    if (searchOpen)
+      document
+        .querySelector<HTMLInputElement>(".workspace-bar .global-search input")
+        ?.focus();
+  }, [searchOpen]);
   return (
-    <div className="app-shell">
+    <div
+      className={[
+        "app-shell",
+        menuOpen && "menu-open",
+        searchOpen && "search-open",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
       <a className="skip-link" href="#main-content">
         Skip to main content
       </a>
       <aside className="sidebar">
-        <Logo />
-        <nav aria-label="Main navigation">
-          {Object.values(Section).map((s) => (
+        <div className="shell-bar">
+          <Logo />
+          <div className="shell-bar-actions">
             <button
-              key={s}
-              aria-current={section === s ? "page" : undefined}
-              className={section === s ? "nav-item selected" : "nav-item"}
-              onClick={() => navigate(s)}
+              type="button"
+              className="icon-button"
+              aria-label="Search agreements"
+              aria-expanded={searchOpen}
+              aria-controls="workspace-bar"
+              onClick={() => {
+                setMenuOpen(false);
+                setSearchOpen((open) => !open);
+              }}
             >
-              <Icon name={s} />
-              {s}
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.75"
+                strokeLinecap="round"
+                aria-hidden="true"
+              >
+                <path d="m20 20-4.2-4.2M17 11a6 6 0 1 1-12 0 6 6 0 0 1 12 0Z" />
+              </svg>
             </button>
-          ))}
-        </nav>
-        <div className="sidebar-bottom">
-          <span className="environment">
-            <span className="environment-dot" aria-hidden="true" />
-            {title(mode)} · no live money
-          </span>
-          <div className="identity">
-            <Avatar name={user.name} tone={toneForId(user.id)} />
-            <div>
-              <strong>{user.name}</strong>
-              <small title={user.email}>{user.email}</small>
-            </div>
+            <button
+              type="button"
+              id="app-menu-button"
+              className="icon-button"
+              aria-label="Menu"
+              aria-expanded={menuOpen}
+              aria-controls="app-menu"
+              onClick={() => {
+                setSearchOpen(false);
+                setMenuOpen((open) => !open);
+              }}
+            >
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.75"
+                strokeLinecap="round"
+                aria-hidden="true"
+              >
+                {menuOpen ? (
+                  <path d="M6 6l12 12M18 6 6 18" />
+                ) : (
+                  <path d="M4 7h16M4 12h16M4 17h16" />
+                )}
+              </svg>
+            </button>
           </div>
-          <button
-            className="text-button sign-out"
-            onClick={() => {
-              if (!mayLeaveDraft()) return;
-              return run(async () => {
-                await api("auth/logout", "POST", {});
-                clearSession();
-              });
-            }}
-          >
-            Sign out
-          </button>
+        </div>
+        {menuOpen && (
+          // Tapping outside the sheet closes it; Escape and the menu button do the same for keyboards.
+          <div
+            className="app-menu-backdrop"
+            aria-hidden="true"
+            onClick={() => setMenuOpen(false)}
+          />
+        )}
+        <div id="app-menu" className="app-menu">
+          <nav aria-label="Main navigation">
+            {Object.values(Section).map((s) => (
+              <button
+                key={s}
+                aria-current={section === s ? "page" : undefined}
+                className={section === s ? "nav-item selected" : "nav-item"}
+                onClick={() => {
+                  if (navigate(s)) setMenuOpen(false);
+                }}
+              >
+                <Icon name={s} />
+                {s}
+              </button>
+            ))}
+          </nav>
+          <div className="sidebar-bottom">
+            <button
+              type="button"
+              className="text-button app-menu-refresh"
+              disabled={busy}
+              onClick={() => {
+                setMenuOpen(false);
+                guardedRefresh();
+              }}
+            >
+              Refresh
+            </button>
+            <span className="environment">
+              <span className="environment-dot" aria-hidden="true" />
+              {title(mode)} · no live money
+            </span>
+            <div className="identity">
+              <Avatar name={user.name} tone={toneForId(user.id)} />
+              <div>
+                <strong>{user.name}</strong>
+                <small title={user.email}>{user.email}</small>
+              </div>
+            </div>
+            <button
+              className="text-button sign-out"
+              onClick={() => {
+                if (!mayLeaveDraft()) return;
+                return run(async () => {
+                  await api("auth/logout", "POST", {});
+                  clearSession();
+                });
+              }}
+            >
+              Sign out
+            </button>
+          </div>
         </div>
       </aside>
       <main className="main" id="main-content" tabIndex={-1}>
-        <div className="workspace-bar">
+        <div className="workspace-bar" id="workspace-bar">
           <GlobalSearch
             agreements={agreements}
             disabled={busy}
             onOpen={(agreement) => {
               if (!mayLeaveDraft()) return;
+              setSearchOpen(false);
               void run(() => openAgreement(agreement));
             }}
           />

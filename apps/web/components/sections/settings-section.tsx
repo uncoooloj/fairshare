@@ -12,7 +12,7 @@ import { Heading, SimpleForm } from "../agreement-widgets";
 import { MfaSettings } from "../mfa-settings";
 import { PasswordRow, ProfileForm } from "../profile-form";
 import { PrivateInvitation } from "../private-invitation";
-import { api, type Agreement, type User } from "../../lib/model";
+import { api, type User } from "../../lib/model";
 import { Button, Empty } from "../ui";
 import type { Run } from "./types";
 
@@ -25,7 +25,6 @@ export interface SettingsSectionProps {
   setSettingsTab: Dispatch<SetStateAction<string>>;
   workspace: string;
   workspaces: any[];
-  agreements: Agreement[];
   inviteLink: string;
   run: Run;
   acceptInvitation: (token: string) => Promise<void>;
@@ -45,7 +44,6 @@ export function SettingsSection({
   setSettingsTab,
   workspace,
   workspaces,
-  agreements,
   inviteLink,
   run,
   acceptInvitation,
@@ -80,24 +78,13 @@ export function SettingsSection({
         <div className="settings-content">
           {settingsTab === "PayPal" &&
             (workspace ? (
-              <>
-                <p className="muted">
-                  These payout details apply to{" "}
-                  {agreements
-                    .filter((item) => item.workspaceId === workspace)
-                    .map((item) => item.value.name)
-                    .join(", ") || "agreements shared with this team"}
-                  .
-                </p>
-                <PaymentAccountsSettings
-                  key={workspace}
-                  workspace={workspace}
-                  canEdit={
-                    workspaces.find((w) => w.id === workspace)?.role !==
-                    "VIEWER"
-                  }
-                />
-              </>
+              <PaymentAccountsSettings
+                key={workspace}
+                workspace={workspace}
+                canEdit={
+                  workspaces.find((w) => w.id === workspace)?.role !== "VIEWER"
+                }
+              />
             ) : (
               <Empty title="Start an agreement first">
                 Upload your first agreement to add a payout email.

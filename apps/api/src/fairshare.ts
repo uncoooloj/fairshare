@@ -18,6 +18,7 @@ import {
   sendForReview,
   approveAndSwitchOn,
   activateVersion,
+  confirmAdvancePaid,
   addMember,
   assertDraftDeletable,
   assertMembersEditable,
@@ -421,6 +422,15 @@ export function registerFairshareRoutes(
       },
     );
   }
+  // Organizer confirms the advance was paid; switches the agreement on if everyone approved.
+  app.post(`${base}/:collaborationId/advance/confirm`, async (req) => {
+    const { p, user } = access(req);
+    const b = body(req);
+    const advanceId = required(b.advanceId, "Advance ID");
+    return store.update(p.workspaceId, p.collaborationId, revision(b), (c) =>
+      confirmAdvancePaid(c, advanceId, user.id, now()),
+    );
+  });
   app.post(
     `${base}/:collaborationId/versions/:versionId/request-change`,
     async (req) => {

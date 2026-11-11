@@ -1,5 +1,6 @@
 "use client";
 import { AllocationCalculation } from "../../components/allocation-calculation";
+import { CloseButton } from "../../components/close-button";
 import { formatDay, formatExact } from "../../lib/dates";
 import { useEffect, useId, useRef } from "react";
 import {
@@ -36,15 +37,7 @@ export function PayoutDetails({
     >
       <header className={styles.drawerHeader}>
         <h2 id={title}>Payout details</h2>
-        <button
-          type="button"
-          className={styles.control}
-          onClick={onClose}
-          autoFocus
-          aria-label="Close payout details"
-        >
-          Close
-        </button>
+        <CloseButton onClick={onClose} autoFocus label="Close payout details" />
       </header>
       <p className={styles.label}>{row.recipientName}</p>
       <strong className={styles.amount}>

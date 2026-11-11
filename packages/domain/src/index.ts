@@ -38,6 +38,7 @@ export enum AuditType {
   APPROVED = "APPROVED",
   CHANGE_REQUESTED = "CHANGE_REQUESTED",
   ACTIVATED = "ACTIVATED",
+  ADVANCE_CONFIRMED = "ADVANCE_CONFIRMED",
   REVENUE_ALLOCATED = "REVENUE_ALLOCATED",
   PAYMENT_HELD = "PAYMENT_HELD",
   PERSON_ADDED = "PERSON_ADDED",
@@ -869,10 +870,22 @@ export function proposeVersion(
     )
   )
     latest.status = VersionStatus.SUPERSEDED;
+  const next = copy(rules);
+  // Confirming an advance was paid is a fact about that advance, so a revision that
+  // keeps it (same ID) stays confirmed.
+  if (
+    next.advance &&
+    c.versions.some(
+      (old) =>
+        old.rules.advance?.id === next.advance!.id &&
+        old.rules.advance.verified,
+    )
+  )
+    next.advance.verified = true;
   const v: AgreementVersion = {
     id: (latest?.id ?? 0) + 1,
     status: VersionStatus.DRAFT,
-    rules: copy(rules),
+    rules: next,
     approvals: {},
     changeRequests: [],
     createdAt: at,
@@ -899,14 +912,10 @@ export function sendForReview(
   if (v.status !== VersionStatus.DRAFT) fail("INVALID_STATE", "Draft required");
   // The people list may have changed since this draft was written.
   validateRules(c, v.rules);
-  if (
-    v.rules.unresolvedQuestions.length ||
-    (v.rules.advance && !v.rules.advance.verified)
-  )
-    fail(
-      "UNRESOLVED_RULES",
-      "Resolve questions and verify any existing advance first",
-    );
+  // An advance that isn't paid yet can still be sent and approved; it must be
+  // confirmed before the rules switch on (see confirmAdvancePaid).
+  if (v.rules.unresolvedQuestions.length)
+    fail("UNRESOLVED_RULES", "Resolve questions first");
   v.status = VersionStatus.AWAITING_APPROVAL;
   audit(out, AuditType.SENT_FOR_REVIEW, actorId, at, { versionId });
   return out;
@@ -936,6 +945,9 @@ const everyoneApproved = (c: Collaboration, v: AgreementVersion) =>
   v.status === VersionStatus.AWAITING_APPROVAL &&
   !c.members.some((m) => m.pending) &&
   c.members.every((m) => Object.hasOwn(v.approvals, m.userId));
+/** An advance in these rules that nobody has confirmed as paid yet. */
+const advanceUnconfirmed = (v: AgreementVersion) =>
+  !!v.rules.advance && !v.rules.advance.verified;
 function switchOn(
   out: Collaboration,
   v: AgreementVersion,
@@ -967,7 +979,9 @@ export function approveAndSwitchOn(
 ): Collaboration {
   const out = approveVersion(c, versionId, actorId, at);
   const v = latestVersion(out, versionId);
-  if (everyoneApproved(out, v)) switchOn(out, v, actorId, at, true);
+  // Approved but the advance isn't confirmed paid: it waits, approved, until it is.
+  if (everyoneApproved(out, v) && !advanceUnconfirmed(v))
+    switchOn(out, v, actorId, at, true);
   return out;
 }
 /** Organizer's one-shot send: propose, approve as the sender, send, and switch on if nobody else must approve. */
@@ -1020,7 +1034,46 @@ export function activateVersion(
       "APPROVALS_REQUIRED",
       "Every participant must approve this exact version",
     );
+  if (advanceUnconfirmed(v))
+    fail(
+      "ADVANCE_UNCONFIRMED",
+      "Confirm the advance is paid before the agreement switches on",
+    );
   switchOn(out, v, actorId, at, false);
+  return out;
+}
+/**
+ * Organizer confirms the advance in the sent proposal was paid. The terms everyone
+ * approved already say it was put in upfront, so this records a fact, not a new version:
+ * approvals stand. When everyone has approved, the rules switch on in the same transition.
+ */
+export function confirmAdvancePaid(
+  c: Collaboration,
+  advanceId: string,
+  actorId: string,
+  at: string,
+): Collaboration {
+  organizer(c, actorId);
+  nonempty(advanceId, "Advance ID");
+  timestamp(at);
+  const out = copy(c);
+  const v = out.versions.at(-1);
+  if (
+    !v ||
+    ![VersionStatus.AWAITING_APPROVAL, VersionStatus.ACTIVE].includes(v.status)
+  )
+    fail("INVALID_STATE", "Send the agreement before confirming the advance");
+  const advance = v!.rules.advance;
+  if (!advance || advance.id !== advanceId)
+    fail("STALE_VERSION", "This advance is not in the current agreement");
+  if (advance!.verified)
+    fail("ADVANCE_ALREADY_CONFIRMED", "This advance is already confirmed");
+  advance!.verified = true;
+  audit(out, AuditType.ADVANCE_CONFIRMED, actorId, at, {
+    versionId: v!.id,
+    advanceId,
+  });
+  if (everyoneApproved(out, v!)) switchOn(out, v!, actorId, at, true);
   return out;
 }
 /** A private draft can be thrown away only by its organizer, before anything was sent or paid. */
@@ -1124,6 +1177,13 @@ export function allocateConfirmedRevenue(
   at: string,
 ): Collaboration {
   noPendingMembers(c);
+  // Activation already waits for the advance; never split money against an unpaid one.
+  const v = c.versions.find((v) => v.id === c.activeVersionId);
+  if (v && advanceUnconfirmed(v))
+    fail(
+      "ADVANCE_UNCONFIRMED",
+      "Confirm the advance is paid before payments are split",
+    );
   return allocate(c, input, at);
 }
 function allocate(

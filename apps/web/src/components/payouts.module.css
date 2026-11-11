@@ -2,16 +2,19 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px;
-  margin-bottom: 24px;
+  margin-bottom: 8px;
 }
 .card {
+  min-width: 0;
   padding: 22px;
   border: 1px solid var(--color-line, #e6e9e7);
   border-radius: 14px;
   background: white;
 }
 .label {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   color: var(--color-muted, #66736d);
   font-size: 13px;
   margin-bottom: 12px;
@@ -28,6 +31,70 @@
   margin-top: 8px;
   color: var(--color-muted, #66736d);
   font-size: 12px;
+  overflow-wrap: anywhere;
+}
+/* Info button + tooltip: the card's longer explanation, on hover or focus. */
+.info {
+  position: relative;
+  display: inline-flex;
+}
+.infoButton {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--color-muted, #66736d);
+  cursor: help;
+}
+.infoButton svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+}
+.infoButton:hover,
+.infoButton:focus-visible {
+  color: var(--color-ink, #202a25);
+}
+.infoButton:focus-visible {
+  outline: 2px solid var(--color-brand, #446e50);
+  outline-offset: 1px;
+}
+.tooltip {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: min(240px, 70vw);
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--color-ink, #202a25);
+  color: white;
+  font-size: 12px;
+  line-height: 1.45;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+.info:hover .tooltip,
+.infoButton:focus-visible + .tooltip {
+  visibility: visible;
+  opacity: 1;
+}
+.totalsNote {
+  margin: 0 0 24px;
+  color: var(--color-muted, #66736d);
+  font-size: 12px;
+  line-height: 1.5;
 }
 .toolbar {
   display: flex;
@@ -99,6 +166,43 @@
 .empty h3 {
   color: var(--color-ink, #202a25);
   font-size: 18px;
+  margin: 0 0 6px;
+}
+.empty p {
+  margin: 0;
+}
+.emptyIcon {
+  width: 40px;
+  height: 40px;
+  margin: 0 auto 16px;
+  padding: 10px;
+  box-sizing: content-box;
+  border-radius: 50%;
+  background: var(--color-surface, #fafbf9);
+  fill: none;
+  stroke: var(--color-muted, #66736d);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+/* Grid wrapper. Global `.ag-header` (agreement page header) also matches AG
+   Grid's own header class and pushed it over the first row; reset it here. */
+.grid {
+  width: 100%;
+}
+.grid :global(.ag-header) {
+  margin: 0;
+}
+.cell {
+  display: flex;
+  align-items: center;
+}
+.cell:global(.ag-right-aligned-cell) {
+  justify-content: flex-end;
+}
+.control.cellButton {
+  min-height: 0;
+  padding: 5px 12px;
+  line-height: 1.3;
 }
 @media (max-width: 680px) {
   .summary {
@@ -256,4 +360,12 @@
     flex-wrap: wrap;
     gap: 12px;
   }
+}
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }

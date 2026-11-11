@@ -54,7 +54,11 @@ export function AgreementPeopleTab({
       <Heading
         small
         title="People in this agreement"
-        description="Add everyone before you set the split. Each person approves for themselves."
+        description={
+          selected.value.versions.length
+            ? "Each person approves the split for themselves."
+            : "Add everyone before you set the split. Each person approves for themselves."
+        }
       />
       {organizer && offer && (
         <Notice announcement="polite">

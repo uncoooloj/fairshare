@@ -157,6 +157,11 @@ test("failed recovery refresh hides stale refund actions and clears success noti
     source,
     /setConfirmed\(\s*false\s*\);\s*setError\(\s*["']{2}\s*\);\s*setNotice\(\s*["']{2}\s*\)/,
   );
+  assert.match(
+    source,
+    /A confirmed\s+payment can be split and follow your payout settings/,
+  );
+  assert.doesNotMatch(source, /Checking never\s+sends money/);
 });
 
 test("invoice receipts use invoice reconciliation and never checkout refunds", async () => {

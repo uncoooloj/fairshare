@@ -136,6 +136,7 @@ export function registerInvoiceRoutes(
     shareUrl: r.share_url,
     createdAt: r.created_at,
     providerId: r.provider_id,
+    hasCapture: Boolean(r.capture_id),
     providerStatus: r.provider_status,
     paidAmountCents: r.paid_amount,
     dueAmountCents: r.due_amount,

@@ -29,6 +29,17 @@ test("agreement edits guard navigation and closing the browser before discarding
   assert.match(app, /onNavigate=\{changeAgreementTab\}/);
   assert.match(app, /changeAgreementTab\(next\)/);
   assert.match(app, /Back to proposed terms/);
+  const terms = readFileSync(
+    new URL(
+      "../components/sections/agreement-tabs/terms-tab.tsx",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  assert.match(
+    terms,
+    /const changeAgreement = \(\) => \{\s*if \(!mayLeaveDraft\(\)\) return;/,
+  );
   assert.match(
     shell,
     /const guardedRefresh = \(\) => \{\s*if \(mayLeaveDraft\(\)\) void run\(refresh\);/,

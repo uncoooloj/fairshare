@@ -25,9 +25,9 @@ const recorded = (name: string) =>
   readFileSync(join(live, "recorded", name), "utf8");
 const fixtures = loadFixtures(live);
 
-/** Fields the recorded reading is known to miss. 06: the model puts recoupment
- * in a different quote from the advance amount, so validation preserves it as
- * unknown; its start date also sits behind "the Effective Date". */
+/** Fields the recorded reading is known to miss. None now: in 06 the start date behind
+ * "the Effective Date" resolves to the defining sentence, and paying back stated in a separate
+ * clause under the "Production Advance" name resolves through that defined term. */
 const KNOWN_MISSES: Record<string, ScoredField[]> = {
   "06-messy-amended": [
     ScoredField.ADVANCE,

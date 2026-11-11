@@ -104,7 +104,8 @@ test("polish preserves personal finance and tenant-qualified identities", () => 
   assert.match(app, /payoutId: p\.id/);
   assert.match(app, /agreementId: p\.agreement\.id/);
   assert.match(app, /agreementKey: agreementIdentityKey\(p\.agreement\)/);
-  assert.match(app, /These payout details apply to/);
+  // The account-level email covers every agreement; no per-agreement list.
+  assert.doesNotMatch(app, /These payout details apply to/);
   assert.doesNotMatch(
     app,
     /label="Workspace name"|Payment accounts are scoped to a workspace/,
@@ -123,10 +124,11 @@ test("money labels distinguish allocation from payout completion", () => {
     new URL("../components/agreement-workspace.tsx", import.meta.url),
     "utf8",
   );
-  assert.match(payments, /ALLOCATED: "Received and allocated"/);
+  assert.match(payments, /ALLOCATED: "Split"/);
   assert.doesNotMatch(payments, /ALLOCATED: "Paid and split"/);
+  assert.match(workspace, /Advance paid back/);
   assert.match(workspace, /Advance allocation/);
-  assert.match(workspace, /allocated toward the advance/);
+  assert.match(workspace, /allocated toward/);
 });
 
 test("allocation explanation does not invent an advance for a zero-net payment", () => {

@@ -1,6 +1,6 @@
 # Fairshare domain
 
-Pure, immutable aggregate transitions. No network calls, AI money arithmetic, or payout submission. Explicit enums; USD MVP; exact integer cents and basis points. All human proposals stay inactive until every participant approves the same version and the organizer activates it. Source excerpts must be verified by the extraction/application layer; this module validates their presence, not legal accuracy.
+Pure, immutable aggregate transitions. No network calls, AI money arithmetic, or payout submission. Explicit enums; USD MVP; exact integer cents and basis points. All human proposals stay inactive until every participant approves the same version. Final approval activates the version when its advance is already confirmed; an unconfirmed advance leaves the approved version awaiting organizer confirmation, which may activate it. Source excerpts must be verified by the extraction/application layer; this module validates their presence, not legal accuracy.
 
 ## API integration requirements
 
