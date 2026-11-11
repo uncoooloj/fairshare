@@ -137,3 +137,47 @@ test("empty workspace has honest zero totals and no synthetic activity", () => {
   assert.deepEqual(s.activity, []);
   assert.deepEqual(s.attention, []);
 });
+
+test("incomplete payout loads never present financial totals as zero", () => {
+  const a = fixture();
+  const s = overviewSummary([a], [], "me", false);
+  assert.equal(s.allocated, null);
+  assert.equal(s.paid, null);
+  assert.equal(s.remaining, null);
+});
+
+test("review actions use the authoritative review state", () => {
+  const a = fixture();
+  a.value.versions[0].approvals = {
+    me: "2026-11-10T12:00:00Z",
+    other: "2026-11-10T12:00:00Z",
+  };
+  assert.match(
+    overviewSummary([a], [], "me").attention[0].title,
+    /Activate version 1/,
+  );
+  assert.match(
+    overviewSummary([a], [], "other").waiting[0].title,
+    /Waiting for organizer to activate version 1/,
+  );
+  a.value.versions[0].status = "ACTIVE";
+  assert.equal(overviewSummary([a], [], "other").waiting.length, 0);
+
+  const draft = fixture();
+  draft.value.versions[0].status = "DRAFT";
+  assert.match(
+    overviewSummary([draft], [], "me").attention[0].title,
+    /Send version 1 for review/,
+  );
+  draft.value.versions[0].rules.advance = {
+    id: "advance",
+    recipientId: "me",
+    amountCents: 10,
+    verified: false,
+    source: draft.value.versions[0].rules.source,
+  };
+  assert.match(
+    overviewSummary([draft], [], "me").attention[0].detail,
+    /Verify the existing advance/,
+  );
+});
