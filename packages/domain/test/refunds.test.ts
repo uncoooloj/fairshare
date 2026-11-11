@@ -451,6 +451,91 @@ test("external settlement keeps the full overpayment across sequential refunds",
   );
 });
 
+test("external settlement attributes only the newly owed capture after an earlier offset", () => {
+  const c = pay(active(), "CAP1");
+  const cap1Held = refund(c, "R1", 10000, 300, {
+    payoutsStarted: true,
+    paidCents: { b: 2910 },
+  }).collaboration;
+  const afterOffset = pay(
+    resumePayouts(cap1Held, { offsetFromFuturePayouts: true }, "a", at),
+    "CAP2",
+  );
+  const cap3 = pay(afterOffset, "CAP3");
+  const cap3Held = refund(
+    cap3,
+    "R3",
+    10000,
+    300,
+    {
+      payoutsStarted: true,
+      paidCents: { b: 2910 },
+    },
+    "CAP3",
+  ).collaboration;
+  const externallySettled = resumePayouts(
+    cap3Held,
+    { offsetFromFuturePayouts: false },
+    "a",
+    at,
+  );
+  assert.deepEqual(externallySettled.externallySettledOverpayments, {
+    CAP3: { b: 2910 },
+  });
+  assert.deepEqual(
+    releaseUndeliveredOverpayment(externallySettled, "CAP1", "b", at)
+      .creditBack,
+    { b: 2910 },
+  );
+});
+
+test("a returned organizer fee consumes its prior offset recovery before another payout return", () => {
+  const organizerPays = rules({
+    feePolicy: FeePolicy.ORGANIZER_SHARE,
+    feeBearerId: "a",
+    shares: [
+      { userId: "a", basisPoints: 1000 },
+      { userId: "b", basisPoints: 4500 },
+      { userId: "c", basisPoints: 4500 },
+    ],
+  });
+  const partial = refund(
+    pay(active(organizerPays), "CAP1", 10000, 900),
+    "R1",
+    5000,
+    0,
+  ).collaboration;
+  const afterOffset = pay(
+    resumePayouts(partial, { offsetFromFuturePayouts: true }, "a", at),
+    "CAP2",
+    4000,
+    0,
+  );
+  assert.deepEqual(afterOffset.offsetRecovered, { a: 400 });
+  const feeReturned = refund(afterOffset, "R2", 5000, 900).collaboration;
+  assert.equal(feeReturned.offsetRecovered, undefined);
+  const cap3 = pay(feeReturned, "CAP3", 10000, 900);
+  const cap3Held = refund(
+    cap3,
+    "R3",
+    10000,
+    900,
+    { payoutsStarted: true, paidCents: { a: 100 } },
+    "CAP3",
+  ).collaboration;
+  const externallySettled = resumePayouts(
+    cap3Held,
+    { offsetFromFuturePayouts: false },
+    "a",
+    at,
+  );
+  assert.deepEqual(
+    releaseUndeliveredOverpayment(externallySettled, "CAP3", "a", at)
+      .creditBack,
+    { a: 500 },
+  );
+});
+
 test("offset: each person's overpayment comes off their next shares until settled", () => {
   const c = pay(active(), "CAP1");
   const held = refund(c, "R1", 10000, 300, {
@@ -516,11 +601,60 @@ test("refunding a payment that settled an overpayment makes it owed again", () =
   );
   // b's 1200 share went to settling; 1710 still owed.
   assert.deepEqual({ ...next.owedBack }, { b: 1710 });
+  const recovery = next.revenue[1].allocations.find(
+    (allocation) => allocation.userId === "b",
+  )!.offsetAttributions;
+  assert.deepEqual(recovery, [
+    {
+      liabilityId: '["CAP1","R1","b","PAYOUT_OVERPAYMENT"]',
+      cents: 1200,
+    },
+  ]);
   const r = refund(next, "R2", 4000, 0, notPaid, "CAP2");
   assert.equal(r.held, true);
   assert.equal(r.refund.shares[1].offsetRestoredCents, 1200);
   assert.deepEqual({ ...r.collaboration.owedBack }, { b: 2910 });
   assert.deepEqual(totals(r.collaboration, "CAP2"), { a: 0, b: 0, c: 0 });
+  const restored = r.collaboration.revenue[1].allocations.find(
+    (allocation) => allocation.userId === "b",
+  )!;
+  assert.equal(restored.offsetAttributions, undefined);
+  assert.deepEqual(restored.restoredOffsetAttributions, recovery);
+  const replay = refund(r.collaboration, "R2", 4000, 0, notPaid, "CAP2");
+  assert.equal(replay.duplicate, true);
+  assert.deepEqual(replay.collaboration, r.collaboration);
+});
+
+test("ambiguous legacy refund history blocks new money until operator attribution", () => {
+  const held = refund(pay(active(), "CAP1"), "R1", 10000, 300, {
+    payoutsStarted: true,
+    paidCents: { b: 2910 },
+  }).collaboration;
+  const settled = resumePayouts(
+    held,
+    { offsetFromFuturePayouts: false },
+    "a",
+    at,
+  );
+  const legacy = structuredClone(settled);
+  delete legacy.refundAttributionVersion;
+  delete legacy.refundLiabilities;
+  delete legacy.owedBack;
+  delete legacy.offsetRecovered;
+  delete legacy.creditBack;
+  delete legacy.externallySettledOverpayments;
+  for (const revenue of legacy.revenue)
+    for (const allocation of revenue.allocations) {
+      delete allocation.offsetAttributions;
+      delete allocation.restoredOffsetAttributions;
+      delete allocation.creditAttributions;
+      delete allocation.returnedCreditAttributions;
+    }
+  // Historical reads stay available; only another money transition is refused.
+  assert.deepEqual(totals(legacy), { a: 0, b: 0, c: 0 });
+  const before = structuredClone(legacy);
+  assert.throws(() => pay(legacy, "CAP2"), code("ATTRIBUTION_REQUIRED"));
+  assert.deepEqual(legacy, before);
 });
 
 test("a payout PayPal never delivered releases the overpayment it caused, once; shortfalls stay owed", () => {

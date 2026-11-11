@@ -109,8 +109,16 @@ export interface Allocation {
   feeCents: number;
   /** Kept back to settle an earlier overpayment (see Collaboration.owedBack). */
   offsetCents?: number;
+  /** Exact refund liabilities this allocation settled. Their sum is offsetCents. */
+  offsetAttributions?: LiabilityAttribution[];
+  /** Offset attribution removed when this allocation was later refunded. */
+  restoredOffsetAttributions?: LiabilityAttribution[];
   /** Given back: an amount kept back earlier for a payout PayPal then never delivered. */
   creditCents?: number;
+  /** Exact refund liabilities whose excess settlement this allocation credited. */
+  creditAttributions?: LiabilityAttribution[];
+  /** Credits assigned here whose payout PayPal later did not deliver. */
+  returnedCreditAttributions?: LiabilityAttribution[];
   /** recoupment + share - fee - offset + credit. */
   totalCents: number;
   status: AllocationStatus;
@@ -191,6 +199,25 @@ export interface OrganizerHandover {
   toUserId: string;
   at: string;
 }
+export enum RefundLiabilityKind {
+  PAYOUT_OVERPAYMENT = "PAYOUT_OVERPAYMENT",
+  FEE_SHORTFALL = "FEE_SHORTFALL",
+}
+export interface LiabilityAttribution {
+  liabilityId: string;
+  cents: number;
+}
+/** One refund-created obligation. Settlement and later cancellation stay tied to this source. */
+export interface RefundLiability {
+  id: string;
+  captureId: string;
+  refundId: string;
+  userId: string;
+  kind: RefundLiabilityKind;
+  createdCents: number;
+  cancelledCents: number;
+  externalSettledCents: number;
+}
 export interface Collaboration {
   id: string;
   name: string;
@@ -217,6 +244,9 @@ export interface Collaboration {
   /** Capture -> person -> overpayment that the organizer recorded as settled outside
    * Fairshare. Kept so a later returned payout can restore the person's credit once. */
   externallySettledOverpayments?: Record<string, Record<string, number>>;
+  /** Versioned, source-specific refund obligations. Generic legacy balances are never guessed. */
+  refundAttributionVersion?: 1;
+  refundLiabilities?: RefundLiability[];
   /** Advance ID -> the advance whose repaid count was carried onto it when it replaced it. */
   advanceCarries?: Record<string, string>;
 }
@@ -1151,8 +1181,7 @@ function allocate(
       writable: true,
       configurable: true,
     });
-  offsetOwedBack(out, allocations);
-  out.revenue.push({
+  const revenue: Revenue = {
     ...copy(input),
     netCents,
     versionId: v.id,
@@ -1160,7 +1189,9 @@ function allocate(
     allocations,
     status: RevenueStatus.CONFIRMED,
     at,
-  });
+  };
+  out.revenue.push(revenue);
+  offsetOwedBack(out, revenue.allocations);
   audit(out, AuditType.REVENUE_ALLOCATED, "provider", at, {
     captureId: input.providerCaptureId,
     versionId: v.id,
@@ -1199,6 +1230,328 @@ const setOwn = (record: Record<string, number>, key: string, value: number) =>
   });
 const own = (record: Record<string, number> | undefined, key: string) =>
   record && Object.hasOwn(record, key) ? record[key] : 0;
+const liabilityKey = (
+  captureId: string,
+  refundId: string,
+  userId: string,
+  kind: RefundLiabilityKind,
+) => JSON.stringify([captureId, refundId, userId, kind]);
+const attributionTotal = (refs: LiabilityAttribution[] | undefined) =>
+  (refs ?? []).reduce((sum, ref) => sum + ref.cents, 0);
+const positiveValues = (record: Record<string, number> | undefined) =>
+  Object.values(record ?? {}).some((value) => value > 0);
+function hasLegacyRefundAttribution(c: Collaboration): boolean {
+  if (
+    c.offsetOwedBack ||
+    positiveValues(c.owedBack) ||
+    positiveValues(c.offsetRecovered) ||
+    positiveValues(c.creditBack) ||
+    Object.values(c.externallySettledOverpayments ?? {}).some(positiveValues)
+  )
+    return true;
+  return c.revenue.some(
+    (revenue) =>
+      revenue.allocations.some(
+        (allocation) =>
+          !!(allocation.offsetCents || allocation.creditCents) ||
+          !!allocation.offsetAttributions?.length ||
+          !!allocation.restoredOffsetAttributions?.length ||
+          !!allocation.creditAttributions?.length ||
+          !!allocation.returnedCreditAttributions?.length,
+      ) ||
+      (revenue.refunds ?? []).some((refund) =>
+        refund.shares.some(
+          (share) =>
+            share.owedCents > 0 ||
+            share.shortfallCents > 0 ||
+            share.offsetRestoredCents > 0 ||
+            (share.shortfallReturnedCents ?? 0) > 0,
+        ),
+      ),
+  );
+}
+function ensureRefundAttribution(c: Collaboration) {
+  if (c.refundAttributionVersion === 1) {
+    c.refundLiabilities ??= [];
+    validateRefundAttribution(c);
+    return;
+  }
+  if (c.refundLiabilities?.length || hasLegacyRefundAttribution(c))
+    fail(
+      "ATTRIBUTION_REQUIRED",
+      "Historical refund balances need operator attribution before money can move",
+    );
+  c.refundAttributionVersion = 1;
+  c.refundLiabilities = [];
+}
+function liabilityAttributionCents(
+  c: Collaboration,
+  liabilityId: string,
+  field: "offsetAttributions" | "creditAttributions",
+) {
+  let total = 0;
+  for (const revenue of c.revenue)
+    for (const allocation of revenue.allocations)
+      for (const ref of allocation[field] ?? [])
+        if (ref.liabilityId === liabilityId) total += ref.cents;
+  if (!Number.isSafeInteger(total))
+    fail("CONSERVATION_ERROR", "Refund attribution total is invalid");
+  return total;
+}
+function liabilityBalance(c: Collaboration, liability: RefundLiability) {
+  const balance =
+    liability.createdCents -
+    liability.cancelledCents +
+    liabilityAttributionCents(c, liability.id, "creditAttributions") -
+    liabilityAttributionCents(c, liability.id, "offsetAttributions") -
+    liability.externalSettledCents;
+  if (!Number.isSafeInteger(balance))
+    fail("CONSERVATION_ERROR", "Refund liability balance is invalid");
+  return balance;
+}
+function addToRecord(
+  record: Record<string, number>,
+  key: string,
+  amount: number,
+) {
+  if (amount > 0) setOwn(record, key, own(record, key) + amount);
+}
+function refreshRefundAttribution(c: Collaboration) {
+  if (c.refundAttributionVersion !== 1) return;
+  const owed: Record<string, number> = {};
+  const credit: Record<string, number> = {};
+  const recovered: Record<string, number> = {};
+  const external: Record<string, Record<string, number>> = {};
+  for (const liability of c.refundLiabilities ?? []) {
+    const balance = liabilityBalance(c, liability);
+    if (balance > 0) addToRecord(owed, liability.userId, balance);
+    else if (balance < 0) addToRecord(credit, liability.userId, -balance);
+
+    // Compatibility views only. Attribution decisions always use the liability and refs above.
+    const uncancelled = Math.max(
+      0,
+      liability.createdCents - liability.cancelledCents,
+    );
+    const offset = Math.min(
+      uncancelled,
+      liabilityAttributionCents(c, liability.id, "offsetAttributions"),
+    );
+    addToRecord(recovered, liability.userId, offset);
+    if (liability.kind === RefundLiabilityKind.PAYOUT_OVERPAYMENT) {
+      const settledOutside = Math.min(
+        liability.externalSettledCents,
+        Math.max(0, uncancelled - offset),
+      );
+      if (settledOutside > 0) {
+        external[liability.captureId] ??= {};
+        addToRecord(
+          external[liability.captureId],
+          liability.userId,
+          settledOutside,
+        );
+      }
+    }
+  }
+  if (Object.keys(owed).length) c.owedBack = owed;
+  else {
+    delete c.owedBack;
+    delete c.offsetOwedBack;
+  }
+  if (Object.keys(credit).length) c.creditBack = credit;
+  else delete c.creditBack;
+  if (Object.keys(recovered).length) c.offsetRecovered = recovered;
+  else delete c.offsetRecovered;
+  if (Object.keys(external).length) c.externallySettledOverpayments = external;
+  else delete c.externallySettledOverpayments;
+  validateRefundAttribution(c);
+}
+function validateAttributionRefs(
+  allocation: Allocation,
+  refs: LiabilityAttribution[] | undefined,
+  liabilities: Map<string, RefundLiability>,
+) {
+  for (const ref of refs ?? []) {
+    cents(ref.cents, "Attributed amount");
+    if (!ref.cents) fail("CONSERVATION_ERROR", "Attribution must be positive");
+    const liability = liabilities.get(ref.liabilityId);
+    if (!liability || liability.userId !== allocation.userId)
+      fail(
+        "CONSERVATION_ERROR",
+        "Attribution must name this person's liability",
+      );
+  }
+}
+function validateRefundAttribution(c: Collaboration) {
+  if (c.refundAttributionVersion !== 1) return;
+  const liabilities = new Map<string, RefundLiability>();
+  for (const liability of c.refundLiabilities ?? []) {
+    cents(liability.createdCents, "Liability");
+    cents(liability.cancelledCents, "Cancelled liability");
+    cents(liability.externalSettledCents, "External settlement");
+    if (
+      !liability.createdCents ||
+      liability.cancelledCents > liability.createdCents ||
+      liability.externalSettledCents > liability.createdCents ||
+      !Object.values(RefundLiabilityKind).includes(liability.kind) ||
+      liability.id !==
+        liabilityKey(
+          liability.captureId,
+          liability.refundId,
+          liability.userId,
+          liability.kind,
+        ) ||
+      liabilities.has(liability.id)
+    )
+      fail("CONSERVATION_ERROR", "Refund liability attribution is invalid");
+    liabilities.set(liability.id, liability);
+  }
+  for (const revenue of c.revenue)
+    for (const allocation of revenue.allocations) {
+      validateAttributionRefs(
+        allocation,
+        allocation.offsetAttributions,
+        liabilities,
+      );
+      validateAttributionRefs(
+        allocation,
+        allocation.restoredOffsetAttributions,
+        liabilities,
+      );
+      validateAttributionRefs(
+        allocation,
+        allocation.creditAttributions,
+        liabilities,
+      );
+      validateAttributionRefs(
+        allocation,
+        allocation.returnedCreditAttributions,
+        liabilities,
+      );
+      if (
+        attributionTotal(allocation.offsetAttributions) !==
+          (allocation.offsetCents ?? 0) ||
+        attributionTotal(allocation.creditAttributions) +
+          attributionTotal(allocation.returnedCreditAttributions) !==
+          (allocation.creditCents ?? 0)
+      )
+        fail("CONSERVATION_ERROR", "Allocation attribution does not reconcile");
+    }
+  for (const liability of liabilities.values()) {
+    const offset = liabilityAttributionCents(
+      c,
+      liability.id,
+      "offsetAttributions",
+    );
+    const credit = liabilityAttributionCents(
+      c,
+      liability.id,
+      "creditAttributions",
+    );
+    if (offset + liability.externalSettledCents > liability.createdCents)
+      fail(
+        "CONSERVATION_ERROR",
+        "Refund liability was settled for more than it created",
+      );
+    const creditDue = Math.max(
+      0,
+      liability.cancelledCents +
+        offset +
+        liability.externalSettledCents -
+        liability.createdCents,
+    );
+    if (credit > creditDue)
+      fail(
+        "CONSERVATION_ERROR",
+        "Refund liability credit exceeds the returned recovery",
+      );
+  }
+}
+function addLiability(
+  c: Collaboration,
+  captureId: string,
+  refundId: string,
+  userId: string,
+  kind: RefundLiabilityKind,
+  amount: number,
+) {
+  if (!amount) return;
+  cents(amount, "Liability");
+  const id = liabilityKey(captureId, refundId, userId, kind);
+  if (c.refundLiabilities!.some((liability) => liability.id === id))
+    fail("CONSERVATION_ERROR", "Refund liability already exists");
+  c.refundLiabilities!.push({
+    id,
+    captureId,
+    refundId,
+    userId,
+    kind,
+    createdCents: amount,
+    cancelledCents: 0,
+    externalSettledCents: 0,
+  });
+}
+function cancelLiabilities(
+  c: Collaboration,
+  amount: number,
+  matches: (liability: RefundLiability) => boolean,
+) {
+  let left = amount;
+  for (const liability of c.refundLiabilities ?? []) {
+    if (!matches(liability) || left <= 0) continue;
+    const available = liability.createdCents - liability.cancelledCents;
+    const take = Math.min(available, left);
+    liability.cancelledCents += take;
+    left -= take;
+  }
+  if (left)
+    fail(
+      "CONSERVATION_ERROR",
+      "Refund cancellation exceeds its attributed liability",
+    );
+}
+function appendAttribution(
+  refs: LiabilityAttribution[] | undefined,
+  liabilityId: string,
+  amount: number,
+) {
+  const out = refs ?? [];
+  const prior = out.at(-1);
+  if (prior?.liabilityId === liabilityId) prior.cents += amount;
+  else out.push({ liabilityId, cents: amount });
+  return out;
+}
+function restoreOffsetAttributions(allocation: Allocation, amount: number) {
+  let left = amount;
+  const active = allocation.offsetAttributions ?? [];
+  for (let index = active.length - 1; index >= 0 && left > 0; index--) {
+    const ref = active[index];
+    const take = Math.min(ref.cents, left);
+    allocation.restoredOffsetAttributions = appendAttribution(
+      allocation.restoredOffsetAttributions,
+      ref.liabilityId,
+      take,
+    );
+    ref.cents -= take;
+    left -= take;
+    if (!ref.cents) active.splice(index, 1);
+  }
+  if (left)
+    fail(
+      "ATTRIBUTION_REQUIRED",
+      "Historical offset needs operator attribution before it can be restored",
+    );
+  if (active.length) allocation.offsetAttributions = active;
+  else delete allocation.offsetAttributions;
+}
+function returnAttributedCredits(allocation: Allocation) {
+  for (const ref of allocation.creditAttributions ?? [])
+    allocation.returnedCreditAttributions = appendAttribution(
+      allocation.returnedCreditAttributions,
+      ref.liabilityId,
+      ref.cents,
+    );
+  delete allocation.creditAttributions;
+}
 /** Largest remainder over integer weights with stable user-ID tie break. When
  * total <= the sum of weights, no part is negative or larger than its weight. */
 function prorate(
@@ -1344,12 +1697,16 @@ export function applyCaptureRefund(
     );
   if (done.feeReturnedCents + input.feeReturnedCents > revenue.feeCents)
     fail("REFUND_FEE_MISMATCH", "Returned fees cannot exceed the fee charged");
+  ensureRefundAttribution(out);
   const rules =
     out.versions.find((v) => v.id === revenue.versionId)?.rules ??
     fail("UNKNOWN_VERSION", "The payment's rules are missing");
   const organizerPays = rules.feePolicy === FeePolicy.ORGANIZER_SHARE;
   const before = new Map(
-    revenue.allocations.map((a) => [a.userId, a.totalCents]),
+    revenue.allocations.map((a) => [
+      a.userId,
+      a.totalCents - (a.creditCents ?? 0),
+    ]),
   );
   const shares = new Map<string, RefundShare>(
     revenue.allocations.map((a) => [
@@ -1403,14 +1760,17 @@ export function applyCaptureRefund(
     const bearer =
       revenue.allocations.find((a) => a.userId === rules.feeBearerId) ??
       fail("REFUND_FEE_MISMATCH", "The fee was not covered by anyone");
-    const shortfallLeft = (revenue.refunds ?? []).reduce((sum, refund) => {
-      const prior = refund.shares.find(
-        (share) => share.userId === bearer.userId,
-      );
-      return prior
-        ? sum + prior.shortfallCents - (prior.shortfallReturnedCents ?? 0)
-        : sum;
-    }, 0);
+    const shortfallLiabilities = (out.refundLiabilities ?? []).filter(
+      (liability) =>
+        liability.captureId === input.captureId &&
+        liability.userId === bearer.userId &&
+        liability.kind === RefundLiabilityKind.FEE_SHORTFALL,
+    );
+    const shortfallLeft = shortfallLiabilities.reduce(
+      (sum, liability) =>
+        sum + liability.createdCents - liability.cancelledCents,
+      0,
+    );
     if (bearer.feeCents + shortfallLeft < input.feeReturnedCents)
       fail(
         "REFUND_FEE_MISMATCH",
@@ -1422,22 +1782,9 @@ export function applyCaptureRefund(
     shares.get(bearer.userId)!.feeCents = input.feeReturnedCents;
     if (returnedFromShortfall) {
       shares.get(bearer.userId)!.shortfallReturnedCents = returnedFromShortfall;
-      const owed = own(out.owedBack, bearer.userId);
-      const settled = Math.min(owed, returnedFromShortfall);
-      if (settled) {
-        if (owed > settled)
-          setOwn(out.owedBack!, bearer.userId, owed - settled);
-        else delete out.owedBack![bearer.userId];
-        if (!Object.keys(out.owedBack!).length) delete out.owedBack;
-      }
-      if (settled < returnedFromShortfall) {
-        out.creditBack ??= {};
-        setOwn(
-          out.creditBack,
-          bearer.userId,
-          own(out.creditBack, bearer.userId) + returnedFromShortfall - settled,
-        );
-      }
+      cancelLiabilities(out, returnedFromShortfall, (liability) =>
+        shortfallLiabilities.includes(liability),
+      );
     }
   }
   // 5. Never negative: undo an offset this payment can no longer cover, then any fee it no
@@ -1456,12 +1803,7 @@ export function applyCaptureRefund(
       offset -= restore;
       total += restore;
       share.offsetRestoredCents = restore;
-      if (restore && out.offsetRecovered)
-        setOwn(
-          out.offsetRecovered,
-          a.userId,
-          Math.max(0, own(out.offsetRecovered, a.userId) - restore),
-        );
+      if (restore) restoreOffsetAttributions(a, restore);
     }
     if (total < 0) {
       a.feeCents += total;
@@ -1517,19 +1859,27 @@ export function applyCaptureRefund(
     const share = shares.get(a.userId)!;
     const paid = own(payouts.paidCents, a.userId);
     cents(paid, "Paid");
+    const overpayment =
+      Math.max(0, paid - (a.totalCents - (a.creditCents ?? 0))) -
+      Math.max(0, paid - before.get(a.userId)!);
     share.owedCents =
-      Math.max(0, paid - a.totalCents) -
-      Math.max(0, paid - before.get(a.userId)!) +
-      share.shortfallCents +
-      share.offsetRestoredCents;
-    if (share.owedCents) {
-      out.owedBack ??= {};
-      setOwn(
-        out.owedBack,
-        a.userId,
-        own(out.owedBack, a.userId) + share.owedCents,
-      );
-    }
+      overpayment + share.shortfallCents + share.offsetRestoredCents;
+    addLiability(
+      out,
+      input.captureId,
+      input.refundId,
+      a.userId,
+      RefundLiabilityKind.PAYOUT_OVERPAYMENT,
+      overpayment,
+    );
+    addLiability(
+      out,
+      input.captureId,
+      input.refundId,
+      a.userId,
+      RefundLiabilityKind.FEE_SHORTFALL,
+      share.shortfallCents,
+    );
   }
   const refund: RevenueRefund = {
     id: input.refundId,
@@ -1541,6 +1891,7 @@ export function applyCaptureRefund(
     at,
   };
   (revenue.refunds ??= []).push(refund);
+  refreshRefundAttribution(out);
   if (
     revenue.allocations.some((a) => a.totalCents < 0) ||
     revenue.allocations.reduce(
@@ -1591,91 +1942,72 @@ export function releaseUndeliveredOverpayment(
     out.revenue.find((r) => r.providerCaptureId === captureId) ??
     fail("UNKNOWN_CAPTURE", "Payment not found");
   if (revenue.undeliveredUserIds?.includes(userId)) return copy(c);
-  const overpaid = (revenue.refunds ?? []).reduce((sum, refund) => {
-    const share = refund.shares.find((x) => x.userId === userId);
-    return share
-      ? sum + share.owedCents - share.shortfallCents - share.offsetRestoredCents
-      : sum;
-  }, 0);
+  ensureRefundAttribution(out);
+  refreshRefundAttribution(out);
+  const owedBefore = own(out.owedBack, userId);
+  const creditBefore = own(out.creditBack, userId);
   (revenue.undeliveredUserIds ??= []).push(userId);
-  const owed = own(out.owedBack, userId);
-  const release = Math.min(owed, Math.max(0, overpaid));
-  if (release > 0) {
-    if (owed > release) setOwn(out.owedBack!, userId, owed - release);
-    else delete out.owedBack![userId];
-    if (!Object.keys(out.owedBack!).length) {
-      delete out.owedBack;
-      delete out.offsetOwedBack;
-    }
-  }
-  // Whatever of it was already kept back from their shares is given back on their next share.
-  const recovered = own(out.offsetRecovered, userId);
-  const credit = Math.min(recovered, Math.max(0, overpaid - release));
-  if (credit > 0) {
-    setOwn(out.offsetRecovered!, userId, recovered - credit);
-    out.creditBack ??= {};
-    setOwn(out.creditBack, userId, own(out.creditBack, userId) + credit);
-  }
-  const externallySettled = own(
-    out.externallySettledOverpayments?.[captureId],
-    userId,
-  );
-  if (externallySettled > 0) {
-    out.creditBack ??= {};
-    setOwn(
-      out.creditBack,
-      userId,
-      own(out.creditBack, userId) + externallySettled,
-    );
-    delete out.externallySettledOverpayments![captureId]![userId];
-    if (!Object.keys(out.externallySettledOverpayments![captureId]!).length)
-      delete out.externallySettledOverpayments![captureId];
-    if (!Object.keys(out.externallySettledOverpayments!).length)
-      delete out.externallySettledOverpayments;
-  }
+  const allocation = revenue.allocations.find((row) => row.userId === userId);
+  if (allocation) returnAttributedCredits(allocation);
+  for (const liability of out.refundLiabilities ?? [])
+    if (
+      liability.captureId === captureId &&
+      liability.userId === userId &&
+      liability.kind === RefundLiabilityKind.PAYOUT_OVERPAYMENT
+    )
+      liability.cancelledCents = liability.createdCents;
+  refreshRefundAttribution(out);
+  const released = Math.max(0, owedBefore - own(out.owedBack, userId));
+  const credited = Math.max(0, own(out.creditBack, userId) - creditBefore);
   audit(out, AuditType.REFUND_APPLIED, "provider", at, {
     captureId,
     userId,
     payoutNotDelivered: true,
-    releasedCents: release,
-    creditedCents: credit + externallySettled,
+    releasedCents: released,
+    creditedCents: credited,
   });
   return out;
 }
 /** Settles each person's owed amount from their next shares, up to what each share pays, and
  * adds back anything kept back earlier that turned out not to be owed. */
 function offsetOwedBack(c: Collaboration, allocations: Allocation[]) {
-  if (c.offsetOwedBack && c.owedBack) {
+  ensureRefundAttribution(c);
+  if (c.offsetOwedBack) {
     for (const a of allocations) {
-      const owed = own(c.owedBack, a.userId);
-      const take = Math.min(owed, a.totalCents);
-      if (take <= 0) continue;
-      a.offsetCents = take;
-      a.totalCents -= take;
-      if (owed > take) setOwn(c.owedBack, a.userId, owed - take);
-      else delete c.owedBack[a.userId];
-      c.offsetRecovered ??= {};
-      setOwn(
-        c.offsetRecovered,
-        a.userId,
-        own(c.offsetRecovered, a.userId) + take,
+      let available = a.totalCents;
+      for (const liability of c.refundLiabilities ?? []) {
+        if (liability.userId !== a.userId || available <= 0) continue;
+        const take = Math.min(
+          Math.max(0, liabilityBalance(c, liability)),
+          available,
+        );
+        if (!take) continue;
+        a.offsetAttributions = appendAttribution(
+          a.offsetAttributions,
+          liability.id,
+          take,
+        );
+        a.offsetCents = (a.offsetCents ?? 0) + take;
+        a.totalCents -= take;
+        available -= take;
+      }
+    }
+  }
+  for (const a of allocations) {
+    for (const liability of c.refundLiabilities ?? []) {
+      if (liability.userId !== a.userId) continue;
+      const credit = Math.max(0, -liabilityBalance(c, liability));
+      if (!credit) continue;
+      a.creditAttributions = appendAttribution(
+        a.creditAttributions,
+        liability.id,
+        credit,
       );
-    }
-    if (!Object.keys(c.owedBack).length) {
-      delete c.owedBack;
-      delete c.offsetOwedBack;
-    }
-  }
-  if (c.creditBack) {
-    for (const a of allocations) {
-      const credit = own(c.creditBack, a.userId);
-      if (credit <= 0) continue;
-      a.creditCents = credit;
+      a.creditCents = (a.creditCents ?? 0) + credit;
       a.totalCents += credit;
-      delete c.creditBack[a.userId];
     }
-    if (!Object.keys(c.creditBack).length) delete c.creditBack;
   }
+  refreshRefundAttribution(c);
 }
 /** Organizer clears the pause after reviewing. With offsetFromFuturePayouts, what each person
  * owes is kept back from their next shares until settled; otherwise it is recorded as settled
@@ -1697,6 +2029,8 @@ export function resumePayouts(
     fail("INVALID_INPUT", "Note must be 1000 characters or fewer");
   if (!c.reviewHold) fail("NOT_PAUSED", "Payouts are not paused");
   const out = copy(c);
+  ensureRefundAttribution(out);
+  refreshRefundAttribution(out);
   out.reviewHold = false;
   for (const r of out.revenue) {
     if (r.status === RevenueStatus.REVIEW_REQUIRED)
@@ -1707,44 +2041,12 @@ export function resumePayouts(
   const anyOwed = Object.values(owed).some((v) => v > 0);
   if (input.offsetFromFuturePayouts && anyOwed) out.offsetOwedBack = true;
   else {
-    if (anyOwed) {
-      for (const revenue of out.revenue) {
-        const byPerson: Record<string, number> = {};
-        for (const refund of revenue.refunds ?? [])
-          for (const share of refund.shares) {
-            const overpayment =
-              share.owedCents -
-              share.shortfallCents -
-              share.offsetRestoredCents;
-            if (overpayment > 0)
-              setOwn(
-                byPerson,
-                share.userId,
-                own(byPerson, share.userId) + overpayment,
-              );
-          }
-        for (const [userId, overpayment] of Object.entries(byPerson)) {
-          const alreadySettled = own(
-            out.externallySettledOverpayments?.[revenue.providerCaptureId],
-            userId,
-          );
-          const record = Math.min(
-            Math.max(0, overpayment - alreadySettled),
-            own(owed, userId),
-          );
-          if (!record) continue;
-          out.externallySettledOverpayments ??= {};
-          out.externallySettledOverpayments[revenue.providerCaptureId] ??= {};
-          setOwn(
-            out.externallySettledOverpayments[revenue.providerCaptureId],
-            userId,
-            alreadySettled + record,
-          );
-        }
-      }
+    for (const liability of out.refundLiabilities ?? []) {
+      const balance = liabilityBalance(out, liability);
+      if (balance > 0) liability.externalSettledCents += balance;
     }
-    delete out.owedBack;
     delete out.offsetOwedBack;
+    refreshRefundAttribution(out);
   }
   audit(out, AuditType.PAYOUTS_RESUMED, actorId, at, {
     offsetFromFuturePayouts: input.offsetFromFuturePayouts && anyOwed,
@@ -1779,8 +2081,14 @@ export function previewVersion(
   v.status = VersionStatus.ACTIVE;
   scratch.reviewHold = false;
   scratch.revenue = [];
-  // Illustrates the rules alone; amounts kept back for earlier overpayments are not rules.
+  // Illustrates the rules alone; refund obligations, offsets and credits are not rules.
   delete scratch.offsetOwedBack;
+  delete scratch.owedBack;
+  delete scratch.offsetRecovered;
+  delete scratch.creditBack;
+  delete scratch.externallySettledOverpayments;
+  delete scratch.refundAttributionVersion;
+  delete scratch.refundLiabilities;
   // Illustrative only, so it also works while invited people have not joined yet.
   const preview = allocate(
     scratch,
