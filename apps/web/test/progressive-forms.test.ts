@@ -36,13 +36,16 @@ test("creation starts with one step at a time, and switching upload/paste keeps 
     new URL("../components/agreement-creation-wizard.tsx", import.meta.url),
     "utf8",
   );
-  // Switching upload/paste keeps both; only "Upload a different file" starts clean.
-  const switching = wizard.slice(
-    wizard.indexOf("const setMode = "),
-    wizard.indexOf("function documentProblem()"),
+  const switchMode = wizard.slice(
+    wizard.indexOf("const setMode ="),
+    wizard.indexOf("function documentProblem"),
   );
-  assert.ok(switching.length > 0);
-  assert.doesNotMatch(switching, /setFileState\(null\)|setTextState\(""\)/);
+  assert.doesNotMatch(switchMode, /setFileState\(null\)|setTextState\(""\)/);
+  const replacement = wizard.slice(
+    wizard.indexOf("async function uploadAgain()"),
+  );
+  assert.match(replacement, /setFileState\(null\)/);
+  assert.match(replacement, /setTextState\(""\)/);
 });
 
 test("checkout starts with details and does not expose final action before review", () => {

@@ -330,7 +330,7 @@ test("change request: parsed back into its part and note, resolved by sending a 
   assert.deepEqual(openChangeRequests(sent), [], "the request is resolved");
   assert.deepEqual(Object.keys(c.versions[1].approvals), ["maya"]);
   const status = agreementStatus(sent, "maya");
-  assert.equal(status.line, "Waiting for Jordan and Riley to approve");
+  assert.match(status.line, /^Waiting for Jordan and Riley · sent /);
   c = approveAndSwitchOn(c, 2, "jordan", at);
   c = approveAndSwitchOn(c, 2, "riley", at);
   assert.equal(c.activeVersionId, 2);

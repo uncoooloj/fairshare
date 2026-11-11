@@ -263,15 +263,7 @@ export function AgreementDetail({
       }
     : undefined;
   const onStatusAction = (action: StageAction) => {
-    if (action === StageAction.GetPaid) {
-      changeAgreementTab(AgreementTab.Payments);
-      requestAnimationFrame(() =>
-        document
-          .getElementById("get-paid")
-          ?.scrollIntoView({ behavior: "smooth", block: "start" }),
-      );
-    } else if (action === StageAction.SeeRequest && organizer)
-      setRequestOpen(true);
+    if (action === StageAction.SeeRequest && organizer) setRequestOpen(true);
     else if (
       action === StageAction.Approve ||
       action === StageAction.SeeRequest
@@ -362,6 +354,7 @@ export function AgreementDetail({
           agreement={selected}
           userId={user.id}
           onStatusAction={onStatusAction}
+          onAgreementChange={onAgreementChange}
           onBack={() => navigate(Section.Agreements)}
           onViewPayouts={() => navigate(Section.Payouts)}
           renameSuggested={!!extraction?.suggestedTitle}

@@ -439,3 +439,22 @@ export function saveInviteLinks(
     // Storage full or blocked: the Sent screen still has the link in memory.
   }
 }
+
+/** Replaces the cached set after the agreement tells us which pending seats still exist. */
+export function replaceInviteLinks(
+  workspaceId: string,
+  agreementId: string,
+  links: Record<string, StoredInviteToken>,
+) {
+  try {
+    const live = forgetStaleInviteTokens(links);
+    if (Object.keys(live).length)
+      localStorage.setItem(
+        inviteLinksKey(workspaceId, agreementId),
+        JSON.stringify(live),
+      );
+    else localStorage.removeItem(inviteLinksKey(workspaceId, agreementId));
+  } catch {
+    // Storage can be blocked; callers keep their in-memory cache.
+  }
+}
