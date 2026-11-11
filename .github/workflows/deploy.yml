@@ -1,0 +1,59 @@
+name: Deploy Fairshare
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fairshare-hosted-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      WRANGLER_SEND_METRICS: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.16.0"
+          cache: npm
+      - run: npm ci
+      - run: npm run format:check
+      - run: npm test
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm run check:cloudflare -w @fairshare/api
+      - run: node --test deploy/cloudflare/hosted.test.mjs
+      - run: npm run cloudflare:build -w @fairshare/web
+      - name: Skip superseded releases
+        id: current
+        run: |
+          latest=$(git ls-remote origin refs/heads/main | cut -f1)
+          if [ "$latest" = "$GITHUB_SHA" ]; then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "A newer main commit exists; skipping this release." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Deploy API then web
+        if: steps.current.outputs.deploy == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo 'Missing CLOUDFLARE_API_TOKEN repository secret'; exit 1; }
+          (cd apps/api && npx --no-install wrangler deploy --config wrangler.hosted.json)
+          (cd apps/web && npx --no-install wrangler deploy --keep-vars)
+      - name: Verify public release
+        if: steps.current.outputs.deploy == 'true'
+        run: node deploy/cloudflare/verify-live.mjs
+      - name: Record release
+        if: steps.current.outputs.deploy == 'true' && success()
+        run: echo "Deployed commit $GITHUB_SHA to https://usefairshare.app. No payment or private-account smoke test was executed." >> "$GITHUB_STEP_SUMMARY"
