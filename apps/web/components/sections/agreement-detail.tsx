@@ -175,8 +175,19 @@ export function AgreementDetail({
   const [loadedDocument, setLoadedDocument] = useState<LoadedDocument | null>(
     null,
   );
-  const [overviewCitation, setOverviewCitation] =
-    useState<OpenCitationDetail>();
+  const [overviewCitation, setOverviewCitation] = useState<
+    | {
+        workspaceId: string;
+        agreementId: string;
+        detail: OpenCitationDetail;
+      }
+    | undefined
+  >();
+  const requestedCitation =
+    overviewCitation?.workspaceId === selected.workspaceId &&
+    overviewCitation.agreementId === selected.id
+      ? overviewCitation.detail
+      : undefined;
   const fullHeading = useRef<HTMLHeadingElement>(null);
   const openDocument = useRef<HTMLButtonElement>(null);
   const reviewHeading = useRef<HTMLHeadingElement>(null);
@@ -195,18 +206,39 @@ export function AgreementDetail({
     if (reviewAbove) window.scrollTo({ top: 0 });
   }, [reviewAbove]);
   useEffect(() => {
+    if (
+      overviewCitation &&
+      (overviewCitation.workspaceId !== selected.workspaceId ||
+        overviewCitation.agreementId !== selected.id)
+    )
+      setOverviewCitation(undefined);
+  }, [overviewCitation, selected.id, selected.workspaceId]);
+  useEffect(() => {
     const openFromAnotherTab = (event: Event) => {
       const detail = (event as CustomEvent<string | OpenCitationDetail>).detail;
       if (shown === AgreementTab.Terms || typeof detail === "string" || !detail)
         return;
+      if (!mayLeaveDraft()) return;
       event.preventDefault();
-      setOverviewCitation(detail);
-      changeAgreementTab(AgreementTab.Terms);
+      setOverviewCitation({
+        workspaceId: selected.workspaceId,
+        agreementId: selected.id,
+        detail,
+      });
+      setTab(AgreementTab.Terms);
+      setBreakdown(null);
     };
     window.addEventListener(OPEN_CITATION_EVENT, openFromAnotherTab);
     return () =>
       window.removeEventListener(OPEN_CITATION_EVENT, openFromAnotherTab);
-  }, [changeAgreementTab, shown]);
+  }, [
+    mayLeaveDraft,
+    selected.id,
+    selected.workspaceId,
+    setBreakdown,
+    setTab,
+    shown,
+  ]);
   useEffect(() => {
     const onPop = (event: PopStateEvent) => {
       if (
@@ -542,8 +574,10 @@ export function AgreementDetail({
                     base={base}
                     reviewedVersionId={latest?.id}
                     onDocument={setLoadedDocument}
-                  requestedCitation={overviewCitation}
-                  onRequestedCitationHandled={() => setOverviewCitation(undefined)}
+                    requestedCitation={requestedCitation}
+                    onRequestedCitationHandled={() =>
+                      setOverviewCitation(undefined)
+                    }
                   />
                 </section>
               )}
