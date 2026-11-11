@@ -4,6 +4,8 @@ import {
   fullAgreementHistoryState,
   isFullAgreementHistoryState,
 } from "../lib/full-agreement-history";
+import { AppView, parseAppPath, routeForHistory } from "../lib/app-routes";
+import { AgreementTab, Section } from "../lib/model";
 
 test("full agreement history closes on Back and reopens on Forward for the same agreement", () => {
   const reviewerEntry = { nextRouter: { path: "/app" } };
@@ -34,5 +36,32 @@ test("full agreement history closes on Back and reopens on Forward for the same 
   assert.equal(
     isFullAgreementHistoryState(fullEntry, "workspace-a", "other"),
     false,
+  );
+});
+
+test("a full-agreement marker restores the document route after agreement detail unmounts", () => {
+  const route = parseAppPath(
+    "/app/agreements/workspace/workspace-a/agreement/agreement",
+  );
+  const state = fullAgreementHistoryState({}, "workspace-a", "agreement");
+  assert.deepEqual(
+    routeForHistory(route, state, {
+      workspaceId: "workspace-a",
+      id: "agreement",
+    }),
+    {
+      view: AppView.Agreement,
+      section: Section.Agreements,
+      workspaceId: "workspace-a",
+      agreementId: "agreement",
+      tab: AgreementTab.Document,
+    },
+  );
+  assert.equal(
+    routeForHistory(route, state, {
+      workspaceId: "workspace-b",
+      id: "agreement",
+    }).tab,
+    AgreementTab.Terms,
   );
 });

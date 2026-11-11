@@ -350,6 +350,12 @@ test("finishing lands on the agreement Overview; drafts reopen the wizard", () =
   assert.match(app, /onBusyChange=\{setBusy\}/);
 });
 
+test("history navigation asks the wizard to close before unmounting local work", () => {
+  assert.match(wizard, /onLeaveAttempt\?: \(attempt: \(\) => boolean\) => void/);
+  assert.match(wizard, /onLeaveAttempt\(attemptLeave\)/);
+  assert.match(wizard, /setClosing\(true\);\s*return false;/);
+});
+
 test("Keep as draft keeps this device's split; resuming reconciles pending people", () => {
   const store = new Map<string, string>();
   (globalThis as any).localStorage = {
