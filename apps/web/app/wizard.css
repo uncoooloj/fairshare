@@ -60,7 +60,6 @@
     padding-left: clamp(var(--space-4), 4vw, var(--space-10));
     padding-right: clamp(var(--space-4), 4vw, var(--space-10));
   }
-  .wiz-scroll:has(.wc-reader) > .wiz-stepper,
   .wiz-scroll:has(.wc-reader) > .wiz-main {
     max-width: 1280px;
   }
@@ -275,8 +274,7 @@
 .wiz-send {
   gap: var(--space-5);
 }
-.wiz-main:has(.wiz-send),
-.wiz-scroll:has(.wiz-send) .wiz-stepper {
+.wiz-main:has(.wiz-send) {
   max-width: 886px;
 }
 .wiz-send > h1 {
