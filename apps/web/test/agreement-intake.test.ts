@@ -31,12 +31,23 @@ test("input survives errors and retries retain idempotency key until input chang
   assert.match(source, /disabled=\{disabled \|\| method !== "paste"\}/);
   assert.match(
     source,
-    /finally\s*\{\s*locked\.current\s*=\s*false;\s*setSubmitting\(false\);/,
+    /finally\s*\{\s*locked\.current\s*=\s*false;\s*setSubmitting\(false\);\s*onBusyChange\?\.\(false\)/,
   );
   assert.match(source, /finally\s*\{\s*locked\.current\s*=\s*false/);
   assert.match(source, /const changed = \(\) => \{\s*requestId\.current = ""/);
   assert.doesNotMatch(source, /setFile\(null\)|setText\(""\)/);
   assert.match(source, /<Notice warning announcement="assertive">/);
+});
+test("a deferred local read locks its controls and the parent navigation guard", () => {
+  assert.match(
+    source,
+    /locked\.current = true;\s*setSubmitting\(true\);\s*onBusyChange\?\.\(true\)/,
+  );
+  assert.match(source, /const disabled = busy \|\| submitting/);
+  assert.match(source, /aria-busy=\{disabled\}/);
+  assert.match(source, /<fieldset disabled=\{disabled\}/);
+  assert.match(source, /disabled=\{disabled \|\| method !== "paste"\}/);
+  assert.match(source, /onBusyChange\?: \(busy: boolean\) => void/);
 });
 test("local reads are bounded and source is not sent automatically to an AI service", () => {
   assert.match(source, /file.size > 5 \* 1024 \* 1024/);

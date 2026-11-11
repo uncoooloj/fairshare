@@ -28,10 +28,9 @@ test("invitation confirmation suppresses competing application forms; creation r
   );
   assert.match(source, /!creating\s*&&\s*canCreateAgreement/);
   assert.match(source, /creating\s*&&\s*canCreateAgreement\s*\?\s*\(/);
-  assert.match(source, /commitWorkspace\(e.target.value\)/);
   assert.match(
     source,
-    /function commitWorkspace\(id: string\) \{[\s\S]*?setWorkspace\(id\);[\s\S]*?setCreating\(false\);/,
+    /if \(!mayLeaveDraft\(\)\) return;\s*commitWorkspace\(e.target.value\)/,
   );
   assert.equal(source.match(/workspaceRole=\{workspaceRole\}/g)?.length, 2);
 });

@@ -109,6 +109,24 @@ test("workspace changes fence in-flight reads and clear workspace-scoped state",
     intake.indexOf("commitWorkspace(result.workspace.id)") <
       intake.indexOf("setSelected(result.agreement)"),
   );
+  assert.match(
+    intake,
+    /const intakeWorkspaceRequest = workspaceRequest\.current/,
+  );
+  assert.equal(
+    (
+      intake.match(/intakeWorkspaceRequest !== workspaceRequest\.current/g) ||
+      []
+    ).length,
+    2,
+    "a deferred intake member refresh cannot update members after a workspace switch",
+  );
+  assert.equal(
+    (intake.match(/currentWorkspace\.current !== intakeWorkspaceId/g) || [])
+      .length,
+    2,
+    "both successful and failed deferred member refreshes stay with the intake workspace",
+  );
 
   const session = source
     .split("function clearSession() {")[1]
