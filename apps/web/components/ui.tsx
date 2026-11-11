@@ -50,15 +50,17 @@ export function Empty({
   title: heading,
   children,
   action,
+  icon = "◇",
 }: {
   title: string;
   children: ReactNode;
   action?: ReactNode;
+  icon?: ReactNode;
 }) {
   return (
     <div className="empty">
       <span className="empty-icon" aria-hidden="true">
-        ◇
+        {icon}
       </span>
       <h3>{heading}</h3>
       <p>{children}</p>
