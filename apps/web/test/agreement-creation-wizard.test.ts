@@ -431,3 +431,64 @@ test("Keep as draft keeps this device's split; resuming reconciles pending peopl
     delete (globalThis as any).localStorage;
   }
 });
+
+test("resuming rebuilds an unanswered advance question and replays an answered no", () => {
+  const store = new Map<string, string>();
+  (globalThis as any).localStorage = {
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, value: string) => store.set(key, value),
+    removeItem: (key: string) => store.delete(key),
+  };
+  try {
+    const review = fullReading();
+    review.facts = review.facts.map((fact: any) =>
+      fact.kind === "ADVANCE" ? { ...fact, recoupedBeforeSplit: null } : fact,
+    );
+    review.sections.ADVANCE.status = Status.ASK;
+    const agreement = {
+      workspaceId: "w-advance",
+      id: "a-advance",
+      revision: 1,
+      value: {
+        name: "Advance review",
+        members: [
+          { userId: "owner", displayName: "Maya Okafor", role: "ORGANIZER" },
+        ],
+        versions: [],
+      },
+    } as unknown as Agreement;
+    const resume = {
+      created: {
+        workspaceId: "w-advance",
+        agreementId: "a-advance",
+        documentId: "d",
+        documentText: MIDNIGHT,
+        agreement,
+      },
+      extraction: review,
+    };
+    const initial = answersFromExtraction(review, MIDNIGHT, self).answers;
+    const question = initial.questions.find((item) => item.id === "advance")!;
+    saveDraftAnswers("w-advance", "a-advance", initial);
+    const reopened = resumedAnswers(resume, self).answers;
+    assert.equal(
+      reopened.questions.find((item) => item.id === "advance")?.quote,
+      question.quote,
+    );
+    const no = question.choices.find((item) => item.id === "not-paid-back")!;
+    const answered = no.apply(initial);
+    answered.questions = answered.questions.map((item) =>
+      item.id === question.id ? { ...item, answeredChoiceId: no.id } : item,
+    );
+    saveDraftAnswers("w-advance", "a-advance", answered);
+    const reopenedNo = resumedAnswers(resume, self).answers;
+    assert.equal(reopenedNo.advance, undefined);
+    assert.equal(
+      reopenedNo.questions.find((item) => item.id === "advance")
+        ?.answeredChoiceId,
+      no.id,
+    );
+  } finally {
+    delete (globalThis as any).localStorage;
+  }
+});

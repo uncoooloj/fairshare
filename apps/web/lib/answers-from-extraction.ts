@@ -108,6 +108,7 @@ interface RawFact {
   kind: string;
   subject: string;
   quote: string;
+  boundary?: unknown;
   amountCents?: unknown;
   recoupedBeforeSplit?: unknown;
 }
@@ -171,7 +172,7 @@ function personFor(
 }
 
 const isOrganizer = (people: PersonAnswer[], name: string) =>
-  people.some((p) => p.isSelf && normal(p.name) === normal(name));
+  personFor(people, name)?.isSelf === true;
 
 /**
  * One reading applied to the answers, or null when Fairshare can't do what it says: a split that
@@ -381,14 +382,25 @@ export function answersFromExtraction(
   const dates: Partial<AgreementAnswers> =
     term.status === DraftStatus.SHOWN
       ? {
+          // Start and end can be in different clauses. Cite each only when its
+          // own verified fact proves the date, never the section's first quote.
           ...(term.value.effectiveFrom
-            ? { effectiveFrom: cite(term.value.effectiveFrom, term.quote) }
+            ? {
+                effectiveFrom: cite(
+                  term.value.effectiveFrom,
+                  facts.find(
+                    (fact) => fact.kind === "TERM" && fact.boundary === "START",
+                  )?.quote,
+                ),
+              }
             : {}),
           ...(term.value.effectiveTo
             ? {
                 effectiveTo: cite<string | null>(
                   term.value.effectiveTo,
-                  term.quote,
+                  facts.find(
+                    (fact) => fact.kind === "TERM" && fact.boundary === "END",
+                  )?.quote,
                 ),
               }
             : {}),
