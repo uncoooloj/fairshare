@@ -25,6 +25,7 @@ import {
 } from "./agreement-intake";
 import { isDraftAgreement } from "./sections/agreements-section";
 import { AccessPrompt } from "./designer-auth";
+import { OnboardingDetails, OnboardingWelcome } from "./onboarding-details";
 import { recoverSourceDocument } from "../lib/source-recovery";
 import { useRouter } from "next/navigation";
 import { Button } from "./ui";
@@ -58,6 +59,12 @@ function loginDestination() {
   return safeAppPath(new URLSearchParams(location.search).get("next"));
 }
 
+type OnboardingStage = "welcome" | "details" | "agreement" | "complete";
+
+function onboardingStorageKey(userId: string) {
+  return `fairshare:onboarding:v1:${userId}`;
+}
+
 export default function FairshareApp() {
   const router = useRouter();
   const emailDelivery = useEmailDelivery();
@@ -82,6 +89,8 @@ export default function FairshareApp() {
     [payoutsUnavailable, setPayoutsUnavailable] = useState(false),
     [mode, setMode] = useState("Unavailable");
   const [skippedFirstRun, setSkippedFirstRun] = useState(false);
+  const [onboardingStage, setOnboardingStage] =
+    useState<OnboardingStage | null>(null);
   const [workspacesLoaded, setWorkspacesLoaded] = useState(false);
   const [creating, setCreating] = useState(false),
     // A saved draft the wizard reopens at Check.
@@ -141,6 +150,12 @@ export default function FairshareApp() {
     commitWorkspace("");
     setWorkspaces([]);
     setUser(null);
+    setOnboardingStage(null);
+  }
+  function setOnboardingForUser(stage: OnboardingStage) {
+    if (!user) return;
+    sessionStorage.setItem(onboardingStorageKey(user.id), stage);
+    setOnboardingStage(stage);
   }
   function mayLeaveDraft() {
     if (busy) return false;
@@ -535,6 +550,18 @@ export default function FairshareApp() {
             : "Log in · Fairshare";
   }, [ready, user, section, flowKind, flowToken]);
   useEffect(() => {
+    if (!user) {
+      setOnboardingStage(null);
+      return;
+    }
+    const saved = sessionStorage.getItem(onboardingStorageKey(user.id));
+    setOnboardingStage(
+      saved === "details" || saved === "agreement" || saved === "complete"
+        ? saved
+        : "welcome",
+    );
+  }, [user?.id]);
+  useEffect(() => {
     if (user)
       run(async () => {
         await loadWorkspaces();
@@ -544,13 +571,21 @@ export default function FairshareApp() {
   useEffect(() => {
     if (workspace && user) run(() => loadWorkspace(workspace));
   }, [workspace]);
+  const firstRun =
+    workspacesLoaded &&
+    needsWorkspace &&
+    !skippedFirstRun &&
+    section !== Section.Payouts;
+  const showOnboarding =
+    !flowToken &&
+    firstRun &&
+    onboardingStage !== null &&
+    onboardingStage !== "agreement" &&
+    onboardingStage !== "complete";
   const showWizard =
     !flowToken &&
     ((creating && (canCreateAgreement || needsWorkspace)) ||
-      (workspacesLoaded &&
-        needsWorkspace &&
-        !skippedFirstRun &&
-        section !== Section.Payouts));
+      (firstRun && onboardingStage === "agreement"));
   // The address for what is on screen. The first-run chooser keeps whatever URL it opened at.
   const routePath =
     !user || flowToken
@@ -917,6 +952,23 @@ export default function FairshareApp() {
         }
       />
     );
+  if (showOnboarding && onboardingStage === "welcome")
+    return (
+      <OnboardingWelcome onStart={() => setOnboardingForUser("details")} />
+    );
+  if (showOnboarding && onboardingStage === "details")
+    return (
+      <OnboardingDetails
+        name={user.name}
+        onSave={async (name) => {
+          const result = await api<{ user: User }>("auth/profile", "POST", {
+            name,
+          });
+          setUser(result.user);
+          setOnboardingForUser("agreement");
+        }}
+      />
+    );
   if (showWizard)
     return (
       <AgreementIntake
@@ -928,7 +980,10 @@ export default function FairshareApp() {
         onFinish={finishCreation}
         onKeepDraft={leaveWizard}
         onClose={leaveWizard}
-        onSkip={() => setSkippedFirstRun(true)}
+        onSkip={() => {
+          setSkippedFirstRun(true);
+          setOnboardingForUser("complete");
+        }}
         onBusyChange={setBusy}
         onLeaveAttempt={(attempt) => {
           wizardMayLeave.current = attempt;
