@@ -19,6 +19,7 @@ import {
   PayPalError,
   verifyAndPlanWebhook,
   canRepairRefundPlan,
+  canRepairUnsupportedPlan,
   reconcileCapture,
   WebhookActionKind,
 } from "@fairshare/payments";
@@ -159,7 +160,8 @@ export function registerPaymentRoutes(
         .some(
           (a) =>
             a.kind === WebhookActionKind.HoldCapture &&
-            a.providerId === capture.id,
+            (a.providerId === capture.id ||
+              a.providerIds?.includes(capture.id)),
         );
       if (adverse)
         fail(
@@ -217,11 +219,14 @@ export function registerPaymentRoutes(
   app.get(`${base}/payments`, async (req) => {
     const { p } = access(req);
     return {
-      payments: db
-        .prepare(
-          "SELECT * FROM fairshare_payment_ops WHERE workspace_id=? AND collaboration_id=?",
-        )
-        .all(p.workspaceId, p.collaborationId),
+      payments: [
+        ...db
+          .prepare(
+            "SELECT * FROM fairshare_payment_ops WHERE workspace_id=? AND collaboration_id=?",
+          )
+          .all(p.workspaceId, p.collaborationId),
+        ...invoices.paymentRecords(p.workspaceId, p.collaborationId),
+      ],
     };
   });
   app.post(`${base}/payments`, async (req) => {
@@ -331,7 +336,8 @@ export function registerPaymentRoutes(
             a.kind === WebhookActionKind.HoldCapture &&
             ((a.orderId && a.orderId === fresh.provider_order_id) ||
               (fresh.provider_capture_id &&
-                a.providerId === fresh.provider_capture_id)),
+                (a.providerId === fresh.provider_capture_id ||
+                  a.providerIds?.includes(fresh.provider_capture_id)))),
         );
       if (adverse)
         fail("PAYMENT_HOLD", "Capture blocked by an adverse provider event");
@@ -555,6 +561,37 @@ export function registerPaymentRoutes(
     if (!op) fail("NOT_FOUND", "Payout not found");
     return reconcilePayout(op);
   });
+  async function reconcileRefund(op: any, assertLease: () => void = () => {}) {
+    const p = provider();
+    if (!p.getRefund)
+      fail("REFUND_NOT_CONFIGURED", "Sandbox refund provider required");
+    const result = await p.getRefund!(op.provider_refund_id);
+    assertLease();
+    if (
+      result.id !== op.provider_refund_id ||
+      result.amountCents !== op.amount ||
+      result.currency !== "USD" ||
+      result.captureId !== op.capture_id ||
+      result.reference !== op.request_key
+    )
+      fail("REFUND_MISMATCH", "Refund evidence mismatch");
+    tx(() => {
+      const fresh = db
+        .prepare("SELECT * FROM fairshare_refund_ops WHERE id=?")
+        .get(op.id) as any;
+      if (fresh.provider_refund_id !== result.id)
+        fail("RECOVERY_CONFLICT", "Refund evidence changed");
+      if (
+        ["COMPLETED", "FAILED", "CANCELLED"].includes(fresh.status) &&
+        fresh.status !== result.status
+      )
+        fail("REFUND_STATUS_CONFLICT", "Terminal refund status cannot regress");
+      db.prepare("UPDATE fairshare_refund_ops SET status=? WHERE id=?").run(
+        result.status,
+        op.id,
+      );
+    });
+  }
   async function processEvent(id: string, assertLease: () => void = () => {}) {
     assertLease();
     const stored = db
@@ -562,47 +599,107 @@ export function registerPaymentRoutes(
       .get(id) as any;
     if (stored.status === "DONE") return;
     const action = JSON.parse(stored.action);
+    const reconcileInvoiceEvent = async (providerId: string) => {
+      const result = await invoices.reconcileProvider(
+        providerId,
+        assertLease,
+        action.eventType,
+      );
+      if (result.settlementPending)
+        fail(
+          "INVOICE_SETTLEMENT_PENDING",
+          "Invoice settlement still needs provider verification",
+        );
+    };
     try {
-      if (action.kind === WebhookActionKind.ReconcileCapture) {
+      if (
+        action.kind === WebhookActionKind.ReconcileCapture ||
+        action.kind === WebhookActionKind.ReconcileOrder
+      ) {
         const op = db
           .prepare(
             "SELECT * FROM fairshare_payment_ops WHERE provider_order_id=?",
           )
-          .get(action.orderId) as any;
-        if (!op) fail("UNMATCHED_EVENT", "Order not found");
-        const result = await applyCapture(op, assertLease);
-        if (!result.confirmed)
-          fail("CAPTURE_NOT_CONFIRMED", "Provider capture is not completed");
-      } else if (action.kind === WebhookActionKind.HoldCapture) {
-        if (!action.providerId)
-          fail("UNMATCHED_EVENT", "Capture provenance needs verification");
-        const match = db
+          .get(action.orderId ?? null) as any;
+        if (!op && action.invoiceId) {
+          // An INV2 field is a lookup hint only. The invoice path verifies fresh
+          // invoice, merchant, settlement identity and accounting before credit.
+          await reconcileInvoiceEvent(action.invoiceId);
+        } else {
+          if (!op) fail("UNMATCHED_EVENT", "Order not found");
+          const result = await applyCapture(op, assertLease);
+          if (
+            !result.confirmed &&
+            action.eventType !== "CHECKOUT.ORDER.APPROVED"
+          )
+            fail("CAPTURE_NOT_CONFIRMED", "Provider capture is not completed");
+        }
+      } else if (action.kind === WebhookActionKind.ReconcileInvoice) {
+        await reconcileInvoiceEvent(action.providerId);
+      } else if (action.kind === WebhookActionKind.ReconcileRefund) {
+        const op = db
           .prepare(
-            "SELECT * FROM fairshare_captures WHERE provider_capture_id=?",
+            "SELECT * FROM fairshare_refund_ops WHERE provider_refund_id=?",
           )
           .get(action.providerId) as any;
-        if (!match) fail("UNMATCHED_EVENT", "Capture not found");
+        if (!op) fail("UNMATCHED_EVENT", "Refund not found");
+        await reconcileRefund(op, assertLease);
+      } else if (action.kind === WebhookActionKind.HoldCapture) {
+        const captureIds: string[] = action.providerIds?.length
+          ? action.providerIds
+          : action.providerId
+            ? [action.providerId]
+            : [];
+        if (!captureIds.length && action.orderId) {
+          const op = db
+            .prepare(
+              "SELECT provider_capture_id FROM fairshare_payment_ops WHERE provider_order_id=?",
+            )
+            .get(action.orderId) as any;
+          if (op?.provider_capture_id) captureIds.push(op.provider_capture_id);
+        }
+        if (!captureIds.length)
+          fail("UNMATCHED_EVENT", "Capture provenance needs verification");
+        let unmatched = false;
         tx(() => {
-          const row = aggregates.read(
-            match.workspace_id,
-            match.collaboration_id,
-          );
-          aggregates.updateInsideTransaction(
-            match.workspace_id,
-            match.collaboration_id,
-            row.revision,
-            (c) =>
-              holdReversedRevenue(c, action.providerId, action.reason, now()),
-          );
+          for (const captureId of captureIds) {
+            const match = db
+              .prepare(
+                "SELECT * FROM fairshare_captures WHERE provider_capture_id=?",
+              )
+              .get(captureId) as any;
+            if (!match) {
+              unmatched = true;
+              continue;
+            }
+            const row = aggregates.read(
+              match.workspace_id,
+              match.collaboration_id,
+            );
+            aggregates.updateInsideTransaction(
+              match.workspace_id,
+              match.collaboration_id,
+              row.revision,
+              (c) => holdReversedRevenue(c, captureId, action.reason, now()),
+            );
+            invoices.markSettlementHeld(captureId);
+          }
         });
+        // Hold every known transaction even if another dispute transaction needs matching.
+        if (unmatched) fail("UNMATCHED_EVENT", "Capture not found");
       } else if (action.kind === WebhookActionKind.ReconcilePayout) {
-        const op = db
+        const ops = db
           .prepare("SELECT * FROM fairshare_payout_ops WHERE batch_id=?")
-          .get(action.providerId) as any;
-        if (!op) fail("UNMATCHED_EVENT", "Payout not found");
-        await reconcilePayout(op, assertLease);
+          .all(action.providerId) as any[];
+        if (!ops.length) fail("UNMATCHED_EVENT", "Payout not found");
+        for (const op of ops) await reconcilePayout(op, assertLease);
       } else if (action.kind === WebhookActionKind.RecordUnmatched)
-        fail("UNMATCHED_EVENT", "Provider event needs matching");
+        fail(
+          action.reason === "UNSUPPORTED_WEBHOOK_EVENT"
+            ? "UNSUPPORTED_WEBHOOK_EVENT"
+            : "UNMATCHED_EVENT",
+          "Provider event needs matching",
+        );
       assertLease();
       db.prepare(
         "UPDATE fairshare_webhook_inbox SET status='DONE',error=NULL WHERE id=?",
@@ -639,11 +736,12 @@ export function registerPaymentRoutes(
             "Event ID reused with changed payload",
           );
         if (
-          old.status === "PENDING" &&
-          canRepairRefundPlan(JSON.parse(old.action), planned!.action)
+          canRepairUnsupportedPlan(JSON.parse(old.action), planned!.action) ||
+          (old.status === "PENDING" &&
+            canRepairRefundPlan(JSON.parse(old.action), planned!.action))
         ) {
           db.prepare(
-            "UPDATE fairshare_webhook_inbox SET action=? WHERE id=? AND status='PENDING'",
+            "UPDATE fairshare_webhook_inbox SET action=?,status='PENDING',error=NULL WHERE id=?",
           ).run(JSON.stringify(planned!.action), planned!.eventId);
         }
         return;
@@ -659,11 +757,25 @@ export function registerPaymentRoutes(
     });
     await processEvent(planned!.eventId);
     const stored = db
-      .prepare("SELECT status FROM fairshare_webhook_inbox WHERE id=?")
+      .prepare("SELECT status,action FROM fairshare_webhook_inbox WHERE id=?")
       .get(planned!.eventId) as any;
+    const storedAction = JSON.parse(stored.action);
+    const unsupported = storedAction.reason === "UNSUPPORTED_WEBHOOK_EVENT";
     return reply
-      .code(stored.status === "DONE" ? 200 : 503)
-      .send({ accepted: true, status: stored.status });
+      .code(stored.status === "DONE" ? 200 : unsupported ? 400 : 503)
+      .send({
+        accepted: !unsupported,
+        status: stored.status,
+        action: storedAction.kind,
+        ...(unsupported
+          ? {
+              error: {
+                code: "UNSUPPORTED_WEBHOOK_EVENT",
+                message: "Webhook event type is not supported",
+              },
+            }
+          : {}),
+      });
   });
   registerPaymentRecovery({
     app,
@@ -672,6 +784,7 @@ export function registerPaymentRoutes(
     access,
     ownPayment,
     applyCapture,
+    processEvent,
   });
   const invoices = registerInvoiceRoutes(app, aggregates, provider);
   const automatic = options.automaticPayoutsEnabled
@@ -749,37 +862,7 @@ export function registerPaymentRoutes(
             const op = db
               .prepare("SELECT * FROM fairshare_refund_ops WHERE id=?")
               .get(job.id) as any;
-            const p = provider();
-            if (!p.getRefund)
-              fail("REFUND_NOT_CONFIGURED", "Sandbox refund provider required");
-            const result = await p.getRefund!(op.provider_refund_id);
-            assertLease();
-            if (
-              result.id !== op.provider_refund_id ||
-              result.amountCents !== op.amount ||
-              result.currency !== "USD" ||
-              result.captureId !== op.capture_id ||
-              result.reference !== op.request_key
-            )
-              fail("REFUND_MISMATCH", "Refund evidence mismatch");
-            tx(() => {
-              const fresh = db
-                .prepare("SELECT * FROM fairshare_refund_ops WHERE id=?")
-                .get(op.id) as any;
-              if (fresh.provider_refund_id !== result.id)
-                fail("RECOVERY_CONFLICT", "Refund evidence changed");
-              if (
-                ["COMPLETED", "FAILED", "CANCELLED"].includes(fresh.status) &&
-                fresh.status !== result.status
-              )
-                fail(
-                  "REFUND_STATUS_CONFLICT",
-                  "Terminal refund status cannot regress",
-                );
-              db.prepare(
-                "UPDATE fairshare_refund_ops SET status=? WHERE id=?",
-              ).run(result.status, op.id);
-            });
+            await reconcileRefund(op, assertLease);
           }
         },
       })

@@ -4,6 +4,7 @@ import { PayPalError, RecipientType } from "@fairshare/payments";
 import type { AggregateStore } from "./fairshare.js";
 import type { FairshareApp } from "./app.js";
 import type { PaymentProvider } from "./paymentRoutes.js";
+import { pendingWebhookBlocksPayout } from "./paymentSafety.js";
 import {
   ensurePayoutAccountSchema,
   readPayoutDestination,
@@ -85,23 +86,7 @@ export function automaticPayouts(
           "SELECT id FROM fairshare_refund_ops WHERE capture_id=? LIMIT 1",
         )
         .get(captureId);
-      const adverse = (
-        db
-          .prepare(
-            "SELECT action FROM fairshare_webhook_inbox WHERE status='PENDING'",
-          )
-          .all() as any[]
-      ).some((entry) => {
-        try {
-          const action = JSON.parse(entry.action);
-          // Conservative: any pending capture-hold event is processed before new outgoing funds.
-          return (
-            action.kind === "HOLD_CAPTURE" || action.kind === "HoldCapture"
-          );
-        } catch {
-          return true;
-        }
-      });
+      const adverse = pendingWebhookBlocksPayout(db, capture);
       const held =
         agreement.reviewHold ||
         allocation.status !== AllocationStatus.ALLOCATED ||

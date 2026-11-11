@@ -139,3 +139,117 @@ test("ambiguous invoice write is never replayed", async () => {
   await assert.rejects(client.createInvoice(input), /PAYPAL_OUTCOME_UNKNOWN/);
   assert.equal(requests.length, 2);
 });
+
+const capture = () => ({
+  id: "TX123",
+  invoice_id: id,
+  status: "COMPLETED",
+  payee: { merchant_id: "MERCHANT" },
+  amount: { currency_code: "USD", value: "4.00" },
+  seller_receivable_breakdown: {
+    gross_amount: { currency_code: "USD", value: "4.00" },
+    paypal_fee: { currency_code: "USD", value: "0.42" },
+    net_amount: { currency_code: "USD", value: "3.58" },
+    // A merchant's converted receivable is not the source-currency net.
+    receivable_amount: { currency_code: "CAD", value: "4.91" },
+  },
+});
+test("invoice capture requires explicit invoice and merchant correlation with actual source-currency fees", async () => {
+  const requests: any[] = [];
+  const client = new PayPalSandbox(
+    { clientId: "id", clientSecret: "secret", merchantId: "MERCHANT" },
+    (async (url: any, init: any) => {
+      requests.push({ url: String(url), method: init.method });
+      return new Response(
+        JSON.stringify(String(url).endsWith("/token") ? token : capture()),
+      );
+    }) as typeof fetch,
+  );
+  const r = await client.getInvoiceSettlement(id, "TX123");
+  assert.deepEqual(r, {
+    id: "TX123",
+    invoiceId: id,
+    status: "COMPLETED",
+    currency: "USD",
+    amountCents: 400,
+    accounting: { feeCents: 42, netCents: 358 },
+  });
+  assert.equal(requests[1].method, "GET");
+  assert.equal(
+    requests[1].url,
+    "https://api-m.sandbox.paypal.com/v2/payments/captures/TX123",
+  );
+});
+test("invoice settlement rejects substituted identities, merchant, amounts and unbalanced accounting", async () => {
+  for (const change of [
+    { id: "OTHER" },
+    { invoice_id: "external-invoice-number" },
+    { payee: { merchant_id: "OTHER" } },
+    { amount: { currency_code: "CAD", value: "4.00" } },
+    { status: "UNKNOWN" },
+    {
+      seller_receivable_breakdown: {
+        ...capture().seller_receivable_breakdown,
+        paypal_fee: { currency_code: "USD", value: "0.00" },
+      },
+    },
+    {
+      seller_receivable_breakdown: {
+        ...capture().seller_receivable_breakdown,
+        net_amount: { currency_code: "CAD", value: "3.58" },
+      },
+    },
+  ]) {
+    const client = new PayPalSandbox(
+      { clientId: "id", clientSecret: "secret", merchantId: "MERCHANT" },
+      (async (url: any) =>
+        new Response(
+          JSON.stringify(
+            String(url).endsWith("/token")
+              ? token
+              : { ...capture(), ...change },
+          ),
+        )) as typeof fetch,
+    );
+    await assert.rejects(client.getInvoiceSettlement(id, "TX123"));
+  }
+  const client = setup([]).client;
+  await assert.rejects(
+    client.getInvoiceSettlement(id, "TX123"),
+    /MERCHANT_VERIFICATION_REQUIRED/,
+  );
+  await assert.rejects(
+    client.getInvoiceSettlement(id, "../TX123"),
+    /INVALID_TRANSACTION_ID/,
+  );
+});
+test("invoice balances and payment status come from provider evidence, not total minus paid guesses", () => {
+  const result = parseInvoice({
+    ...invoice("PAID"),
+    due_amount: { currency_code: "USD", value: "0.00" },
+    payments: {
+      paid_amount: { currency_code: "USD", value: "123.45" },
+      transactions: [
+        {
+          payment_id: "TX123",
+          type: "PAYPAL",
+          transaction_status: "SUCCESS",
+          payment_date: "2026-11-11",
+          amount: { currency_code: "USD", value: "123.45" },
+        },
+      ],
+    },
+  });
+  assert.equal(result.amountCents, 12345);
+  assert.equal(result.paidAmountCents, 12345);
+  assert.equal(result.dueAmountCents, 0);
+  assert.equal(result.payments[0].status, "SUCCESS");
+  assert.equal(result.payments[0].paidDate, "2026-11-11");
+  assert.equal(parseInvoice(invoice()).dueAmountCents, undefined);
+  assert.throws(() =>
+    parseInvoice({
+      ...invoice(),
+      due_amount: { currency_code: "CAD", value: "0.00" },
+    }),
+  );
+});

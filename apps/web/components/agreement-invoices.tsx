@@ -1,36 +1,28 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../lib/model";
-import { safeInvoiceUrl, type InvoiceDetails } from "../lib/invoice";
+import {
+  safeInvoiceUrl,
+  invoiceStatusLabel,
+  invoiceMoney,
+  type Invoice,
+  type InvoiceDetails,
+} from "../lib/invoice";
 import { InvoiceForm } from "./invoice-form";
 import { Button, Notice } from "./ui";
-
-interface Invoice extends InvoiceDetails {
-  id: string;
-  status: string;
-  shareUrl: string | null;
-}
-const statusLabels: Record<string, string> = {
-  CREATING: "Creating",
-  DRAFT: "Draft",
-  PUBLISHING: "Preparing link",
-  SHARED: "Ready to share",
-  PAYMENT_PENDING: "Payment pending",
-  PAID: "Paid",
-  FAILED: "Needs attention",
-  UNKNOWN: "Check status",
-};
 
 export function AgreementInvoices({
   base,
   agreementName,
   userId,
   canCreate,
+  onReconciled,
 }: {
   base: string;
   agreementName: string;
   userId: string;
   canCreate: boolean;
+  onReconciled?: () => Promise<void>;
 }) {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [creating, setCreating] = useState(false);
@@ -107,6 +99,12 @@ export function AgreementInvoices({
         Request payment against this agreement, then share a payment link with
         your customer.
       </p>
+      <p className="muted">
+        PayPal reporting an invoice paid is not a verified allocation. Shares
+        are allocated only after capture amounts and actual PayPal fees are
+        verified. Manual or external payments are not allocated. Refunds can
+        place the agreement on hold for review.
+      </p>
       {notice && (
         <div role="status">
           <Notice>{notice}</Notice>
@@ -137,8 +135,7 @@ export function AgreementInvoices({
         <p role="status">Loading invoices…</p>
       ) : !invoices.length ? (
         <p className="muted">
-          No invoices yet. Buyer-paid invoices remain pending settlement
-          verification and never create an allocation automatically.
+          No invoices yet. Create an invoice to request a payment.
         </p>
       ) : (
         <div className="table-wrap">
@@ -146,7 +143,9 @@ export function AgreementInvoices({
             <thead>
               <tr>
                 <th>Customer</th>
-                <th>Amount</th>
+                <th>Invoice total</th>
+                <th>Paid at PayPal</th>
+                <th>Balance due</th>
                 <th>Due</th>
                 <th>Status</th>
                 <th>Actions</th>
@@ -160,14 +159,17 @@ export function AgreementInvoices({
                     <br />
                     <small>{invoice.description}</small>
                   </td>
+                  <td>{invoiceMoney(invoice.amountCents, invoice.currency)}</td>
                   <td>
-                    {(invoice.amountCents / 100).toLocaleString("en-US", {
-                      style: "currency",
-                      currency: invoice.currency,
-                    })}
+                    {invoiceMoney(invoice.paidAmountCents, invoice.currency)}
+                  </td>
+                  <td>
+                    {invoiceMoney(invoice.dueAmountCents, invoice.currency)}
                   </td>
                   <td>{invoice.dueDate}</td>
-                  <td>{statusLabels[invoice.status] || invoice.status}</td>
+                  <td>
+                    <InvoiceStatus invoice={invoice} />
+                  </td>
                   <td>
                     <div className="actions">
                       {safeInvoiceUrl(invoice.shareUrl) && (
@@ -220,6 +222,7 @@ export function AgreementInvoices({
                                     : item,
                                 ),
                               );
+                              await onReconciled?.();
                             } catch (cause) {
                               setError(
                                 cause instanceof Error
@@ -246,5 +249,41 @@ export function AgreementInvoices({
         </div>
       )}
     </section>
+  );
+}
+
+export function InvoiceStatus({ invoice }: { invoice: Invoice }) {
+  return (
+    <>
+      <span>
+        {invoice.settlementStatus === "HELD" && invoice.status === "PAID"
+          ? "Payment on hold · review required"
+          : invoiceStatusLabel(invoice.status)}
+      </span>
+      <br />
+      <small>PayPal: {invoice.providerStatus || "Not checked"}</small>
+      <br />
+      <small>
+        Settlement:{" "}
+        {invoice.settlementStatus === "VERIFIED"
+          ? "Verified"
+          : invoice.settlementStatus === "HELD"
+            ? "On hold · review required"
+            : "Unverified · no verified allocation"}
+      </small>
+      {invoice.settlementError && <p>{invoice.settlementError}</p>}
+      {invoice.paidDate && (
+        <>
+          <br />
+          <small>PayPal payment date: {invoice.paidDate}</small>
+        </>
+      )}
+      {invoice.checkedAt && (
+        <>
+          <br />
+          <small>Last checked: {invoice.checkedAt}</small>
+        </>
+      )}
+    </>
   );
 }

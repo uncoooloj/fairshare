@@ -1,6 +1,12 @@
 import { randomUUID } from "node:crypto";
 import type { FastifyRequest } from "fastify";
-import { DomainError, MemberRole } from "@fairshare/domain";
+import {
+  DomainError,
+  MemberRole,
+  allocateConfirmedRevenue,
+  holdReversedRevenue,
+} from "@fairshare/domain";
+import { PayPalError, type InvoiceSettlement } from "@fairshare/payments";
 import type { AggregateStore } from "./fairshare.js";
 import type { FairshareApp } from "./app.js";
 import { Role } from "./identity.js";
@@ -12,11 +18,15 @@ export interface InvoiceEvidence {
   currency: string;
   amountCents: number;
   shareUrl: string | null;
+  paidAmountCents?: number;
+  dueAmountCents?: number;
   payments: {
     transactionId: string;
     type: string;
     amountCents: number;
     currency: string;
+    status?: string;
+    paidDate?: string;
   }[];
 }
 export interface InvoiceProvider {
@@ -32,6 +42,10 @@ export interface InvoiceProvider {
   }): Promise<InvoiceEvidence>;
   publishInvoice(id: string, requestId: string): Promise<InvoiceEvidence>;
   getInvoice(id: string): Promise<InvoiceEvidence>;
+  getInvoiceSettlement?(
+    invoiceId: string,
+    transactionId: string,
+  ): Promise<InvoiceSettlement>;
 }
 const fail = (code: string, message: string): never => {
   throw new DomainError(code, message);
@@ -85,6 +99,25 @@ export function registerInvoiceRoutes(
   db.exec(
     `CREATE TABLE IF NOT EXISTS fairshare_invoices(id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, collaboration_id TEXT NOT NULL, request_key TEXT NOT NULL, version_id INTEGER NOT NULL, payload TEXT NOT NULL, provider_id TEXT UNIQUE, status TEXT NOT NULL, share_url TEXT, capture_id TEXT UNIQUE, created_at TEXT NOT NULL, UNIQUE(workspace_id, request_key));`,
   );
+  for (const [name, definition] of [
+    ["provider_status", "TEXT"],
+    ["paid_amount", "INTEGER"],
+    ["due_amount", "INTEGER"],
+    ["settlement_status", "TEXT NOT NULL DEFAULT 'UNVERIFIED'"],
+    ["settlement_error", "TEXT"],
+    ["checked_at", "TEXT"],
+    ["paid_date", "TEXT"],
+    ["evidence_revision", "INTEGER NOT NULL DEFAULT 0"],
+  ]) {
+    if (
+      !(
+        db.prepare("PRAGMA table_info(fairshare_invoices)").all() as any[]
+      ).some((column) => column.name === name)
+    )
+      db.exec(
+        `ALTER TABLE fairshare_invoices ADD COLUMN ${name} ${definition}`,
+      );
+  }
   const base =
     "/api/workspaces/:workspaceId/collaborations/:collaborationId/invoices";
   function provider(): InvoiceProvider {
@@ -103,6 +136,17 @@ export function registerInvoiceRoutes(
     shareUrl: r.share_url,
     createdAt: r.created_at,
     providerId: r.provider_id,
+    providerStatus: r.provider_status,
+    paidAmountCents: r.paid_amount,
+    dueAmountCents: r.due_amount,
+    settlementStatus:
+      r.capture_id &&
+      aggregates.read(r.workspace_id, r.collaboration_id).value.reviewHold
+        ? "HELD"
+        : r.settlement_status,
+    settlementError: r.settlement_error,
+    checkedAt: r.checked_at,
+    paidDate: r.paid_date,
   });
   function access(req: FastifyRequest, write = false) {
     const p = req.params as any;
@@ -145,33 +189,279 @@ export function registerInvoiceRoutes(
   }
   function localStatus(evidence: InvoiceEvidence) {
     if (evidence.status === "DRAFT") return "DRAFT";
-    return ["SENT", "SCHEDULED", "UNPAID"].includes(evidence.status) &&
+    if (
+      ["SENT", "SCHEDULED", "UNPAID"].includes(evidence.status) &&
       evidence.shareUrl
-      ? "SHARED"
-      : "PAYMENT_PENDING";
+    )
+      return "SHARED";
+    if (evidence.status === "PAID") return "PAYMENT_RECORDED";
+    return evidence.status;
   }
-  async function reconcile(id: string, assertLease: () => void = () => {}) {
+  const adverseStatuses = new Set([
+    "CANCELLED",
+    "REFUNDED",
+    "PARTIALLY_REFUNDED",
+    "MARKED_AS_REFUNDED",
+  ]);
+  function holdInvoice(op: any, reason: string) {
+    // A cancellation/refund before allocation is a durable tombstone too.
+    db.prepare(
+      "UPDATE fairshare_invoices SET settlement_status='HELD' WHERE id=?",
+    ).run(op.id);
+    if (!op.capture_id) return;
+    const row = aggregates.read(op.workspace_id, op.collaboration_id);
+    aggregates.updateInsideTransaction(
+      op.workspace_id,
+      op.collaboration_id,
+      row.revision,
+      (value) =>
+        holdReversedRevenue(
+          value,
+          op.capture_id,
+          reason,
+          new Date().toISOString(),
+        ),
+    );
+    db.prepare(
+      "UPDATE fairshare_invoices SET settlement_status='HELD' WHERE workspace_id=? AND collaboration_id=? AND capture_id IS NOT NULL",
+    ).run(op.workspace_id, op.collaboration_id);
+  }
+  function recordEvidence(
+    op: any,
+    evidence: InvoiceEvidence,
+    status: string,
+    error: string | null,
+  ) {
+    const fresh = read(op.id);
+    if (
+      fresh.evidence_revision !== op.evidence_revision ||
+      fresh.provider_id !== evidence.id
+    )
+      fail(
+        "RECONCILIATION_CONFLICT",
+        "Invoice changed during provider read; check again",
+      );
+    db.prepare(
+      `UPDATE fairshare_invoices SET status=?,provider_status=?,share_url=?,paid_amount=?,due_amount=?,settlement_error=?,checked_at=?,paid_date=?,evidence_revision=evidence_revision+1 WHERE id=?`,
+    ).run(
+      status,
+      evidence.status,
+      evidence.shareUrl,
+      evidence.paidAmountCents ?? null,
+      evidence.dueAmountCents ?? null,
+      error,
+      new Date().toISOString(),
+      evidence.payments.length === 1
+        ? (evidence.payments[0].paidDate ?? null)
+        : null,
+      op.id,
+    );
+  }
+  async function reconcile(
+    id: string,
+    assertLease: () => void = () => {},
+    eventType?: string,
+  ) {
     const op = read(id);
-    if (!op.provider_id || op.status === "PAID") return { invoice: dto(op) };
+    if (!op.provider_id) return { invoice: dto(op), settlementPending: false };
     const evidence = await provider().getInvoice(op.provider_id);
     check(op, evidence);
     assertLease();
-    // A manually marked invoice or an external payment is never money evidence.
     if (evidence.status !== "PAID") {
-      const status = localStatus(evidence);
-      db.prepare(
-        "UPDATE fairshare_invoices SET status=?,share_url=? WHERE id=? AND status!='PAID'",
-      ).run(status, evidence.shareUrl, id);
-      return { invoice: dto(read(id)) };
+      app.store.tx(() => {
+        recordEvidence(op, evidence, localStatus(evidence), null);
+        if (adverseStatuses.has(evidence.status))
+          holdInvoice(read(id), `INVOICE_${evidence.status}`);
+      });
+      const waitingForPaidEvent =
+        [
+          "INVOICING.INVOICE.PAID",
+          "PAYMENT.SALE.COMPLETED",
+          "PAYMENT.CAPTURE.COMPLETED",
+        ].includes(eventType ?? "") &&
+        !adverseStatuses.has(evidence.status) &&
+        evidence.status !== "MARKED_AS_PAID";
+      return { invoice: dto(read(id)), settlementPending: waitingForPaidEvent };
     }
-    db.prepare(
-      "UPDATE fairshare_invoices SET status='PAYMENT_PENDING',share_url=? WHERE id=? AND status!='PAID'",
-    ).run(evidence.shareUrl, id);
-    // PayPal's invoice transaction ID is not documented as a capture ID, and
-    // capture.invoice_id is an external caller reference rather than INV2 ID.
-    // Keep buyer-paid invoices pending until the provider supplies a verifiable
-    // invoice-to-settlement correlation; never allocate revenue on this evidence.
-    return { invoice: dto(read(id)) };
+    // A payment ID is only a lookup candidate. Only a fresh capture with this
+    // exact INV2 identity, merchant, currency, gross and actual fees may allocate.
+    const payments = evidence.payments;
+    const candidate = payments.length === 1 ? payments[0] : undefined;
+    let settlement: InvoiceSettlement | undefined;
+    let error: string | null = null;
+    if (
+      !candidate ||
+      (evidence.paidAmountCents !== undefined &&
+        evidence.paidAmountCents !== evidence.amountCents) ||
+      (evidence.dueAmountCents !== undefined &&
+        evidence.dueAmountCents !== 0) ||
+      candidate.type !== "PAYPAL" ||
+      candidate.amountCents !== evidence.amountCents ||
+      candidate.currency !== evidence.currency ||
+      (candidate.status !== undefined && candidate.status !== "SUCCESS")
+    ) {
+      error = "INVOICE_SETTLEMENT_UNSUPPORTED";
+    } else if (!provider().getInvoiceSettlement) {
+      error = "INVOICE_SETTLEMENT_NOT_CONFIGURED";
+    } else {
+      try {
+        settlement = await provider().getInvoiceSettlement!(
+          evidence.id,
+          candidate.transactionId,
+        );
+        if (
+          settlement.id !== candidate.transactionId ||
+          settlement.invoiceId !== evidence.id ||
+          settlement.currency !== evidence.currency ||
+          settlement.amountCents !== evidence.amountCents
+        )
+          fail(
+            "INVOICE_SETTLEMENT_MISMATCH",
+            "Invoice settlement does not match invoice",
+          );
+        if (settlement.status !== "COMPLETED")
+          error = "INVOICE_SETTLEMENT_PENDING";
+        else if (
+          !settlement.accounting ||
+          !Number.isSafeInteger(settlement.accounting.feeCents) ||
+          settlement.accounting.feeCents < 0 ||
+          !Number.isSafeInteger(settlement.accounting.netCents) ||
+          settlement.accounting.netCents < 0 ||
+          settlement.accounting.feeCents + settlement.accounting.netCents !==
+            settlement.amountCents
+        )
+          error = "CAPTURE_ACCOUNTING_REQUIRED";
+      } catch (cause) {
+        error =
+          cause instanceof PayPalError || cause instanceof DomainError
+            ? cause.code
+            : "INVOICE_SETTLEMENT_UNAVAILABLE";
+      }
+    }
+    assertLease();
+    if (error || !settlement) {
+      app.store.tx(() => {
+        recordEvidence(op, evidence, "PAYMENT_RECORDED", error);
+        if (
+          settlement &&
+          [
+            "REFUNDED",
+            "PARTIALLY_REFUNDED",
+            "DECLINED",
+            "FAILED",
+            "DENIED",
+          ].includes(settlement.status)
+        )
+          holdInvoice(read(id), `SETTLEMENT_${settlement.status}`);
+      });
+      return { invoice: dto(read(id)), settlementPending: true };
+    }
+    try {
+      app.store.tx(() => {
+        const fresh = read(id);
+        if (fresh.evidence_revision !== op.evidence_revision)
+          fail(
+            "RECONCILIATION_CONFLICT",
+            "Invoice changed during provider read; check again",
+          );
+        const capture = settlement!;
+        if (!fresh.capture_id && fresh.settlement_status === "HELD")
+          fail(
+            "PAYMENT_HOLD",
+            "Invoice has an unresolved adverse provider event",
+          );
+        if (fresh.capture_id && fresh.capture_id !== capture.id)
+          fail(
+            "CAPTURE_ALREADY_USED",
+            "Invoice already has a different settlement",
+          );
+        const adverse = (
+          db
+            .prepare(
+              "SELECT action FROM fairshare_webhook_inbox WHERE status='PENDING'",
+            )
+            .all() as any[]
+        )
+          .map((entry) => JSON.parse(entry.action))
+          .some(
+            (action) =>
+              (action.kind === "HOLD_CAPTURE" &&
+                (action.providerId === capture.id ||
+                  action.providerIds?.includes(capture.id))) ||
+              (action.kind === "RECONCILE_INVOICE" &&
+                action.providerId === op.provider_id &&
+                [
+                  "INVOICING.INVOICE.REFUNDED",
+                  "INVOICING.INVOICE.CANCELLED",
+                ].includes(action.eventType)),
+          );
+        if (adverse)
+          fail(
+            "PAYMENT_HOLD",
+            "An adverse provider event is awaiting reconciliation",
+          );
+        const row = aggregates.read(op.workspace_id, op.collaboration_id);
+        if (!fresh.capture_id && row.value.activeVersionId !== op.version_id)
+          fail(
+            "PAYMENT_RULES_CHANGED",
+            "Invoice rules changed before settlement verification",
+          );
+        const existing = db
+          .prepare(
+            "SELECT * FROM fairshare_captures WHERE provider_capture_id=?",
+          )
+          .get(capture.id) as any;
+        if (
+          existing &&
+          (!fresh.capture_id ||
+            existing.workspace_id !== op.workspace_id ||
+            existing.collaboration_id !== op.collaboration_id)
+        )
+          fail(
+            "CAPTURE_ALREADY_USED",
+            "Settlement is already assigned to another payment or invoice",
+          );
+        const value = allocateConfirmedRevenue(
+          row.value,
+          {
+            providerCaptureId: capture.id,
+            currency: "USD",
+            grossCents: capture.amountCents,
+            feeCents: capture.accounting!.feeCents,
+          },
+          new Date().toISOString(),
+        );
+        aggregates.updateInsideTransaction(
+          op.workspace_id,
+          op.collaboration_id,
+          row.revision,
+          () => value,
+        );
+        db.prepare(
+          "INSERT OR IGNORE INTO fairshare_captures VALUES(?,?,?)",
+        ).run(capture.id, op.workspace_id, op.collaboration_id);
+        const held =
+          value.reviewHold ||
+          value.revenue.find((entry) => entry.providerCaptureId === capture.id)
+            ?.status === "REVIEW_REQUIRED";
+        db.prepare(
+          "UPDATE fairshare_invoices SET capture_id=?,settlement_status=? WHERE id=?",
+        ).run(capture.id, held ? "HELD" : "VERIFIED", op.id);
+        recordEvidence(op, evidence, "PAID", null);
+      });
+    } catch (cause) {
+      // Preserve the real provider payment in the UI even when allocation is held.
+      if (
+        !(cause instanceof DomainError) ||
+        cause.code === "RECONCILIATION_CONFLICT"
+      )
+        throw cause;
+      app.store.tx(() =>
+        recordEvidence(op, evidence, "PAYMENT_RECORDED", cause.code),
+      );
+      return { invoice: dto(read(id)), settlementPending: true };
+    }
+    return { invoice: dto(read(id)), settlementPending: false };
   }
   app.get(base, async (req) => {
     const p = access(req);
@@ -250,18 +540,19 @@ export function registerInvoiceRoutes(
       db.prepare(
         "UPDATE fairshare_invoices SET status='PUBLISHING' WHERE id=?",
       ).run(op.id);
+      const publishing = read(op.id);
       const published = await provider().publishInvoice(
         draft.id,
         `publish-${op.id}`,
       );
       check(read(op.id), published);
-      db.prepare(
-        "UPDATE fairshare_invoices SET status=?,share_url=? WHERE id=?",
-      ).run(localStatus(published), published.shareUrl, op.id);
+      app.store.tx(() =>
+        recordEvidence(publishing, published, localStatus(published), null),
+      );
       return { invoice: dto(read(op.id)) };
     } catch (error) {
       db.prepare(
-        "UPDATE fairshare_invoices SET status='UNKNOWN' WHERE id=?",
+        "UPDATE fairshare_invoices SET status='UNKNOWN' WHERE id=? AND status IN ('CREATING','DRAFT','PUBLISHING')",
       ).run(op.id);
       throw error;
     }
@@ -309,11 +600,71 @@ export function registerInvoiceRoutes(
   });
   return {
     reconcile,
+    markSettlementHeld(captureId: string) {
+      const match = db
+        .prepare(
+          "SELECT workspace_id,collaboration_id FROM fairshare_captures WHERE provider_capture_id=?",
+        )
+        .get(captureId) as any;
+      if (match)
+        db.prepare(
+          "UPDATE fairshare_invoices SET settlement_status='HELD' WHERE workspace_id=? AND collaboration_id=? AND capture_id IS NOT NULL",
+        ).run(match.workspace_id, match.collaboration_id);
+    },
+    async reconcileProvider(
+      providerId: string,
+      assertLease: () => void = () => {},
+      eventType?: string,
+    ) {
+      const op = db
+        .prepare("SELECT * FROM fairshare_invoices WHERE provider_id=?")
+        .get(providerId) as any;
+      if (!op) fail("UNMATCHED_EVENT", "Invoice not found");
+      if (
+        ["INVOICING.INVOICE.REFUNDED", "INVOICING.INVOICE.CANCELLED"].includes(
+          eventType ?? "",
+        )
+      ) {
+        assertLease();
+        app.store.tx(() => holdInvoice(op, eventType!));
+      }
+      return reconcile(op.id, assertLease, eventType);
+    },
+    paymentRecords(workspaceId: string, collaborationId: string) {
+      return (
+        db
+          .prepare(
+            "SELECT * FROM fairshare_invoices WHERE workspace_id=? AND collaboration_id=? AND (provider_status IN ('PAID','PARTIALLY_PAID') OR capture_id IS NOT NULL)",
+          )
+          .all(workspaceId, collaborationId) as any[]
+      ).map((row) => ({
+        id: row.id,
+        invoice_id: row.id,
+        amount:
+          row.paid_amount ??
+          (row.capture_id ? JSON.parse(row.payload).amountCents : null),
+        provider_capture_id: row.capture_id,
+        source_type: row.capture_id ? "PAYPAL" : "OTHER",
+        source_name: row.capture_id
+          ? "PayPal invoice"
+          : "Invoice payment · unverified",
+        status:
+          row.capture_id &&
+          aggregates.read(row.workspace_id, row.collaboration_id).value
+            .reviewHold
+            ? "HELD"
+            : row.settlement_status === "VERIFIED"
+              ? "ALLOCATED"
+              : row.settlement_status === "HELD"
+                ? "HELD"
+                : "PAYMENT_PENDING",
+      }));
+    },
     discover: () =>
       (
         db
           .prepare(
-            "SELECT id FROM fairshare_invoices WHERE provider_id IS NOT NULL AND status NOT IN ('PAID','CREATING')",
+            "SELECT id FROM fairshare_invoices WHERE provider_id IS NOT NULL AND status NOT IN ('PAID','CREATING','CANCELLED','REFUNDED','MARKED_AS_REFUNDED')",
           )
           .all() as { id: string }[]
       ).map((r) => ({ kind: "INVOICE", id: r.id })),

@@ -4,6 +4,11 @@ import { DomainError, holdReversedRevenue } from "@fairshare/domain";
 import { reconcileCapture, type PayPalSandbox } from "@fairshare/payments";
 import type { FairshareApp, AggregateStore } from "./fairshare.js";
 import type { PaymentProvider } from "./paymentRoutes.js";
+import {
+  payoutWasNeverSubmitted,
+  webhookBelongsOnlyTo,
+  pendingWebhookBlocksPayout,
+} from "./paymentSafety.js";
 const fail = (code: string, message: string): never => {
   throw new DomainError(code, message);
 };
@@ -19,6 +24,7 @@ interface Context {
   access: (req: FastifyRequest, organizer?: boolean) => any;
   ownPayment: (req: FastifyRequest) => any;
   applyCapture: (op: any) => Promise<unknown>;
+  processEvent?: (eventId: string) => Promise<void>;
 }
 /** Evidence-only recovery. Never clears holds, edits allocations, or replays an unknown write. */
 export function registerPaymentRecovery({
@@ -28,6 +34,7 @@ export function registerPaymentRecovery({
   access,
   ownPayment,
   applyCapture,
+  processEvent,
 }: Context) {
   const db = app.store.db,
     tx = <T>(fn: () => T) => app.store.tx(fn),
@@ -73,10 +80,37 @@ export function registerPaymentRecovery({
     if (!row) fail("NOT_FOUND", "Refund not found");
     return row;
   };
+  const scopedEvents = (p: any) =>
+    db
+      .prepare(
+        "SELECT id,action,status,error FROM fairshare_webhook_inbox WHERE status='PENDING'",
+      )
+      .all()
+      .filter((event) => {
+        try {
+          return webhookBelongsOnlyTo(db, JSON.parse(event.action), {
+            workspace_id: p.workspaceId,
+            collaboration_id: p.collaborationId,
+          });
+        } catch {
+          return false;
+        }
+      });
   app.get(`${base}/recovery`, async (req) => {
     const ctx = access(req, true);
     const p = ctx.p;
     return {
+      events: scopedEvents(p).map((event) => ({
+        id: event.id,
+        eventType: JSON.parse(event.action).eventType,
+        status: event.status,
+        error: event.error,
+      })),
+      providerHold: pendingWebhookBlocksPayout(db, {
+        workspace_id: p.workspaceId,
+        collaboration_id: p.collaborationId,
+        provider_capture_id: "",
+      }),
       payments: db
         .prepare(
           "SELECT id,status,provider_order_id,provider_capture_id,amount FROM fairshare_payment_ops WHERE workspace_id=? AND collaboration_id=? AND status IN ('CREATING','CAPTURING','OUTCOME_UNKNOWN')",
@@ -99,6 +133,27 @@ export function registerPaymentRecovery({
         .all(p.workspaceId, p.collaborationId),
       notice:
         "Recovery verifies provider evidence only. It does not clear holds or retry uncertain payments.",
+    };
+  });
+  app.post(`${base}/recovery/events/:eventId/reconcile`, async (req) => {
+    const ctx = access(req, true);
+    const eventId = id((req.params as any).eventId);
+    if (!processEvent)
+      fail("RECOVERY_UNAVAILABLE", "Provider event recovery is not configured");
+    if (!scopedEvents(ctx.p).some((event) => event.id === eventId))
+      fail("NOT_FOUND", "Recoverable event not found in this agreement");
+    audit(ctx, "WEBHOOK_RECONCILIATION_REQUESTED", eventId, null);
+    await processEvent!(eventId);
+    access(req, true);
+    const event = db
+      .prepare("SELECT status,error FROM fairshare_webhook_inbox WHERE id=?")
+      .get(eventId);
+    return {
+      id: eventId,
+      status: event.status,
+      error: event.error,
+      notice:
+        "Provider evidence was checked. Existing liability holds are never cleared by this action.",
     };
   });
   app.post(`${base}/payments/:paymentId/recover`, async (req) => {
@@ -261,19 +316,25 @@ export function registerPaymentRecovery({
       if (prior) return { created: false, op: prior };
       if (fresh.status !== "ALLOCATED" || !fresh.provider_capture_id)
         fail("REFUND_NOT_READY", "Verified allocated capture required");
-      if (
-        db
-          .prepare(
-            "SELECT id FROM fairshare_payout_ops WHERE capture_id=? LIMIT 1",
-          )
-          .get(fresh.provider_capture_id)
-      )
+      const payouts = db
+        .prepare(
+          "SELECT id,status,batch_id,item_id FROM fairshare_payout_ops WHERE capture_id=?",
+        )
+        .all(fresh.provider_capture_id);
+      if (payouts.some((payout) => !payoutWasNeverSubmitted(payout)))
         fail(
           "REFUND_AFTER_PAYOUT_UNSUPPORTED",
-          "A payout was reserved; operator liability review is required",
+          "A payout may have reached the provider; operator liability review is required",
         );
       const row = aggregates.read(ctx.p.workspaceId, ctx.p.collaborationId);
-      if (row.value.reviewHold)
+      if (
+        row.value.reviewHold ||
+        pendingWebhookBlocksPayout(db, {
+          workspace_id: ctx.p.workspaceId,
+          collaboration_id: ctx.p.collaborationId,
+          provider_capture_id: fresh.provider_capture_id,
+        })
+      )
         fail("PAYMENT_HOLD", "Resolve existing hold before a new refund");
       const refundId = randomUUID(),
         key = `refund-${refundId}`;
@@ -304,6 +365,20 @@ export function registerPaymentRecovery({
         latest.user.id,
         date(),
       );
+      // This transaction owns both reservations. Preserve payout records, but
+      // make them permanently ineligible before the refund provider call starts.
+      // A dispatcher that claimed SUBMITTING first makes the check above fail.
+      for (const payout of payouts) {
+        db.prepare(
+          "UPDATE fairshare_payout_ops SET status='CANCELLED_FOR_REFUND' WHERE id=?",
+        ).run(payout.id);
+        audit(
+          latest,
+          "UNSUBMITTED_PAYOUT_CANCELLED_FOR_REFUND",
+          payout.id,
+          fresh.provider_capture_id,
+        );
+      }
       audit(
         latest,
         "FULL_REFUND_RESERVED",

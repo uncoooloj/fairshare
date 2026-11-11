@@ -17,11 +17,15 @@ export type ProviderInvoice = {
   currency: string;
   amountCents: number;
   shareUrl: string | null;
+  paidAmountCents?: number;
+  dueAmountCents?: number;
   payments: {
     transactionId: string;
     type: string;
     amountCents: number;
     currency: string;
+    status?: string;
+    paidDate?: string;
   }[];
 };
 type Json = Record<string, any>;
@@ -162,6 +166,12 @@ export function parseInvoice(
     currency: "USD",
     amountCents: exactCents(amount.value),
     shareUrl,
+    ...(result.payments?.paid_amount
+      ? { paidAmountCents: invoiceMoney(result.payments.paid_amount) }
+      : {}),
+    ...(result.due_amount
+      ? { dueAmountCents: invoiceMoney(result.due_amount) }
+      : {}),
     payments: transactions.map((payment: Json) => {
       if (
         !["PAYPAL", "EXTERNAL"].includes(payment.type) ||
@@ -176,7 +186,75 @@ export function parseInvoice(
         type: payment.type,
         amountCents: exactCents(payment.amount.value),
         currency: "USD",
+        ...(typeof payment.payment_date === "string" &&
+        /^\d{4}-\d{2}-\d{2}$/.test(payment.payment_date)
+          ? { paidDate: payment.payment_date }
+          : {}),
+        ...(typeof payment.transaction_status === "string"
+          ? { status: payment.transaction_status }
+          : {}),
       };
     }),
+  };
+}
+
+function invoiceMoney(amount: Json): number {
+  if (amount.currency_code !== "USD")
+    throw new PayPalError("INVALID_PROVIDER_AMOUNT");
+  return exactCents(amount.value);
+}
+
+export type InvoiceSettlement = {
+  id: string;
+  invoiceId: string;
+  status: string;
+  currency: string;
+  amountCents: number;
+  accounting?: { feeCents: number; netCents: number };
+};
+
+/** A fresh merchant-authorized capture must explicitly identify this invoice.
+ * Invoice payment_id is only a lookup candidate, never presumed settlement proof. */
+export function parseInvoiceSettlement(
+  result: Json,
+  expectedInvoiceId: string,
+  expectedTransactionId: string,
+  merchantId: string,
+): InvoiceSettlement {
+  if (
+    !merchantId ||
+    result.id !== expectedTransactionId ||
+    result.invoice_id !== expectedInvoiceId ||
+    result.payee?.merchant_id !== merchantId ||
+    result.amount?.currency_code !== "USD" ||
+    ![
+      "COMPLETED",
+      "PENDING",
+      "REFUNDED",
+      "PARTIALLY_REFUNDED",
+      "DECLINED",
+      "FAILED",
+      "DENIED",
+    ].includes(result.status)
+  )
+    throw new PayPalError("INVOICE_SETTLEMENT_MISMATCH");
+  const amountCents = invoiceMoney(result.amount);
+  const breakdown = result.seller_receivable_breakdown;
+  let accounting: InvoiceSettlement["accounting"];
+  if (breakdown) {
+    const gross = invoiceMoney(breakdown.gross_amount ?? {});
+    const fee = invoiceMoney(breakdown.paypal_fee ?? {});
+    const net = invoiceMoney(breakdown.net_amount ?? {});
+    if (gross !== amountCents || fee + net !== gross)
+      throw new PayPalError("CAPTURE_ACCOUNTING_MISMATCH");
+    accounting = { feeCents: fee, netCents: net };
+  }
+  return {
+    id: result.id,
+    invoiceId: result.invoice_id,
+    status: result.status,
+    currency: "USD",
+    amountCents,
+    ...(accounting ? { accounting } : {}),
   };
 }

@@ -2,6 +2,7 @@ import {
   invoiceBody,
   invoiceId,
   parseInvoice,
+  parseInvoiceSettlement,
   type CreateInvoice,
 } from "./invoices.js";
 /** PayPal SANDBOX adapter. Captured payments are not escrow or guaranteed prizes. */
@@ -211,6 +212,20 @@ export class PayPalSandbox {
     return parseInvoice(
       await this.call(`/v2/invoicing/invoices/${id}`, undefined),
       id,
+    );
+  }
+  /** Read-only invoice settlement verification; never captures or moves money. */
+  async getInvoiceSettlement(id: string, transactionId: string) {
+    invoiceId(id);
+    if (!/^[A-Za-z0-9]{1,22}$/.test(transactionId))
+      throw new PayPalError("INVALID_TRANSACTION_ID", 400);
+    if (!this.config.merchantId)
+      throw new PayPalError("MERCHANT_VERIFICATION_REQUIRED");
+    return parseInvoiceSettlement(
+      await this.call(`/v2/payments/captures/${transactionId}`, undefined),
+      id,
+      transactionId,
+      this.config.merchantId,
     );
   }
   /** Publishes a payable link without notifying customer or merchant by email. */
