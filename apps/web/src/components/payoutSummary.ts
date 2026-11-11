@@ -74,14 +74,14 @@ export function payoutCards(
       label: "Paid out",
       amountCents: summary.paid,
       caption: `${payoutCount(summary.paidCount)} paid`,
-      explanation: "Money that reached people's accounts.",
+      explanation: "PayPal marked these payouts as paid.",
     },
     {
       kind: PayoutCardKind.OnTheWay,
-      label: "On the way",
+      label: "Pending",
       amountCents: summary.processing,
-      caption: `${payoutCount(summary.processingCount)} on the way`,
-      explanation: "Sent and still being processed. Nothing to do yet.",
+      caption: `${payoutCount(summary.processingCount)} pending`,
+      explanation: "Waiting to be sent or for PayPal to confirm the result.",
     },
     {
       kind: PayoutCardKind.Attention,
@@ -89,7 +89,7 @@ export function payoutCards(
       amountCents: summary.attention,
       caption: `${summary.attentionCount} ${summary.attentionCount === 1 ? "needs" : "need"} attention`,
       explanation:
-        "Payouts that failed, are on hold, weren't collected, or are waiting for someone to add where to get paid.",
+        "Payouts that failed, are on hold, weren't collected, are waiting for payout details, or are awaiting a confirmed result. Don't retry blindly.",
     },
   ];
 }
