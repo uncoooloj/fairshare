@@ -101,6 +101,7 @@ const workspaceBase = (id: string) => `workspaces/${id}`;
 export default function FairshareApp() {
   const router = useRouter();
   const emailDelivery = useEmailDelivery();
+  const [codePrompt, setCodePrompt] = useState("");
   const [settingsTab, setSettingsTab] = useState("Profile");
   const [user, setUser] = useState<User | null>(null),
     [ready, setReady] = useState(false),
@@ -623,10 +624,30 @@ export default function FairshareApp() {
       <Auth
         busy={busy}
         error={error}
+        codePrompt={codePrompt}
+        onCancelCode={() => {
+          setCodePrompt("");
+          setError("");
+        }}
         onSubmit={(type, data) =>
           run(async () => {
-            const r = await api(`auth/${type}`, "POST", data);
-            setUser(r.user);
+            try {
+              const r = await api(`auth/${type}`, "POST", data);
+              setCodePrompt("");
+              setUser(r.user);
+            } catch (cause) {
+              // The password was accepted; this account also needs its authenticator.
+              if (
+                type === "login" &&
+                !data.mfaCode &&
+                cause instanceof ApiError &&
+                cause.code === "MFA_REQUIRED"
+              ) {
+                setCodePrompt(cause.message);
+                return;
+              }
+              throw cause;
+            }
           })
         }
       />
