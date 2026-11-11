@@ -112,3 +112,15 @@ test("split edits stay local until apply", async () => {
   assert.match(apply, /onDirty\?\.\(\)/);
   assert.match(apply, /setDraftRevision/);
 });
+
+test("a refreshed agreement revision invalidates an open local split draft", async () => {
+  const { readFileSync } = await import("node:fs");
+  const rules = readFileSync(
+    new URL("../components/agreement-widgets.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    rules,
+    /useEffect\(\(\) => \{\s*setSplitDraft\(null\);\s*\}, \[agreement\.revision\]\)/,
+  );
+});

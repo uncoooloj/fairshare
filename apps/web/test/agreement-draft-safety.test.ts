@@ -24,7 +24,10 @@ test("agreement edits guard navigation and closing the browser before discarding
   assert.match(app, /Back to proposed terms/);
 });
 test("manual rules and suggested shares both mark the proposal dirty; saving clears it only after server success", () => {
-  assert.match(editor, /onChange=\{onDirty\}/);
+  assert.match(
+    editor,
+    /onChange=\{\(event\) => \{\s*if \(\(event\.target as HTMLElement\)\.closest\("\[data-local-rule-edit\]"\)\)\s*return;\s*onDirty\?\.\(\);/,
+  );
   assert.match(editor, /onDirty\?\.\(\);\s*setPrefilled\(true\)/);
   assert.match(
     app,

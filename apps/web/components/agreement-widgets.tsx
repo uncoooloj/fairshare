@@ -7,7 +7,7 @@ import { formatDate } from "../lib/preferences";
 import { ClarificationDecisions } from "./clarification-decisions";
 import { proposalQuestions } from "../lib/clarification-draft";
 import { suggestedShares } from "../lib/ai-draft";
-import { useState, useRef, type ReactNode } from "react";
+import { useEffect, useState, useRef, type ReactNode } from "react";
 import {
   money,
   sampleAgreement,
@@ -597,6 +597,9 @@ export function RulesEditor({
   const [splitDraft, setSplitDraft] = useState<Record<string, string> | null>(
     null,
   );
+  useEffect(() => {
+    setSplitDraft(null);
+  }, [agreement.revision]);
   const selectedFact = highlights.find((fact) => fact.id === selectedCitation);
   function editSplit() {
     if (!formRef.current) return;
