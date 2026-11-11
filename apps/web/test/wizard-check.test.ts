@@ -167,6 +167,21 @@ test("Check reader only maps unique exact document quotes to highlights", () => 
     ).map((citation) => citation.id),
     ["wizard-agreement"],
   );
+  assert.deepEqual(
+    wizardCitations(
+      {
+        ...answers,
+        fees: {
+          value: FeeChoice.BEFORE_SPLIT,
+          source: AnswerSource.DOCUMENT,
+          quote: "Jordan 30%",
+        },
+      },
+      { documentId: "draft-source", text },
+      { agreement: "draft-source", advance: "draft-source" },
+    ).map((citation) => citation.id),
+    ["wizard-agreement"],
+  );
 });
 
 test("the $3,000 example comes from the engine and names the advance only when there is one", () => {

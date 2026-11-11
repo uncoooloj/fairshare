@@ -249,23 +249,24 @@ export function wizardCitations(
     { id: "wizard-fees", label: "PayPal fees", summary: feeLine(answers), cited: answers.fees, documentId: sourceDocumentIds?.agreement },
     { id: "wizard-advance", label: "Paid back first", summary: advanceSentence(answers) ?? "Advance", cited: answers.advance, documentId: sourceDocumentIds?.advance },
   ];
-  const exact = candidates.filter(({ cited, documentId }) => {
+  const exact = candidates.flatMap((candidate) => {
+    const { cited, documentId } = candidate;
     const quote = cited?.source === AnswerSource.DOCUMENT ? cited.quote?.trim() : undefined;
-    return !!quote && documentId === document.documentId &&
-      document.text.indexOf(quote) >= 0 &&
-      document.text.indexOf(quote, document.text.indexOf(quote) + 1) === -1;
-  });
-  return exact.flatMap(({ id, label, summary, cited, documentId }) => {
-    if (documentId !== undefined && documentId !== document.documentId) return [];
-    const quote = cited?.source === AnswerSource.DOCUMENT ? cited.quote?.trim() : undefined;
-    if (!quote) return [];
-    const start = document.text.indexOf(quote);
-    if (start < 0 || document.text.indexOf(quote, start + 1) !== -1) return [];
-    // A single source span cannot tell which of two rule chips was selected.
-    // Leave both uncited instead of making one rule masquerade as the other.
-    if (exact.filter((candidate) => candidate.cited?.quote?.trim() === quote).length !== 1)
+    const start = quote ? document.text.indexOf(quote) : -1;
+    if (!quote || documentId !== document.documentId || start < 0 ||
+      document.text.indexOf(quote, start + 1) !== -1)
       return [];
-    const end = start + quote.length;
+    return [{ candidate, quote, start, end: start + quote.length }];
+  });
+  return exact.flatMap(({ candidate: { id, label, summary, cited }, quote, start, end }) => {
+    // A shared or intersecting span cannot tell which rule the person selected.
+    // Leave every owner uncited instead of making one rule masquerade as another.
+    if (
+      exact.filter(
+        (other) => other.start < end && other.end > start,
+      ).length !== 1
+    )
+      return [];
     const pages = document.provenance?.pages;
     const matches = Array.isArray(pages)
       ? pages.filter((page) =>
