@@ -265,6 +265,75 @@ test("a shared thread loads once, refreshes after the last comment, and posts on
     ["a", "c"],
   );
 });
+test("a shared thread merges every cursor page so later rule comments remain reachable", async () => {
+  const row = (id: string, sequence: number) =>
+    ({
+      id,
+      sequence,
+      ruleKey: CommentTopic.FEES,
+      parentId: null,
+    }) as ReviewComment;
+  const pages: CommentPage[] = [
+    { comments: [row("oldest", 1)], nextCursor: "1" },
+    { comments: [row("later", 2)], nextCursor: null },
+  ];
+  const calls: string[] = [];
+  const thread = new CommentThread("comments", async <T>(path: string) => {
+    calls.push(path);
+    return pages.shift() as T;
+  });
+  await thread.load();
+  await thread.load(thread.state.cursor!);
+  assert.deepEqual(
+    thread.state.comments.map((comment) => comment.id),
+    ["oldest", "later"],
+  );
+  assert.deepEqual(calls, ["comments", "comments?after=1"]);
+  assert.equal(thread.state.cursor, null);
+});
+test("thread-owned drafts survive a collapsed view and clear after a successful post", async () => {
+  const parent = {
+    id: "root",
+    ruleKey: CommentTopic.SPLIT,
+    parentId: null,
+  } as ReviewComment;
+  const thread = new CommentThread("comments", async <T>(_path: string) =>
+    ({ comments: [], nextCursor: null }) as T,
+  );
+  thread.setDraft(CommentTopic.SPLIT, { body: "Keep this", parent });
+  assert.deepEqual(thread.draft(CommentTopic.SPLIT), {
+    body: "Keep this",
+    parent,
+  });
+  await thread.post("Keep this", CommentTopic.SPLIT, parent);
+  assert.deepEqual(thread.draft(CommentTopic.SPLIT), { body: "" });
+});
+test("a completed post cannot clear text entered after its request started", async () => {
+  let release: () => void = () => {};
+  const thread = new CommentThread(
+    "comments",
+    async <T>(_path: string, method?: string) => {
+    if (method === "POST")
+      await new Promise<void>((resolve) => (release = resolve));
+    return { comments: [], nextCursor: null } as T;
+    },
+  );
+  thread.setDraft(CommentTopic.SPLIT, { body: "First comment" });
+  const post = thread.post("First comment", CommentTopic.SPLIT);
+  thread.setDraft(CommentTopic.SPLIT, { body: "Newer draft" });
+  release();
+  assert.equal(await post, true);
+  assert.equal(thread.draft(CommentTopic.SPLIT).body, "Newer draft");
+});
+test("thread-owned drafts never cross version endpoints or rule topics", () => {
+  const fetcher = async <T>() => ({ comments: [], nextCursor: null }) as T;
+  const first = new CommentThread("agreements/a/versions/1/comments", fetcher);
+  const second = new CommentThread("agreements/b/versions/2/comments", fetcher);
+  first.setDraft(CommentTopic.FEES, { body: "Fees only" });
+  assert.equal(first.draft(CommentTopic.FEES).body, "Fees only");
+  assert.equal(first.draft(CommentTopic.SPLIT).body, "");
+  assert.equal(second.draft(CommentTopic.FEES).body, "");
+});
 test("background refresh failures stay quiet; visible loads report errors", async () => {
   const thread = new CommentThread("y", async () => {
     throw new Error("offline");

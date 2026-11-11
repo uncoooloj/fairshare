@@ -133,6 +133,10 @@ export interface ThreadState {
   loading: boolean;
   error: string;
 }
+export interface CommentDraft {
+  body: string;
+  parent?: ReviewComment;
+}
 type Fetcher = <T>(path: string, method?: string, body?: unknown) => Promise<T>;
 
 /**
@@ -150,6 +154,10 @@ export class CommentThread {
   private listeners = new Set<() => void>();
   private sequence = 0;
   private posting = false;
+  /** In-memory only: survives a collapsed card without following another version. */
+  private drafts = new Map<CommentTopic, CommentDraft>();
+  /** Bumps whenever a draft changes, so an older post cannot clear newer typing. */
+  private draftVersions = new Map<CommentTopic, number>();
   constructor(
     readonly path: string,
     private readonly fetcher: Fetcher,
@@ -164,6 +172,24 @@ export class CommentThread {
     return this.listeners.size > 0;
   }
   getState = () => this.state;
+  draft(topic: CommentTopic): CommentDraft {
+    return this.drafts.get(topic) ?? { body: "" };
+  }
+  setDraft(topic: CommentTopic, draft: CommentDraft) {
+    this.drafts.set(topic, draft);
+    this.draftVersions.set(topic, (this.draftVersions.get(topic) ?? 0) + 1);
+    this.set({});
+  }
+  clearDraft(topic: CommentTopic, expectedVersion?: number) {
+    if (
+      expectedVersion !== undefined &&
+      (this.draftVersions.get(topic) ?? 0) !== expectedVersion
+    )
+      return;
+    if (!this.drafts.delete(topic)) return;
+    this.draftVersions.delete(topic);
+    this.set({});
+  }
   private set(next: Partial<ThreadState>) {
     this.state = { ...this.state, ...next };
     for (const listener of this.listeners) listener();
@@ -219,6 +245,8 @@ export class CommentThread {
   async post(body: string, topic: CommentTopic, parent?: ReviewComment) {
     if (this.posting) return false;
     this.posting = true;
+    const draftTopic = parent?.ruleKey ?? topic;
+    const draftVersion = this.draftVersions.get(draftTopic) ?? 0;
     try {
       await this.fetcher(
         this.path,
@@ -226,6 +254,7 @@ export class CommentThread {
         commentPayload(body, topic, parent),
       );
       await this.refresh();
+      this.clearDraft(draftTopic, draftVersion);
       return true;
     } finally {
       this.posting = false;
