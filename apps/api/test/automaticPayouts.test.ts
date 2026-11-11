@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
+import { PayPalError } from "@fairshare/payments";
 import { automaticPayouts } from "../src/automaticPayouts.js";
 
 function fixture(createPayout: any = async () => ({ batchId: "batch" })) {
@@ -74,7 +75,7 @@ test("missing destination holds only its item; readiness later sends exactly onc
   assert.equal(calls, 2);
   f.db.close();
 });
-test("racing dispatch and manual-style reservation never submit twice", async () => {
+test("a hold after claim is retained without a duplicate payout", async () => {
   let calls = 0,
     release!: () => void;
   const f = fixture(async () => {
@@ -86,9 +87,12 @@ test("racing dispatch and manual-style reservation never submit twice", async ()
   const pending = f.service.dispatch(job.id, () => {});
   await f.service.dispatch(job.id, () => {});
   assert.equal(calls, 1);
+  f.agreement.reviewHold = true;
   release();
   await pending;
+  assert.equal(f.agreement.reviewHold, true);
   await f.service.dispatch(job.id, () => {});
+  await f.run();
   assert.equal(calls, 1);
   f.db.close();
 });
@@ -106,6 +110,19 @@ test("ambiguous provider error stays unknown across discovery and restart", asyn
       .prepare("SELECT status FROM fairshare_payout_ops WHERE user_id='one'")
       .get()!.status,
     "OUTCOME_UNKNOWN",
+  );
+  f.db.close();
+});
+test("disabled payout capability stays held because no provider write was attempted", async () => {
+  const f = fixture(async () => {
+    throw new PayPalError("PAYOUT_NOT_CONFIGURED", 503);
+  });
+  await f.run();
+  assert.equal(
+    f.db
+      .prepare("SELECT status FROM fairshare_payout_ops WHERE user_id='one'")
+      .get()!.status,
+    "AUTO_HELD",
   );
   f.db.close();
 });

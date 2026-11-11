@@ -77,3 +77,12 @@ test("saved drafts resume creation and finishing routes to actual terms review",
   );
   assert.match(app, /mutate\("\/members", \{ userId \}\)/);
 });
+
+test("document preprocessing participates in the app navigation lock", () => {
+  const app = readFileSync(
+    new URL("../components/fairshare-app.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.equal((app.match(/onBusyChange=\{setBusy\}/g) || []).length, 3);
+  assert.match(app, /function mayLeaveDraft\(\) \{\s*if \(busy\) return false/);
+});
