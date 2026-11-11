@@ -1,7 +1,11 @@
 "use client";
 import { useEffect, useState } from "react";
-import { api, type Agreement } from "../lib/model";
+import { api, type Agreement, type Version } from "../lib/model";
 import { recoverSourceDocument } from "../lib/source-recovery";
+import {
+  OPEN_CITATION_EVENT,
+  type OpenCitationDetail,
+} from "../lib/document-citations";
 import { DocumentCitationView } from "./document-citation-view";
 import { Button, Empty } from "./ui";
 import { termsLabel } from "../lib/version-summary";
@@ -15,6 +19,27 @@ export interface DocumentRecord {
     ocr?: boolean;
     pages?: number | Array<{ page: number; start: number; end: number }>;
   };
+}
+function sourceDocumentIds(version: Version) {
+  return [
+    version.rules.source.documentId,
+    version.rules.advance?.source.documentId,
+  ].filter((documentId): documentId is string => Boolean(documentId));
+}
+export function resolveCitationTarget(
+  versions: Version[],
+  request: OpenCitationDetail,
+  currentVersionId?: number,
+) {
+  const versionId = request.versionId ?? currentVersionId;
+  const version = versions.find((item) => item.id === versionId);
+  if (!version) return undefined;
+  if (
+    request.documentId !== undefined &&
+    !sourceDocumentIds(version).includes(request.documentId)
+  )
+    return undefined;
+  return { versionId: version.id, documentId: request.documentId };
 }
 /** The document on screen and the terms it belongs to. */
 export interface LoadedDocument {
@@ -110,6 +135,8 @@ export function AgreementDocument({
     agreement.value.activeVersionId ??
     agreement.value.versions.at(-1)?.id;
   const [versionId, setVersionId] = useState<number | undefined>(initial);
+  const [requestedDocumentId, setRequestedDocumentId] = useState<string>();
+  const [pendingCitation, setPendingCitation] = useState<OpenCitationDetail>();
   const [document, setDocument] = useState<DocumentRecord | null>(null);
   const [loading, setLoading] = useState(true),
     [error, setError] = useState(""),
@@ -117,7 +144,25 @@ export function AgreementDocument({
   const version = agreement.value.versions.find(
     (item) => item.id === versionId,
   );
-  const sourceId = version?.rules.source.documentId;
+  const sourceId = requestedDocumentId ?? version?.rules.source.documentId;
+  useEffect(() => {
+    const open = (event: Event) => {
+      const detail = (event as CustomEvent<string | OpenCitationDetail>).detail;
+      if (typeof detail === "string" || !detail) return;
+      const target = resolveCitationTarget(
+        agreement.value.versions,
+        detail,
+        versionId,
+      );
+      if (!target) return;
+      event.preventDefault();
+      setPendingCitation(detail);
+      setVersionId(target.versionId);
+      setRequestedDocumentId(target.documentId);
+    };
+    window.addEventListener(OPEN_CITATION_EVENT, open);
+    return () => window.removeEventListener(OPEN_CITATION_EVENT, open);
+  }, [agreement.value.versions, versionId]);
   useEffect(() => {
     let stale = false;
     setLoading(true);
@@ -157,7 +202,11 @@ export function AgreementDocument({
           <select
             aria-label="Document for which terms"
             value={versionId ?? ""}
-            onChange={(event) => setVersionId(Number(event.target.value))}
+            onChange={(event) => {
+              setPendingCitation(undefined);
+              setRequestedDocumentId(undefined);
+              setVersionId(Number(event.target.value));
+            }}
           >
             {agreement.value.versions.map((item) => (
               <option key={item.id} value={item.id}>
@@ -192,6 +241,7 @@ export function AgreementDocument({
             key={`${document.documentId}:${version?.id ?? "draft"}`}
             document={document}
             version={version}
+            pendingCitation={pendingCitation}
             fileName={documentFileName(agreement, document)}
             nameOf={nameOf}
           />
