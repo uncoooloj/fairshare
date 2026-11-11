@@ -1,4 +1,5 @@
 "use client";
+import { OverviewDashboard } from "./overview-dashboard";
 import { AgreementAllocations } from "./agreement-allocations";
 import { allocationTrace } from "../lib/allocation-trace";
 import { useEmailDelivery } from "../lib/email-capability";
@@ -552,28 +553,12 @@ export default function FairshareApp() {
                     )
                   }
                 />
-                <div className="metrics">
-                  <Metric
-                    label="Agreements"
-                    value={String(agreements.length)}
-                  />
-                  <Metric
-                    label="Awaiting approvals"
-                    value={String(
-                      agreements.filter(
-                        (a) =>
-                          a.value.versions.at(-1)?.status ===
-                          "AWAITING_APPROVAL",
-                      ).length,
-                    )}
-                  />
-                  <Metric
-                    label="Payment holds"
-                    value={String(
-                      agreements.filter((a) => a.value.reviewHold).length,
-                    )}
-                  />
-                </div>
+                <OverviewDashboard
+                  agreements={agreements}
+                  payouts={payouts}
+                  userId={user.id}
+                  onOpen={(a) => run(() => openAgreement(a))}
+                />
                 <AgreementList
                   agreements={agreements}
                   workspaceRole={workspaceRole}
