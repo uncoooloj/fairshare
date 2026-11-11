@@ -69,16 +69,28 @@ export function savePayoutEmail(email: string) {
   });
 }
 
+/** Where the step is shown. Settings has its own card title, so no heading
+ * and no "Do this later" there. */
+export enum PayoutStepPlace {
+  AFTER_APPROVAL = "AFTER_APPROVAL",
+  SETTINGS = "SETTINGS",
+}
+
 /**
- * "Where should we send your share?" The suggestion (the person's login email)
+ * "Where should we send your money?" The suggestion (the person's login email)
  * is shown in the field, but nothing is saved until they press Save.
  */
 export function PayoutEmailStep({
   onDone,
+  onCancel,
   autoFocus = true,
+  place = PayoutStepPlace.AFTER_APPROVAL,
 }: {
   onDone: (result: PayoutStepResult, destination?: PayoutDestination) => void;
+  /** Settings only: shown as Cancel when changing a saved email. */
+  onCancel?: () => void;
   autoFocus?: boolean;
+  place?: PayoutStepPlace;
 }) {
   const [email, setEmail] = useState("");
   const [loaded, setLoaded] = useState(false);
@@ -86,10 +98,13 @@ export function PayoutEmailStep({
   const [saving, setSaving] = useState(false);
   const [paypalConnect, setPayPalConnect] = useState(false);
   const [verifiedEmail, setVerifiedEmail] = useState<string | null>(null);
+  const [changing, setChanging] = useState(false);
   const [flag, setFlag] = useState<PayPalConnectFlag | null>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const fieldId = useId();
   const hintId = useId();
+  const noteId = useId();
+  const inSettings = place === PayoutStepPlace.SETTINGS;
   useEffect(() => {
     if (autoFocus) heading.current?.focus();
     setFlag(takePayPalConnectFlag());
@@ -102,6 +117,7 @@ export function PayoutEmailStep({
             ? account.destination.value
             : null;
         setEmail(current ?? account.suggestedEmail ?? "");
+        setChanging(account.destination !== null);
         setPayPalConnect(account.paypalConnect === true);
         setVerifiedEmail(
           account.destination?.verified ? account.destination.value : null,
@@ -118,7 +134,7 @@ export function PayoutEmailStep({
   return (
     <form
       className="collab-payout-form"
-      aria-labelledby={`${fieldId}-heading`}
+      aria-labelledby={inSettings ? undefined : `${fieldId}-heading`}
       onSubmit={async (event) => {
         event.preventDefault();
         const normalized = normalizePayoutEmail(email);
@@ -142,18 +158,16 @@ export function PayoutEmailStep({
         }
       }}
     >
-      <h2
-        id={`${fieldId}-heading`}
-        ref={heading}
-        tabIndex={-1}
-        className="collab-title"
-      >
-        Where should we send your share?
-      </h2>
-      <p id={hintId} className="muted">
-        Enter the email you use for PayPal. If you don’t have PayPal yet,
-        they’ll email you a link to claim it.
-      </p>
+      {!inSettings && (
+        <h2
+          id={`${fieldId}-heading`}
+          ref={heading}
+          tabIndex={-1}
+          className="collab-title"
+        >
+          Where should we send your money?
+        </h2>
+      )}
       {flag && (
         <div role="status">
           <Notice>{paypalFlagMessage(flag)}</Notice>
@@ -172,26 +186,46 @@ export function PayoutEmailStep({
         inputMode="email"
         autoComplete="email"
         spellCheck={false}
-        aria-describedby={hintId}
+        aria-describedby={changing ? `${hintId} ${noteId}` : hintId}
         maxLength={127}
         value={email}
         disabled={saving || !loaded}
         onChange={(event) => setEmail(event.target.value)}
       />
+      <p id={hintId} className="payout-field-hint muted">
+        No PayPal yet? You’ll get an email to claim it.
+      </p>
+      {changing && (
+        <p id={noteId} className="payout-field-hint muted">
+          Payments already on their way keep the old address.
+        </p>
+      )}
       {error && (
         <div role="alert">
           <Notice warning>{error}</Notice>
         </div>
       )}
       <div className="collab-payout-actions">
-        <Button
-          type="button"
-          variant="secondary"
-          disabled={saving}
-          onClick={() => onDone(PayoutStepResult.LATER)}
-        >
-          Do this later
-        </Button>
+        {!inSettings && (
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={saving}
+            onClick={() => onDone(PayoutStepResult.LATER)}
+          >
+            Do this later
+          </Button>
+        )}
+        {inSettings && onCancel && (
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={saving}
+            onClick={onCancel}
+          >
+            Cancel
+          </Button>
+        )}
         <Button type="submit" disabled={saving || !email.trim()}>
           {saving ? "Saving…" : "Save"}
         </Button>

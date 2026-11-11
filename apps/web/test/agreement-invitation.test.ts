@@ -41,7 +41,8 @@ test("approval success leads to the get-paid step; it saves only on submit and c
   assert.match(app, /setApprovedForPayout\(selected.id\)/);
   assert.match(prompt, /recipient-status/);
   assert.match(prompt, /<PayoutEmailStep[\s\S]*autoFocus/);
-  assert.match(prompt, /Your approval is already saved/);
+  // "You approved" already says it; no second sentence.
+  assert.doesNotMatch(prompt, /Your approval is already saved/);
   // The only write is PayoutEmailStep's explicit Save; "Do this later" lives there.
   assert.doesNotMatch(prompt, /"PUT"|"POST"|paypalId|\{13\}/);
   assert.match(prompt, /PayoutStepResult.SAVED/);

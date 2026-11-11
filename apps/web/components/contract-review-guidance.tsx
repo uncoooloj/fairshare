@@ -49,10 +49,23 @@ export function ContractReviewPanel({
       setSubmitting(false);
     }
   }
+  // Rules in use need no review block: the rules card's badge says so.
+  const inUse = version.status === "ACTIVE";
+  if (
+    inUse &&
+    !state.blockers.length &&
+    !version.changeRequests.length &&
+    !error
+  )
+    return null;
   return (
     <section className="section" aria-label="Agreement review">
-      <h3>{state.heading}</h3>
-      <p className="muted">{state.effect}</p>
+      {!inUse && (
+        <>
+          <h3>{state.heading}</h3>
+          <p className="muted">{state.effect}</p>
+        </>
+      )}
       {state.blockers.length > 0 && (
         <Notice warning>
           <strong>Questions to answer</strong>

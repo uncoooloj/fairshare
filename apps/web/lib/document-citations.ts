@@ -8,6 +8,31 @@ export interface DocumentCitation {
   page?: number;
   unavailable?: string;
 }
+/** Which saved quote a rule points at in the document. */
+export enum CitationId {
+  Rules = "rules-source",
+  Advance = "advance-source",
+}
+/** Window event: a rule's clause chip asks the document to show that quote.
+ * The listener calls preventDefault() once it has handled it. */
+export const OPEN_CITATION_EVENT = "fairshare:open-citation";
+/** A citation request may carry the version and document that produced it.
+ * Older callers can continue to send the citation ID string alone. */
+export interface OpenCitationDetail {
+  id: string;
+  versionId?: number;
+  documentId?: string;
+}
+export function matchesCitationTarget(
+  request: OpenCitationDetail,
+  versionId: number | undefined,
+  documentId: string,
+) {
+  return (
+    (request.versionId === undefined || request.versionId === versionId) &&
+    (request.documentId === undefined || request.documentId === documentId)
+  );
+}
 type PageRange = { page: number; start: number; end: number };
 
 /** Saved rules carry quotes, not extraction offsets. Only a unique exact quote is locatable. */
@@ -20,16 +45,16 @@ export function documentCitations(
   },
 ): DocumentCitation[] {
   if (!version) return [];
-  const references = [
+  const references: { id: string; label: string; reference: Source }[] = [
     {
-      id: "rules-source",
+      id: CitationId.Rules,
       label: "Revenue rules",
       reference: version.rules.source,
     },
   ];
   if (version.rules.advance)
     references.push({
-      id: "advance-source",
+      id: CitationId.Advance,
       label: "Recoupment",
       reference: version.rules.advance.source,
     });

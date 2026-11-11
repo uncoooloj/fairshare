@@ -5,7 +5,7 @@ import { Button } from "./ui";
 import { PayoutEmailStep, PayoutStepResult } from "./payout-email-step";
 
 /**
- * "Where should we send your share?" after approving. The approval is already
+ * "Where should we send your money?" after approving. The approval is already
  * saved; this step only saves a payout email when the person submits it, and
  * can always be skipped with "Do this later".
  */
@@ -59,16 +59,13 @@ export function PostApprovalPayout({
           </div>
         </>
       ) : (
-        <>
-          <p className="muted">Your approval is already saved.</p>
-          <PayoutEmailStep
-            autoFocus
-            onDone={(result) => {
-              if (result === PayoutStepResult.SAVED) setSaved(true);
-              else onDone();
-            }}
-          />
-        </>
+        <PayoutEmailStep
+          autoFocus
+          onDone={(result) => {
+            if (result === PayoutStepResult.SAVED) setSaved(true);
+            else onDone();
+          }}
+        />
       )}
     </section>
   );
