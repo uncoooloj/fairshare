@@ -6,6 +6,13 @@ import {
 } from "./agreement-api";
 import type { Agreement } from "./model";
 import { AGREEMENT_INVITE_PREFIX } from "../components/agreement-invitation";
+import {
+  forgetStaleInviteTokens as forgetExpiredInviteTokens,
+  loadStoredInviteTokens,
+  replaceInviteLinks,
+  saveInviteLinks,
+  type StoredInviteToken,
+} from "./wizard-persistence";
 
 /** Named-person links deliberately keep their bearer token out of server logs. */
 export function personInviteLink(token: string, origin: string) {
@@ -33,23 +40,17 @@ export function nudgeMessage(
 }
 
 /* Invite tokens are only returned when a link is created, so we keep the ones this
- * device created. Same key and shape the wizard writes at Send:
- * `fairshare:invite-links:v1:<workspaceId>:<agreementId>` → { [invitationId]: token }. */
+ * device created. The wizard owns the persisted, expiry-checked cache contract. */
 const storageKey = (workspaceId: string, agreementId: string) =>
   `fairshare:invite-links:v1:${workspaceId}:${agreementId}`;
-const memory = new Map<string, Record<string, string>>();
+const memory = new Map<string, Record<string, StoredInviteToken>>();
 
 function readTokens(workspaceId: string, agreementId: string) {
   const key = storageKey(workspaceId, agreementId);
-  let stored: Record<string, string> = {};
-  try {
-    const parsed = JSON.parse(localStorage.getItem(key) || "{}");
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed))
-      stored = parsed;
-  } catch {
-    // Storage can be blocked; the in-memory copy still covers this session.
-  }
-  return { ...stored, ...memory.get(key) };
+  return forgetExpiredInviteTokens({
+    ...loadStoredInviteTokens(workspaceId, agreementId),
+    ...memory.get(key),
+  });
 }
 
 export function rememberInviteToken(
@@ -57,20 +58,15 @@ export function rememberInviteToken(
   agreementId: string,
   invitationId: string,
   token: string,
+  expiresAt: number,
 ) {
   const key = storageKey(workspaceId, agreementId);
-  memory.set(key, { ...memory.get(key), [invitationId]: token });
-  try {
-    localStorage.setItem(
-      key,
-      JSON.stringify({
-        ...readTokens(workspaceId, agreementId),
-        [invitationId]: token,
-      }),
-    );
-  } catch {
-    // Kept in memory only.
-  }
+  const next = { token, expiresAt };
+  memory.set(key, {
+    ...readTokens(workspaceId, agreementId),
+    [invitationId]: next,
+  });
+  saveInviteLinks(workspaceId, agreementId, { [invitationId]: next });
 }
 
 /** Drops tokens for people who have joined (or whose link was replaced). Local only. */
@@ -82,15 +78,15 @@ export function forgetStaleInviteTokens(agreement: Agreement) {
       .map((m) => m.pending!.invitationId),
   );
   const tokens = readTokens(agreement.workspaceId, agreement.id);
-  const kept = Object.fromEntries(
-    Object.entries(tokens).filter(([invitationId]) => open.has(invitationId)),
+  const kept = forgetExpiredInviteTokens(
+    Object.fromEntries(
+      Object.entries(tokens).filter(([invitationId]) => open.has(invitationId)),
+    ),
   );
   if (Object.keys(kept).length === Object.keys(tokens).length) return;
   memory.set(key, kept);
   try {
-    if (Object.keys(kept).length)
-      localStorage.setItem(key, JSON.stringify(kept));
-    else localStorage.removeItem(key);
+    replaceInviteLinks(agreement.workspaceId, agreement.id, kept);
   } catch {
     // Storage blocked; memory is already trimmed.
   }
@@ -104,19 +100,28 @@ export function knownPersonLink(
   origin: string,
 ): string | undefined {
   if (!isPendingMember(member)) return agreementLink(agreement.id, origin);
-  const token = readTokens(agreement.workspaceId, agreement.id)[
+  const stored = readTokens(agreement.workspaceId, agreement.id)[
     member.pending!.invitationId
   ];
-  return typeof token === "string" && token
-    ? personInviteLink(token, origin)
-    : undefined;
+  return stored?.token ? personInviteLink(stored.token, origin) : undefined;
 }
 
 export interface IssuedLink {
   agreement: Agreement;
   link: string;
+  expiresAt: number;
   /** The person's seat ID after the reissue (`pending:<new invitation>`). */
   userId: string;
+}
+
+/** A freshly issued link is usable only until the backend-provided expiry. */
+export function liveIssuedLink(
+  issued: Pick<IssuedLink, "link" | "expiresAt"> | undefined,
+  now = Date.now(),
+) {
+  return issued && Number.isFinite(issued.expiresAt) && issued.expiresAt > now
+    ? issued.link
+    : undefined;
 }
 
 const inFlight = new Map<string, Promise<IssuedLink>>();
@@ -143,10 +148,12 @@ export function issueInviteLink(
         agreement.id,
         result.invitation.id,
         result.invitation.token,
+        result.invitation.expiresAt,
       );
       return {
         agreement: result.agreement,
         link: personInviteLink(result.invitation.token, origin),
+        expiresAt: result.invitation.expiresAt,
         userId: `pending:${result.invitation.id}`,
       };
     })

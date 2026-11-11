@@ -50,8 +50,17 @@ export function CloseIcon() {
   );
 }
 
-/** Filled checks for finished steps, connector lines between steps. Not clickable. */
-export function WizardStepper({ step }: { step: WizardStep }) {
+/**
+ * Filled checks for finished steps, connector lines between steps. Not clickable. `detail`
+ * is a small line under the current step, e.g. "Question 1 of 2" while Check has questions.
+ */
+export function WizardStepper({
+  step,
+  detail,
+}: {
+  step: WizardStep;
+  detail?: string;
+}) {
   return (
     <nav className="wiz-stepper" aria-label="New agreement progress">
       <ol>
@@ -71,6 +80,12 @@ export function WizardStepper({ step }: { step: WizardStep }) {
                 {WIZARD_STEP_LABELS[item]}
                 {item < step && (
                   <span className="visually-hidden"> (done)</span>
+                )}
+                {item === step && detail && (
+                  <small className="wiz-stepper-detail">
+                    <span className="visually-hidden">, </span>
+                    {detail}
+                  </small>
                 )}
               </span>
             </li>

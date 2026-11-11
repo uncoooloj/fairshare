@@ -12,6 +12,7 @@ import {
   agreementLink,
   forgetStaleInviteTokens,
   issueInviteLink,
+  liveIssuedLink,
   rememberInviteToken,
   knownPersonLink,
   nudgeMessage,
@@ -105,7 +106,11 @@ function recordFetch() {
       return new Response(
         JSON.stringify({
           agreement: next,
-          invitation: { id: "inv-2", token: "tok-2", expiresAt: 0 },
+          invitation: {
+            id: "inv-2",
+            token: "tok-2",
+            expiresAt: Date.now() + 48 * 3600000,
+          },
         }),
         { status: 201 },
       );
@@ -295,7 +300,8 @@ test("without a token on this device, a new link needs a confirm first", () => {
   );
   const act = source.split("async function act(")[1].split("\n  }\n")[0];
   assert.doesNotMatch(act, /issueInviteLink/, "Copy and Share never reissue");
-  assert.match(act, /if \(busy \|\| !known\) return;/);
+  assert.match(act, /const link = currentKnownLink\(\);/);
+  assert.match(act, /This link expired\. Get a new link\./);
   const confirm = source
     .split("async function getNewLink(")[1]
     .split("\n  }\n")[0];
@@ -309,11 +315,38 @@ test("without a token on this device, a new link needs a confirm first", () => {
   );
 });
 
+test("a reissued local link expires at the backend clock boundary", () => {
+  const issued = {
+    link: "https://fairshare.test/invitation#token=agreement%3Atok",
+    expiresAt: 1000,
+  };
+  assert.equal(
+    liveIssuedLink(issued, 999),
+    issued.link,
+    "a link issued while this component is mounted can be used before expiry",
+  );
+  assert.equal(
+    liveIssuedLink(issued, 1000),
+    undefined,
+    "Copy and Share must refuse the same local link once it expires",
+  );
+  const source = readFileSync(
+    new URL("../components/person-share.tsx", import.meta.url),
+    "utf8",
+  );
+  const act = source
+    .split("async function act(")[1]
+    .split("const copyLabel")[0];
+  assert.match(act, /const link = currentKnownLink\(\);/);
+  assert.match(act, /setIssued\(undefined\);/);
+});
+
 test("a known token gives Copy and Share; it is dropped once the person joins", () => {
   const a = midnight();
   a.id = "a-known";
-  rememberInviteToken("w1", "a-known", "inv-1", "tok-1");
-  rememberInviteToken("w1", "a-known", "inv-old", "tok-old");
+  const expiresAt = Date.now() + 48 * 3600000;
+  rememberInviteToken("w1", "a-known", "inv-1", "tok-1", expiresAt);
+  rememberInviteToken("w1", "a-known", "inv-old", "tok-old", expiresAt);
   const riley = a.value.members[2] as AgreementMember;
   const html = renderToStaticMarkup(
     createElement(NudgeDrawer, {

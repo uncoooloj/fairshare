@@ -69,6 +69,13 @@ test("organizers make a new link only on request, without putting its token in a
   assert.match(source, /oldLinkWarning\(member\)/);
   assert.match(source, /onAgreementChange\?\.\(next\)/);
   assert.match(source, /agreementIdentityRef\.current !== requestIdentity/);
+  assert.match(source, /issueInviteLink\(/);
+  const shareLink = readFileSync(
+    new URL("../lib/share-link.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(shareLink, /result\.invitation\.expiresAt/);
+  assert.match(shareLink, /loadStoredInviteTokens/);
 });
 
 test("reissued agreements propagate to the app state by composite identity", () => {

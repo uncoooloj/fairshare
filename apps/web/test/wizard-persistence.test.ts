@@ -16,9 +16,13 @@ import type { Agreement } from "../lib/model";
 import {
   clearDraftAnswers,
   draftAnswersKey,
+  forgetStaleInviteTokens,
+  inviteLinksKey,
   loadDraftAnswers,
+  loadInviteLinks,
   restoreQuestions,
   saveDraftAnswers,
+  saveInviteLinks,
 } from "../lib/wizard-persistence";
 
 const self = { name: "Maya Okafor", userId: "owner" };
@@ -239,6 +243,31 @@ test("blocked storage never throws", () => {
   }
   // No localStorage at all (server render).
   assert.equal(loadDraftAnswers("w", "a"), undefined);
+});
+
+test("invite cache keeps only unexpired structured tokens and fails closed for legacy values", () => {
+  withStorage((store) => {
+    const now = 1000;
+    assert.deepEqual(
+      forgetStaleInviteTokens(
+        {
+          current: { token: "current", expiresAt: now + 1 },
+          expired: { token: "expired", expiresAt: now },
+        },
+        now,
+      ),
+      { current: { token: "current", expiresAt: now + 1 } },
+    );
+    store.set(
+      inviteLinksKey("w", "a"),
+      JSON.stringify({ legacy: "bearer", invalid: { token: "x" } }),
+    );
+    assert.deepEqual(loadInviteLinks("w", "a"), {});
+    saveInviteLinks("w", "a", {
+      current: { token: "current", expiresAt: Date.now() + 48 * 3600000 },
+    });
+    assert.deepEqual(loadInviteLinks("w", "a"), { current: "current" });
+  });
 });
 
 test("restoreQuestions drops unknown questions and stale answers", () => {

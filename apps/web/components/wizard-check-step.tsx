@@ -201,8 +201,7 @@ function feesAsked(answers: AgreementAnswers) {
   );
 }
 
-/** Save a fee choice when it changed, or when the organizer explicitly picked the current
- * policy again (which can move fees from a former organizer after a handover). */
+/** Save a fee choice when it changed, or when the organizer explicitly picked it again. */
 export function feesNeedSave(
   answers: AgreementAnswers,
   chosen: string,
@@ -274,6 +273,7 @@ export function WizardCheckStep({
   peopleFixed = false,
   flag,
   onUploadAgain,
+  onSetUpMyself,
   busy = false,
 }: {
   answers: AgreementAnswers;
@@ -287,6 +287,8 @@ export function WizardCheckStep({
   flag?: { card: CheckCard; note: ReactNode };
   /** Not an agreement: back to Upload for another file. */
   onUploadAgain?: () => void;
+  /** Not an agreement: the organizer chose to set the split up by hand. */
+  onSetUpMyself?: () => void;
   /** Disables both replacement choices while the current draft is being retired. */
   busy?: boolean;
 }) {
@@ -352,7 +354,10 @@ export function WizardCheckStep({
             type="button"
             className="button secondary"
             disabled={busy}
-            onClick={() => setSetUpMyself(true)}
+            onClick={() => {
+              setSetUpMyself(true);
+              onSetUpMyself?.();
+            }}
           >
             Set it up myself
           </button>

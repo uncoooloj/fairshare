@@ -5,9 +5,11 @@ import {
   copyText,
   issueInviteLink,
   knownPersonLink,
+  liveIssuedLink,
   nudgeMessage,
   shareText,
   ShareOutcome,
+  type IssuedLink,
 } from "../lib/share-link";
 import { Drawer } from "./allocation-drawer";
 import { Button } from "./ui";
@@ -55,15 +57,18 @@ export function PersonShare({
   mode?: ShareMode;
   onAgreementChange?: (agreement: Agreement) => void;
 }) {
-  const [issued, setIssued] = useState("");
+  const [issued, setIssued] = useState<IssuedLink>();
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [manual, setManual] = useState("");
   const [confirming, setConfirming] = useState(false);
   if (!canShareLink(member, viewerId, organizer)) return null;
   const name = firstName(member.displayName);
-  const known =
-    issued || knownPersonLink(agreement, member, currentOrigin()) || "";
+  const currentKnownLink = () =>
+    liveIssuedLink(issued) ||
+    knownPersonLink(agreement, member, currentOrigin()) ||
+    "";
+  const known = currentKnownLink();
   const textFor = (link: string) =>
     mode === ShareMode.Nudge
       ? nudgeMessage(member, agreement.value.name, link)
@@ -76,7 +81,7 @@ export function PersonShare({
     setNotice("");
     try {
       const result = await issueInviteLink(agreement, member, currentOrigin());
-      setIssued(result.link);
+      setIssued(result);
       setConfirming(false);
       setNotice("New link ready");
       onAgreementChange?.(result.agreement);
@@ -87,7 +92,7 @@ export function PersonShare({
           const current = await api<Agreement>(
             `workspaces/${encodeURIComponent(agreement.workspaceId)}/collaborations/${encodeURIComponent(agreement.id)}`,
           );
-          setIssued("");
+          setIssued(undefined);
           onAgreementChange?.(current);
         } catch {
           refreshFailed = true;
@@ -110,12 +115,18 @@ export function PersonShare({
   }
 
   async function act(share: boolean) {
-    if (busy || !known) return;
+    if (busy) return;
+    const link = currentKnownLink();
+    if (!link) {
+      setIssued(undefined);
+      setManual("");
+      setNotice("This link expired. Get a new link.");
+      return;
+    }
     setBusy(true);
     setNotice("");
     setManual("");
     try {
-      const link = known;
       const text = textFor(link);
       const outcome = share
         ? await shareText(

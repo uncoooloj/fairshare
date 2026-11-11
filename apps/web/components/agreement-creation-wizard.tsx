@@ -28,8 +28,12 @@ import { workspaceBase } from "../lib/workspace-base";
 import {
   clearDraftAnswers,
   loadDraftAnswers,
+  loadStoredInviteTokens,
   restoreQuestions,
   saveDraftAnswers,
+  saveInviteLinks,
+  type StoredInviteToken,
+  type StoredPlace,
 } from "../lib/wizard-persistence";
 import {
   DocumentMode,
@@ -79,22 +83,58 @@ export interface WizardPrefill {
   text?: string;
 }
 
-/** A saved draft reopened from Agreements: the wizard starts at Check. */
+/** A saved draft reopened from Agreements: the wizard returns to where the organizer stopped. */
 export interface WizardResume {
   created: CreatedAgreement;
   extraction: unknown;
 }
 
-/** Issued invite links, by person key. A link is only good for the name and email it was made for. */
-interface IssuedInvite {
-  invitationId: string;
-  token: string;
-  name: string;
-  email: string;
-}
-
 const PRIVACY_LINE =
   "Read my agreement sends it to AI (Cloudflare Workers AI, with an Anthropic fallback) to suggest the split.";
+
+/** Screens a reopened draft can land on. Upload and Reading are behind it; Sent means it's gone. */
+const RESUMABLE = new Set<string>([
+  WizardStage.CHECK,
+  WizardStage.QUESTIONS,
+  WizardStage.PEOPLE,
+  WizardStage.SEND,
+]);
+
+/**
+ * Where a reopened draft lands: the screen it was closed on, unless an earlier screen now
+ * needs attention (the split doesn't add up, a question went away, an email is missing).
+ */
+export function resumePlace(
+  answers: AgreementAnswers,
+  place: StoredPlace | undefined,
+  selfEmail?: string,
+): { stage: WizardStage; questionIndex: number } {
+  const check = { stage: WizardStage.CHECK, questionIndex: 0 };
+  if (!place || !RESUMABLE.has(place.stage) || checkProblem(answers))
+    return check;
+  const stage = place.stage as WizardStage;
+  const count = answers.questions.length;
+  if (stage === WizardStage.QUESTIONS)
+    return count
+      ? {
+          stage,
+          questionIndex: Math.min(Math.max(place.questionIndex, 0), count - 1),
+        }
+      : { stage: WizardStage.PEOPLE, questionIndex: 0 };
+  if (stage === WizardStage.SEND && validatePeopleEmails(answers, selfEmail))
+    return { stage: WizardStage.PEOPLE, questionIndex: 0 };
+  return { stage, questionIndex: 0 };
+}
+
+/** The progress line under the current dot: which question of how many. */
+export function stageDetail(
+  stage: WizardStage,
+  questionIndex: number,
+  questionCount: number,
+): string | undefined {
+  if (stage !== WizardStage.QUESTIONS || !questionCount) return undefined;
+  return `Question ${Math.min(questionIndex, questionCount - 1) + 1} of ${questionCount}`;
+}
 
 /** Pending people the server holds for this draft. */
 function pendingMembers(agreement: Agreement) {
@@ -154,10 +194,7 @@ type DraftRead = (
   agreementId: string,
 ) => Promise<Agreement>;
 
-/**
- * A lost DELETE response is safe to recover only when a fresh read proves the draft is gone.
- * A present draft, an auth failure, or an unreadable response keeps the original error.
- */
+/** A lost DELETE response is safe to recover only when a fresh read proves the draft is gone. */
 export async function deleteDraftForReplacement(
   workspaceId: string,
   agreementId: string,
@@ -188,6 +225,148 @@ export async function deleteDraftForReplacement(
   }
 }
 
+/** The server calls People needs; swappable so tests can count them. */
+export interface PeopleApi {
+  addPerson: typeof addPerson;
+  removePerson: typeof removePerson;
+  replacePersonLink: typeof replacePersonLink;
+}
+
+const PEOPLE_API: PeopleApi = { addPerson, removePerson, replacePersonLink };
+
+/**
+ * Makes the server's pending people match the People screen. Called only by Send, never on
+ * navigation. Each person's link is made once: adding them returns it and `onLink` keeps it.
+ * A person already on the server keeps their link; only one saved by an older build (on the
+ * server, but with no link on this device) gets a new link, once. Progress is reported as it
+ * commits, so a failure part-way never adds the same person twice on retry.
+ */
+export async function syncPendingPeople({
+  workspaceId,
+  agreementId,
+  agreement,
+  answers,
+  links,
+  onAgreement = () => {},
+  onAnswers = () => {},
+  onLink = () => {},
+  calls = PEOPLE_API,
+}: {
+  workspaceId: string;
+  agreementId: string;
+  agreement: Agreement;
+  answers: AgreementAnswers;
+  /** Tokens already made, by invitation id. */
+  links: Record<string, string | StoredInviteToken>;
+  onAgreement?: (agreement: Agreement) => void;
+  onAnswers?: (answers: AgreementAnswers) => void;
+  onLink?: (invitationId: string, token: string, expiresAt: number) => void;
+  calls?: PeopleApi;
+}): Promise<{
+  agreement: Agreement;
+  answers: AgreementAnswers;
+  links: Record<string, string>;
+}> {
+  let current = agreement;
+  let next = answers;
+  const issued = Object.fromEntries(
+    Object.entries(links).flatMap(([id, link]) =>
+      !!link &&
+      typeof link === "object" &&
+      typeof link.token === "string" &&
+      Number.isFinite(link.expiresAt) &&
+      link.expiresAt > Date.now()
+        ? [[id, link.token]]
+        : [],
+    ),
+  ) as Record<string, string>;
+  const keep = new Set<string>();
+  const committed = (
+    result: {
+      agreement: Agreement;
+      invitation: { id: string; token: string; expiresAt: number };
+    },
+    personKey: string,
+    patch: Partial<PersonAnswer> = {},
+  ) => {
+    current = result.agreement;
+    onAgreement(current);
+    issued[result.invitation.id] = result.invitation.token;
+    onLink(
+      result.invitation.id,
+      result.invitation.token,
+      result.invitation.expiresAt,
+    );
+    keep.add(result.invitation.id);
+    next = withInvitation(next, personKey, result.invitation.id, patch);
+    onAnswers(next);
+  };
+  for (const person of answers.people.value) {
+    if (person.isSelf || person.userId) continue;
+    const name = person.name.trim();
+    const email = (person.email ?? "").trim();
+    const held = person.invitationId
+      ? pendingMembers(current).find(
+          (m) => m.pending.invitationId === person.invitationId,
+        )
+      : undefined;
+    if (
+      held &&
+      held.displayName === name &&
+      held.pending.email.toLowerCase() === email.toLowerCase()
+    ) {
+      keep.add(held.pending.invitationId);
+      if (issued[held.pending.invitationId]) continue;
+      // Saved by an older build with no link on this device: make it once, now.
+      committed(
+        await calls.replacePersonLink(
+          workspaceId,
+          agreementId,
+          current.revision,
+          held.userId,
+        ),
+        person.key,
+      );
+      continue;
+    }
+    // New, or the name or email changed: their old place and link go.
+    if (held) {
+      current = await calls.removePerson(
+        workspaceId,
+        agreementId,
+        current.revision,
+        held.userId,
+      );
+      // The removal is already committed even if adding the replacement fails.
+      // Keep its revision and clear the obsolete invitation before retrying.
+      onAgreement(current);
+      next = clearPersonInvitation(next, person.key);
+      onAnswers(next);
+    }
+    committed(
+      await calls.addPerson(workspaceId, agreementId, current.revision, {
+        name,
+        email,
+      }),
+      person.key,
+      { name, email },
+    );
+  }
+  // Anyone removed from the split loses their pending place and link.
+  for (const member of pendingMembers(current)) {
+    if (keep.has(member.pending.invitationId)) continue;
+    current = await calls.removePerson(
+      workspaceId,
+      agreementId,
+      current.revision,
+      member.userId,
+    );
+    // Each deletion advances the revision. Retain it before the next deletion or retry.
+    onAgreement(current);
+  }
+  return { agreement: current, answers: next, links: issued };
+}
+
 /**
  * Questions for step 4. Answered ones stay so Back can revisit them; new ones come from
  * whatever the Check screen left open.
@@ -216,8 +395,9 @@ export function checkProblem(answers: AgreementAnswers): string | undefined {
 
 /**
  * Upload → Reading → Check → Questions → People → Send → Sent. Pressing "Read my agreement"
- * (or "Set it up myself") saves a private draft through intake; People adds pending people;
- * Send saves the rules, approves for the organizer and sends in one call.
+ * (or "Set it up myself") saves a private draft through intake. Moving between screens is
+ * local. Send adds the pending people (making each link once), then saves the rules,
+ * approves for the organizer and sends in one call.
  */
 export function AgreementCreationWizard({
   owner,
@@ -247,9 +427,12 @@ export function AgreementCreationWizard({
   const [initial] = useState(() =>
     resume ? resumedAnswers(resume, self) : undefined,
   );
-  const [stage, setStage] = useState(
-    resume ? WizardStage.CHECK : WizardStage.UPLOAD,
+  const [place] = useState(() =>
+    initial
+      ? resumePlace(initial.answers, initial.place, owner.email)
+      : { stage: WizardStage.UPLOAD, questionIndex: 0 },
   );
+  const [stage, setStage] = useState(place.stage);
   const [mode, setModeState] = useState(
     prefill?.text ? DocumentMode.PASTE : DocumentMode.UPLOAD,
   );
@@ -269,8 +452,16 @@ export function AgreementCreationWizard({
   const [equalSplitGuessed, setEqualSplitGuessed] = useState(
     initial?.equalSplitGuessed ?? false,
   );
-  const [questionIndex, setQuestionIndex] = useState(0);
-  const [invites, setInvites] = useState<Record<string, IssuedInvite>>({});
+  const [questionIndex, setQuestionIndex] = useState(place.questionIndex);
+  // Invite tokens by invitation id. Each is made once, at Send, and kept on this device.
+  const [links, setLinks] = useState<Record<string, StoredInviteToken>>(() =>
+    resume
+      ? loadStoredInviteTokens(
+          resume.created.workspaceId,
+          resume.created.agreementId,
+        )
+      : {},
+  );
   const [busy, setBusyState] = useState(false);
   const [error, setError] = useState("");
   const [showErrors, setShowErrors] = useState(false);
@@ -287,14 +478,26 @@ export function AgreementCreationWizard({
     setShowErrors(false);
     const node = document.querySelector<HTMLElement>(".wiz-main h1");
     heading.current = node;
-    node?.focus();
+    // People: straight into the first email still to fill in.
+    const email =
+      stage === WizardStage.PEOPLE
+        ? Array.from(
+            document.querySelectorAll<HTMLInputElement>(
+              '.wiz-main input[type="email"]',
+            ),
+          ).find((input) => !input.value.trim() && !input.disabled)
+        : undefined;
+    (email ?? node)?.focus();
   }, [stage, questionIndex]);
 
-  // Check, Questions and People choices survive a reload or "Keep as draft" on this device.
+  // Choices and the current screen survive a reload or "Keep as draft" on this device.
   useEffect(() => {
     if (!answers || !created || stage === WizardStage.SENT) return;
-    saveDraftAnswers(created.workspaceId, created.agreementId, answers);
-  }, [answers, created, stage]);
+    saveDraftAnswers(created.workspaceId, created.agreementId, answers, {
+      stage,
+      questionIndex,
+    });
+  }, [answers, created, stage, questionIndex]);
 
   function setBusy(next: boolean) {
     setBusyState(next);
@@ -414,112 +617,31 @@ export function AgreementCreationWizard({
     );
   }
 
-  /** Makes the server's pending people match the People screen, issuing links as needed. */
-  async function syncPeople() {
-    if (!answers || !created || !agreement) return;
+  /** Server people sync for Send, with progress kept so a retry never repeats a step. */
+  async function syncPeople(start: Agreement, from: AgreementAnswers) {
+    if (!created) return { agreement: start, answers: from };
     const { workspaceId, agreementId } = created;
-    let current = agreement;
-    const issued = { ...invites };
-    const people: PersonAnswer[] = [];
-    const keep = new Set<string>();
-    for (const person of answers.people.value) {
-      if (person.isSelf || person.userId) {
-        people.push(person);
-        continue;
-      }
-      const name = person.name.trim();
-      const email = (person.email ?? "").trim();
-      const link = issued[person.key];
-      if (
-        person.invitationId &&
-        link?.invitationId === person.invitationId &&
-        link.name === name &&
-        link.email.toLowerCase() === email.toLowerCase()
-      ) {
-        keep.add(person.invitationId);
-        people.push(person);
-        continue;
-      }
-      const held = person.invitationId
-        ? pendingMembers(current).find(
-            (m) => m.pending.invitationId === person.invitationId,
-          )
-        : undefined;
-      let result;
-      if (
-        held &&
-        held.displayName === name &&
-        held.pending.email.toLowerCase() === email.toLowerCase()
-      )
-        // A resumed draft: same person, but this screen never saw their link. Issue a fresh one.
-        result = await replacePersonLink(
-          workspaceId,
-          agreementId,
-          current.revision,
-          held.userId,
-        );
-      else {
-        // New, or the name or email changed: their old place and link go.
-        if (held) {
-          current = await removePerson(
-            workspaceId,
-            agreementId,
-            current.revision,
-            held.userId,
-          );
-          // The removal is already committed even if adding the replacement fails.
-          // Keep its revision and clear the obsolete invitation before retrying.
-          delete issued[person.key];
-          setAgreement(current);
-          setInvites({ ...issued });
-          setAnswers((currentAnswers) =>
-            currentAnswers
-              ? clearPersonInvitation(currentAnswers, person.key)
-              : currentAnswers,
-          );
-        }
-        result = await addPerson(workspaceId, agreementId, current.revision, {
-          name,
-          email,
+    return syncPendingPeople({
+      workspaceId,
+      agreementId,
+      agreement: start,
+      answers: from,
+      links,
+      onAgreement: setAgreement,
+      onAnswers: setAnswers,
+      onLink: (invitationId, token, expiresAt) => {
+        saveInviteLinks(workspaceId, agreementId, {
+          [invitationId]: { token, expiresAt },
         });
-      }
-      current = result.agreement;
-      issued[person.key] = {
-        invitationId: result.invitation.id,
-        token: result.invitation.token,
-        name,
-        email,
-      };
-      keep.add(result.invitation.id);
-      people.push({
-        ...person,
-        name,
-        email,
-        invitationId: result.invitation.id,
-      });
-      // Saved as we go, so a failure part-way doesn't add the same person twice on retry.
-      setAgreement(current);
-      setInvites({ ...issued });
-      setAnswers((a) => (a ? withPeople(a, people, answers.people.value) : a));
-    }
-    // Anyone removed from the split loses their pending place and link.
-    for (const member of pendingMembers(current)) {
-      if (keep.has(member.pending.invitationId)) continue;
-      current = await removePerson(
-        workspaceId,
-        agreementId,
-        current.revision,
-        member.userId,
-      );
-      // Each deletion advances the revision. Retain it before the next deletion or retry.
-      setAgreement(current);
-    }
-    setAgreement(current);
-    setInvites(issued);
-    setAnswers((a) => (a ? withPeople(a, people, answers.people.value) : a));
+        setLinks((current) => ({
+          ...current,
+          [invitationId]: { token, expiresAt },
+        }));
+      },
+    });
   }
 
-  async function leavePeople() {
+  function leavePeople() {
     if (!answers) return;
     const problem = validatePeopleEmails(answers, owner.email);
     if (problem) {
@@ -527,10 +649,7 @@ export function AgreementCreationWizard({
       setError(problem);
       return;
     }
-    await guarded(async () => {
-      await syncPeople();
-      setStage(WizardStage.SEND);
-    });
+    setStage(WizardStage.SEND);
   }
 
   async function send() {
@@ -538,8 +657,9 @@ export function AgreementCreationWizard({
     if (blockingReasons(answers).length) return;
     await guarded(async () => {
       const { workspaceId, agreementId, documentId } = created;
-      let current = agreement;
-      const patch = detailsPatch(current, answers);
+      const synced = await syncPeople(agreement, answers);
+      let current = synced.agreement;
+      const patch = detailsPatch(current, synced.answers);
       if (patch)
         current = await api<Agreement>(
           `${workspaceBase(workspaceId)}/collaborations/${agreementId}/details`,
@@ -549,7 +669,7 @@ export function AgreementCreationWizard({
       // Details and submit are separate revisioned commits. Keep the acknowledged
       // details revision even when sending fails, so retry does not conflict.
       setAgreement(current);
-      const rules = toRules(answers, {
+      const rules = toRules(synced.answers, {
         documentId,
         organizerId: owner.id,
         documentText: created.documentText,
@@ -582,6 +702,41 @@ export function AgreementCreationWizard({
     });
   }
 
+  /**
+   * Not an agreement → "Upload a different file": the first draft is discarded (it holds
+   * nothing but that document), so Agreements never fills up with abandoned drafts. The
+   * next "Read my agreement" saves a fresh one.
+   */
+  async function uploadAgain() {
+    if (!created || !agreement) {
+      setStage(WizardStage.UPLOAD);
+      return;
+    }
+    const { workspaceId, agreementId } = created;
+    await guarded(async () => {
+      await deleteDraftForReplacement(
+        workspaceId,
+        agreementId,
+        agreement.revision,
+      );
+      clearDraftAnswers(workspaceId, agreementId);
+      readingGeneration.current++;
+      requestId.current = "";
+      setCreated(null);
+      setAgreement(null);
+      setAnswers(null);
+      setLinks({});
+      setCheckMode(CheckMode.MANUAL);
+      setEqualSplitGuessed(false);
+      setQuestionIndex(0);
+      setModeState(DocumentMode.UPLOAD);
+      setFileState(null);
+      setTextState("");
+      setDocumentError("");
+      setStage(WizardStage.UPLOAD);
+    });
+  }
+
   async function discard() {
     if (!created || !agreement) {
       onClose();
@@ -604,49 +759,6 @@ export function AgreementCreationWizard({
         cause instanceof Error && cause.message
           ? cause.message
           : "We couldn’t discard this draft. Try again.",
-      );
-    } finally {
-      lock.current = false;
-      setBusy(false);
-    }
-  }
-
-  /** Replace a non-agreement only after its private server draft is retired successfully. */
-  async function uploadAgain() {
-    if (!created || !agreement) {
-      setStage(WizardStage.UPLOAD);
-      return;
-    }
-    if (lock.current) return;
-    lock.current = true;
-    setBusy(true);
-    setError("");
-    readingGeneration.current++;
-    try {
-      await deleteDraftForReplacement(
-        created.workspaceId,
-        created.agreementId,
-        agreement.revision,
-      );
-      clearDraftAnswers(created.workspaceId, created.agreementId);
-      requestId.current = "";
-      setFileState(null);
-      setTextState("");
-      setModeState(DocumentMode.UPLOAD);
-      setDocumentError("");
-      setCreated(null);
-      setAgreement(null);
-      setAnswers(null);
-      setCheckMode(CheckMode.MANUAL);
-      setEqualSplitGuessed(false);
-      setQuestionIndex(0);
-      setInvites({});
-      setStage(WizardStage.UPLOAD);
-    } catch (cause) {
-      setError(
-        cause instanceof Error && cause.message
-          ? cause.message
-          : "We couldn’t replace this draft. Try again.",
       );
     } finally {
       lock.current = false;
@@ -688,6 +800,11 @@ export function AgreementCreationWizard({
   );
 
   const step = STAGE_STEP[stage];
+  const detail = stageDetail(
+    stage,
+    questionIndex,
+    answers?.questions.length ?? 0,
+  );
   const frame = (
     footer: React.ReactNode,
     body: React.ReactNode,
@@ -698,7 +815,11 @@ export function AgreementCreationWizard({
       closeLabel={closeLabel}
       closeDisabled={busy || stage === WizardStage.READING}
       busy={busy}
-      stepper={step === undefined ? undefined : <WizardStepper step={step} />}
+      stepper={
+        step === undefined ? undefined : (
+          <WizardStepper step={step} detail={detail} />
+        )
+      }
       footer={footer}
     >
       {body}
@@ -768,19 +889,27 @@ export function AgreementCreationWizard({
     );
   }
 
+  // "This doesn't look like a revenue-share agreement": its own two buttons are the only
+  // actions, so no footer. Same rule as Check uses to leave that screen.
+  const notAgreement =
+    checkMode === CheckMode.NOT_AGREEMENT && answers
+      ? answers.people.value.length <= 1
+      : false;
   if (stage === WizardStage.CHECK && answers)
     return frame(
-      <>
-        <span />
-        <button
-          type="button"
-          className="button primary"
-          disabled={busy}
-          onClick={leaveCheck}
-        >
-          Continue
-        </button>
-      </>,
+      notAgreement ? null : (
+        <>
+          <span />
+          <button
+            type="button"
+            className="button primary"
+            disabled={busy}
+            onClick={leaveCheck}
+          >
+            Continue
+          </button>
+        </>
+      ),
       <>
         <WizardCheckStep
           answers={answers}
@@ -792,6 +921,7 @@ export function AgreementCreationWizard({
           equalSplitGuessed={equalSplitGuessed}
           busy={busy}
           onUploadAgain={() => void uploadAgain()}
+          onSetUpMyself={() => setCheckMode(CheckMode.MANUAL)}
         />
         {created?.lowConfidence && (
           <p className="wiz-warning" role="note">
@@ -842,9 +972,9 @@ export function AgreementCreationWizard({
           type="button"
           className="button primary"
           disabled={busy}
-          onClick={() => void leavePeople()}
+          onClick={leavePeople}
         >
-          {busy ? "Saving…" : "Review and send"}
+          Review and send
         </button>
       </>,
       <section className="wiz-step" aria-labelledby="wiz-step-title">
@@ -862,7 +992,6 @@ export function AgreementCreationWizard({
             setAnswers(next);
           }}
           showErrors={showErrors}
-          disabled={busy}
           selfEmail={owner.email}
         />
         {errorBanner}
@@ -903,7 +1032,9 @@ export function AgreementCreationWizard({
   if (stage === WizardStage.SENT && answers && agreement)
     return frame(
       <>
-        <span />
+        <button type="button" className="text-button" onClick={onClose}>
+          Done, I’ll share later
+        </button>
         <button
           type="button"
           className="button primary"
@@ -919,7 +1050,10 @@ export function AgreementCreationWizard({
             key: p.key,
             name: p.name,
             email: p.email ?? "",
-            token: invites[p.key]?.token,
+            token: p.invitationId ? links[p.invitationId]?.token : undefined,
+            expiresAt: p.invitationId
+              ? links[p.invitationId]?.expiresAt
+              : undefined,
           }))}
       />,
       "Close and open the agreement",
@@ -973,18 +1107,20 @@ export function AgreementCreationWizard({
   );
 }
 
-/** The People screen's version of each person replaces the earlier one, keyed by person. */
-function withPeople(
+/** One person now holds this invitation (and the trimmed name and email it was made for). */
+function withInvitation(
   a: AgreementAnswers,
-  synced: PersonAnswer[],
-  original: PersonAnswer[],
+  personKey: string,
+  invitationId: string,
+  patch: Partial<PersonAnswer> = {},
 ): AgreementAnswers {
-  const byKey = new Map(synced.map((p) => [p.key, p]));
   return {
     ...a,
     people: {
       ...a.people,
-      value: original.map((p) => byKey.get(p.key) ?? p),
+      value: a.people.value.map((p) =>
+        p.key === personKey ? { ...p, ...patch, invitationId } : p,
+      ),
     },
   };
 }
@@ -1024,7 +1160,7 @@ function withDraftName(
 export function resumedAnswers(
   resume: WizardResume,
   self: { name: string; userId: string },
-): ExtractedAnswers {
+): ExtractedAnswers & { place?: StoredPlace } {
   const { agreement, documentText, workspaceId, agreementId } = resume.created;
   const read = answersFromDraft(
     agreement,
@@ -1103,5 +1239,6 @@ export function resumedAnswers(
   return {
     ...read,
     answers: withDraftName(mergeQuestions(restored), agreement),
+    place: stored.place,
   };
 }
