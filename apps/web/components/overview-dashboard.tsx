@@ -170,6 +170,7 @@ export function OverviewDashboard({
   payoutsUnavailable,
   userId,
   onOpen,
+  onSendReminder,
 }: {
   agreements: Agreement[];
   payouts: OverviewPayout[];
@@ -177,10 +178,22 @@ export function OverviewDashboard({
   payoutsUnavailable: boolean;
   userId: string;
   onOpen: (agreement: Agreement) => void;
+  onSendReminder: (agreement: Agreement) => void;
 }) {
   const summary = overviewSummary(agreements, payouts, userId, payoutsComplete);
 
+  function canSendReminder(item: AttentionItem, kind: AttentionKind) {
+    return (
+      kind === AttentionKind.WAITING &&
+      item.key.endsWith(":waiting") &&
+      item.agreement.value.members.some(
+        (member) => member.userId === userId && member.role === "ORGANIZER",
+      )
+    );
+  }
+
   function row(item: AttentionItem, kind: AttentionKind) {
+    const sendReminder = canSendReminder(item, kind);
     return (
       <li key={item.key} className="ov-attention-row">
         <AttentionIcon kind={kind} />
@@ -193,9 +206,11 @@ export function OverviewDashboard({
         <Button
           variant={kind === AttentionKind.WAITING ? "quiet" : "secondary"}
           className="ov-row-action"
-          onClick={() => onOpen(item.agreement)}
+          onClick={() =>
+            sendReminder ? onSendReminder(item.agreement) : onOpen(item.agreement)
+          }
         >
-          {actionLabel[kind]}
+          {sendReminder ? "Send reminder" : actionLabel[kind]}
         </Button>
       </li>
     );

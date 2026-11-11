@@ -88,7 +88,11 @@ export function PayoutDetails({
       <section className={styles.drawerNote}>
         <h3>How was this share calculated?</h3>
         {row.trace ? (
-          <AllocationCalculation trace={row.trace} name={row.recipientName} />
+          <AllocationCalculation
+            trace={row.trace}
+            name={row.recipientName}
+            compact
+          />
         ) : (
           <p>
             We can’t show the maths for this one. Open the agreement to check.

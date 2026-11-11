@@ -275,6 +275,8 @@ export function AgreementDetail({
     : undefined;
   const onStatusAction = (action: StageAction) => {
     if (action === StageAction.SeeRequest && organizer) setRequestOpen(true);
+    else if (action === StageAction.Nudge)
+      changeAgreementTab(AgreementTab.People);
     else if (
       action === StageAction.Approve ||
       action === StageAction.SeeRequest
