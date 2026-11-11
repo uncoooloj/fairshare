@@ -101,6 +101,8 @@ export class FairshareAuthority extends DurableObject<Env> {
         accountId: env.CLOUDFLARE_ACCOUNT_ID,
         apiToken: env.CLOUDFLARE_API_TOKEN,
         model: env.CLOUDFLARE_AI_MODEL,
+        onFailure: (diagnostic) =>
+          console.warn("contract_extraction_failed", diagnostic),
       },
     });
     ctx.blockConcurrencyWhile(async () => {

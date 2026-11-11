@@ -70,12 +70,23 @@ export interface ExtractionResult {
   reason: FallbackReason | null;
   suggestedTitle?: string;
 }
+export interface ExtractionDiagnostic {
+  category:
+    | "TIMEOUT"
+    | "HTTP_ERROR"
+    | "TRANSPORT_ERROR"
+    | "INVALID_OUTPUT"
+    | "PROVIDER_REJECTED";
+  httpStatus?: number;
+}
 export interface CloudflareConfig {
   accountId?: string;
   apiToken?: string;
   model?: string;
   timeoutMs?: number;
   fetch?: typeof fetch;
+  /** Server-only, sanitized telemetry. Never includes source, credentials or response body. */
+  onFailure?: (diagnostic: ExtractionDiagnostic) => void;
 }
 export const PROMPT_VERSION = "contract-extraction-v3";
 export const MAX_DOCUMENT_CHARS = 40_000;
@@ -415,6 +426,8 @@ export async function extractContract(
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
   let received = false;
+  let timedOut = false;
+  let httpStatus: number | undefined;
   try {
     const task = async () => {
       const response = await (config.fetch ?? fetch)(
@@ -438,6 +451,7 @@ export async function extractContract(
           signal: controller.signal,
         },
       );
+      httpStatus = response.status;
       if (!response.ok) throw new Error("provider");
       const envelope = object(await boundedJson(response));
       if (envelope.success !== true) throw new Error("provider");
@@ -465,14 +479,31 @@ export async function extractContract(
       new Promise<never>((_, reject) => {
         timer = setTimeout(
           () => {
+            timedOut = true;
             controller.abort();
             reject(new Error("timeout"));
           },
-          Math.max(1, Math.min(config.timeoutMs ?? 20_000, 30_000)),
+          Math.max(1, Math.min(config.timeoutMs ?? 30_000, 30_000)),
         );
       }),
     ]);
   } catch {
+    try {
+      config.onFailure?.({
+        category: timedOut
+          ? "TIMEOUT"
+          : received
+            ? "INVALID_OUTPUT"
+            : httpStatus !== undefined
+              ? httpStatus >= 200 && httpStatus < 300
+                ? "PROVIDER_REJECTED"
+                : "HTTP_ERROR"
+              : "TRANSPORT_ERROR",
+        ...(httpStatus === undefined ? {} : { httpStatus }),
+      });
+    } catch {
+      // Observability must never prevent a safe, review-only fallback.
+    }
     return fallback(
       received
         ? FallbackReason.INVALID_OUTPUT

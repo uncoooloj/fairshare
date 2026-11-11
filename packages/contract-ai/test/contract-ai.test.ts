@@ -380,3 +380,39 @@ test("provider redirects fail closed without forwarding credentials", async () =
   assert.equal(result.reason, FallbackReason.PROVIDER_UNAVAILABLE);
   assert.equal(result.executable, false);
 });
+
+test("failure telemetry contains only category and HTTP status", async () => {
+  const diagnostics: unknown[] = [];
+  await extractContract(document, {
+    ...config,
+    fetch: async () =>
+      new Response(config.apiToken + document.text, { status: 429 }),
+    onFailure: (diagnostic) => diagnostics.push(diagnostic),
+  });
+  assert.deepEqual(diagnostics, [{ category: "HTTP_ERROR", httpStatus: 429 }]);
+});
+
+test("timeout telemetry distinguishes latency from provider rejection", async () => {
+  const diagnostics: unknown[] = [];
+  await extractContract(document, {
+    ...config,
+    timeoutMs: 2,
+    fetch: () => new Promise(() => {}),
+    onFailure: (diagnostic) => diagnostics.push(diagnostic),
+  });
+  assert.deepEqual(diagnostics, [{ category: "TIMEOUT" }]);
+});
+
+test("a failing telemetry sink cannot bypass safe fallback", async () => {
+  const result = await extractContract(document, {
+    ...config,
+    fetch: async () => {
+      throw new Error("unavailable");
+    },
+    onFailure: () => {
+      throw new Error("logger failed");
+    },
+  });
+  assert.equal(result.reason, FallbackReason.PROVIDER_UNAVAILABLE);
+  assert.equal(result.executable, false);
+});
