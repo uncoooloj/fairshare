@@ -105,5 +105,28 @@ test("settings: one Getting paid card, the email plainly, no duplicate copy", ()
     /Your share from every agreement goes to this PayPal account\./,
   );
   assert.match(settings, /Remove your \{payoutLabel\}\?/);
-  assert.match(settings, /setMessage\(`\$\{payoutLabel\} removed\.\`\)/);
+  // Removing confirms with the inline note, like saving.
+  assert.match(settings, /setSaved\("Removed"\)/);
+});
+
+test("settings: no platform PayPal card, inline Saved, row menu for reminders", () => {
+  const settings = source("components/payment-account-settings.tsx");
+  // The platform's PayPal app is not the user's to configure; only say so
+  // when payments are actually off.
+  assert.doesNotMatch(settings, /Receiving payments|Not configured|WalletIcon/);
+  assert.match(
+    settings,
+    /!data\.providerConfigured && \([\s\S]*Payments are off on this server/,
+  );
+  // Saving confirms inside the card and fades, not as loose text on top.
+  assert.doesNotMatch(settings, /PayPal email saved\./);
+  assert.match(settings, /setSaved\("Saved"\)/);
+  assert.match(settings, /settings-card-head[\s\S]*<SavedNote/);
+  // Reminders use the shared portal menu so the settings table cannot clip it.
+  assert.match(settings, /<strong>Collaborators<\/strong>/);
+  assert.match(
+    settings,
+    /<ActionMenu[\s\S]*label=\{`Actions for \$\{m\.name\}`\}[\s\S]*label: "Copy reminder"/,
+  );
+  assert.doesNotMatch(settings, /<details className="ag-menu"/);
 });
