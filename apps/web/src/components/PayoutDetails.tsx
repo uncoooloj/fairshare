@@ -1,14 +1,18 @@
 "use client";
 import { AllocationCalculation } from "../../components/allocation-calculation";
 import { CloseButton } from "../../components/close-button";
-import { formatDay, formatExact } from "../../lib/dates";
+import { formatExact } from "../../lib/dates";
 import { useEffect, useId, useRef } from "react";
 import {
   formatPaymentAmount,
   paymentStatusLabel,
   type PaymentGridRow,
 } from "./paymentGridModel";
-import { payoutGuidance } from "./payoutPresentation";
+import {
+  payoutDate,
+  payoutGuidance,
+  payoutSentLabel,
+} from "./payoutPresentation";
 import styles from "./payouts.module.css";
 /** Read-only detail: no mutation, payout retry, or inferred calculation. */
 export function PayoutDetails({
@@ -22,6 +26,8 @@ export function PayoutDetails({
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const title = useId();
+  const created = payoutDate(row.createdAt);
+  const sent = payoutSentLabel(row);
   useEffect(() => {
     const element = dialog.current;
     element?.showModal();
@@ -47,6 +53,12 @@ export function PayoutDetails({
         <span className={styles.status} data-status={row.status}>
           {paymentStatusLabel(row)}
         </span>
+        {sent && (
+          <>
+            {" "}
+            <span title={formatExact(row.updatedAt)}>{sent}</span>
+          </>
+        )}
       </p>
       <p className={styles.guidance}>{payoutGuidance[row.status]}</p>
       <dl className={styles.facts}>
@@ -63,9 +75,7 @@ export function PayoutDetails({
         <div>
           <dt>Created</dt>
           <dd>
-            <span title={formatExact(row.createdAt)}>
-              {formatDay(row.createdAt)}
-            </span>
+            <span title={created.title}>{created.label}</span>
           </dd>
         </div>
         <div>

@@ -2,8 +2,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   filterPayouts,
+  NO_PAYOUT_DATE_HINT,
   payoutCsv,
+  payoutDate,
   payoutGuidance,
+  payoutSentLabel,
 } from "../src/components/payoutPresentation";
 import {
   PaymentGridStatus as S,
@@ -59,5 +62,26 @@ test("CSV never loses a cent near the safe integer boundary", () => {
     payoutCsv([{ ...row, amountCents: Number.MAX_SAFE_INTEGER }]).includes(
       '"90071992547409.91"',
     ),
+  );
+});
+test("payout dates show the day, the exact time on hover, and a dash when none was stored", () => {
+  const at = `${new Date().getFullYear()}-11-11T12:00:00.000Z`;
+  const created = payoutDate(at);
+  assert.equal(created.label, "Nov 11");
+  assert.equal(created.recorded, true);
+  assert.match(created.title, /Nov 11, \d{4}, \d{1,2}:\d{2}/);
+  assert.deepEqual(payoutDate(undefined), {
+    label: "—",
+    title: NO_PAYOUT_DATE_HINT,
+    recorded: false,
+  });
+  assert.equal(
+    payoutSentLabel({ status: S.Paid, updatedAt: at }),
+    "Status updated Nov 11",
+  );
+  assert.equal(payoutSentLabel({ status: S.Paid }), undefined);
+  assert.equal(
+    payoutSentLabel({ status: S.Pending, updatedAt: at }),
+    undefined,
   );
 });

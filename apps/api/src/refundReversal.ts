@@ -233,8 +233,8 @@ export function applyRefundToCapture(
         ?.totalCents ?? 0;
     if (total <= 0)
       db.prepare(
-        "UPDATE fairshare_payout_ops SET status='CANCELLED_FOR_REFUND' WHERE id=?",
-      ).run(payout.id);
+        "UPDATE fairshare_payout_ops SET updated_at=?,status='CANCELLED_FOR_REFUND' WHERE id=?",
+      ).run(input.at, payout.id);
     else if (payout.amount !== total)
       db.prepare("UPDATE fairshare_payout_ops SET amount=? WHERE id=?").run(
         total,

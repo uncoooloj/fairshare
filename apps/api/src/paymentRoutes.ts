@@ -504,10 +504,11 @@ export function registerPaymentRoutes(
         fresh.status !== op.status
       )
         fail("RECONCILIATION_CONFLICT", "Payout changed during provider read");
+      const at = payoutTimestamp();
       db.prepare(
-        "UPDATE fairshare_payout_ops SET status=?,item_id=? WHERE id=?",
-      ).run(r!.status, r!.itemId, op.id);
-      notePayoutStatus(db, aggregates, op, fresh.status, r!.status, now());
+        "UPDATE fairshare_payout_ops SET updated_at=CASE WHEN status=? THEN updated_at ELSE ? END,status=?,item_id=? WHERE id=?",
+      ).run(r!.status, at, r!.status, r!.itemId, op.id);
+      notePayoutStatus(db, aggregates, op, fresh.status, r!.status, at);
       return fresh;
     });
     if (r!.status !== fresh.status)

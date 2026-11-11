@@ -328,16 +328,24 @@ export function registerPaymentRecovery({
           .get(batchId, payoutId)
       )
         fail("RECOVERY_CONFLICT", "Provider batch already linked");
+      const at = date();
       db.prepare(
-        "UPDATE fairshare_payout_ops SET batch_id=?,item_id=?,status=? WHERE id=?",
-      ).run(batchId, verified.itemId, verified.status, payoutId);
+        "UPDATE fairshare_payout_ops SET batch_id=?,item_id=?,updated_at=CASE WHEN status=? THEN updated_at ELSE ? END,status=? WHERE id=?",
+      ).run(
+        batchId,
+        verified.itemId,
+        verified.status,
+        at,
+        verified.status,
+        payoutId,
+      );
       notePayoutStatus(
         db,
         aggregates,
         fresh,
         fresh.status,
         verified.status,
-        date(),
+        at,
       );
       audit(latest, "PAYOUT_EVIDENCE_LINKED", payoutId, batchId);
       return {
@@ -661,12 +669,12 @@ export function registerPaymentRecovery({
             ?.totalCents ?? 0;
         if (total > 0)
           db.prepare(
-            "UPDATE fairshare_payout_ops SET status='AUTO_HELD',amount=? WHERE id=?",
-          ).run(total, payout.id);
+            "UPDATE fairshare_payout_ops SET updated_at=?,status='AUTO_HELD',amount=? WHERE id=?",
+          ).run(date(), total, payout.id);
         else
           db.prepare(
-            "UPDATE fairshare_payout_ops SET status='CANCELLED_FOR_REFUND' WHERE id=?",
-          ).run(payout.id);
+            "UPDATE fairshare_payout_ops SET updated_at=?,status='CANCELLED_FOR_REFUND' WHERE id=?",
+          ).run(date(), payout.id);
       }
       audit(
         ctx,

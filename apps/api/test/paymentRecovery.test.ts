@@ -183,12 +183,15 @@ test("full refund before payouts cancels unsent payout rows, reverses the split 
     assert.equal((await f.refund()).json().id, result.json().id);
     assert.equal(f.counts().refundWrites, 1);
     const payouts = f.app.store.db
-      .prepare("SELECT status,amount FROM fairshare_payout_ops")
+      .prepare("SELECT status,amount,updated_at FROM fairshare_payout_ops")
       .all();
     assert.equal(payouts.length, 3);
     assert.ok(
       payouts.every(
-        (p) => p.status === "CANCELLED_FOR_REFUND" && p.amount === 9700,
+        (p) =>
+          p.status === "CANCELLED_FOR_REFUND" &&
+          p.amount === 9700 &&
+          Number.isFinite(Date.parse(p.updated_at)),
       ),
     );
     const after = f.aggregates.read(f.workspace.id, "agreement").value;

@@ -26,7 +26,7 @@ import {
 } from "./paymentGridModel";
 
 import { payoutCards, payoutCount, summarizePayouts } from "./payoutSummary";
-import { filterPayouts, payoutCsv } from "./payoutPresentation";
+import { filterPayouts, payoutCsv, payoutDate } from "./payoutPresentation";
 import { PayoutDetails } from "./PayoutDetails";
 import styles from "./payouts.module.css";
 
@@ -186,26 +186,18 @@ export function PaymentGrid({
         comparator: (a?: string, b?: string) =>
           (a ? Date.parse(a) : 0) - (b ? Date.parse(b) : 0),
         cellClass: styles.cell,
-        valueFormatter: (p) =>
-          p.value
-            ? new Date(p.value).toLocaleString(undefined, {
-                dateStyle: "medium",
-                timeStyle: "short",
-              })
-            : "—",
-        // The API stores no payout timestamp yet; say so instead of guessing.
-        cellRenderer: (p: {
-          value?: string;
-          valueFormatted?: string | null;
-        }) =>
-          p.value ? (
-            p.valueFormatted
+        valueFormatter: (p) => payoutDate(p.value).label,
+        cellRenderer: ({ value }: { value?: string }) => {
+          const date = payoutDate(value);
+          return date.recorded ? (
+            <span title={date.title}>{date.label}</span>
           ) : (
             <span title={NO_DATE_HINT}>
               <span aria-hidden="true">—</span>
               <span className={styles.srOnly}>{NO_DATE_HINT}</span>
             </span>
-          ),
+          );
+        },
       },
       {
         headerName: "Details",

@@ -29,6 +29,9 @@ type AccountRow = {
   verifiedAt: number | null;
 };
 
+/** Timestamp for fairshare_payout_ops.created_at/updated_at. */
+export const payoutTimestamp = () => new Date().toISOString();
+
 /** Idempotent startup migration. Additive only: legacy workspace rows and
  * already-frozen payout operations keep their PayPal ID meaning. */
 export function ensurePayoutAccountSchema(db: Database) {
@@ -42,6 +45,11 @@ export function ensurePayoutAccountSchema(db: Database) {
     db.exec(
       `ALTER TABLE fairshare_payout_ops ADD COLUMN recipient_type TEXT NOT NULL DEFAULT '${RecipientType.PAYPAL_ID}'`,
     );
+  // Payout dates (ISO text). Rows written before these columns stay NULL: no
+  // backfill, since a capture's time predates its payout and would misdate it.
+  for (const name of ["created_at", "updated_at"])
+    if (columns.length && !columns.some((c) => c.name === name))
+      db.exec(`ALTER TABLE fairshare_payout_ops ADD COLUMN ${name} TEXT`);
   // "Connect with PayPal": additive, so typed emails stay unverified.
   const accountColumns = db
     .prepare("PRAGMA table_info(fairshare_payout_accounts)")

@@ -66,6 +66,8 @@ export function PayoutsSection({
           amountCents: p.amount,
           currency: "USD",
           status: payoutStatus(p.status),
+          createdAt: p.createdAt ?? undefined,
+          updatedAt: p.updatedAt ?? undefined,
           providerReference: p.item_id || p.batch_id || undefined,
           trace: allocationTrace(
             p.agreement,

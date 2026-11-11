@@ -4,6 +4,25 @@ import {
   validatePaymentRows,
   type PaymentGridRow,
 } from "./paymentGridModel";
+import { formatDay, formatExact } from "../../lib/dates";
+
+/** Payouts made before dates were stored have none; say so instead of guessing. */
+export const NO_PAYOUT_DATE_HINT = "No date was recorded for this payout.";
+/** "Nov 11" with the exact time as its tooltip, or "—" when no date was stored. */
+export function payoutDate(value: string | undefined) {
+  const exact = formatExact(value);
+  return exact
+    ? { label: formatDay(value), title: exact, recorded: true }
+    : { label: "—", title: NO_PAYOUT_DATE_HINT, recorded: false };
+}
+/** A paid payout's last observed status update, not a provider send time. */
+export function payoutSentLabel(
+  row: Pick<PaymentGridRow, "status" | "updatedAt">,
+) {
+  return row.status === PaymentGridStatus.Paid && formatExact(row.updatedAt)
+    ? `Status updated ${formatDay(row.updatedAt)}`
+    : undefined;
+}
 export const payoutGuidance: Record<PaymentGridStatus, string> = {
   PAID: "PayPal says this arrived.",
   PENDING: "Pending. Don’t send it again.",

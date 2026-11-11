@@ -319,9 +319,7 @@ export function AgreementTermsTab({
                   <blockquote>{requests.at(-1)!.note}</blockquote>
                 </figure>
                 <div className="gr-request-actions">
-                  <Button onClick={changeAgreement}>
-                    Fix it
-                  </Button>
+                  <Button onClick={changeAgreement}>Fix it</Button>
                   {onSeeRequest && (
                     <Button variant="secondary" onClick={onSeeRequest}>
                       See request

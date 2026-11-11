@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { PayPalError } from "@fairshare/payments";
 import { automaticPayouts } from "../src/automaticPayouts.js";
+import { ensurePayoutAccountSchema } from "../src/payoutAccounts.js";
 
 function fixture(createPayout: any = async () => ({ batchId: "batch" })) {
   const db = new DatabaseSync(":memory:");
@@ -239,5 +240,65 @@ test("account-level email wins over legacy ID, is frozen as EMAIL, and UNCLAIMED
   f.db.exec("UPDATE fairshare_payout_ops SET status='UNCLAIMED'");
   await f.run();
   assert.equal(sent.length, 2);
+  f.db.close();
+});
+test("startup adds nullable payout dates once and leaves older rows undated", () => {
+  const db = new DatabaseSync(":memory:");
+  db.exec(`CREATE TABLE fairshare_payout_ops(id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL,collaboration_id TEXT NOT NULL,capture_id TEXT NOT NULL,user_id TEXT NOT NULL,recipient_id TEXT NOT NULL,amount INTEGER NOT NULL,batch_id TEXT,status TEXT NOT NULL,item_id TEXT,UNIQUE(capture_id,user_id));
+  INSERT INTO fairshare_payout_ops VALUES('old','w','a','capture','one','ABCDEFGHIJKLM',60,'batch','SUCCESS','item');`);
+  ensurePayoutAccountSchema(db as any);
+  ensurePayoutAccountSchema(db as any);
+  const columns = (
+    db.prepare("PRAGMA table_info(fairshare_payout_ops)").all() as any[]
+  ).filter((c) => ["created_at", "updated_at"].includes(c.name));
+  assert.deepEqual(
+    columns.map((c) => [c.name, c.type, c.notnull]),
+    [
+      ["created_at", "TEXT", 0],
+      ["updated_at", "TEXT", 0],
+    ],
+  );
+  assert.deepEqual(
+    {
+      ...(db
+        .prepare(
+          "SELECT created_at,updated_at FROM fairshare_payout_ops WHERE id='old'",
+        )
+        .get() as any),
+    },
+    { created_at: null, updated_at: null },
+  );
+  db.close();
+});
+test("automatic payouts record when they were created and when their status last changed", async () => {
+  const f = fixture();
+  await f.run();
+  const dates = (user: string) =>
+    f.db
+      .prepare(
+        "SELECT status,created_at,updated_at FROM fairshare_payout_ops WHERE user_id=?",
+      )
+      .get(user) as any;
+  const sent = dates("one");
+  assert.equal(sent.status, "PENDING");
+  assert.ok(Number.isFinite(Date.parse(sent.created_at)));
+  assert.ok(sent.updated_at >= sent.created_at);
+  const old = "2020-01-01T00:00:00.000Z";
+  f.db
+    .prepare(
+      "UPDATE fairshare_payout_ops SET created_at=?,updated_at=? WHERE user_id='two'",
+    )
+    .run(old, old);
+  // Still waiting: no status change, so nothing moves.
+  await f.run();
+  assert.equal(dates("two").updated_at, old);
+  f.db.exec(
+    "INSERT INTO fairshare_recipients VALUES('workspace','two','NOPQRSTUVWXYZ')",
+  );
+  await f.run();
+  const later = dates("two");
+  assert.equal(later.status, "PENDING");
+  assert.equal(later.created_at, old);
+  assert.ok(later.updated_at > old);
   f.db.close();
 });
