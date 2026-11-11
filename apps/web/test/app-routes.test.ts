@@ -13,20 +13,17 @@ import {
   safeAppPath,
 } from "../lib/app-routes";
 import { AgreementTab, Section, type Agreement } from "../lib/model";
-import { register } from "node:module";
+import { createRequire } from "node:module";
 import { readComponent } from "./app-source";
 
-// The agreements table pulls in a CSS module through shared widgets; stub styles.
-register(
-  "data:text/javascript," +
-    encodeURIComponent(
-      'export async function load(url, context, next) { if (url.endsWith(".css")) return { format: "module", source: "export default new Proxy({}, { get: (_, key) => String(key) });", shortCircuit: true }; return next(url, context); }',
-    ),
-);
-const section = () =>
-  import("../components/sections/agreements-section").then(
-    (m) => m.AgreementsSection,
-  );
+// The agreements table pulls in a CSS module through shared widgets. Match the
+// existing SSR harness: require.extensions stubs styles on every supported Node
+// (module.register hooks do not reach tsx's CommonJS path on Node 22).
+const require = createRequire(import.meta.url);
+require.extensions[".css"] = () => {};
+const section = async () =>
+  require("../components/sections/agreements-section.tsx")
+    .AgreementsSection as typeof import("../components/sections/agreements-section").AgreementsSection;
 
 const app = readComponent("fairshare-app.tsx");
 const ID = "3f1c2a9e-5b7d-4e1a-9c2b-0d8e7f6a5b4c";
