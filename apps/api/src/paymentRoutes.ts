@@ -58,7 +58,10 @@ export type PaymentProvider = Pick<
   | "verifyWebhook"
 > &
   Partial<
-    Pick<PayPalSandbox, "refundCapture" | "getRefund" | "webhookConfigured">
+    Pick<
+      PayPalSandbox,
+      "refundCapture" | "getRefund" | "webhookConfigured" | "payoutsReady"
+    >
   > &
   Partial<InvoiceProvider>;
 export interface PaymentOptions {
@@ -134,6 +137,12 @@ export function registerPaymentRoutes(
     return options.provider.webhookConfigured === false
       ? PaymentConfirmation.WEBHOOK_NOT_CONFIGURED
       : PaymentConfirmation.READY;
+  }
+  // Adapters without this optional capability predate setup readiness reporting;
+  // their createPayout implementation remains the capability contract.
+  function payoutsReady() {
+    const configured = options.provider;
+    return configured ? configured.payoutsReady !== false : false;
   }
   if (paymentConfirmation() === PaymentConfirmation.WEBHOOK_NOT_CONFIGURED)
     reportWebhookNotConfigured();
@@ -766,7 +775,8 @@ export function registerPaymentRoutes(
   app.get(`${base}/payments/setup`, async (req) => {
     access(req);
     return {
-      automaticPayouts: Boolean(automatic),
+      automaticPayouts: Boolean(automatic) && payoutsReady(),
+      payoutsReady: payoutsReady(),
       paymentConfirmation: paymentConfirmation(),
     };
   });

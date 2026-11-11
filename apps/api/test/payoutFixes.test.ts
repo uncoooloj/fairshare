@@ -379,6 +379,7 @@ test("payment setup reports real automatic-payout and webhook capability to memb
       });
     assert.deepEqual((await read(off.maya.token)).json(), {
       automaticPayouts: false,
+      payoutsReady: true,
       paymentConfirmation: PaymentConfirmation.READY,
     });
     const outsider = off.app.store.register({
@@ -400,8 +401,26 @@ test("payment setup reports real automatic-payout and webhook capability to memb
       headers: auth(on.riley.token),
     });
     assert.equal(r.json().automaticPayouts, true);
+    assert.equal(r.json().payoutsReady, true);
   } finally {
     await on.app.close();
+  }
+  const payoutUnavailable = await setup(
+    {
+      automaticPayoutsEnabled: true,
+      reconciliation: { enabled: true, externalScheduling: true },
+    },
+    { payoutsReady: false },
+  );
+  try {
+    const r = await payoutUnavailable.app.inject({
+      url: `${payoutUnavailable.base}/payments/setup`,
+      headers: auth(payoutUnavailable.maya.token),
+    });
+    assert.equal(r.json().automaticPayouts, false);
+    assert.equal(r.json().payoutsReady, false);
+  } finally {
+    await payoutUnavailable.app.close();
   }
   const unverifiable = await setup(
     { onConfigurationError: () => {} },

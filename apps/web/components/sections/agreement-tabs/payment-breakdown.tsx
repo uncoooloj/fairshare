@@ -3,6 +3,7 @@ import { AllocationTable } from "../../agreement-widgets";
 import { api, money, type Agreement, type Revenue } from "../../../lib/model";
 import { Button } from "../../ui";
 import {
+  PaymentConfirmation,
   automaticPayoutCopy,
   dispatchSummary,
   usePaymentSetup,
@@ -66,7 +67,12 @@ export function PaymentBreakdown({
       </blockquote>
       {organizer && (
         <Button
-          disabled={busy || selected.value.reviewHold}
+          disabled={
+            busy ||
+            selected.value.reviewHold ||
+            setup?.paymentConfirmation === PaymentConfirmation.NOT_CONFIGURED ||
+            setup?.payoutsReady === false
+          }
           onClick={() =>
             run(async () => {
               const result = await api<{ payouts: DispatchResult[] }>(

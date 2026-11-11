@@ -14,6 +14,7 @@ import {
 import { RECEIVED_DEFINITION, receivedTotals } from "../lib/received";
 import {
   PaymentConfirmation,
+  PAYMENT_NOT_CONFIGURED_NOTICE,
   PayoutWaitReason,
   WEBHOOK_NOT_CONFIGURED_NOTICE,
   automaticPayoutCopy,
@@ -104,6 +105,21 @@ test("automatic-payout copy comes from the server flag, not hard-coded text", ()
   });
   assert.match(on, /Automatic payouts are on/);
   assert.match(off, /Automatic payouts are off/);
+  assert.match(
+    automaticPayoutCopy({
+      automaticPayouts: false,
+      paymentConfirmation: PaymentConfirmation.NOT_CONFIGURED,
+    }),
+    /can’t be sent/,
+  );
+  assert.match(
+    automaticPayoutCopy({
+      automaticPayouts: false,
+      payoutsReady: false,
+      paymentConfirmation: PaymentConfirmation.READY,
+    }),
+    /can’t be sent/,
+  );
   assert.doesNotMatch(automaticPayoutCopy(null), /Automatic payouts are/);
   const breakdown = readFileSync(
     new URL(
@@ -114,9 +130,17 @@ test("automatic-payout copy comes from the server flag, not hard-coded text", ()
   );
   assert.doesNotMatch(breakdown, /scheduling is not enabled/);
   assert.match(breakdown, /automaticPayoutCopy\(setup\)/);
+  assert.match(breakdown, /PaymentConfirmation\.NOT_CONFIGURED/);
 });
 
 test("organizer sees the webhook warning only when the server reports it", () => {
+  assert.equal(
+    paymentConfirmationNotice({
+      automaticPayouts: false,
+      paymentConfirmation: PaymentConfirmation.NOT_CONFIGURED,
+    }),
+    PAYMENT_NOT_CONFIGURED_NOTICE,
+  );
   assert.equal(
     paymentConfirmationNotice({
       automaticPayouts: false,

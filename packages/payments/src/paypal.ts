@@ -522,9 +522,14 @@ export class PayPalSandbox {
   get webhookConfigured(): boolean {
     return Boolean(this.config.webhookId);
   }
+  /** True when this adapter is permitted to submit sandbox payouts. Exposes no configuration values. */
+  get payoutsReady(): boolean {
+    return Boolean(
+      this.config.payoutsEnabled && this.config.payoutsEligibilityConfirmed,
+    );
+  }
   private requirePayouts() {
-    if (!this.config.payoutsEnabled || !this.config.payoutsEligibilityConfirmed)
-      throw new PayPalError("PAYOUT_NOT_CONFIGURED", 503);
+    if (!this.payoutsReady) throw new PayPalError("PAYOUT_NOT_CONFIGURED", 503);
   }
   async verifyWebhook(
     headers: Record<string, string | string[] | undefined>,

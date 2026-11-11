@@ -108,6 +108,22 @@ test("missing configuration fails closed", () =>
   assert.throws(() => new PayPalSandbox({ clientId: "", clientSecret: "" }), {
     code: "PAYPAL_NOT_CONFIGURED",
   }));
+test("payout readiness reflects both explicit sandbox safeguards", () => {
+  const disabled = new PayPalSandbox({
+    clientId: "test-id",
+    clientSecret: "test-secret",
+    payoutsEnabled: true,
+    payoutsEligibilityConfirmed: false,
+  });
+  const enabled = new PayPalSandbox({
+    clientId: "test-id",
+    clientSecret: "test-secret",
+    payoutsEnabled: true,
+    payoutsEligibilityConfirmed: true,
+  });
+  assert.equal(disabled.payoutsReady, false);
+  assert.equal(enabled.payoutsReady, true);
+});
 test("invalid amounts/currencies fail before money movement", async () => {
   const { client, requests } = setup([]);
   await assert.rejects(

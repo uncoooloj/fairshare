@@ -10,6 +10,8 @@ export enum PaymentConfirmation {
 }
 export interface PaymentSetup {
   automaticPayouts: boolean;
+  /** Added after initial setup responses; absent means an older API response. */
+  payoutsReady?: boolean;
   paymentConfirmation: PaymentConfirmation;
 }
 /** Mirrors the API's PayoutWaitReason. */
@@ -25,10 +27,16 @@ export interface DispatchResult {
 
 export const WEBHOOK_NOT_CONFIGURED_NOTICE =
   "Payments can’t be confirmed yet: webhook not configured.";
+export const PAYMENT_NOT_CONFIGURED_NOTICE =
+  "Payments aren’t configured yet: connect PayPal before accepting or sending payments.";
 
 /** Copy under the manual send button. Says nothing until the server answers. */
 export function automaticPayoutCopy(setup: PaymentSetup | null): string {
   if (!setup) return "Technical sandbox dispatch, not a vote on the shares.";
+  if (setup.paymentConfirmation === PaymentConfirmation.NOT_CONFIGURED)
+    return "Technical sandbox dispatch, not a vote on the shares. Payments aren’t configured yet, so payouts can’t be sent.";
+  if (setup.payoutsReady === false)
+    return "Technical sandbox dispatch, not a vote on the shares. Payouts aren’t ready yet, so they can’t be sent.";
   return setup.automaticPayouts
     ? "Technical sandbox dispatch, not a vote on the shares. Automatic payouts are on: people who are ready are paid without this button."
     : "Technical sandbox dispatch, not a vote on the shares. Automatic payouts are off, so use this button to send.";
@@ -38,6 +46,8 @@ export function automaticPayoutCopy(setup: PaymentSetup | null): string {
 export function paymentConfirmationNotice(
   setup: PaymentSetup | null,
 ): string | null {
+  if (setup?.paymentConfirmation === PaymentConfirmation.NOT_CONFIGURED)
+    return PAYMENT_NOT_CONFIGURED_NOTICE;
   return setup?.paymentConfirmation ===
     PaymentConfirmation.WEBHOOK_NOT_CONFIGURED
     ? WEBHOOK_NOT_CONFIGURED_NOTICE
