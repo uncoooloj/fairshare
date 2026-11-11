@@ -10,7 +10,8 @@ import {
   type PaymentGridRow,
 } from "../src/components/paymentGridModel";
 const row: PaymentGridRow = {
-  id: "p1",
+  id: '["workspace","agreement","p1"]',
+  payoutId: "p1",
   agreementId: "a",
   agreementName: "Album",
   recipientName: "Riley",
@@ -36,6 +37,11 @@ test("CSV preserves exact cents, status, missing evidence and safely quotes form
   assert.ok(csv.includes('"\'  +formula"'));
   assert.ok(csv.includes('"1.01","USD","Needs reconciliation","",""'));
   assert.ok(!csv.includes("Paid"));
+});
+test("CSV uses the payout operation ID, never the internal scoped grid key", () => {
+  const csv = payoutCsv([row]);
+  assert.ok(csv.includes('"p1","Album"'));
+  assert.ok(!csv.includes(row.id));
 });
 test("all payout states have truthful guidance and uncertain transfers prohibit retry", () => {
   assert.equal(Object.keys(payoutGuidance).length, Object.values(S).length);

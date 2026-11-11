@@ -11,7 +11,10 @@ export enum PaymentGridStatus {
   Unknown = "UNKNOWN",
 }
 export interface PaymentGridRow {
+  /** Stable internal key; may include agreement scope to avoid cross-agreement collisions. */
   id: string;
+  /** Provider-facing payout operation identifier shown in exports and details. */
+  payoutId: string;
   agreementId: string;
   agreementName: string;
   recipientName: string;
@@ -47,6 +50,7 @@ export function validatePaymentRows(
     if (
       !row.id ||
       ids.has(row.id) ||
+      !row.payoutId ||
       !row.agreementId ||
       !row.agreementName ||
       !row.recipientName ||

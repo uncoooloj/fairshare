@@ -1640,6 +1640,7 @@ export default function FairshareApp() {
                       p.agreement.id,
                       p.id,
                     ]),
+                    payoutId: p.id,
                     agreementId: JSON.stringify([
                       p.agreement.workspaceId,
                       p.agreement.id,

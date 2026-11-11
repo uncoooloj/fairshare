@@ -122,8 +122,8 @@ export function PaymentAccountsSettings({
             <h3>Receiving payments</h3>
             <p className="muted">
               {data.providerConfigured
-                ? "PayPal is connected. Received payments are split according to your agreement."
-                : "PayPal isn’t connected yet. Payments can’t be received until setup is complete."}
+                ? "PayPal sandbox credentials are configured. Received payments follow your active agreement rules."
+                : "PayPal sandbox credentials are not configured. Payments can’t be received until setup is complete."}
             </p>
             <div className="settings-provider">
               <WalletIcon />
@@ -136,7 +136,7 @@ export function PaymentAccountsSettings({
               <span
                 className={`status-chip ${data.providerConfigured ? "good" : "warning"}`}
               >
-                {data.providerConfigured ? "Connected" : "Not connected"}
+                {data.providerConfigured ? "Configured" : "Not configured"}
               </span>
             </div>
           </section>

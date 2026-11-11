@@ -64,7 +64,7 @@ export function PayoutDetails({
         <div>
           <dt>Payout ID</dt>
           <dd>
-            <code>{row.id}</code>
+            <code>{row.payoutId}</code>
           </dd>
         </div>
         <div>
