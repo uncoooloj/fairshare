@@ -536,6 +536,112 @@ test("a returned organizer fee consumes its prior offset recovery before another
   );
 });
 
+test("a credit cannot fund a refunded offset before that payout is returned", () => {
+  const organizerPays = rules({
+    feePolicy: FeePolicy.ORGANIZER_SHARE,
+    feeBearerId: "a",
+    shares: [
+      { userId: "a", basisPoints: 1000 },
+      { userId: "b", basisPoints: 4500 },
+      { userId: "c", basisPoints: 4500 },
+    ],
+  });
+  let c = pay(active(organizerPays), "CAP1", 10000, 900);
+  c = pay(c, "CAP2", 10000, 900);
+
+  // B: a $4 fee shortfall. A: a separate $1 payout overpayment.
+  c = refund(c, "R1", 5000, 0, notPaid, "CAP1").collaboration;
+  c = refund(
+    c,
+    "R2",
+    10000,
+    900,
+    { payoutsStarted: true, paidCents: { a: 100 } },
+    "CAP2",
+  ).collaboration;
+  c = resumePayouts(c, { offsetFromFuturePayouts: true }, "a", at);
+
+  // CAP3 recovers B. Its later fee return turns that exact recovery into a $4 credit,
+  // while A remains owed.
+  c = pay(c, "CAP3", 4000, 0);
+  c = refund(c, "R3", 5000, 900, notPaid, "CAP1").collaboration;
+  assert.deepEqual(c.owedBack, { a: 100 });
+  assert.deepEqual(c.creditBack, { a: 400 });
+
+  // CAP4's $1 base settles A before the independent $4 credit is added.
+  c = pay(c, "CAP4", 10000, 900);
+  const allocated = c.revenue[3].allocations.find(
+    (allocation) => allocation.userId === "a",
+  )!;
+  assert.deepEqual(allocated.offsetAttributions, [
+    {
+      liabilityId: '["CAP2","R2","a","PAYOUT_OVERPAYMENT"]',
+      cents: 100,
+    },
+  ]);
+  assert.deepEqual(allocated.creditAttributions, [
+    {
+      liabilityId: '["CAP1","R1","a","FEE_SHORTFALL"]',
+      cents: 400,
+    },
+  ]);
+  assert.equal(allocated.totalCents, 400);
+
+  // Refunding CAP4 removes the base that funded A's offset. B's credit cannot hide that.
+  const applied = refund(
+    c,
+    "R4",
+    10000,
+    900,
+    { payoutsStarted: true, paidCents: { a: 400 } },
+    "CAP4",
+  );
+  const refunded = applied.collaboration;
+  const afterRefund = refunded.revenue[3].allocations.find(
+    (allocation) => allocation.userId === "a",
+  )!;
+  assert.equal(afterRefund.offsetAttributions, undefined);
+  assert.deepEqual(afterRefund.restoredOffsetAttributions, [
+    {
+      liabilityId: '["CAP2","R2","a","PAYOUT_OVERPAYMENT"]',
+      cents: 100,
+    },
+  ]);
+  assert.deepEqual(afterRefund.creditAttributions, [
+    {
+      liabilityId: '["CAP1","R1","a","FEE_SHORTFALL"]',
+      cents: 400,
+    },
+  ]);
+  assert.equal(afterRefund.totalCents, 400);
+  assert.equal(
+    refunded.refundLiabilities!.some(
+      (liability) => liability.captureId === "CAP4",
+    ),
+    false,
+  );
+
+  // The returned payout requeues B's $4 credit while A's $1 is owed: net credit $3.
+  const returned = releaseUndeliveredOverpayment(refunded, "CAP4", "a", at);
+  assert.deepEqual(returned.owedBack, { a: 100 });
+  assert.deepEqual(returned.creditBack, { a: 400 });
+  assert.equal(returned.creditBack!.a - returned.owedBack!.a, 300);
+  assert.deepEqual(
+    releaseUndeliveredOverpayment(returned, "CAP4", "a", at),
+    returned,
+  );
+  const replay = refund(
+    returned,
+    "R4",
+    10000,
+    900,
+    { payoutsStarted: true, paidCents: { a: 400 } },
+    "CAP4",
+  );
+  assert.equal(replay.duplicate, true);
+  assert.deepEqual(replay.collaboration, returned);
+});
+
 test("offset: each person's overpayment comes off their next shares until settled", () => {
   const c = pay(active(), "CAP1");
   const held = refund(c, "R1", 10000, 300, {
