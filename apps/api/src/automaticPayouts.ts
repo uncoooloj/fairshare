@@ -1,14 +1,14 @@
 import { createHash } from "node:crypto";
-import { AllocationStatus, DomainError } from "@fairshare/domain";
+import { DomainError } from "@fairshare/domain";
 import { PayPalError, RecipientType } from "@fairshare/payments";
 import type { AggregateStore } from "./fairshare.js";
 import type { FairshareApp } from "./app.js";
 import type { PaymentProvider } from "./paymentRoutes.js";
-import { pendingWebhookBlocksPayout } from "./paymentSafety.js";
 import {
   ensurePayoutAccountSchema,
   readPayoutDestination,
 } from "./payoutAccounts.js";
+import { PARKED_PAYOUT_STATUSES, payoutHoldReason } from "./payoutHolds.js";
 
 /** Only verified, persisted capture allocations enter this queue. A reservation is
  * committed before network I/O; uncertain writes are never automatically retried. */
@@ -39,9 +39,7 @@ export function automaticPayouts(
               "SELECT status FROM fairshare_payout_ops WHERE capture_id=? AND user_id=?",
             )
             .get(capture.provider_capture_id, a.userId) as any;
-          return !prior ||
-            prior.status === "WAITING_RECIPIENT" ||
-            prior.status === "AUTO_HELD"
+          return !prior || PARKED_PAYOUT_STATUSES.includes(prior.status)
             ? [
                 {
                   kind: "AUTO_PAYOUT",
@@ -75,27 +73,11 @@ export function automaticPayouts(
           "SELECT * FROM fairshare_payout_ops WHERE capture_id=? AND user_id=?",
         )
         .get(captureId, userId) as any;
-      if (prior && !["WAITING_RECIPIENT", "AUTO_HELD"].includes(prior.status))
-        return;
+      if (prior && !PARKED_PAYOUT_STATUSES.includes(prior.status)) return;
       const recipient = readPayoutDestination(db, userId, capture.workspace_id);
-      const version = agreement.versions.find(
-        (v) => v.id === revenue!.versionId,
-      );
-      const refund = db
-        .prepare(
-          "SELECT id FROM fairshare_refund_ops WHERE capture_id=? LIMIT 1",
-        )
-        .get(captureId);
-      const adverse = pendingWebhookBlocksPayout(db, capture);
       const held =
-        agreement.reviewHold ||
-        allocation.status !== AllocationStatus.ALLOCATED ||
-        refund ||
-        adverse ||
-        !version ||
-        !agreement.members.every((m) =>
-          Object.hasOwn(version.approvals, m.userId),
-        );
+        payoutHoldReason(db, agreement, revenue!, capture, [allocation]) !==
+        null;
       const ready = recipient !== null;
       const status = held
         ? "AUTO_HELD"

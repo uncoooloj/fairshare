@@ -11,6 +11,7 @@ import {
 import {
   PaymentGridStatus,
   formatPaymentAmount,
+  paymentStatusLabel,
   paymentStatusLabels,
   validatePaymentRows,
   type PaymentGridRow,
@@ -145,13 +146,11 @@ export function PaymentGrid({
         cellRenderer: ({ data: row }: { data?: PaymentGridRow }) =>
           row ? (
             <span className={styles.status} data-status={row.status}>
-              {paymentStatusLabels[row.status]}
+              {paymentStatusLabel(row)}
             </span>
           ) : null,
-        valueFormatter: (p) =>
-          p.data ? paymentStatusLabels[p.data.status] : "",
-        filterValueGetter: (p) =>
-          p.data ? paymentStatusLabels[p.data.status] : "",
+        valueFormatter: (p) => (p.data ? paymentStatusLabel(p.data) : ""),
+        filterValueGetter: (p) => (p.data ? paymentStatusLabel(p.data) : ""),
       },
       {
         field: "createdAt",

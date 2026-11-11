@@ -229,10 +229,12 @@ test("payout dispatch uses exact allocation once and reversal blocks further dis
       await s.post("/payments", { amountCents: 10000, requestKey: "one" })
     ).json().id;
     await s.post(`/payments/${id}/capture`);
-    assert.equal(
-      (await s.post("/payouts/dispatch", { captureId: "CAP1" })).statusCode,
-      400,
-    );
+    // No payout email yet: nothing is sent and the response says why.
+    const waiting = await s.post("/payouts/dispatch", { captureId: "CAP1" });
+    assert.equal(waiting.statusCode, 200, waiting.body);
+    assert.equal(waiting.json().payouts[0].status, "WAITING_RECIPIENT");
+    assert.equal(waiting.json().payouts[0].reason, "NEEDS_PAYOUT_EMAIL");
+    assert.equal(s.counts().payoutWrites, 0);
     await s.app.inject({
       method: "PUT",
       url: "/api/auth/payout-account",

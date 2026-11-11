@@ -171,6 +171,22 @@ test("review, refund, adverse webhook and allocation holds prevent sending", asy
     f.db.close();
   }
 });
+test("a known webhook hold for another capture does not block automatic payout", async () => {
+  let calls = 0;
+  const f = fixture(async () => {
+    calls++;
+    return { batchId: "batch" };
+  });
+  f.db
+    .prepare("INSERT INTO fairshare_captures VALUES(?,?,?)")
+    .run("other-capture", "workspace", "other-agreement");
+  f.db
+    .prepare("INSERT INTO fairshare_webhook_inbox VALUES(?,'PENDING')")
+    .run(JSON.stringify({ kind: "HOLD_CAPTURE", providerId: "other-capture" }));
+  await f.run();
+  assert.equal(calls, 1);
+  f.db.close();
+});
 test("expired lease after provider write leaves reserved unknown outcome without retry", async () => {
   let calls = 0,
     lease = true;
