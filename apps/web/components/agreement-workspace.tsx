@@ -23,6 +23,7 @@ import { NudgeDrawer } from "./person-share";
 import { unconfirmedAdvance } from "../lib/advance-status";
 import { confirmAdvancePaid } from "../lib/agreement-api";
 import { forgetStaleInviteTokens } from "../lib/share-link";
+import { ActionMenu, type MenuItem } from "./action-menu";
 
 export enum RuleKind {
   NetRevenue = "Fees first",
@@ -363,9 +364,7 @@ export function AgreementHeader({
   /** Newer agreement after a link is created or the advance is confirmed. */
   onAgreementChange?: (agreement: Agreement) => void;
 }) {
-  const menu = useRef<HTMLDetailsElement>(null);
-  const menuButton = useRef<HTMLElement>(null);
-  const [open, setOpen] = useState(false);
+  const menuButton = useRef<HTMLButtonElement>(null);
   const [renaming, setRenaming] = useState(false);
   const [nudging, setNudging] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -424,28 +423,18 @@ export function AgreementHeader({
     }
   }
   const meta = versionMeta(agreement);
-  useEffect(() => {
-    if (!open) return;
-    const close = (event: MouseEvent | KeyboardEvent) => {
-      if (event instanceof KeyboardEvent && event.key !== "Escape") return;
-      if (
-        event instanceof MouseEvent &&
-        menu.current?.contains(event.target as Node)
-      )
-        return;
-      if (menu.current) menu.current.open = false;
-    };
-    document.addEventListener("mousedown", close);
-    document.addEventListener("keydown", close);
-    return () => {
-      document.removeEventListener("mousedown", close);
-      document.removeEventListener("keydown", close);
-    };
-  }, [open]);
-  const choose = (action: () => void) => {
-    if (menu.current) menu.current.open = false;
-    action();
-  };
+  const menuItems: MenuItem[] = [
+    ...(rename
+      ? [
+          {
+            id: "rename",
+            label: "Edit agreement name",
+            onSelect: () => setRenaming(true),
+          },
+        ]
+      : []),
+    { id: "payouts", label: "View payouts", onSelect: onViewPayouts },
+  ];
   return (
     <header className="ag-header">
       <nav aria-label="Breadcrumb" className="ag-breadcrumb">
@@ -465,41 +454,11 @@ export function AgreementHeader({
             {meta.text}
           </p>
         </div>
-        <details
-          ref={menu}
-          className="ag-menu"
-          onToggle={(event) => setOpen(event.currentTarget.open)}
-        >
-          <summary
-            ref={menuButton}
-            className="icon-button"
-            aria-label="Agreement actions"
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-              <circle cx="3" cy="8" r="1.4" fill="currentColor" />
-              <circle cx="8" cy="8" r="1.4" fill="currentColor" />
-              <circle cx="13" cy="8" r="1.4" fill="currentColor" />
-            </svg>
-          </summary>
-          <div className="ag-menu-list" role="menu">
-            {rename && (
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => choose(() => setRenaming(true))}
-              >
-                Edit agreement name
-              </button>
-            )}
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => choose(onViewPayouts)}
-            >
-              View payouts
-            </button>
-          </div>
-        </details>
+        <ActionMenu
+          ref={menuButton}
+          label="Agreement actions"
+          items={menuItems}
+        />
       </div>
       <StatusLine status={status} onAction={statusAction} />
       {confirming &&
