@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -313,4 +313,49 @@ test("harness: offline mode scores a saved result file without keys or network",
   const child = run(["--score", dir]);
   assert.equal(child.status, 0, child.stderr);
   assert.match(child.stdout, /TOTAL 10\/10 fields passed across 1 fixtures/);
+});
+
+test("harness: rescoring an Anthropic response records its JSON and token usage offline", () => {
+  const dir = mkdtempSync(join(tmpdir(), "live-eval-anthropic-"));
+  const label = "anthropic-fixture";
+  const stem = join(dir, `${clean.id}.${label}`);
+  const saved = {
+    ...resultFor(clean, { facts: cleanFacts, issues: [] }),
+    provider: "anthropic",
+    model: "claude-sonnet-5-5",
+  };
+  writeFileSync(`${stem}.result.json`, JSON.stringify(saved));
+  writeFileSync(
+    `${stem}.raw.txt`,
+    JSON.stringify({
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            suggestedTitle: null,
+            facts: cleanFacts,
+            issues: [],
+          }),
+        },
+      ],
+      usage: { input_tokens: 12, output_tokens: 34 },
+    }),
+  );
+  const child = run([
+    "--rescore",
+    dir,
+    "--label",
+    label,
+    "--fixture",
+    clean.id,
+  ]);
+  assert.equal(child.status, 0, child.stderr);
+  const rescored = JSON.parse(
+    readFileSync(`${stem}.rescored.json`, "utf8"),
+  ) as {
+    jsonValid: boolean;
+    usage: { promptTokens: number; completionTokens: number };
+  };
+  assert.equal(rescored.jsonValid, true);
+  assert.deepEqual(rescored.usage, { promptTokens: 12, completionTokens: 34 });
 });

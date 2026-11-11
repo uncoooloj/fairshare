@@ -157,14 +157,39 @@ function safeNonNegativeInteger(value: string, name: string): number {
 }
 
 /** Parses a saved Cloudflare body with the current adapter. */
-function parseRaw(rawBody: string): {
+function parseRaw(
+  provider: ExtractionProvider,
+  rawBody: string,
+): {
   draft: unknown;
   usage: Usage | null;
 } | null {
   try {
     const envelope = JSON.parse(rawBody) as {
       result?: { usage?: Record<string, number> };
+      content?: { type?: unknown; text?: unknown }[];
+      usage?: { input_tokens?: unknown; output_tokens?: unknown };
     };
+    if (provider === ExtractionProvider.ANTHROPIC) {
+      const text = Array.isArray(envelope.content)
+        ? envelope.content
+            .filter((block) => block?.type === "text")
+            .map((block) => block.text)
+            .filter((text): text is string => typeof text === "string")
+            .join("")
+        : "";
+      return {
+        draft: JSON.parse(text),
+        usage:
+          typeof envelope.usage?.input_tokens === "number" &&
+          typeof envelope.usage?.output_tokens === "number"
+            ? {
+                promptTokens: envelope.usage.input_tokens,
+                completionTokens: envelope.usage.output_tokens,
+              }
+            : null,
+      };
+    }
     const usage = envelope.result?.usage;
     return {
       draft: parseCloudflareResult(envelope.result),
@@ -197,6 +222,7 @@ function rawQuoteCount(draft: unknown, text: string) {
 
 function record(
   fixture: LiveFixture,
+  provider: ExtractionProvider,
   model: string,
   result: ExtractionResult,
   rawBody: string,
@@ -204,7 +230,7 @@ function record(
   diagnostics: ExtractionDiagnostic[],
 ): RunRecord {
   const score = scoreResult(fixture, result);
-  const parsed = parseRaw(rawBody);
+  const parsed = parseRaw(provider, rawBody);
   const price = PRICES[model];
   return {
     fixture: fixture.id,
@@ -350,6 +376,7 @@ async function runLive(
       writeFileSync(`${stem}.result.json`, JSON.stringify(result, null, 2));
       const run = record(
         fixture,
+        provider,
         model,
         result,
         rawBody,
@@ -392,7 +419,8 @@ function runRescore(outDir: string, label: string, fixtures: LiveFixture[]) {
     const saved = JSON.parse(
       readFileSync(`${stem}.result.json`, "utf8"),
     ) as ExtractionResult;
-    const parsed = parseRaw(rawBody);
+    const provider = saved.provider ?? ExtractionProvider.CLOUDFLARE;
+    const parsed = parseRaw(provider, rawBody);
     const document = {
       documentId: fixture.id,
       revision: 1,
@@ -413,6 +441,7 @@ function runRescore(outDir: string, label: string, fixtures: LiveFixture[]) {
       }
     const run = record(
       fixture,
+      provider,
       previous?.model ?? saved.model ?? label,
       result,
       rawBody,

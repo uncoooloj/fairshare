@@ -76,6 +76,34 @@ test("everything read: name, dates, people, advance and fees, each with its clau
   );
 });
 
+test("wizard answers retain server-valid case and curly-quote facts with exact source ranges", () => {
+  const doc = "“MAYA OKAFOR” receives 100% of Net Revenue.";
+  const quote = doc;
+  const extraction = reading(doc, {
+    facts: [
+      {
+        kind: "SHARE",
+        subject: "maya okafor",
+        rawValue: "100%",
+        basisPoints: 10_000,
+        citation: cite(doc, quote),
+      },
+    ],
+    sections: { SPLIT: Status.READ },
+  });
+  const read = answersFromExtraction(extraction, doc, self);
+  assert.equal(read.mode, CheckMode.FOUND_ALL);
+  assert.deepEqual(read.answers.people.value, [
+    {
+      key: "owner",
+      name: "maya okafor",
+      userId: "owner",
+      basisPoints: 10_000,
+      isSelf: true,
+    },
+  ]);
+});
+
 test("term dates keep their own verified clause citations", () => {
   const term = "1.1 Start: October 1, 2026.\n2.1 End: September 30, 2027.";
   const doc = MIDNIGHT.replace(

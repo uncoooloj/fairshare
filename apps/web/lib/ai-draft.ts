@@ -152,7 +152,7 @@ const normalizedEvidence = (value: string) =>
   normalize(value)
     .replace(/[“”„‟\"'‘’‚‛`´]/g, '"')
     .toLowerCase();
-const containsEvidence = (quote: string, value: string) =>
+export const containsNormalizedEvidence = (quote: string, value: string) =>
   normalizedEvidence(quote).includes(normalizedEvidence(value));
 const tokens = (value: string) =>
   normalize(value)
@@ -227,8 +227,8 @@ function checkedFact(f: any, source: string | null): RawFact | null {
     c.start < 0 ||
     c.end <= c.start ||
     (source !== null && source.slice(c.start, c.end) !== c.quote) ||
-    !containsEvidence(c.quote, f.subject) ||
-    !containsEvidence(c.quote, f.rawValue)
+    !containsNormalizedEvidence(c.quote, f.subject) ||
+    !containsNormalizedEvidence(c.quote, f.rawValue)
   )
     return null;
   return { ...f, quote: c.quote };

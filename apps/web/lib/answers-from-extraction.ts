@@ -1,5 +1,6 @@
 import {
   DraftStatus,
+  containsNormalizedEvidence,
   extractionDraft,
   matchMember,
   RulesSection,
@@ -107,6 +108,7 @@ export function clauseFor(
 interface RawFact {
   kind: string;
   subject: string;
+  rawValue: string;
   quote: string;
   boundary?: unknown;
   amountCents?: unknown;
@@ -122,11 +124,15 @@ function verifiedFacts(extraction: any, documentText: string): RawFact[] {
     return typeof f?.kind === "string" &&
       typeof f.subject === "string" &&
       f.subject.trim() &&
+      typeof f.rawValue === "string" &&
+      f.rawValue.trim() &&
       typeof c?.quote === "string" &&
       c.quote.trim() &&
       Number.isInteger(c.start) &&
       Number.isInteger(c.end) &&
-      documentText.slice(c.start, c.end) === c.quote
+      documentText.slice(c.start, c.end) === c.quote &&
+      containsNormalizedEvidence(c.quote, f.subject) &&
+      containsNormalizedEvidence(c.quote, f.rawValue)
       ? [{ ...f, subject: f.subject.trim(), quote: c.quote }]
       : [];
   });
