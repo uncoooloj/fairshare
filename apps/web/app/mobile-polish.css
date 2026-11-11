@@ -1,0 +1,167 @@
+/* Phone sizing and touch targets: loaded last. */
+
+/* New agreement: upload / paste segmented control. */
+.creation-body fieldset:has(> .intake-method-options) {
+  border: 0;
+  padding: 0;
+  margin: var(--space-4) 0;
+  min-width: 0;
+}
+.creation-body fieldset:has(> .intake-method-options) > legend {
+  padding: 0;
+  margin-bottom: var(--space-2);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--color-ink);
+}
+.intake-method-options {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+.intake-method-option {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-sm);
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background var(--motion-fast) ease,
+    color var(--motion-fast) ease;
+}
+.intake-method-option input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.intake-method-option:hover {
+  color: var(--color-ink);
+}
+.intake-method-option:has(input:checked) {
+  background: white;
+  color: var(--color-ink);
+  box-shadow:
+    0 0 0 1px var(--color-line),
+    0 1px 2px rgb(0 0 0 / 6%);
+}
+.intake-method-option:has(input:focus-visible) {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+}
+fieldset:disabled .intake-method-option {
+  opacity: 0.6;
+  cursor: default;
+}
+
+@media (max-width: 600px) {
+  /* Every interactive control is at least 44px on phones. */
+  .button {
+    min-height: 44px;
+  }
+  .icon-button {
+    width: 44px;
+    height: 44px;
+  }
+  .intake-method-options {
+    display: flex;
+  }
+  .intake-method-option {
+    flex: 1 1 0;
+    min-height: 44px;
+  }
+  .ov-activity-link,
+  .ov-timeline .ov-activity-link {
+    min-height: 44px;
+    padding-block: 12px;
+  }
+
+  /* Settings sections wrap instead of running off-screen. */
+  .settings-subnav {
+    flex-wrap: wrap;
+    overflow-x: visible;
+    gap: var(--space-1);
+  }
+  .settings-subnav-item {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding-inline: var(--space-3);
+  }
+}
+
+/* Phones: keep everything inside 375px. */
+@media (max-width: 600px) {
+  .workspace-bar {
+    gap: var(--space-2);
+  }
+  .workspace-bar > span:first-child {
+    display: none;
+  }
+  .workspace-bar select {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: none;
+    text-overflow: ellipsis;
+  }
+  .workspace-bar .icon-button,
+  .workspace-bar .notification-anchor {
+    flex: none;
+  }
+  .agreement-tabs {
+    flex-wrap: wrap;
+    overflow: visible;
+    gap: 0 var(--space-5);
+  }
+  .agreement-tabs .tab-indicator {
+    display: none;
+  }
+  .agreement-tabs.has-indicator button.active {
+    border-bottom-color: var(--color-ink);
+  }
+  .ag-payments-card {
+    overflow-x: auto;
+  }
+  .row-open,
+  .text-button {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+  .creation-progress li,
+  .creation-progress button {
+    min-width: 44px;
+  }
+}
+
+/* Visually hidden table labels are absolutely positioned; keep them inside their scroll box. */
+.table-scroll,
+.ov-table,
+.panel > div[style*="overflow"],
+.ag-payments-card {
+  position: relative;
+}
+@media (max-width: 600px) {
+  [role="menuitem"] {
+    min-height: 44px;
+  }
+  select {
+    min-width: 44px;
+  }
+  .agreement-tabs button {
+    min-width: 44px;
+  }
+}

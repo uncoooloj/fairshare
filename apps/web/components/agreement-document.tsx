@@ -77,7 +77,7 @@ export function AgreementDocument({
             Review the exact text behind the proposed rules.
           </p>
         </div>
-        <div className="actions">
+        <div className="actions document-actions">
           {agreement.value.versions.length > 0 && (
             <label className="document-version">
               Source for version

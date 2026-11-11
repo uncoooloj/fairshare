@@ -471,3 +471,30 @@
   padding-right: 22px;
   background-position: right 0 center;
 }
+
+/* Phones: list keeps name, status and amount; activity puts the agreement on its own line. */
+@media (max-width: 600px) {
+  .ov-table {
+    overflow-x: auto;
+  }
+  .ov-table table {
+    min-width: 0;
+    width: 100%;
+  }
+  .ov-table th:nth-child(3),
+  .ov-table td:nth-child(3),
+  .ov-table th:nth-child(4),
+  .ov-table td:nth-child(4) {
+    display: none;
+  }
+  .ov-all-clear-meta {
+    flex-basis: 100%;
+    margin-left: 20px;
+  }
+  .ov-sep {
+    display: none;
+  }
+  .ov-timeline .ov-activity-link {
+    display: block;
+  }
+}

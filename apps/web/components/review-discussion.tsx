@@ -208,6 +208,7 @@ function VersionDiscussion({
       <Button
         type="button"
         variant="quiet"
+        className="discussion-refresh"
         disabled={loading || posting}
         onClick={() => void load()}
       >

@@ -528,3 +528,11 @@ input.settings-switch {
     flex-wrap: wrap;
   }
 }
+
+/* Muted status notice for unavailable authenticator setup. */
+.mfa-status-muted .notice {
+  margin: 0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  color: var(--color-muted);
+}

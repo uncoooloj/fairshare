@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../lib/model";
-import { Button, Field } from "./ui";
+import { Button, Field, Notice } from "./ui";
 type Status = {
   simulated?: boolean;
   available: boolean;
@@ -128,10 +128,12 @@ export function MfaSettings({ onSignOut }: { onSignOut: () => void }) {
       ) : !status ? (
         <p>Loading security settings…</p>
       ) : !status.available ? (
-        <p>
-          Authenticator setup isn’t ready yet. Please try again later.{" "}
-          {status.enabled ? "Your authenticator remains enabled." : ""}
-        </p>
+        <div className="mfa-status-muted">
+          <Notice>
+            Authenticator setup isn’t ready yet. Please try again later.{" "}
+            {status.enabled ? "Your authenticator remains enabled." : ""}
+          </Notice>
+        </div>
       ) : setup ? (
         <form
           onSubmit={(event) => {

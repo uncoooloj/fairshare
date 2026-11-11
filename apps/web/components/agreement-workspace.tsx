@@ -302,6 +302,7 @@ export function AgreementHeader({
   renameSuggested?: boolean;
 }) {
   const menu = useRef<HTMLDetailsElement>(null);
+  const menuButton = useRef<HTMLElement>(null);
   const [open, setOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const versions = agreement.value.versions;
@@ -359,7 +360,11 @@ export function AgreementHeader({
           className="ag-menu"
           onToggle={(event) => setOpen(event.currentTarget.open)}
         >
-          <summary className="icon-button" aria-label="Agreement actions">
+          <summary
+            ref={menuButton}
+            className="icon-button"
+            aria-label="Agreement actions"
+          >
             <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
               <circle cx="3" cy="8" r="1.4" fill="currentColor" />
               <circle cx="8" cy="8" r="1.4" fill="currentColor" />
@@ -388,7 +393,10 @@ export function AgreementHeader({
       </div>
       {rename &&
         (renaming || renameSuggested) &&
-        rename(renaming, () => setRenaming(false))}
+        rename(renaming, () => {
+          setRenaming(false);
+          menuButton.current?.focus();
+        })}
     </header>
   );
 }

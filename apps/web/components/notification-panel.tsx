@@ -84,8 +84,8 @@ export function NotificationPanel({
         type="button"
         aria-expanded={open}
         aria-controls="notification-panel"
-        aria-label="Notifications"
-        title="Notifications"
+        aria-label="Open notifications"
+        title="Open notifications"
         onClick={() => setOpen(!open)}
       >
         <svg
