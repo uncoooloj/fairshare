@@ -35,7 +35,7 @@ test("send action is gated behind confirmation and success precedes sharing", ()
   assert.match(dialog, /setSent\(true\)/);
   assert.match(dialog, /lock.current \|\| !canSend/);
   assert.match(dialog, /showModal\(\)/);
-  assert.match(dialog, /We don’t send email/);
+  assert.match(dialog, /We\s+don’t\s+send\s+email/);
   assert.doesNotMatch(dialog, /api\(|fetch\(/);
 });
 test("a committed review remains shareable if the optional workspace refresh fails", () => {
