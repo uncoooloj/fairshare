@@ -36,6 +36,7 @@ import { recoverSourceDocument } from "../lib/source-recovery";
 import { useRouter } from "next/navigation";
 import { Button } from "./ui";
 import { workspaceBase } from "../lib/workspace-base";
+import { reconcileOrganizerPayouts } from "../lib/payout-reconciliation";
 import { mutationIsCurrent } from "../lib/mutation-generation";
 import { AppShell } from "./app-shell";
 import { visibleTab } from "./agreement-tabs";
@@ -488,6 +489,19 @@ export default function FairshareApp() {
     const openRequestId = openRequest.current;
     const id = currentWorkspace.current;
     try {
+      if (section === Section.Payouts && user) {
+        await reconcileOrganizerPayouts({
+          payouts,
+          agreements,
+          userId: user.id,
+          reconcile: (payout) =>
+            api(
+              `${workspaceBase(payout.agreement.workspaceId)}/collaborations/${payout.agreement.id}/payouts/${payout.id}/reconcile`,
+              "POST",
+              {},
+            ),
+        });
+      }
       await loadWorkspace(id);
       if (
         workspaceRequestId !== workspaceRequest.current ||
