@@ -1,4 +1,3 @@
-import { statusLabel } from "../lib/status-labels";
 import { sourceHighlights } from "../lib/source-highlights";
 import { ChevronRightIcon } from "./icons";
 import { HighlightedSource } from "./source-rule-context";
@@ -6,7 +5,7 @@ import { SplitRuleEditor } from "./split-rule-editor";
 import { RuleImpactReview } from "./rule-impact-review";
 import { isRulesDraftChange } from "../lib/rule-impact";
 import { agreementEmptyState } from "../lib/agreement-empty-state";
-import { formatDate } from "../lib/preferences";
+import { formatDate, formatMoneyHeadline } from "../lib/preferences";
 import { ClarificationDecisions } from "./clarification-decisions";
 import { proposalQuestions } from "../lib/clarification-draft";
 import { suggestedShares } from "../lib/ai-draft";
@@ -28,11 +27,12 @@ import {
   payoutGridStatus,
 } from "../src/components/paymentGridModel";
 import { RECEIVED_DEFINITION, receivedTotals } from "../lib/received";
+import { Avatar as ListAvatar, AvatarSize as ListAvatarSize } from "./person";
 import {
-  Avatar as ListAvatar,
-  AvatarSize as ListAvatarSize,
-  SplitBar as ListSplitBar,
-} from "./person";
+  PENDING_USER_PREFIX,
+  isPendingMember,
+  type AgreementMember,
+} from "../lib/agreement-api";
 import { toneInRoster as listTone } from "../lib/person";
 import { formatDay as listDay, formatExact as listExact } from "../lib/dates";
 import { LogoMark } from "./logo-mark";
@@ -128,40 +128,181 @@ function PersonAvatar({ name }: { name: string }) {
     </span>
   );
 }
-function agreementStatus(a: Agreement) {
-  if (a.value.reviewHold) return "Needs attention";
-  if (a.value.activeVersionId) return "Approved";
-  const status = a.value.versions.at(-1)?.status || "DRAFT";
-  return status === "DRAFT" ? "Draft" : "In review";
+/** Status chip on the agreements list, in plain words. */
+export enum ListStatus {
+  NotSent = "Not sent yet",
+  Waiting = "Waiting for approval",
+  Approved = "Approved",
+  NeedsAttention = "Needs attention",
 }
+const LIST_STATUS_TONE: Record<ListStatus, string> = {
+  [ListStatus.NotSent]: "neutral",
+  [ListStatus.Waiting]: "warning",
+  [ListStatus.Approved]: "good",
+  [ListStatus.NeedsAttention]: "danger",
+};
+function agreementStatus(a: Agreement, draft = false) {
+  if (draft) return ListStatus.NotSent;
+  if (a.value.reviewHold) return ListStatus.NeedsAttention;
+  if (a.value.activeVersionId) return ListStatus.Approved;
+  const latest = a.value.versions.at(-1);
+  return !latest || latest.status === "DRAFT"
+    ? ListStatus.NotSent
+    : ListStatus.Waiting;
+}
+/** Changes to an approved agreement, said without version numbers. */
+function pendingChange(status: string) {
+  if (status === "AWAITING_APPROVAL") return "Changes waiting for approval";
+  if (status === "DRAFT") return "Changes not sent yet";
+  return "";
+}
+
+interface SplitPart {
+  userId: string;
+  name: string;
+  firstName: string;
+  basisPoints: number;
+  tone: number;
+  pending: boolean;
+  you: boolean;
+}
+const percent = (basisPoints: number) => String(Math.round(basisPoints) / 100);
+
+/** Who gets what, largest share first. Empty when the agreement has no rules yet. */
+export function splitParts(a: Agreement, viewerId?: string): SplitPart[] {
+  const active = a.value.versions.find((v) => v.id === a.value.activeVersionId);
+  const shares = (active || a.value.versions.at(-1))?.rules.shares || [];
+  const members = a.value.members as AgreementMember[];
+  return shares
+    .filter((share) => share.basisPoints > 0)
+    .map((share) => {
+      const member = members.find((m) => m.userId === share.userId);
+      const name = member?.displayName.trim() || "Someone";
+      return {
+        userId: share.userId,
+        name,
+        firstName: name.split(/\s+/)[0],
+        basisPoints: share.basisPoints,
+        tone: listTone(share.userId, members),
+        pending:
+          (member ? isPendingMember(member) : false) ||
+          share.userId.startsWith(PENDING_USER_PREFIX),
+        you: !!viewerId && share.userId === viewerId,
+      };
+    })
+    .sort((x, y) => y.basisPoints - x.basisPoints);
+}
+const SPLIT_INLINE_LIMIT = 3;
+
+/** "● Maya 50 · ● Jordan 30 · ● Riley 20"; past three people, the top two and "+N".
+ * Hover or focus shows everyone with percentages. */
+export function SplitSummary({
+  parts,
+  id,
+}: {
+  parts: SplitPart[];
+  id: string;
+}) {
+  if (!parts.length)
+    return (
+      <span className="ag-split-none">
+        <span aria-hidden="true">—</span>
+        <span className="sr-only">No split yet</span>
+      </span>
+    );
+  const single = parts.length === 1;
+  const shown = parts.length > SPLIT_INLINE_LIMIT ? parts.slice(0, 2) : parts;
+  const hidden = parts.length - shown.length;
+  const tipId = `split-tip-${id}`;
+  return (
+    <span className="ag-split" tabIndex={0} aria-describedby={tipId}>
+      <span className="ag-split-text">
+        {shown.map((p, i) => (
+          <span key={p.userId} className="ag-split-part">
+            <span
+              className={`ag-split-dot tone-${p.tone}`}
+              aria-hidden="true"
+            />
+            <span
+              className={
+                [p.you && "ag-split-you", p.pending && "ag-split-pending"]
+                  .filter(Boolean)
+                  .join(" ") || undefined
+              }
+            >
+              {p.firstName}
+              {p.you ? " (you)" : ""} {percent(p.basisPoints)}
+              {single ? "%" : ""}
+            </span>
+            {/* Trailing, so a wrapped line never starts with a dot. */}
+            {i < shown.length - 1 && (
+              <span className="ag-split-sep" aria-hidden="true">
+                ·
+              </span>
+            )}
+          </span>
+        ))}
+        {hidden > 0 && <span className="ag-split-more">+{hidden}</span>}
+      </span>
+      {!single && (
+        <span className="ag-split-bar" aria-hidden="true">
+          {parts.map((p) => (
+            <span
+              key={p.userId}
+              className={`tone-${p.tone}`}
+              style={{ flexGrow: p.basisPoints }}
+            />
+          ))}
+        </span>
+      )}
+      <span className="ag-split-tip" role="tooltip" id={tipId}>
+        {parts.map((p) => (
+          <span key={p.userId} className="ag-split-tip-row">
+            <span
+              className={`ag-split-dot tone-${p.tone}`}
+              aria-hidden="true"
+            />
+            <span className={p.you ? "ag-split-you" : undefined}>
+              {p.name}
+              {p.you ? " (you)" : ""}
+            </span>
+            {p.pending && (
+              <span className="ag-split-pending"> · hasn’t joined yet</span>
+            )}
+            <span className="ag-split-tip-pct">{percent(p.basisPoints)}%</span>
+          </span>
+        ))}
+      </span>
+    </span>
+  );
+}
+const PEOPLE_INLINE_LIMIT = 4;
+
 export function AgreementList({
   agreements,
   onOpen,
   workspaceRole,
   isDraft = () => false,
+  viewerId,
 }: {
   workspaceRole?: string;
   agreements: Agreement[];
   onOpen: (a: Agreement) => void;
-  /** Never-sent drafts: a Draft badge and "Finish setting up" instead of the chevron. */
+  /** Never-sent drafts: "Not sent yet" and "Finish setting up" instead of the chevron. */
   isDraft?: (a: Agreement) => boolean;
+  /** The signed-in person; their share reads "(you)". */
+  viewerId?: string;
 }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("All");
   const filtered = agreements.filter(
     (a) =>
       a.value.name.toLowerCase().includes(query.toLowerCase()) &&
-      (filter === "All" || agreementStatus(a) === filter),
+      (filter === "All" || agreementStatus(a, isDraft(a)) === filter),
   );
   const emptyState = agreementEmptyState(workspaceRole);
   if (!agreements.length)
     return <Empty title={emptyState.title}>{emptyState.description}</Empty>;
-  const statusTone: Record<string, string> = {
-    Approved: "good",
-    "In review": "warning",
-    "Needs attention": "danger",
-    Draft: "neutral",
-  };
   const lastUpdated = (a: Agreement) =>
     a.value.audit.reduce<string | undefined>(
       (latest, event) =>
@@ -217,29 +358,30 @@ export function AgreementList({
             value={filter}
             onChange={(event) => setFilter(event.target.value)}
           >
-            {["All", "Draft", "In review", "Approved", "Needs attention"].map(
-              (value) => (
-                <option key={value} value={value}>
-                  {value}
-                </option>
-              ),
-            )}
+            {["All", ...Object.values(ListStatus)].map((value) => (
+              <option key={value} value={value}>
+                {value}
+              </option>
+            ))}
           </select>
         </label>
       </div>
       {filtered.length ? (
-        <div className="table-scroll ov-table">
+        <div className="table-scroll ov-table ag-list-table">
           <table>
             <thead>
               <tr>
-                <th>Agreement</th>
-                <th>Status</th>
-                <th>People</th>
-                <th>Split</th>
-                <th className="numeric" title={RECEIVED_DEFINITION}>
+                <th className="ag-col-name">Agreement</th>
+                <th className="ag-col-status">Status</th>
+                <th className="ag-col-people">People</th>
+                <th className="ag-col-split">Split</th>
+                <th
+                  className="numeric ag-col-received"
+                  title={RECEIVED_DEFINITION}
+                >
                   Received
                 </th>
-                <th>
+                <th className="ag-col-action">
                   <span className="sr-only">Open agreement</span>
                 </th>
               </tr>
@@ -250,18 +392,19 @@ export function AgreementList({
                 const active = a.value.versions.find(
                   (v) => v.id === a.value.activeVersionId,
                 );
-                const shares = (active || latest)?.rules.shares;
                 const members = a.value.members;
                 const draft = isDraft(a);
-                const status = draft ? "Draft" : agreementStatus(a);
+                const status = agreementStatus(a, draft);
                 const updated = lastUpdated(a);
+                const change =
+                  !draft && active && latest && active.id !== latest.id
+                    ? pendingChange(latest.status)
+                    : "";
+                const extra = members.slice(PEOPLE_INLINE_LIMIT);
+                const rowKey = JSON.stringify([a.workspaceId, a.id]);
                 return (
-                  <tr
-                    key={JSON.stringify([a.workspaceId, a.id])}
-                    className="ov-row"
-                    onClick={() => onOpen(a)}
-                  >
-                    <td>
+                  <tr key={rowKey} className="ov-row" onClick={() => onOpen(a)}>
+                    <td className="ag-col-name">
                       <button
                         className="text-button strong agreement-name"
                         onClick={(event) => {
@@ -271,34 +414,28 @@ export function AgreementList({
                       >
                         {a.value.name}
                       </button>
-                      <div className="agreement-meta">
-                        {draft
-                          ? "Not sent yet"
-                          : active
-                            ? `v${active.id}`
-                            : latest
-                              ? `v${latest.id}`
-                              : "No split yet"}
-                        {active && latest && active.id !== latest.id
-                          ? ` · v${latest.id} ${statusLabel(latest.status).toLowerCase()}`
-                          : ""}
-                        {updated && (
-                          <span title={listExact(updated)}>
-                            {` · Updated ${listDay(updated)}`}
-                          </span>
-                        )}
-                      </div>
+                      {(change || updated) && (
+                        <div className="agreement-meta">
+                          {change}
+                          {change && updated ? " · " : ""}
+                          {updated && (
+                            <span title={listExact(updated)}>
+                              Updated {listDay(updated)}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </td>
-                    <td>
+                    <td className="ag-col-status">
                       <span
-                        className={`status-chip ${statusTone[status] || "neutral"}`}
+                        className={`status-chip ${LIST_STATUS_TONE[status]}`}
                       >
                         {status}
                       </span>
                     </td>
-                    <td>
+                    <td className="ag-col-people">
                       <div className="avatar-stack">
-                        {members.slice(0, 4).map((m) => (
+                        {members.slice(0, PEOPLE_INLINE_LIMIT).map((m) => (
                           <ListAvatar
                             key={m.userId}
                             name={m.displayName}
@@ -306,33 +443,37 @@ export function AgreementList({
                             size={ListAvatarSize.SMALL}
                           />
                         ))}
-                        {members.length > 4 && (
+                        {extra.length > 0 && (
                           <span
                             className="person-avatar size-sm ov-more"
-                            aria-label={`${members.length - 4} more people`}
+                            title={extra.map((m) => m.displayName).join(", ")}
+                            aria-label={`and ${extra.map((m) => m.displayName).join(", ")}`}
                           >
-                            +{members.length - 4}
+                            +{extra.length}
                           </span>
                         )}
                       </div>
                     </td>
-                    <td>
-                      <ListSplitBar
-                        segments={(shares || []).map((share) => ({
-                          userId: share.userId,
-                          name:
-                            members.find((m) => m.userId === share.userId)
-                              ?.displayName || "Participant",
-                          basisPoints: share.basisPoints,
-                          tone: listTone(share.userId, members),
-                        }))}
+                    <td className="ag-col-split">
+                      <SplitSummary
+                        parts={splitParts(a, viewerId)}
+                        id={`${a.workspaceId}-${a.id}`.replace(/[^\w-]/g, "_")}
                       />
                     </td>
-                    <td className="numeric">
-                      {money(receivedTotals(a.value.revenue).receivedCents)}
+                    <td className="numeric ag-col-received">
+                      {draft ? (
+                        <>
+                          <span aria-hidden="true">—</span>
+                          <span className="sr-only">Nothing received</span>
+                        </>
+                      ) : (
+                        formatMoneyHeadline(
+                          receivedTotals(a.value.revenue).receivedCents,
+                        )
+                      )}
                     </td>
                     {draft ? (
-                      <td className="ov-draft-cell">
+                      <td className="ov-draft-cell ag-col-action">
                         <Button
                           variant="secondary"
                           aria-label={`Finish setting up ${a.value.name}`}
@@ -345,7 +486,10 @@ export function AgreementList({
                         </Button>
                       </td>
                     ) : (
-                      <td className="ov-chevron-cell" aria-hidden="true">
+                      <td
+                        className="ov-chevron-cell ag-col-action"
+                        aria-hidden="true"
+                      >
                         <span className="ov-chevron">
                           <ChevronRightIcon />
                         </span>

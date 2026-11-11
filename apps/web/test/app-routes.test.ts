@@ -197,7 +197,7 @@ const agreement = (
     },
   }) as unknown as Agreement;
 
-test("drafts are rows in the agreements table with a Draft badge and Finish setting up", async () => {
+test("drafts are rows in the agreements table with Not sent yet and Finish setting up", async () => {
   const AgreementsSection = await section();
   const sent = agreement("sent", "Summer Sessions EP", [
     {
@@ -223,8 +223,7 @@ test("drafts are rows in the agreements table with a Draft badge and Finish sett
   const table = html.slice(html.indexOf("<table"));
   // Both in one table, the draft first.
   assert.ok(table.indexOf("Midnight Sessions") < table.indexOf("Summer"));
-  assert.match(table, /status-chip neutral">Draft</);
-  assert.match(table, /Not sent yet/);
+  assert.match(table, /status-chip neutral">Not sent yet</);
   assert.match(
     table,
     /aria-label="Finish setting up Midnight Sessions"[^>]*>Finish setting up</,

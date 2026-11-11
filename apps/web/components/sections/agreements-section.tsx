@@ -61,6 +61,7 @@ export function AgreementsSection({
         agreements={ordered}
         workspaceRole={workspaceRole}
         isDraft={isDraft}
+        viewerId={userId}
         onOpen={(a) => run(() => openAgreement(a))}
       />
     </>
