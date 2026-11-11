@@ -40,6 +40,36 @@ function fakeProvider(
   };
 }
 
+function deferredProvider() {
+  let release: ((profile: PayPalIdentityProfile) => void) | undefined;
+  let started: () => void;
+  const startedPromise = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  const provider: ReturnType<typeof fakeProvider> = {
+    codes: [],
+    authorizeUrl: (state) =>
+      `https://www.sandbox.paypal.com/connect?state=${encodeURIComponent(state)}`,
+    exchange: async (code) => {
+      provider.codes.push(code);
+      started();
+      return new Promise<PayPalIdentityProfile>((resolve) => {
+        release = resolve;
+      });
+    },
+  };
+  return {
+    provider,
+    waitForExchange: () => startedPromise,
+    release: () =>
+      release?.({
+        email: "paypal@example.test",
+        emailVerified: true,
+        payerId: "PAYERID12345",
+      }),
+  };
+}
+
 async function setup(provider?: ReturnType<typeof fakeProvider>) {
   const app = await buildApp({
     dbPath: ":memory:",
@@ -303,6 +333,73 @@ test("disconnect drops verification, keeps the email, audits once", async () => 
     assert.deepEqual({ ...row }, { payerId: null, verifiedAt: null });
   } finally {
     await s.app.close();
+  }
+});
+
+test("a delayed callback cannot replace a newer payout decision or a revoked session", async () => {
+  for (const action of ["save", "remove", "disconnect", "logout"] as const) {
+    const deferred = deferredProvider();
+    const s = await setup(deferred.provider);
+    try {
+      if (action === "disconnect")
+        await s.app.inject({
+          method: "PUT",
+          url: "/api/auth/payout-account",
+          headers: auth(s.maya.token),
+          payload: { email: "kept@example.test" },
+        });
+      const state = await s.start();
+      const pending = s.callback(state);
+      await deferred.waitForExchange();
+      if (action === "save")
+        await s.app.inject({
+          method: "PUT",
+          url: "/api/auth/payout-account",
+          headers: auth(s.maya.token),
+          payload: { email: "newer@example.test" },
+        });
+      if (action === "remove")
+        await s.app.inject({
+          method: "DELETE",
+          url: "/api/auth/payout-account",
+          headers: auth(s.maya.token),
+        });
+      if (action === "disconnect")
+        await s.app.inject({
+          method: "DELETE",
+          url: "/api/auth/paypal/connect",
+          headers: auth(s.maya.token),
+        });
+      if (action === "logout")
+        await s.app.inject({
+          method: "POST",
+          url: "/api/auth/logout",
+          headers: auth(s.maya.token),
+        });
+      deferred.release();
+      const completed = await pending;
+      assert.equal(completed.statusCode, action === "logout" ? 401 : 409);
+      const account = s.app.store.db
+        .prepare(
+          "SELECT receiver,verified FROM fairshare_payout_accounts WHERE user_id=?",
+        )
+        .get(s.maya.user.id) as
+        | { receiver: string; verified: number }
+        | undefined;
+      if (action === "save")
+        assert.deepEqual({ ...account }, {
+          receiver: "newer@example.test",
+          verified: 0,
+        });
+      else if (action === "disconnect")
+        assert.deepEqual({ ...account }, {
+          receiver: "kept@example.test",
+          verified: 0,
+        });
+      else assert.equal(account, undefined);
+    } finally {
+      await s.app.close();
+    }
   }
 });
 

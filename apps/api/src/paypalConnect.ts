@@ -7,7 +7,9 @@ import type { FastifyRequest } from "fastify";
 import type { FairshareApp } from "./app.js";
 import { ApiError, digest } from "./identity.js";
 import {
+  advancePayoutAccountGeneration,
   ensurePayoutAccountSchema,
+  payoutAccountGeneration,
   readPayoutDestination,
 } from "./payoutAccounts.js";
 
@@ -63,8 +65,15 @@ export function registerPayPalConnect(
   const db = app.store.db;
   ensurePayoutAccountSchema(db);
   db.exec(
-    "CREATE TABLE IF NOT EXISTS fairshare_paypal_connect_states(nonce TEXT PRIMARY KEY,user_id TEXT NOT NULL,session_hash TEXT NOT NULL,return_to TEXT NOT NULL,expires_at INTEGER NOT NULL)",
+    "CREATE TABLE IF NOT EXISTS fairshare_paypal_connect_states(nonce TEXT PRIMARY KEY,user_id TEXT NOT NULL,session_hash TEXT NOT NULL,return_to TEXT NOT NULL,expires_at INTEGER NOT NULL,generation INTEGER NOT NULL DEFAULT 0)",
   );
+  const stateColumns = db
+    .prepare("PRAGMA table_info(fairshare_paypal_connect_states)")
+    .all() as { name: string }[];
+  if (!stateColumns.some((column) => column.name === "generation"))
+    db.exec(
+      "ALTER TABLE fairshare_paypal_connect_states ADD COLUMN generation INTEGER NOT NULL DEFAULT 0",
+    );
   const base = "/api/auth/paypal";
   const configured = () => {
     if (!options)
@@ -89,17 +98,19 @@ export function registerPayPalConnect(
       const nonce = randomBytes(24).toString("base64url");
       const expiresAt = now + STATE_TTL_MS;
       app.store.tx(() => {
+        const generation = advancePayoutAccountGeneration(db, user.id);
         db.prepare(
           "DELETE FROM fairshare_paypal_connect_states WHERE expires_at<=? OR user_id=?",
         ).run(now, user.id);
         db.prepare(
-          "INSERT INTO fairshare_paypal_connect_states VALUES(?,?,?,?,?)",
+          "INSERT INTO fairshare_paypal_connect_states(nonce,user_id,session_hash,return_to,expires_at,generation) VALUES(?,?,?,?,?,?)",
         ).run(
           nonce,
           user.id,
           sessionHash(req),
           safeReturnPath(req.query.returnTo),
           expiresAt,
+          generation,
         );
       });
       return {
@@ -137,7 +148,7 @@ export function registerPayPalConnect(
         ? app.store.tx(() => {
             const found = db
               .prepare(
-                "SELECT user_id AS userId, session_hash AS sessionHash, return_to AS returnTo, expires_at AS expiresAt FROM fairshare_paypal_connect_states WHERE nonce=?",
+                "SELECT user_id AS userId, session_hash AS sessionHash, return_to AS returnTo, expires_at AS expiresAt, generation FROM fairshare_paypal_connect_states WHERE nonce=?",
               )
               .get(nonce) as
               | {
@@ -145,6 +156,7 @@ export function registerPayPalConnect(
                   sessionHash: string;
                   returnTo: string;
                   expiresAt: number;
+                  generation: number;
                 }
               | undefined;
             db.prepare(
@@ -174,6 +186,8 @@ export function registerPayPalConnect(
           "PayPal didn’t confirm your account. Try again, or enter your PayPal email instead.",
         );
       }
+      // The session can have been revoked while the provider exchange awaited.
+      app.requireSession(req);
       if (!profile.email || !profile.emailVerified)
         throw new ApiError(
           422,
@@ -182,6 +196,12 @@ export function registerPayPalConnect(
         );
       const updatedAt = app.store.now();
       app.store.tx(() => {
+        if (payoutAccountGeneration(db, user.id) !== row.generation)
+          throw new ApiError(
+            409,
+            "PAYPAL_CONNECT_STALE",
+            "Your payout destination changed while PayPal was connecting. Your newer choice was kept.",
+          );
         db.prepare(
           "INSERT INTO fairshare_payout_accounts(user_id,recipient_type,receiver,updated_at,verified,payer_id,verified_at) VALUES(?,?,?,?,1,?,?) ON CONFLICT(user_id) DO UPDATE SET recipient_type=excluded.recipient_type,receiver=excluded.receiver,updated_at=excluded.updated_at,verified=1,payer_id=excluded.payer_id,verified_at=excluded.verified_at",
         ).run(
@@ -207,6 +227,7 @@ export function registerPayPalConnect(
     const user = app.requireSession(req);
     app.store.limit(`paypal-disconnect:user:${user.id}`, 10);
     app.store.tx(() => {
+      advancePayoutAccountGeneration(db, user.id);
       const changed = db
         .prepare(
           "UPDATE fairshare_payout_accounts SET verified=0,payer_id=NULL,verified_at=NULL WHERE user_id=? AND verified=1",

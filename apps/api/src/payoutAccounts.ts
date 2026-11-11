@@ -55,6 +55,35 @@ export function ensurePayoutAccountSchema(db: Database) {
       db.exec(
         `ALTER TABLE fairshare_payout_accounts ADD COLUMN ${name} ${definition}`,
       );
+  // This survives deleting the destination itself, so a pending OAuth callback
+  // cannot recreate an account after a later person decision.
+  db.exec(
+    "CREATE TABLE IF NOT EXISTS fairshare_payout_account_generations(user_id TEXT PRIMARY KEY,generation INTEGER NOT NULL)",
+  );
+}
+
+/** Advance the durable decision generation for a person's payout destination. */
+export function advancePayoutAccountGeneration(db: Database, userId: string) {
+  db.prepare(
+    "INSERT INTO fairshare_payout_account_generations(user_id,generation) VALUES(?,1) ON CONFLICT(user_id) DO UPDATE SET generation=generation+1",
+  ).run(userId);
+  return (
+    db
+      .prepare(
+        "SELECT generation FROM fairshare_payout_account_generations WHERE user_id=?",
+      )
+      .get(userId) as { generation: number }
+  ).generation;
+}
+
+export function payoutAccountGeneration(db: Database, userId: string) {
+  return (
+    db
+      .prepare(
+        "SELECT generation FROM fairshare_payout_account_generations WHERE user_id=?",
+      )
+      .get(userId) as { generation: number } | undefined
+  )?.generation ?? 0;
 }
 
 /** One destination per person. Account-level saves win; a legacy per-workspace
@@ -147,6 +176,7 @@ export function registerPayoutAccountRoutes(
       );
     const updatedAt = app.store.now();
     app.store.tx(() => {
+      advancePayoutAccountGeneration(db, user.id);
       db.prepare(
         // A typed email is never PayPal-verified, even if it matches the old one.
         "INSERT INTO fairshare_payout_accounts(user_id,recipient_type,receiver,updated_at,verified,payer_id,verified_at) VALUES(?,?,?,?,0,NULL,NULL) ON CONFLICT(user_id) DO UPDATE SET recipient_type=excluded.recipient_type,receiver=excluded.receiver,updated_at=excluded.updated_at,verified=0,payer_id=NULL,verified_at=NULL",
@@ -166,6 +196,7 @@ export function registerPayoutAccountRoutes(
   app.delete(path, async (req) => {
     const user = app.requireSession(req);
     app.store.tx(() => {
+      advancePayoutAccountGeneration(db, user.id);
       db.prepare("DELETE FROM fairshare_payout_accounts WHERE user_id=?").run(
         user.id,
       );
