@@ -2,6 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { errorCopy } from "../lib/error-copy";
+import {
+  agreementIdentityKey,
+  findAgreementByIdentity,
+} from "../lib/agreement-identity";
 import { appSource } from "./app-source";
 
 const app = appSource();
@@ -11,11 +15,27 @@ test("agreement navigation discovers all authorized groups without conflating gr
   assert.match(app, /groups.workspaces.map/);
   assert.match(app, /workspaceBase\(group.id\)/);
   assert.match(app, /lists.flatMap/);
-  assert.match(app, /setWorkspace\(fresh.workspaceId\)/);
+  assert.match(app, /agreementIdentityKey\(selected\)/);
+  assert.match(
+    app,
+    /findAgreementByIdentity\(\s*agreements,\s*e\.target\.value/,
+  );
+  assert.match(
+    app,
+    /if \(a.workspaceId !== currentWorkspace.current\)\s*commitWorkspace\(a.workspaceId\)/,
+  );
   assert.match(app, /workspaceBase\(a.workspaceId\)/);
   assert.match(app, /workspaceBase\(p.agreement.workspaceId\)/);
-  assert.match(app, /request !== listRequest.current/);
+  assert.match(app, /request !== workspaceRequest.current/);
   assert.doesNotMatch(app, /aria-label="Workspace"|WorkspaceNameForm/);
+});
+
+test("agreement identity keeps same agreement IDs in separate workspaces distinct", () => {
+  const first = { workspaceId: "workspace-a", id: "agreement" };
+  const second = { workspaceId: "workspace-b", id: "agreement" };
+  const secondKey = agreementIdentityKey(second);
+  assert.notEqual(agreementIdentityKey(first), secondKey);
+  assert.equal(findAgreementByIdentity([first, second], secondKey), second);
 });
 
 test("legacy tenant errors never expose implementation language", () => {

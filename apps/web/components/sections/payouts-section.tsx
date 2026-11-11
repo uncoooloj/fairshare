@@ -3,6 +3,10 @@ import { allocationTrace } from "../../lib/allocation-trace";
 import { payoutStatus } from "../agreement-widgets";
 import { Section, api, type Agreement, type User } from "../../lib/model";
 import { workspaceBase } from "../../lib/workspace-base";
+import {
+  agreementIdentityKey,
+  findAgreementByIdentity,
+} from "../../lib/agreement-identity";
 import { Button } from "../ui";
 import type { Run } from "./types";
 
@@ -51,10 +55,9 @@ export function PayoutsSection({
         loading={busy}
         rows={payouts.map((p) => ({
           id: JSON.stringify([p.agreement.workspaceId, p.agreement.id, p.id]),
-          agreementId: JSON.stringify([
-            p.agreement.workspaceId,
-            p.agreement.id,
-          ]),
+          payoutId: p.id,
+          agreementKey: agreementIdentityKey(p.agreement),
+          agreementId: p.agreement.id,
           agreementName: p.agreement.value.name,
           recipientName:
             p.agreement.value.members.find((m: any) => m.userId === p.user_id)
@@ -71,9 +74,7 @@ export function PayoutsSection({
           ),
         }))}
         onOpenAgreement={(id) => {
-          const a = agreements.find(
-            (a) => JSON.stringify([a.workspaceId, a.id]) === id,
-          );
+          const a = findAgreementByIdentity(agreements, id);
           if (a) run(() => openAgreement(a));
         }}
       />

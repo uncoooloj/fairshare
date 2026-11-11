@@ -17,7 +17,7 @@ export function PayoutDetails({
 }: {
   row: PaymentGridRow;
   onClose: () => void;
-  onOpenAgreement?: (id: string) => void;
+  onOpenAgreement?: (agreementKey: string) => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const title = useId();
@@ -64,7 +64,7 @@ export function PayoutDetails({
         <div>
           <dt>Payout ID</dt>
           <dd>
-            <code>{row.id}</code>
+            <code>{row.payoutId}</code>
           </dd>
         </div>
         <div>
@@ -98,7 +98,7 @@ export function PayoutDetails({
             type="button"
             onClick={() => {
               onClose();
-              onOpenAgreement(row.agreementId);
+              onOpenAgreement(row.agreementKey);
             }}
           >
             Open agreement
