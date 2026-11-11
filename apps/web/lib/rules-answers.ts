@@ -71,6 +71,10 @@ export interface AgreementAnswers {
   advance?: Cited<AdvanceAnswer>;
   /** undefined = not stated, becomes a Question. */
   fees?: Cited<FeeChoice>;
+  /** The actual person whose share pays organizer fees in the prior rules. */
+  feeBearerId?: string;
+  /** A revise either keeps that person or explicitly moves fees to today's organizer. */
+  feeBearerChoice?: "KEEP" | "ORGANIZER";
   refunds?: Cited<RefundChoice>;
   questions: Question[];
 }
@@ -252,7 +256,10 @@ function feesLine(a: AgreementAnswers): string | undefined {
     case FeeChoice.BEFORE_SPLIT:
       return "PayPal fees come off the top.";
     case FeeChoice.ORGANIZER_SHARE:
-      return `${firstName(organizerOf(a.people.value))} covers the PayPal fees.`;
+      return `${firstName(
+        a.people.value.find((p) => p.key === a.feeBearerId) ??
+          organizerOf(a.people.value),
+      )} covers the PayPal fees.`;
     default:
       return undefined;
   }

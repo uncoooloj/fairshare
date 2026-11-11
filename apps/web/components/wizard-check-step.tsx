@@ -1,5 +1,5 @@
 "use client";
-import React, { useId, useState } from "react";
+import { useId, useState, type ReactNode } from "react";
 import {
   AnswerSource,
   FeeChoice,
@@ -23,6 +23,16 @@ export enum CheckMode {
   FOUND_ALL = "found_all",
   FOUND_SOME = "found_some",
   MANUAL = "manual",
+  /** Changing an agreement that was already sent. */
+  REVISE = "revise",
+}
+
+/** Where a note from someone else (such as a change request) is pinned. */
+export enum CheckCard {
+  /** Under the headline, for parts without a card here. */
+  TOP = "top",
+  SPLIT = "split",
+  ADVANCE = "advance",
 }
 
 enum OpenDrawer {
@@ -50,6 +60,11 @@ export function checkHeadline(mode: CheckMode) {
       return {
         title: "Let's set up the split",
         lede: "Tell us who gets what. You can change it until you send it.",
+      };
+    case CheckMode.REVISE:
+      return {
+        title: "What should change?",
+        lede: "Change what needs fixing. Everything else stays as it is.",
       };
   }
 }
@@ -149,7 +164,9 @@ export function feeLine(answers: AgreementAnswers) {
       return "PayPal fees come off the top, before the split.";
     case FeeChoice.ORGANIZER_SHARE: {
       const organizer =
-        answers.people.value.find((p) => p.isSelf) ?? answers.people.value[0];
+        answers.people.value.find((p) => p.key === answers.feeBearerId) ??
+        answers.people.value.find((p) => p.isSelf) ??
+        answers.people.value[0];
       const name = organizer
         ? shortNames(answers.people.value).get(organizer.key)
         : "The organizer";
@@ -219,12 +236,18 @@ export function WizardCheckStep({
   onChange,
   mode,
   equalSplitGuessed = false,
+  peopleFixed = false,
+  flag,
 }: {
   answers: AgreementAnswers;
   onChange(answers: AgreementAnswers): void;
   mode: CheckMode;
   /** Names were found without percentages, so the split is an equal one to start from. */
   equalSplitGuessed?: boolean;
+  /** The people were already sent the agreement: shares can change, nobody is added or removed. */
+  peopleFixed?: boolean;
+  /** Highlights one card with a note on it. */
+  flag?: { card: CheckCard; note: ReactNode };
 }) {
   const [drawer, setDrawer] = useState<OpenDrawer>();
   const [splitTouched, setSplitTouched] = useState(false);
@@ -239,6 +262,15 @@ export function WizardCheckStep({
   const advanceWho = recipientName(answers);
   const amount = advance ? formatMoneyHeadline(advance.value.amountCents) : "";
   const close = () => setDrawer(undefined);
+  // No advance card to pin an advance note to: it goes under the headline.
+  const flagAt =
+    flag?.card === CheckCard.ADVANCE && !advance ? CheckCard.TOP : flag?.card;
+  const flagNote = (card: CheckCard) =>
+    flag && flagAt === card ? (
+      <div className="wc-flag-note">{flag.note}</div>
+    ) : null;
+  const flagged = (card: CheckCard) =>
+    flag && flagAt === card ? "wc-card wc-flagged" : "wc-card";
 
   function setPaid(alreadyPaid: boolean) {
     if (!advance) return;
@@ -254,6 +286,7 @@ export function WizardCheckStep({
         {title}
       </h1>
       <p className="wiz-lede">{lede}</p>
+      {flagNote(CheckCard.TOP)}
 
       <article className="wc-card">
         <CardHead
@@ -274,7 +307,8 @@ export function WizardCheckStep({
         </p>
       </article>
 
-      <article className="wc-card">
+      <article className={flagged(CheckCard.SPLIT)}>
+        {flagNote(CheckCard.SPLIT)}
         <CardHead
           title="Who gets what"
           cited={answers.people}
@@ -325,7 +359,8 @@ export function WizardCheckStep({
       </article>
 
       {advance ? (
-        <article className="wc-card">
+        <article className={flagged(CheckCard.ADVANCE)}>
+          {flagNote(CheckCard.ADVANCE)}
           <CardHead
             title="Paid back first"
             cited={advance}
@@ -390,7 +425,14 @@ export function WizardCheckStep({
       {drawer === OpenDrawer.SPLIT ? (
         <SplitDrawer
           people={people}
-          lockedKeys={advance ? [advance.value.recipientKey] : []}
+          lockedKeys={
+            peopleFixed
+              ? people.map((p) => p.key)
+              : advance
+                ? [advance.value.recipientKey]
+                : []
+          }
+          canAdd={!peopleFixed}
           onCancel={close}
           onSave={(next) => {
             setSplitTouched(true);

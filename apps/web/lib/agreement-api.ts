@@ -90,11 +90,12 @@ export function submitForApproval(
   agreementId: string,
   expectedRevision: number,
   rules: Rules,
+  details?: Record<string, unknown>,
 ): Promise<Agreement> {
   return api<Agreement>(
     `${agreementPath(workspaceId, agreementId)}/submit`,
     "POST",
-    { expectedRevision, rules },
+    { expectedRevision, rules, ...(details ? { details } : {}) },
   );
 }
 

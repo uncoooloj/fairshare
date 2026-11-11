@@ -50,7 +50,18 @@ export function feeQuestion(answers: AgreementAnswers): Question {
     id: value,
     label,
     explanation,
-    apply: (a) => ({ ...a, fees: fromPerson(value) }),
+    apply: (a) => {
+      if (value !== FeeChoice.ORGANIZER_SHARE)
+        return { ...a, fees: fromPerson(value) };
+      // A new answer selects today's organizer, so the old bearer must not be
+      // reused by the Check or Send copy while the rules use the new one.
+      const { feeBearerId: _priorBearer, ...next } = a;
+      return {
+        ...next,
+        fees: fromPerson(value),
+        feeBearerChoice: "ORGANIZER",
+      };
+    },
   });
   return {
     id: StandardQuestionId.FEES,

@@ -23,12 +23,14 @@ import {
   assertMembersEditable,
   submitForApproval,
   requestChange,
+  updateAgreementDetails,
   previewVersion,
   DomainError,
   MemberRole,
   type Collaboration,
   type Rules,
 } from "@fairshare/domain";
+import { submitDetails } from "./agreementIntake.js";
 import {
   extractContract,
   sourceHash,
@@ -43,6 +45,12 @@ export interface FairshareApp extends FastifyInstance {
     db: Database;
     tx<T>(fn: () => T): T;
     limit(key: string, max: number): void;
+    audit(
+      userId: string,
+      workspaceId: string,
+      action: string,
+      detail?: Record<string, unknown>,
+    ): void;
   };
   requireSession(req: FastifyRequest): {
     id: string;
@@ -324,9 +332,32 @@ export function registerFairshareRoutes(
   app.post(`${base}/:collaborationId/submit`, async (req) => {
     const { p, user } = access(req);
     const b = body(req);
-    return store.update(p.workspaceId, p.collaborationId, revision(b), (c) =>
-      submitForApproval(c, sourcedRules(p, b.rules), user.id, now()),
-    );
+    const details =
+      b.details === undefined ? undefined : submitDetails(b.details);
+    return store.update(p.workspaceId, p.collaborationId, revision(b), (c) => {
+      const withDetails = details?.patch
+        ? updateAgreementDetails(c, details.patch, user.id)
+        : c;
+      const named =
+        details?.name === undefined
+          ? withDetails
+          : { ...withDetails, name: details.name };
+      const submitted = submitForApproval(
+        named,
+        sourcedRules(p, b.rules),
+        user.id,
+        now(),
+      );
+      if (details)
+        app.store.audit(user.id, p.workspaceId, "AGREEMENT_DETAILS_UPDATED", {
+          agreementId: p.collaborationId,
+          fields: [
+            ...(details.name === undefined ? [] : ["name"]),
+            ...Object.keys(details.patch ?? {}),
+          ],
+        });
+      return submitted;
+    });
   });
   // Discard a private draft: organizer only, never sent, nothing paid.
   app.delete(`${base}/:collaborationId`, async (req) => {
