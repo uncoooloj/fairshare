@@ -15,6 +15,19 @@ test("document view uses version-pinned API source and clears stale content", ()
   assert.match(source, /if\s*\(\s*!stale\s*\)/);
   assert.match(source, /stale\s*=\s*true/);
 });
+test("document starts on the terms version and resets only when that review target changes", () => {
+  assert.match(source, /reviewedVersionId\?: number/);
+  assert.match(source, /reviewedVersionId \?\?/);
+  const detail = readFileSync(
+    new URL("../components/sections/agreement-detail.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    detail,
+    /key=\{`\$\{selected\.id\}:\$\{latest\?\.id \?\? ""\}`\}/,
+  );
+  assert.match(detail, /reviewedVersionId=\{latest\?\.id\}/);
+});
 test("document content is rendered as plain text and download accurately labelled", () => {
   assert.match(source, /<DocumentCitationView/);
   const renderer = readFileSync(

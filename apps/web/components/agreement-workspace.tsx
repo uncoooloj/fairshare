@@ -1,21 +1,20 @@
 "use client";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import {
-  money,
-  title,
-  type Agreement,
-  type Rules,
-  type Version,
-} from "../lib/model";
+import { money, type Agreement, type Rules, type Version } from "../lib/model";
 import { formatDay, formatExact } from "../lib/dates";
 import { toneInRoster } from "../lib/person";
-import { PaymentGridStatus } from "../src/components/paymentGridModel";
 import { Avatar, AvatarSize, SplitBar } from "./person";
 import { overviewSummary, type OverviewPayout } from "../lib/overview-summary";
+import {
+  agreementStatus,
+  StageAction,
+  type AgreementStatus,
+} from "../lib/agreement-status";
+import { Button } from "./ui";
 
 export enum RuleKind {
-  NetRevenue = "Net revenue",
-  Recoupment = "Recoupment",
+  NetRevenue = "Fees first",
+  Recoupment = "Advance payback",
   Split = "Split",
   Fees = "Fees",
 }
@@ -59,7 +58,7 @@ function ruleSteps(agreement: Agreement, rules: Rules): RuleStep[] {
   if (beforeSplit)
     steps.push({
       kind: RuleKind.NetRevenue,
-      sentence: "Processing fees come off each payment before anything else.",
+      sentence: "PayPal's fee comes off first.",
       people: [],
     });
   if (rules.advance)
@@ -67,9 +66,9 @@ function ruleSteps(agreement: Agreement, rules: Rules): RuleStep[] {
       kind: RuleKind.Recoupment,
       sentence: (
         <>
-          {memberName(agreement, rules.advance.recipientId)} recoups a{" "}
-          <strong>{money(rules.advance.amountCents)}</strong> advance before any
-          split.
+          {memberName(agreement, rules.advance.recipientId)} gets their{" "}
+          <strong>{money(rules.advance.amountCents)}</strong> advance paid back
+          first.
         </>
       ),
       people: [
@@ -102,7 +101,7 @@ function ruleSteps(agreement: Agreement, rules: Rules): RuleStep[] {
       : "The organizer";
     steps.push({
       kind: RuleKind.Fees,
-      sentence: `${bearer} covers processing fees from their share.`,
+      sentence: `${bearer} pays PayPal's fee from their share.`,
       people: rules.feeBearerId
         ? [{ userId: rules.feeBearerId, name: bearer }]
         : [],
@@ -241,12 +240,12 @@ export function RuleSteps({
                   <ThinProgress
                     value={recouped}
                     max={rules.advance.amountCents}
-                    label="Advance recouped"
+                    label="Advance paid back"
                   />
                   <small className="muted numeric">
-                    {money(recouped)} of {money(rules.advance.amountCents)}{" "}
-                    recouped
-                    {!rules.advance.verified && " · unverified advance"}
+                    {money(recouped)} of {money(rules.advance.amountCents)} paid
+                    back
+                    {!rules.advance.verified && " · advance not confirmed"}
                   </small>
                 </div>
               )}
@@ -269,31 +268,71 @@ export function versionMeta(agreement: Agreement) {
   const versions = agreement.value.versions;
   const latest = versions.at(-1);
   const active = versions.find((v) => v.id === agreement.value.activeVersionId);
-  if (!latest) return { text: "No terms yet", exact: undefined };
+  if (!latest) return { text: "No split yet", exact: undefined };
   const parts: string[] = [];
   let exact: string | undefined;
   if (active) {
     const at = latestApproval(active);
     exact = formatExact(at);
-    parts.push(
-      `v${active.id} active${at ? ` · approved ${formatDay(at)}` : ""}`,
-    );
+    if (at) parts.push(`Approved ${formatDay(at)}`);
   }
-  if (latest !== active)
-    parts.push(`v${latest.id} ${title(latest.status).toLowerCase()}`);
+  if (active && latest !== active && latest.status === "AWAITING_APPROVAL")
+    parts.push("Change waiting for approval");
   const people = agreement.value.members.length;
   parts.push(`${people} ${people === 1 ? "person" : "people"}`);
   return { text: parts.join(" · "), exact };
 }
 
+/** One line that says where things stand, with at most one button. */
+export function StatusLine({
+  status,
+  onAction,
+}: {
+  status: AgreementStatus;
+  onAction: (action: StageAction) => void;
+}) {
+  const label =
+    status.action === StageAction.Approve
+      ? "Review and approve"
+      : status.action === StageAction.SeeRequest
+        ? "See request"
+        : status.action === StageAction.GetPaid
+          ? "Get paid"
+          : "";
+  return (
+    <div
+      className={`ag-status ${status.tone ? `is-${status.tone}` : ""}`}
+      role="status"
+    >
+      <span className="ag-status-dot" aria-hidden="true" />
+      <p className="ag-status-line">{status.line}</p>
+      {label && (
+        <Button
+          variant={
+            status.action === StageAction.SeeRequest ? "secondary" : "primary"
+          }
+          onClick={() => onAction(status.action)}
+        >
+          {label}
+        </Button>
+      )}
+    </div>
+  );
+}
+
 export function AgreementHeader({
   agreement,
+  userId,
+  onStatusAction,
   onBack,
   onViewPayouts,
   rename,
   renameSuggested = false,
 }: {
   agreement: Agreement;
+  /** The viewer: the status line is written from their side. */
+  userId: string;
+  onStatusAction: (action: StageAction) => void;
   onBack: () => void;
   onViewPayouts: () => void;
   /** Rename form, only for people allowed to rename. */
@@ -305,14 +344,7 @@ export function AgreementHeader({
   const menuButton = useRef<HTMLElement>(null);
   const [open, setOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
-  const versions = agreement.value.versions;
-  const latest = versions.at(-1);
-  const active = versions.find((v) => v.id === agreement.value.activeVersionId);
-  const status = agreement.value.reviewHold
-    ? { label: "Review required", tone: "warning" }
-    : active
-      ? { label: "Active", tone: "good" }
-      : { label: title(latest?.status || "DRAFT"), tone: "" };
+  const status = agreementStatus(agreement, userId);
   const meta = versionMeta(agreement);
   useEffect(() => {
     if (!open) return;
@@ -349,7 +381,7 @@ export function AgreementHeader({
         <div>
           <div className="ag-title">
             <h1>{agreement.value.name}</h1>
-            <span className={`status-chip ${status.tone}`}>{status.label}</span>
+            <span className={`status-chip ${status.tone}`}>{status.chip}</span>
           </div>
           <p className="ag-meta" title={meta.exact}>
             {meta.text}
@@ -391,6 +423,7 @@ export function AgreementHeader({
           </div>
         </details>
       </div>
+      <StatusLine status={status} onAction={onStatusAction} />
       {rename &&
         (renaming || renameSuggested) &&
         rename(renaming, () => {
@@ -417,20 +450,20 @@ export function RecoupmentCard({
   return (
     <section className="panel ag-card ag-recoupment">
       <div className="ag-card-head">
-        <h2>Recoupment</h2>
+        <h2>Advance allocation</h2>
         <span className={`status-chip ${complete ? "good" : ""}`}>
           {complete ? "Complete" : "In progress"}
         </span>
       </div>
       <p className="ag-recoupment-amount numeric">
         <strong>
-          {money(recouped)} of {money(amount)} recouped
+          {money(recouped)} of {money(amount)} allocated toward the advance
         </strong>{" "}
         <span className="muted">
           · advance to {memberName(agreement, rules.advance.recipientId)}
         </span>
       </p>
-      <ThinProgress value={recouped} max={amount} label="Advance recouped" />
+      <ThinProgress value={recouped} max={amount} label="Advance allocation" />
       {children}
     </section>
   );
@@ -469,7 +502,7 @@ export function MoneyCard({
   );
   const personal = summary.scope === "personal";
   const display = (value: number | null) =>
-    value === null ? "Needs reconciliation" : money(value);
+    value === null ? "Being checked" : money(value);
   const roster = agreement.value.members;
   const visibleMembers = personal
     ? roster.filter((m) => m.userId === userId)
@@ -479,44 +512,42 @@ export function MoneyCard({
       <h2>Money</h2>
       {payoutsUnavailable ? (
         <p className="muted" role="alert">
-          Payout status is unavailable. Refresh to try again. Financial totals
-          remain hidden until the payout history is available.
+          Couldn't load payouts. Refresh to try again.
         </p>
       ) : !payoutsComplete ? (
         <p className="muted" role="status">
-          Loading payout records… Financial totals will appear when the payout
-          history is ready.
+          Loading totals…
         </p>
       ) : (
         <>
           <dl className="ag-money-lines">
             <div>
-              <dt>Agreement revenue</dt>
+              <dt>Money in</dt>
               <dd className="numeric">{money(received)}</dd>
             </div>
             {fees > 0 && (
               <div>
-                <dt>Processing fees</dt>
+                <dt>PayPal fees</dt>
                 <dd className="numeric">{money(fees)}</dd>
               </div>
             )}
             <div>
-              <dt>{personal ? "Your allocated share" : "Allocated"}</dt>
+              <dt>{personal ? "You're owed" : "Owed"}</dt>
               <dd className="numeric">{display(summary.allocated)}</dd>
             </div>
             <div>
-              <dt>{personal ? "Paid to you" : "Confirmed paid out"}</dt>
+              <dt>{personal ? "Paid to you" : "Paid"}</dt>
               <dd className="numeric">{display(summary.paid)}</dd>
             </div>
             <div className="ag-money-total">
-              <dt>Not confirmed paid</dt>
+              <dt>Still to pay</dt>
               <dd className="numeric">{display(summary.remaining)}</dd>
             </div>
           </dl>
           <p className="muted ag-money-note">
             {personal
-              ? "Your shares only. Revenue and fees above describe the whole agreement."
-              : "Recorded shares, not an available balance."}
+              ? "Owed and paid are just yours. Money in and fees are for the whole agreement."
+              : "Owed, not money in an account."}
           </p>
           <h3 className="ag-eyebrow">By person</h3>
           <ul className="ag-by-person">
@@ -533,9 +564,7 @@ export function MoneyCard({
                   />
                   <span>
                     <strong>{m.displayName}</strong>
-                    <small className="muted numeric">
-                      {money(owed)} allocated
-                    </small>
+                    <small className="muted numeric">{money(owed)} owed</small>
                   </span>
                 </li>
               );

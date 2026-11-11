@@ -95,8 +95,8 @@ test("polish preserves personal finance and tenant-qualified identities", () => 
   assert.match(card, /roster\.filter\(\(m\) => m\.userId === userId\)/);
   assert.match(card, /display\(summary\.paid\)/);
   assert.match(card, /payoutsUnavailable/);
-  assert.match(card, /Loading payout records/);
-  assert.match(card, /Payout status is unavailable\. Refresh to try again/);
+  assert.match(card, /Loading totals/);
+  assert.match(card, /Couldn't load payouts\. Refresh to try again/);
   assert.doesNotMatch(card, /payoutStatus\(p\.status\)/);
   const app = appSource();
   assert.match(app, /p\.agreement\.workspaceId\s*===\s*selected\.workspaceId/);
@@ -109,6 +109,24 @@ test("polish preserves personal finance and tenant-qualified identities", () => 
     app,
     /label="Workspace name"|Payment accounts are scoped to a workspace/,
   );
+});
+
+test("money labels distinguish allocation from payout completion", () => {
+  const payments = readFileSync(
+    new URL(
+      "../components/sections/agreement-tabs/payments-tab.tsx",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  const workspace = readFileSync(
+    new URL("../components/agreement-workspace.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(payments, /ALLOCATED: "Received and allocated"/);
+  assert.doesNotMatch(payments, /ALLOCATED: "Paid and split"/);
+  assert.match(workspace, /Advance allocation/);
+  assert.match(workspace, /allocated toward the advance/);
 });
 
 test("allocation explanation does not invent an advance for a zero-net payment", () => {

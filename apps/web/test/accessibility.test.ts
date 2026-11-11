@@ -30,14 +30,14 @@ test("tab markup and panel have connected names, roving tab stop and manual acti
   const tabs = source("../components/agreement-tabs.tsx");
   const app = appSource();
   assert.match(tabs, /role="tablist"\s*aria-label="Agreement sections"/);
-  assert.match(tabs, /tabIndex=\{value === tab \? 0 : -1\}/);
+  assert.match(tabs, /tabIndex=\{current === tab \? 0 : -1\}/);
   assert.match(
     tabs,
-    /aria-controls=\{value\s*===\s*tab\s*\?\s*"agreement-panel"/,
+    /aria-controls=\{current\s*===\s*tab\s*\?\s*"agreement-panel"/,
   );
   assert.match(
     app,
-    /role="tabpanel"\s*id="agreement-panel"\s*aria-labelledby=\{`agreement-tab-\$\{tab\}`\}/,
+    /role="tabpanel"\s*id="agreement-panel"\s*aria-labelledby=\{`agreement-tab-\$\{shown\}`\}/,
   );
   assert.match(tabs, /buttons.current\[next\]\?\.focus\(\)/);
 });

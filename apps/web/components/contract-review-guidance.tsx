@@ -55,16 +55,13 @@ export function ContractReviewPanel({
       <p className="muted">{state.effect}</p>
       {state.blockers.length > 0 && (
         <Notice warning>
-          <strong>Clarifications needed</strong>
+          <strong>Questions to answer</strong>
           <ul>
             {state.blockers.map((item, index) => (
               <li key={index}>{item}</li>
             ))}
           </ul>
-          <p>
-            Propose clarified terms before asking anyone to approve. AI
-            suggestions do not resolve these questions by themselves.
-          </p>
+          <p>Answer these before asking for approval.</p>
         </Notice>
       )}
       {version.status === "AWAITING_APPROVAL" && (
@@ -73,8 +70,8 @@ export function ContractReviewPanel({
             <li key={member.userId}>
               {member.displayName}:{" "}
               {Object.hasOwn(version.approvals, member.userId)
-                ? "Approved this version"
-                : "Awaiting approval"}
+                ? "Approved"
+                : "Waiting"}
             </li>
           ))}
         </ul>
@@ -97,17 +94,17 @@ export function ContractReviewPanel({
             disabled={disabled || !state.canSend}
             onClick={() => setConfirmSend(true)}
           >
-            Send for everyone’s review
+            Ask everyone to approve
           </Button>
         )}
         {state.canApprove && (
           <Button disabled={disabled} onClick={() => void act("approve")}>
-            Approve version {version.id}
+            Approve this split
           </Button>
         )}
         {state.canActivate && (
           <Button disabled={disabled} onClick={() => void act("activate")}>
-            Activate version {version.id}
+            Switch on this split
           </Button>
         )}
       </div>
@@ -124,45 +121,43 @@ export function ContractReviewPanel({
             }
           }}
         >
-          <h4>Request a change</h4>
+          <h4>Ask for a change</h4>
           <p className="muted">
-            This returns the proposal to draft and clears all approvals.
-            Everyone reviews again. Any previously active version stays active.
+            Everyone will need to approve again. The current split stays in use
+            meanwhile.
           </p>
-          <Field label="What needs clarification?">
+          <Field label="What's it about?">
             <select
               value={rule}
               onChange={(event) => setRule(event.target.value)}
             >
-              <option value="">Agreement overall</option>
-              <option>Revenue split</option>
-              <option>Fees and net revenue</option>
-              <option>Advance and recoupment</option>
-              <option>Source interpretation</option>
+              <option value="">The whole agreement</option>
+              <option>The split</option>
+              <option>Fees</option>
+              <option>The advance</option>
+              <option>How the agreement was read</option>
             </select>
           </Field>
           <Field
-            label="Explain the change"
-            hint="A request for this version, not a private comment."
+            label="What should change?"
+            hint="Everyone on the agreement will see this."
           >
             <textarea
               required
               maxLength={1900}
               value={reason}
               onChange={(event) => setReason(event.target.value)}
-              placeholder="Explain the issue and suggest wording everyone can review."
+              placeholder="Say what's wrong and what it should say."
             />
           </Field>
           <Button variant="secondary" disabled={disabled || !reason.trim()}>
-            Request changes
+            Ask for a change
           </Button>
         </form>
       )}
       {version.changeRequests.length > 0 && (
         <details>
-          <summary>
-            Previous change requests ({version.changeRequests.length})
-          </summary>
+          <summary>Change requests ({version.changeRequests.length})</summary>
           <ul>
             {version.changeRequests.map((request, index) => (
               <li key={index}>
@@ -194,39 +189,35 @@ export function ContractSourceGuidance({
   return (
     <div className="section">
       <p className="muted">
-        Upload a PDF or DOCX up to 5 MB, or paste your agreement. We’ll read it
-        and keep the original for everyone in the agreement. Check names and
-        amounts before sharing the terms.
+        Upload a PDF or Word file up to 5 MB, or paste your agreement. We’ll
+        read it and keep the original for everyone on the agreement. Check names
+        and amounts before you send it.
       </p>
       {replacement && (
         <Notice>
-          An amended agreement starts a new review. Saving its source does not
-          change active rules or past allocations. Propose a new version and
-          obtain fresh approval from everyone; the organizer then activates it.
+          A changed agreement needs everyone to approve again. The current split
+          stays in use until they do, and past payments don’t change.
         </Notice>
       )}
       <details>
-        <summary>What Fairshare can turn into payment rules</summary>
+        <summary>What Fairshare can split</summary>
         <p>
-          USD revenue shares, payment processing fees, and a verified advance
-          with recoupment. Compare every proposed rule with the source before
+          Shares of money in US dollars, PayPal’s fee, and an advance paid back
+          first. Check each rule against the agreement before you approve.
+        </p>
+        <p>
+          Other costs, tax, dates, deadlines and refunds aren’t handled
+          automatically. If your agreement depends on them, ask about it before
           approving.
         </p>
         <p>
-          Other expenses, tax obligations, effective dates, payment deadlines
-          and automatic refund offsets are not executed by this engine. If the
-          agreement depends on them, request clarification rather than treating
-          them as implemented.
+          “Net revenue” can mean different things. Agree which costs come off
+          first.
         </p>
         <p>
-          “Net revenue” is not necessarily just revenue after processing fees.
-          Agree which costs apply; do not substitute one definition for another.
-        </p>
-        <p>
-          The source view contains extracted text and provenance. New PDF and
-          DOCX uploads also have an authenticated original download; older
-          uploads may have text only. Refunds can place allocations on hold for
-          reconciliation; they do not automatically claw back someone’s payout.
+          You can always read the agreement. You can download the original file
+          when it is available. A refund pauses payouts while it’s checked;
+          nobody’s money is taken back automatically.
         </p>
       </details>
     </div>

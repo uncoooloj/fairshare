@@ -18,12 +18,17 @@ interface DocumentRecord {
 export function AgreementDocument({
   agreement,
   base,
+  reviewedVersionId,
 }: {
   agreement: Agreement;
   base: string;
+  /** The version being reviewed in Terms, which is not always the active one. */
+  reviewedVersionId?: number;
 }) {
   const initial =
-    agreement.value.activeVersionId ?? agreement.value.versions.at(-1)?.id;
+    reviewedVersionId ??
+    agreement.value.activeVersionId ??
+    agreement.value.versions.at(-1)?.id;
   const [versionId, setVersionId] = useState<number | undefined>(initial);
   const [document, setDocument] = useState<DocumentRecord | null>(null);
   const [loading, setLoading] = useState(true),
