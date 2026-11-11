@@ -20,10 +20,6 @@ thead th {
   vertical-align: middle !important;
 }
 
-thead th + th {
-  box-shadow: inset 1px 0 0 var(--color-line);
-}
-
 tbody td,
 tbody th {
   padding: var(--space-4) var(--table-cell-padding-x) !important;
@@ -95,10 +91,6 @@ tfoot th:first-child {
   font-weight: var(--weight-medium);
   letter-spacing: var(--table-header-letter-spacing);
   text-transform: uppercase;
-}
-
-.fairshare-data-grid .ag-header-cell + .ag-header-cell {
-  box-shadow: inset 1px 0 0 var(--color-line);
 }
 
 .fairshare-data-grid .ag-header-cell-label {
