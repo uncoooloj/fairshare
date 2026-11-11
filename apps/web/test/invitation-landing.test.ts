@@ -13,10 +13,7 @@ test("joined members wait for an agreement rather than re-uploading the source",
 test("owners retain creation guidance and viewers get role-appropriate access guidance", () => {
   assert.match(agreementEmptyState("OWNER").description, /Create an agreement/);
   assert.match(agreementEmptyState("VIEWER").description, /read-only/);
-  assert.match(
-    agreementEmptyState("VIEWER").description,
-    /person who invited you/,
-  );
+  assert.match(agreementEmptyState("VIEWER").description, /workspace owner/);
 });
 test("invitation confirmation suppresses competing application forms; creation respects membership", () => {
   const source = readFileSync(
@@ -25,10 +22,16 @@ test("invitation confirmation suppresses competing application forms; creation r
   );
   assert.match(source, /flowToken\s*&&\s*flowKind\s*===\s*"\/invitation"/);
   assert.match(source, /isInvitationFlow\s*\?\s*null\s*:\s*needsWorkspace/);
-  assert.match(source, /item.role === "OWNER" \|\| item.role === "MEMBER"/);
+  assert.match(
+    source,
+    /workspaceRole === "OWNER" \|\| workspaceRole === "MEMBER"/,
+  );
   assert.match(source, /!creating\s*&&\s*canCreateAgreement/);
   assert.match(source, /creating\s*&&\s*canCreateAgreement\s*\?\s*\(/);
-  assert.match(source, /setWorkspace\(fresh.workspaceId\)/);
+  assert.match(
+    source,
+    /if \(!mayLeaveDraft\(\)\) return;\s*commitWorkspace\(e.target.value\)/,
+  );
   assert.equal(source.match(/workspaceRole=\{workspaceRole\}/g)?.length, 2);
 });
 
@@ -49,6 +52,6 @@ test("expired or unwanted invitations can be dismissed without consuming them", 
   );
   assert.match(
     source,
-    /function\s+dismissAccessFlow\s*\(\)\s*\{\s*setFlowToken\(""\);\s*setError\(""\);\s*history\.replaceState/,
+    /function\s+dismissAccessFlow\s*\(\)\s*\{\s*setFlowToken\(""\);\s*setError\(""\);\s*router\.replace\("\/app"\)/,
   );
 });

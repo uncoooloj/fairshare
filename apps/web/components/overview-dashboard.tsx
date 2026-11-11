@@ -12,15 +12,17 @@ import { Metric } from "./agreement-widgets";
 export function OverviewDashboard({
   agreements,
   payouts,
+  payoutsComplete,
   userId,
   onOpen,
 }: {
   agreements: Agreement[];
   payouts: OverviewPayout[];
+  payoutsComplete: boolean;
   userId: string;
   onOpen: (agreement: Agreement) => void;
 }) {
-  const summary = overviewSummary(agreements, payouts, userId);
+  const summary = overviewSummary(agreements, payouts, userId, payoutsComplete);
   const display = (amount: number | null) =>
     amount === null ? "Needs reconciliation" : money(amount);
   function queue(items: AttentionItem[], empty: string) {
@@ -78,6 +80,12 @@ export function OverviewDashboard({
         reversals may require reconciliation. Paid out includes only matching
         successful provider payouts.
       </p>
+      {!payoutsComplete && (
+        <p className="muted">
+          Payout records are unavailable until every agreement payout list
+          loads. Financial totals are not shown as zero.
+        </p>
+      )}
       <div className="detail-columns">
         <section className="panel">
           <h2>

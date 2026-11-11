@@ -1,4 +1,5 @@
 import type { Agreement } from "./model";
+import { contractReviewState } from "./contract-review";
 
 export interface OverviewPayout {
   id: string;
@@ -42,6 +43,7 @@ export function overviewSummary(
   agreements: Agreement[],
   payouts: OverviewPayout[],
   userId: string,
+  payoutsComplete = true,
 ) {
   const identity = (a: Agreement) => JSON.stringify([a.workspaceId, a.id]);
   const authorized = [
@@ -77,7 +79,6 @@ export function overviewSummary(
   for (const agreement of authorized) {
     const value = agreement.value;
     const member = value.members.find((m) => m.userId === userId);
-    const organizer = member?.role === "ORGANIZER";
     for (const revenue of value.revenue)
       for (const row of revenue.allocations) {
         if (!organizer && row.userId !== userId) continue;
@@ -104,17 +105,44 @@ export function overviewSummary(
           "Recorded allocations remain visible; payouts are paused for review.",
       });
     const latest = value.versions.at(-1);
-    if (latest?.status === "AWAITING_APPROVAL") {
-      if (member && !latest.approvals[userId])
+    if (latest) {
+      const review = contractReviewState(agreement, latest, userId);
+      if (latest.status === "DRAFT" && member && review.blockers.length)
+        attention.push({
+          key: `${agreement.id}:review-blockers`,
+          agreement,
+          title: "Clarify rules before review",
+          detail: review.blockers.join(" "),
+        });
+      else if (review.canSend)
+        attention.push({
+          key: `${agreement.id}:send-review`,
+          agreement,
+          title: `Send version ${latest.id} for review`,
+          detail:
+            "All required clarifications are resolved. Participants still need to approve before activation.",
+        });
+      if (review.canActivate)
+        attention.push({
+          key: `${agreement.id}:activate`,
+          agreement,
+          title: `Activate version ${latest.id}`,
+          detail:
+            "Everyone approved this exact version. Activation is still required before it governs payments.",
+        });
+      else if (review.canApprove)
         attention.push({
           key: `${identity(agreement)}:approval`,
           agreement,
           title: `Review version ${latest.id}`,
           detail: "Your approval is still needed for these rules.",
         });
-      const others = value.members.filter(
-        (m) => m.userId !== userId && !latest.approvals[m.userId],
-      );
+      const others =
+        latest.status === "AWAITING_APPROVAL"
+          ? value.members.filter(
+              (m) => m.userId !== userId && !latest.approvals[m.userId],
+            )
+          : [];
       if (others.length)
         waiting.push({
           key: `${identity(agreement)}:waiting`,
@@ -122,18 +150,20 @@ export function overviewSummary(
           title: `${others.map((m) => m.displayName).join(", ")} ${others.length === 1 ? "has" : "have"} not approved`,
           detail: `Version ${latest.id} · review people and copy a reminder from the agreement.`,
         });
+      else if (
+        latest.status === "AWAITING_APPROVAL" &&
+        review.allApproved &&
+        member?.role !== "ORGANIZER"
+      )
+        waiting.push({
+          key: `${agreement.id}:waiting-activation`,
+          agreement,
+          title: `Waiting for organizer to activate version ${latest.id}`,
+          detail:
+            "Everyone approved this exact version. It does not govern payments until the organizer activates it.",
+        });
     }
-    if (
-      organizer &&
-      latest?.status === "DRAFT" &&
-      latest.rules.unresolvedQuestions.length
-    )
-      attention.push({
-        key: `${identity(agreement)}:questions`,
-        agreement,
-        title: `${latest.rules.unresolvedQuestions.length} open clarification${latest.rules.unresolvedQuestions.length === 1 ? "" : "s"}`,
-        detail: "Resolve the proposed rules before sending them for approval.",
-      });
+
     for (const event of value.audit) {
       if (!Number.isFinite(Date.parse(event.at))) continue;
       const actor =
@@ -179,6 +209,7 @@ export function overviewSummary(
   }
   activity.sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
   const moneyValid =
+    payoutsComplete &&
     Number.isSafeInteger(allocated) &&
     Number.isSafeInteger(paid) &&
     paid <= allocated;

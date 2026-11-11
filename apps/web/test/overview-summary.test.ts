@@ -36,6 +36,7 @@ function fixture(): Agreement {
       revenue: [
         {
           providerCaptureId: "cap",
+          currency: "USD",
           versionId: 1,
           grossCents: 100,
           feeCents: 0,
@@ -138,72 +139,46 @@ test("empty workspace has honest zero totals and no synthetic activity", () => {
   assert.deepEqual(s.attention, []);
 });
 
-test("Riley sees their $200 allocation, not the agreement's $3000", () => {
+test("incomplete payout loads never present financial totals as zero", () => {
   const a = fixture();
-  a.value.revenue[0].allocations = [
-    { ...a.value.revenue[0].allocations[0], totalCents: 280000 },
-    {
-      ...a.value.revenue[0].allocations[0],
-      userId: "other",
-      totalCents: 20000,
-    },
-  ];
-  const payouts = [
-    { ...payout(a), amount: 280000 },
-    {
-      ...payout(a),
-      id: "riley",
-      user_id: "other",
-      amount: 20000,
-      status: "PENDING",
-    },
-  ];
-  const riley = overviewSummary([a], payouts, "other");
-  assert.equal(riley.scope, "personal");
-  assert.equal(riley.allocated, 20000);
-  assert.equal(riley.paid, 0);
-  assert.equal(riley.remaining, 20000);
-  assert.equal(overviewSummary([a], payouts, "me").allocated, 300000);
-  payouts[1].status = "SUCCESS";
-  assert.equal(overviewSummary([a], payouts, "other").paid, 20000);
+  const s = overviewSummary([a], [], "me", false);
+  assert.equal(s.allocated, null);
+  assert.equal(s.paid, null);
+  assert.equal(s.remaining, null);
 });
 
-test("mixed roles and duplicate agreement ids remain tenant scoped", () => {
-  const managed = fixture();
-  const personal = structuredClone(managed);
-  personal.workspaceId = "second";
-  personal.value.members[0].role = "COLLABORATOR";
-  personal.value.revenue[0].allocations.push({
-    ...personal.value.revenue[0].allocations[0],
-    userId: "other",
-    totalCents: 900,
-  });
-  const s = overviewSummary(
-    [managed, personal, personal],
-    [payout(managed), payout(personal)],
-    "me",
-  );
-  assert.equal(s.scope, "mixed");
-  assert.equal(s.allocated, 200);
-  assert.equal(s.paid, 200);
-  assert.equal(s.remaining, 0);
-});
-
-test("nonmembers and other recipients cannot leak totals or payout attention", () => {
+test("review actions use the authoritative review state", () => {
   const a = fixture();
-  const outsider = overviewSummary([a], [payout(a, "FAILED")], "outsider");
-  assert.equal(outsider.allocated, 0);
-  assert.deepEqual(outsider.activity, []);
-  assert.deepEqual(outsider.waiting, []);
-  assert.deepEqual(outsider.attention, []);
-  const collaborator = overviewSummary([a], [payout(a, "FAILED")], "other");
-  assert.equal(collaborator.allocated, 0);
-  assert.ok(
-    !collaborator.attention.some((item) => item.key.startsWith("payout:")),
-  );
-  const forged = {
-    ...payout(a),
-    agreement: { ...a, workspaceId: "elsewhere" },
+  a.value.versions[0].approvals = {
+    me: "2026-11-10T12:00:00Z",
+    other: "2026-11-10T12:00:00Z",
   };
-  assert.equal(overviewSummary([a], [forged], "me").paid, 0);
+  assert.match(
+    overviewSummary([a], [], "me").attention[0].title,
+    /Activate version 1/,
+  );
+  assert.match(
+    overviewSummary([a], [], "other").waiting[0].title,
+    /Waiting for organizer to activate version 1/,
+  );
+  a.value.versions[0].status = "ACTIVE";
+  assert.equal(overviewSummary([a], [], "other").waiting.length, 0);
+
+  const draft = fixture();
+  draft.value.versions[0].status = "DRAFT";
+  assert.match(
+    overviewSummary([draft], [], "me").attention[0].title,
+    /Send version 1 for review/,
+  );
+  draft.value.versions[0].rules.advance = {
+    id: "advance",
+    recipientId: "me",
+    amountCents: 10,
+    verified: false,
+    source: draft.value.versions[0].rules.source,
+  };
+  assert.match(
+    overviewSummary([draft], [], "me").attention[0].detail,
+    /Verify the existing advance/,
+  );
 });

@@ -25,3 +25,16 @@ test("invoices retain uncertain request keys rather than silently creating anoth
     /invoice.status === "SHARED" && safeInvoiceUrl\(invoice.shareUrl\)/,
   );
 });
+test("checkout retains its amount-only uncertain request key", () => {
+  const source = readFileSync(
+    new URL("../components/fairshare-app.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    source,
+    /const storageKey = `fairshare-checkout:\$\{user.id\}:\$\{selected.id\}:\$\{amountCents\}`/,
+  );
+  assert.match(source, /p.source_name \|\| "PayPal"/);
+  assert.match(source, /createSandboxCheckout\(\{/);
+  assert.match(source, /source: paymentSource/);
+});

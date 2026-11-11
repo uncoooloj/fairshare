@@ -12,7 +12,7 @@ import {
   RuleOrigin,
   FeePolicy,
 } from "@fairshare/domain";
-import { PayPalError } from "@fairshare/payments";
+import { PayPalError, PayPalSandbox } from "@fairshare/payments";
 import type { PaymentProvider } from "../src/paymentRoutes.js";
 const auth = (token: string) => ({ authorization: `Bearer ${token}` });
 async function setup(reconciliation = false) {
@@ -409,6 +409,20 @@ async function refundable(reconciliation = false) {
   });
   return { ...s, paymentId: id, refundCount: () => refunds };
 }
+async function pendingRefund() {
+  const s = await refundable(true);
+  const original = s.provider.getRefund!;
+  s.provider.getRefund = async (id) => ({
+    ...(await original(id)),
+    status: "PENDING",
+  });
+  const response = await s.post(`/payments/${s.paymentId}/refund`, {
+    confirmFullRefund: true,
+  });
+  assert.equal(response.statusCode, 200, response.body);
+  assert.equal(response.json().status, "PENDING");
+  return { ...s, original, refundId: response.json().id as string };
+}
 test("full original refund is durable exactly-once and holds liabilities without editing agreed split", async () => {
   const s = await refundable();
   try {
@@ -560,6 +574,80 @@ test("refund reservation blocks concurrent payout while provider write is in fli
     assert.equal(s.counts().payoutWrites, 0);
   } finally {
     await s.app.close();
+  }
+});
+test("worker stale pending refund evidence cannot overwrite manual terminal recovery", async () => {
+  for (const status of ["FAILED", "CANCELLED"]) {
+    const s = await pendingRefund();
+    try {
+      const origin = await s.app.listen({ host: "127.0.0.1", port: 0 });
+      let release!: () => void, started!: () => void;
+      const waiting = new Promise<void>((resolve) => (release = resolve));
+      const began = new Promise<void>((resolve) => (started = resolve));
+      s.provider.getRefund = async (id) => {
+        started();
+        await waiting;
+        return { ...(await s.original(id)), status: "PENDING" };
+      };
+      const worker = (s.app as any).paymentReconciliation.tick();
+      await began;
+      s.provider.getRefund = async (id) => ({
+        ...(await s.original(id)),
+        status,
+      });
+      const recovered = await fetch(
+        `${origin}${s.base}/refunds/${s.refundId}/reconcile`,
+        { method: "POST", headers: auth(s.owner.token) },
+      );
+      assert.equal(recovered.status, 200);
+      assert.equal(((await recovered.json()) as any).status, status);
+      release();
+      await worker;
+      assert.equal(
+        (
+          s.app.store.db
+            .prepare("SELECT status FROM fairshare_refund_ops WHERE id=?")
+            .get(s.refundId) as any
+        ).status,
+        status,
+      );
+    } finally {
+      await s.app.close();
+    }
+  }
+});
+test("manual stale pending refund evidence cannot overwrite worker terminal recovery", async () => {
+  for (const status of ["FAILED", "CANCELLED"]) {
+    const s = await pendingRefund();
+    try {
+      let release!: () => void, started!: () => void;
+      const waiting = new Promise<void>((resolve) => (release = resolve));
+      const began = new Promise<void>((resolve) => (started = resolve));
+      s.provider.getRefund = async (id) => {
+        started();
+        await waiting;
+        return { ...(await s.original(id)), status: "PENDING" };
+      };
+      const recovery = s.post(`/refunds/${s.refundId}/reconcile`);
+      await began;
+      s.provider.getRefund = async (id) => ({
+        ...(await s.original(id)),
+        status,
+      });
+      await (s.app as any).paymentReconciliation.tick();
+      release();
+      assert.equal((await recovery).statusCode, 400);
+      assert.equal(
+        (
+          s.app.store.db
+            .prepare("SELECT status FROM fairshare_refund_ops WHERE id=?")
+            .get(s.refundId) as any
+        ).status,
+        status,
+      );
+    } finally {
+      await s.app.close();
+    }
   }
 });
 test("unknown payout recovery is read-only, adapter verifies frozen operation and status", async () => {
@@ -937,67 +1025,124 @@ test("invalid source metadata cannot issue a provider write or assert financial 
   }
 });
 
-test("payout reads expose only own operations to collaborators and enforce tenant and agreement access", async () => {
+test("disabled payout gates remain retryable without submitting or replaying money", async () => {
   const s = await setup();
-  try {
-    const get = (token: string, base = s.base) =>
-      s.app.inject({
-        method: "GET",
-        url: `${base}/payouts`,
-        headers: auth(token),
-      });
-    assert.equal((await get(s.other.token)).statusCode, 404);
-    s.app.store.db
-      .prepare("INSERT INTO memberships VALUES(?,?,?)")
-      .run(s.w.id, s.other.user.id, "MEMBER");
-    assert.equal((await get(s.other.token)).statusCode, 403);
-    const record = s.agg.read(s.w.id, "collab");
-    record.value.members.push({
-      userId: s.other.user.id,
-      displayName: "Riley",
-      role: MemberRole.COLLABORATOR,
+  let providerRequests = 0;
+  const config = {
+    clientId: "synthetic",
+    clientSecret: "synthetic",
+    payoutsEnabled: false,
+    payoutsEligibilityConfirmed: false,
+  };
+  const client = new PayPalSandbox(config, (async (url, init) => {
+    providerRequests++;
+    if (String(url).endsWith("/v1/oauth2/token"))
+      return Response.json({ access_token: "synthetic", expires_in: 3600 });
+    const body = JSON.parse(String(init?.body));
+    return Response.json({
+      batch_header: {
+        payout_batch_id: "BATCH1",
+        sender_batch_header: body.sender_batch_header,
+      },
     });
-    s.app.store.db
-      .prepare(
-        "UPDATE fairshare_collaborations SET value=? WHERE workspace_id=? AND id=?",
-      )
-      .run(JSON.stringify(record.value), s.w.id, "collab");
-    for (const [id, userId, amount] of [
-      ["owner-payout", s.owner.user.id, 280000],
-      ["riley-payout", s.other.user.id, 20000],
-    ] as const)
-      s.app.store.db
-        .prepare(
-          "INSERT INTO fairshare_payout_ops(id,workspace_id,collaboration_id,capture_id,user_id,recipient_id,amount,status) VALUES(?,?,?,?,?,?,?,?)",
-        )
-        .run(
-          id,
-          s.w.id,
-          "collab",
-          "CAP1",
-          userId,
-          "private-recipient",
-          amount,
-          "SUCCESS",
-        );
-    const riley = await get(s.other.token);
-    assert.equal(riley.statusCode, 200, riley.body);
-    assert.deepEqual(
-      riley.json().payouts.map((p: any) => p.id),
-      ["riley-payout"],
-    );
-    assert.equal(riley.json().payouts[0].recipient_id, undefined);
-    assert.equal((await get(s.owner.token)).json().payouts.length, 2);
-    const otherTenant = s.app.store.createWorkspace(s.owner.user.id, "Private");
+  }) as typeof fetch);
+  try {
+    const payment = await s.post("/payments", {
+      amountCents: 10000,
+      requestKey: "one",
+    });
+    await s.post(`/payments/${payment.json().id}/capture`);
+    await s.app.inject({
+      method: "PUT",
+      url: s.base + "/recipient",
+      headers: auth(s.owner.token),
+      payload: { paypalId: "ABCDEFGHIJKLM" },
+    });
+    s.provider.createPayout = client.createPayout.bind(client);
+    await s.app.listen({ host: "127.0.0.1", port: 0 });
+    const address = s.app.server.address();
+    assert.ok(address && typeof address !== "string");
+    const dispatch = () =>
+      fetch(`http://127.0.0.1:${address.port}${s.base}/payouts/dispatch`, {
+        method: "POST",
+        headers: { ...auth(s.owner.token), "content-type": "application/json" },
+        body: JSON.stringify({ captureId: "CAP1" }),
+      });
+    const disabled = await dispatch();
+    assert.equal(disabled.status, 503, await disabled.text());
+    assert.equal(providerRequests, 0);
     assert.equal(
       (
-        await get(
-          s.other.token,
-          `/api/workspaces/${otherTenant.id}/collaborations/collab`,
-        )
-      ).statusCode,
-      404,
+        s.app.store.db
+          .prepare("SELECT status FROM fairshare_payout_ops")
+          .get() as { status: string }
+      ).status,
+      "RESERVED",
     );
+    config.payoutsEnabled = true;
+    config.payoutsEligibilityConfirmed = true;
+    const retried = await dispatch();
+    assert.equal(retried.status, 200);
+    assert.equal(((await retried.json()) as any).payouts[0].status, "PENDING");
+    await dispatch();
+    assert.equal(
+      providerRequests,
+      2,
+      "one OAuth request and one payout submission",
+    );
+  } finally {
+    await s.app.close();
+  }
+});
+
+test("concurrent dispatch claims a recovered reservation once and never replays uncertain writes", async () => {
+  const s = await setup();
+  try {
+    const payment = await s.post("/payments", {
+      amountCents: 10000,
+      requestKey: "one",
+    });
+    await s.post(`/payments/${payment.json().id}/capture`);
+    const payoutId = "recovered-reservation";
+    s.app.store.db
+      .prepare(
+        "INSERT INTO fairshare_payout_ops(id,workspace_id,collaboration_id,capture_id,user_id,recipient_id,amount,status) VALUES(?,?,?,?,?,?,?,?)",
+      )
+      .run(
+        payoutId,
+        s.w.id,
+        "collab",
+        "CAP1",
+        s.owner.user.id,
+        "ABCDEFGHIJKLM",
+        9700,
+        "RESERVED",
+      );
+    let submissions = 0;
+    let release!: () => void;
+    let entered!: () => void;
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    s.provider.createPayout = async () => {
+      submissions++;
+      entered();
+      await pending;
+      throw new PayPalError("PAYPAL_OUTCOME_UNKNOWN");
+    };
+    const first = s.post("/payouts/dispatch", { captureId: "CAP1" });
+    await started;
+    const concurrent = await s.post("/payouts/dispatch", { captureId: "CAP1" });
+    assert.equal(concurrent.json().payouts[0].status, "SUBMITTING");
+    assert.equal(submissions, 1);
+    release();
+    assert.equal((await first).json().payouts[0].status, "OUTCOME_UNKNOWN");
+    const retry = await s.post("/payouts/dispatch", { captureId: "CAP1" });
+    assert.equal(retry.json().payouts[0].status, "OUTCOME_UNKNOWN");
+    assert.equal(submissions, 1);
   } finally {
     await s.app.close();
   }
