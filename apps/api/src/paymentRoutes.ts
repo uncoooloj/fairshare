@@ -707,7 +707,7 @@ export function registerPaymentRoutes(
     } catch (e) {
       assertLease();
       db.prepare(
-        "UPDATE fairshare_webhook_inbox SET status='PENDING',error=? WHERE id=?",
+        "UPDATE fairshare_webhook_inbox SET status='PENDING',error=? WHERE id=? AND status<>'DONE'",
       ).run(
         e instanceof DomainError || e instanceof PayPalError
           ? e.code

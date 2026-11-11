@@ -545,6 +545,37 @@ test("verified invoice settlement allocates actual net once and appears in incom
     await s.app.close();
   }
 });
+test("verified paid invoices retain their final status when a refresh is weak or adverse", async () => {
+  const s = await setup(),
+    p = install(s);
+  try {
+    const id = (await s.post("/invoices", invoiceInput)).json().invoice.id;
+    paid(s, p);
+    assert.equal((await s.post(`/invoices/${id}/reconcile`)).statusCode, 200);
+    const pending = paid(s, p);
+    pending.settlement.status = "PENDING";
+    const weak = await s.post(`/invoices/${id}/reconcile`);
+    assert.equal(weak.statusCode, 200, weak.body);
+    assert.equal(weak.json().invoice.status, "PAID");
+    assert.equal(weak.json().invoice.settlementStatus, "VERIFIED");
+    const refreshed = s.app.store.db
+      .prepare(
+        "SELECT settlement_error,checked_at FROM fairshare_invoices WHERE id=?",
+      )
+      .get(id) as any;
+    assert.equal(refreshed.settlement_error, "INVOICE_SETTLEMENT_PENDING");
+    assert.ok(refreshed.checked_at);
+    const adverse = paid(s, p);
+    adverse.settlement.status = "REFUNDED";
+    const held = await s.post(`/invoices/${id}/reconcile`);
+    assert.equal(held.statusCode, 200, held.body);
+    assert.equal(held.json().invoice.status, "PAID");
+    assert.equal(held.json().invoice.settlementStatus, "HELD");
+    assert.equal(s.agg.read(s.w.id, "collab").value.reviewHold, true);
+  } finally {
+    await s.app.close();
+  }
+});
 test("missing fee, mismatched identity and unsupported transactions remain retryable without allocation", async () => {
   const s = await setup(),
     p = install(s);

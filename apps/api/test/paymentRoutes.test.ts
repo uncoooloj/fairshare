@@ -737,6 +737,72 @@ test("capture does not issue provider write after matched adverse webhook arrive
     await s.app.close();
   }
 });
+test("concurrent webhook processing cannot restore PENDING after another caller finishes", async () => {
+  const s = await setup();
+  try {
+    await s.post("/payments", { amountCents: 10000, requestKey: "race" });
+    const getOrder = s.provider.getOrder;
+    let calls = 0;
+    let firstStarted!: () => void;
+    let secondStarted!: () => void;
+    let releaseFirst!: () => void;
+    let releaseSecond!: () => void;
+    const firstStartedPromise = new Promise<void>((resolve) => {
+      firstStarted = resolve;
+    });
+    const secondStartedPromise = new Promise<void>((resolve) => {
+      secondStarted = resolve;
+    });
+    const firstRelease = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const secondRelease = new Promise<void>((resolve) => {
+      releaseSecond = resolve;
+    });
+    s.provider.getOrder = async () => {
+      calls++;
+      if (calls === 1) {
+        firstStarted();
+        await firstRelease;
+        return getOrder("ORDER1");
+      }
+      secondStarted();
+      await secondRelease;
+      throw new PayPalError("PAYPAL_OUTCOME_UNKNOWN");
+    };
+    const payload = {
+      id: "concurrent-completed",
+      event_type: "PAYMENT.CAPTURE.COMPLETED",
+      resource: {
+        id: "CAP1",
+        supplementary_data: { related_ids: { order_id: "ORDER1" } },
+      },
+    };
+    const first = s.app.inject({
+      method: "POST",
+      url: "/api/paypal/webhook",
+      payload,
+    });
+    await firstStartedPromise;
+    const second = s.app.inject({
+      method: "POST",
+      url: "/api/paypal/webhook",
+      payload,
+    });
+    await secondStartedPromise;
+    releaseFirst();
+    assert.equal((await first).statusCode, 200);
+    releaseSecond();
+    assert.equal((await second).statusCode, 200);
+    const receipt = s.app.store.db
+      .prepare("SELECT status,error FROM fairshare_webhook_inbox WHERE id=?")
+      .get(payload.id) as any;
+    assert.equal(receipt.status, "DONE");
+    assert.equal(receipt.error, null);
+  } finally {
+    await s.app.close();
+  }
+});
 test("unrelated adverse provider event does not block an otherwise valid capture", async () => {
   const s = await setup();
   try {
