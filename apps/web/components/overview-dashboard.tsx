@@ -167,15 +167,19 @@ function StatCard({
 export function OverviewDashboard({
   agreements,
   payouts,
+  payoutsComplete,
+  payoutsUnavailable,
   userId,
   onOpen,
 }: {
   agreements: Agreement[];
   payouts: OverviewPayout[];
+  payoutsComplete: boolean;
+  payoutsUnavailable: boolean;
   userId: string;
   onOpen: (agreement: Agreement) => void;
 }) {
-  const summary = overviewSummary(agreements, payouts, userId);
+  const summary = overviewSummary(agreements, payouts, userId, payoutsComplete);
 
   function row(item: AttentionItem, kind: AttentionKind) {
     return (
@@ -215,7 +219,8 @@ export function OverviewDashboard({
   }
 
   const activity = collapseActivity(summary.activity).slice(0, ACTIVITY_LIMIT);
-  const allClear = !summary.attention.length && !summary.waiting.length;
+  const allClear =
+    payoutsComplete && !summary.attention.length && !summary.waiting.length;
   const lastSplitAt = agreements
     .flatMap((a) => a.value.revenue.map((r) => r.at))
     .filter((at) => Number.isFinite(Date.parse(at)))
@@ -260,6 +265,13 @@ export function OverviewDashboard({
         <span aria-hidden="true">ⓘ</span> Recorded shares, not an available
         balance.
       </p>
+      {!payoutsComplete && (
+        <p className="ov-caveat" role={payoutsUnavailable ? "alert" : "status"}>
+          {payoutsUnavailable
+            ? "Payout history could not be loaded. Financial totals and payout attention are hidden until it is available."
+            : "Loading payout history. Financial totals and payout attention will appear when it is ready."}
+        </p>
+      )}
 
       {allClear && (
         <div className="ov-card ov-all-clear" role="status">
@@ -301,7 +313,11 @@ export function OverviewDashboard({
                 )}
               </ul>
             ) : (
-              <p className="ov-empty">Nothing needs you right now.</p>
+              <p className="ov-empty">
+                {payoutsComplete
+                  ? "Nothing needs you right now."
+                  : "Payout-related attention is not available yet."}
+              </p>
             )}
             {summary.waiting.length > 0 && (
               <>

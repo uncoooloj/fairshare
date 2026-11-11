@@ -143,8 +143,9 @@ export function PaymentAccountsSettings({
           <section className="settings-card">
             <h3>Sending payouts</h3>
             <p className="muted">
-              The server’s sandbox merchant account sends agreed shares. These
-              are test payments; no real money moves.
+              Save where your agreed share should be sent in the sandbox. Saving
+              a destination does not establish that server payout sending is
+              available or schedule a payout.
             </p>
             <div className="settings-provider">
               <WalletIcon />
@@ -279,7 +280,7 @@ export function PaymentAccountsSettings({
                             onClick={async () => {
                               try {
                                 await navigator.clipboard.writeText(
-                                  `Hi ${m.name}, please open Fairshare, open our agreement, and add your sandbox merchant ID under Settings → Payment accounts so your agreed share can be paid. ${location.origin}`,
+                                  `Hi ${m.name}, please open Fairshare, open our agreement, and add your sandbox merchant ID under Settings → Payment accounts so your agreed share can be paid. ${location.origin}/app`,
                                 );
                                 setMessage(
                                   "Reminder copied. Share it directly with this collaborator. No email was sent.",

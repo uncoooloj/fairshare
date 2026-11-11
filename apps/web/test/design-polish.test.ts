@@ -88,14 +88,21 @@ test("polish preserves personal finance and tenant-qualified identities", () => 
   );
   assert.match(overview, /Your allocated share/);
   assert.match(overview, /only your share where you collaborate/);
+  assert.match(overview, /payoutsComplete/);
   const card = read("agreement-workspace");
-  assert.match(card, /overviewSummary\(\[agreement\], payouts, userId\)/);
+  assert.match(card, /overviewSummary\([\s\S]*payoutsComplete/);
   assert.match(card, /roster\.filter\(\(m\) => m\.userId === userId\)/);
   assert.match(card, /display\(summary\.paid\)/);
+  assert.match(card, /payoutsUnavailable/);
+  assert.match(card, /Loading payout records/);
+  assert.match(card, /Payout status is unavailable\. Refresh to try again/);
   assert.doesNotMatch(card, /payoutStatus\(p\.status\)/);
   const app = read("fairshare-app");
   assert.match(app, /p\.agreement\.workspaceId\s*===\s*selected\.workspaceId/);
-  assert.match(app, /agreementId: JSON\.stringify\(\[/);
+  assert.match(app, /id: JSON\.stringify\(\[/);
+  assert.match(app, /payoutId: p\.id/);
+  assert.match(app, /agreementId: p\.agreement\.id/);
+  assert.match(app, /agreementKey: agreementIdentityKey\(p\.agreement\)/);
   assert.match(app, /These payout details apply to/);
   assert.doesNotMatch(
     app,
