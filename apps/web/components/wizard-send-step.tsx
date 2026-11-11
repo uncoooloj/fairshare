@@ -4,7 +4,6 @@ import {
   AnswerSource,
   BlockerKind,
   sendBlockers,
-  summarySentences,
   type AgreementAnswers,
   type Blocker,
 } from "../lib/rules-answers";
@@ -12,6 +11,131 @@ import { formatMoneyHeadline } from "../lib/preferences";
 import { answerQuestion } from "./wizard-questions-step";
 import { NOT_PAID_YET } from "./wizard-check-step";
 import { SplitDrawer } from "./split-drawer";
+
+export type ReviewDocument = {
+  name: string;
+  detail?: string;
+};
+
+function calendarDay(value: string | null | undefined) {
+  if (!value) return undefined;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return value;
+  const month = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+  ][Number(match[2]) - 1];
+  return `${month ?? match[2]} ${Number(match[3])}, ${match[1]}`;
+}
+
+function dateRange(answers: AgreementAnswers) {
+  const from = calendarDay(answers.effectiveFrom?.value);
+  const to = calendarDay(answers.effectiveTo?.value);
+  if (from && to) return `${from} – ${to}`;
+  if (from) return `${from} – no end date`;
+  if (to) return `Until ${to}`;
+  return "No dates set";
+}
+
+function initials(name: string) {
+  return (
+    name
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase())
+      .join("") || "?"
+  );
+}
+
+function DocumentIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20" fill="none">
+      <path
+        d="M5 2.5h6.2L15 6.3v11.2H5z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M11 2.8v3.6h3.6M7.5 10h5M7.5 13h5"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** The final wizard step is a check of the saved draft, before the approval request. */
+export function WizardReviewSummary({
+  answers,
+  document,
+  currency = "USD",
+}: {
+  answers: AgreementAnswers;
+  document?: ReviewDocument;
+  currency?: string;
+}) {
+  return (
+    <>
+      <h1 id="wiz-step-title" tabIndex={-1}>
+        Review
+      </h1>
+      <p className="wiz-lede">Check the details, then send it for approval.</p>
+      <dl className="wiz-review-card">
+        <div className="wiz-review-row">
+          <dt>Name</dt>
+          <dd>{answers.name.value || "Untitled agreement"}</dd>
+        </div>
+        <div className="wiz-review-row">
+          <dt>Currency</dt>
+          <dd>{currency === "USD" ? "USD – US dollar" : currency}</dd>
+        </div>
+        <div className="wiz-review-row">
+          <dt>Dates</dt>
+          <dd>{dateRange(answers)}</dd>
+        </div>
+        <div className="wiz-review-row">
+          <dt>Document</dt>
+          <dd className="wiz-review-document">
+            <DocumentIcon />
+            <span>{document?.name ?? "Your agreement"}</span>
+            {document?.detail ? <span> · {document.detail}</span> : null}
+          </dd>
+        </div>
+        <div className="wiz-review-row wiz-review-people">
+          <dt>People</dt>
+          <dd>
+            <ul>
+              {answers.people.value.map((person, index) => (
+                <li key={person.key}>
+                  <span className={`wiz-avatar wiz-avatar-${index % 3}`}>
+                    {initials(person.name)}
+                  </span>
+                  <span>{person.name || "Unnamed person"}</span>
+                  <small>{person.isSelf ? "Owner" : "Collaborator"}</small>
+                </li>
+              ))}
+            </ul>
+          </dd>
+        </div>
+      </dl>
+    </>
+  );
+}
 
 /** Has the advance been paid? Both answers can be sent; "Not yet" is confirmed later. */
 function AdvancePaid({
@@ -195,6 +319,8 @@ export function WizardSendStep({
   error,
   onChange,
   onFixPeople,
+  document,
+  currency,
 }: {
   answers: AgreementAnswers;
   error?: string;
@@ -202,9 +328,11 @@ export function WizardSendStep({
   onChange?: (answers: AgreementAnswers) => void;
   /** Names and emails are fixed on the People step. */
   onFixPeople?: () => void;
+  /** Kept in wizard memory; historical drafts may not have a filename or byte count. */
+  document?: ReviewDocument;
+  currency?: string;
 }) {
   const [splitOpen, setSplitOpen] = useState(false);
-  const lines = summarySentences(answers);
   const blockers = sendBlockers(answers);
   // The advance question stays on screen once answered, so it can be changed.
   const advanceHere = !!answers.advance && !!onChange;
@@ -268,16 +396,11 @@ export function WizardSendStep({
 
   return (
     <section className="wiz-step wiz-send" aria-labelledby="wiz-step-title">
-      <h1 id="wiz-step-title" tabIndex={-1}>
-        {blockers.length ? "Almost ready to send" : "Ready to send"}
-      </h1>
-      <ul className="wiz-summary">
-        {lines.map((line, index) => (
-          <li key={line} className={index === 0 ? "wiz-summary-title" : ""}>
-            {line}
-          </li>
-        ))}
-      </ul>
+      <WizardReviewSummary
+        answers={answers}
+        document={document}
+        currency={currency}
+      />
       {advanceHere ? (
         <div className="ws-advance">
           <AdvancePaid answers={answers} onChange={onChange!} />

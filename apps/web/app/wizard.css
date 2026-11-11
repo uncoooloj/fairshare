@@ -259,6 +259,90 @@
 }
 
 /* Review */
+.wiz-send {
+  gap: var(--space-5);
+}
+.wiz-review-card {
+  margin: var(--space-3) 0 0;
+  padding: var(--space-2) var(--space-5);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-lg);
+  background: var(--color-canvas);
+}
+.wiz-review-row {
+  display: grid;
+  grid-template-columns: minmax(112px, 0.38fr) minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: center;
+  min-height: 72px;
+  border-bottom: 1px solid var(--color-line);
+}
+.wiz-review-row:last-child {
+  border-bottom: 0;
+}
+.wiz-review-row dt {
+  color: var(--color-muted);
+}
+.wiz-review-row dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.wiz-review-document {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.wiz-review-document svg {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  color: var(--color-muted);
+}
+.wiz-review-people {
+  align-items: start;
+  padding: var(--space-3) 0;
+}
+.wiz-review-people dt {
+  padding-top: var(--space-2);
+}
+.wiz-review-people ul {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.wiz-review-people li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 28px;
+}
+.wiz-review-people small {
+  color: var(--color-muted);
+  font-size: inherit;
+}
+.wiz-avatar {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  color: #1e40af;
+  background: #e0e7ff;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+}
+.wiz-avatar-1 {
+  color: #6d28d9;
+  background: #ede9fe;
+}
+.wiz-avatar-2 {
+  color: #0f766e;
+  background: #ccfbf1;
+}
 
 /* Invite links */
 .wiz-invites {

@@ -217,7 +217,8 @@ test("Send shows the summary, what blocks it, and the one safety line", () => {
   const html = renderToStaticMarkup(
     createElement(WizardSendStep, { answers: read }),
   );
-  assert.match(html, /Almost ready to send/);
+  assert.match(html, /<h1[^>]*>Review<\/h1>/);
+  assert.match(html, /Check the details, then send it for approval\./);
   assert.match(html, /Midnight Sessions/);
   assert.match(html, /Has Maya Okafor already paid the \$2,000\?/);
   assert.doesNotMatch(html, /[Rr]efund/);

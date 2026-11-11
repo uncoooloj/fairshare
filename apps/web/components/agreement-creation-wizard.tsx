@@ -925,19 +925,23 @@ export function AgreementCreationWizard({
           busy={busy}
           onUploadAgain={() => void uploadAgain()}
           onSetUpMyself={() => setCheckMode(CheckMode.MANUAL)}
-          document={{
-            documentId: created?.documentId ?? "",
-            text: created?.documentText ?? "",
-            provenance: {
-              inputType:
-                mode === DocumentMode.UPLOAD && file?.name.toLowerCase().endsWith(".pdf")
-                  ? "PDF"
-                  : mode === DocumentMode.UPLOAD && file?.name.toLowerCase().endsWith(".docx")
-                    ? "DOCX"
-                    : "TEXT",
-            },
-            hasOriginal: mode === DocumentMode.UPLOAD && !!file,
-          } satisfies DocumentRecord}
+          document={
+            {
+              documentId: created?.documentId ?? "",
+              text: created?.documentText ?? "",
+              provenance: {
+                inputType:
+                  mode === DocumentMode.UPLOAD &&
+                  file?.name.toLowerCase().endsWith(".pdf")
+                    ? "PDF"
+                    : mode === DocumentMode.UPLOAD &&
+                        file?.name.toLowerCase().endsWith(".docx")
+                      ? "DOCX"
+                      : "TEXT",
+              },
+              hasOriginal: mode === DocumentMode.UPLOAD && !!file,
+            } satisfies DocumentRecord
+          }
           originalUrl={
             created && mode === DocumentMode.UPLOAD
               ? originalDocumentUrl(workspaceBase(created.workspaceId), {
@@ -948,7 +952,9 @@ export function AgreementCreationWizard({
               : undefined
           }
           fileName={
-            mode === DocumentMode.UPLOAD && file ? file.name : "Pasted agreement"
+            mode === DocumentMode.UPLOAD && file
+              ? file.name
+              : "Pasted agreement"
           }
           sourceDocumentIds={
             created && sourceIdentityKnown
@@ -1054,6 +1060,20 @@ export function AgreementCreationWizard({
       <WizardSendStep
         answers={answers}
         error={error || undefined}
+        currency={agreement?.value.details?.currency}
+        document={
+          mode === DocumentMode.UPLOAD && file
+            ? {
+                name: file.name,
+                detail: formatFileSize(file.size),
+              }
+            : text.trim()
+              ? {
+                  name: "Pasted agreement",
+                  detail: `${text.length.toLocaleString("en-US")} characters`,
+                }
+              : undefined
+        }
         onChange={(next) => {
           setError("");
           setAnswers(next);
@@ -1137,6 +1157,11 @@ export function AgreementCreationWizard({
       {errorBanner}
     </section>,
   );
+}
+
+function formatFileSize(bytes: number) {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 /** One person now holds this invitation (and the trimmed name and email it was made for). */

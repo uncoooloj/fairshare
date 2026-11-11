@@ -48,6 +48,8 @@ const render = (answers: AgreementAnswers, fixable = true) =>
   renderToStaticMarkup(
     createElement(WizardSendStep, {
       answers,
+      currency: "USD",
+      document: { name: "Revenue Share Agreement.pdf", detail: "2.4 MB" },
       ...(fixable ? { onChange: () => {}, onFixPeople: () => {} } : {}),
     }),
   );
@@ -65,9 +67,10 @@ test("the advance is asked right on Send, and only an unanswered one blocks", ()
   assert.doesNotMatch(html, /needs to have paid/);
 });
 
-test("Not yet: Send is open, the rules say unconfirmed, and one plain line says what's next", () => {
+test("Not yet: review stays open, the rules say unconfirmed, and one plain line says what's next", () => {
   const html = render(midnight(false));
-  assert.match(html, /Ready to send/);
+  assert.match(html, /<h1[^>]*>Review<\/h1>/);
+  assert.match(html, /Check the details, then send it for approval\./);
   assert.match(
     html,
     /You(’|'|&#x27;)ll confirm it once it(’|'|&#x27;)s paid\. Nothing is split until then\./,
@@ -97,7 +100,7 @@ test("other blockers are fixed in place, or jump to People for emails", () => {
   ];
   a.people.value[2] = person("riley", "Riley", 2000);
   const html = render(a);
-  assert.match(html, /Almost ready to send/);
+  assert.match(html, /<h1[^>]*>Review<\/h1>/);
   assert.match(html, /A few things before you send/);
   assert.match(html, /<label[^>]*>Name the agreement<\/label>/);
   assert.match(html, /We can(’|'|&#x27;)t have Jordan pay the PayPal fee yet/);
@@ -107,6 +110,19 @@ test("other blockers are fixed in place, or jump to People for emails", () => {
   const split = midnight(true);
   split.people.value[0] = { ...split.people.value[0], basisPoints: 4000 };
   assert.match(render(split), /Make the split add up to 100%/);
+});
+
+test("the review card keeps the saved values in aligned detail rows", () => {
+  const answers = midnight(false);
+  answers.effectiveFrom = { value: "2026-10-01", source: AnswerSource.PERSON };
+  const html = render(answers);
+  assert.match(html, /Name<\/dt><dd>Midnight Sessions<\/dd>/);
+  assert.match(html, /Currency<\/dt><dd>USD – US dollar<\/dd>/);
+  assert.match(html, /Dates<\/dt><dd>Oct 1, 2026 – no end date<\/dd>/);
+  assert.match(html, /Revenue Share Agreement\.pdf/);
+  assert.match(html, /2\.4 MB/);
+  assert.match(html, /Maya<\/span><small>Owner<\/small>/);
+  assert.match(html, /Jordan<\/span><small>Collaborator<\/small>/);
 });
 
 test("without handlers it still lists what blocks, in plain words", () => {
