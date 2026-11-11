@@ -23,7 +23,6 @@ import {
   type Allocation,
 } from "../lib/model";
 import { Badge, Button, Empty, Field, Notice } from "./ui";
-import { PaymentGridStatus } from "../src/components/paymentGridModel";
 import {
   Avatar as ListAvatar,
   AvatarSize as ListAvatarSize,
@@ -1201,20 +1200,4 @@ export function safePayPalUrl(url: string) {
   } catch {
     return false;
   }
-}
-
-export function payoutStatus(status: string): PaymentGridStatus {
-  if (status === "SUCCESS") return PaymentGridStatus.Paid;
-  if (status === "UNCLAIMED") return PaymentGridStatus.Unclaimed;
-  if (status === "WAITING_RECIPIENT") return PaymentGridStatus.WaitingRecipient;
-  if (["FAILED", "DENIED", "BLOCKED"].includes(status))
-    return PaymentGridStatus.Failed;
-  if (["HELD", "ONHOLD"].includes(status)) return PaymentGridStatus.Held;
-  if (["REFUNDED", "REVERSED", "RETURNED"].includes(status))
-    return PaymentGridStatus.Reversed;
-  if (["SUBMITTING", "PROCESSING"].includes(status))
-    return PaymentGridStatus.Processing;
-  if (["PENDING", "RESERVED"].includes(status))
-    return PaymentGridStatus.Pending;
-  return PaymentGridStatus.Unknown;
 }

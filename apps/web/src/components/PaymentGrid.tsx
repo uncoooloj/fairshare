@@ -237,7 +237,7 @@ export function PaymentGrid({
               "Needs attention",
               data.summary.attention,
               data.summary.attentionCount,
-              "Failed, paused or not collected",
+              "Failed, paused, not collected or missing PayPal details",
             ],
           ] as const
         ).map(([label, amount, count, detail]) => (

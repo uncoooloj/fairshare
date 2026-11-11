@@ -1,6 +1,6 @@
 import dynamic from "next/dynamic";
 import { allocationTrace } from "../../lib/allocation-trace";
-import { payoutStatus } from "../agreement-widgets";
+import { payoutStatus } from "../../src/components/paymentGridModel";
 import { Section, api, type Agreement, type User } from "../../lib/model";
 import { workspaceBase } from "../../lib/workspace-base";
 import {

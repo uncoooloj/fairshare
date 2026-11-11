@@ -250,7 +250,7 @@ export function OverviewDashboard({
           note="Money that reached people"
         />
         <StatCard
-          label="Still to pay"
+          label="Not confirmed paid"
           value={summary.remaining}
           note="Owed, not yet confirmed paid"
         />
