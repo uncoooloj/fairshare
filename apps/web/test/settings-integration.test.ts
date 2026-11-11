@@ -22,6 +22,14 @@ test("five settings sections mount real components and protect workspace-less ac
     "ActivityLogSettings",
   ])
     assert(source.includes(`<${component}`));
+  const settings = readFileSync(
+    new URL("../components/sections/settings-section.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.doesNotMatch(
+    settings,
+    /PrivateInvitation|Invite collaborator|Invite code|<SimpleForm/,
+  );
   assert.match(source, /workspace\s*\?\s*\(\s*<PaymentAccountsSettings/);
   assert(source.includes('settingsTab === "Profile"'));
 });

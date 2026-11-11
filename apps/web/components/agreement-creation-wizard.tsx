@@ -44,6 +44,7 @@ import {
 import { PeopleStep, validatePeopleEmails } from "./people-step";
 import { ReadingDocument } from "./reading-document";
 import { CheckMode, WizardCheckStep } from "./wizard-check-step";
+import { originalDocumentUrl, type DocumentRecord } from "./agreement-document";
 import { WizardFrame, WizardStep, WizardStepper } from "./wizard-chrome";
 import { WizardCloseDialog } from "./wizard-close-dialog";
 import {
@@ -439,6 +440,9 @@ export function AgreementCreationWizard({
   const [created, setCreated] = useState<CreatedAgreement | null>(
     resume?.created ?? null,
   );
+  // Persisted draft answers do not record their producing document. A fresh upload in
+  // this same wizard does, so it can restore source citations after replacement.
+  const [sourceIdentityKnown, setSourceIdentityKnown] = useState(!resume);
   const [agreement, setAgreement] = useState<Agreement | null>(
     resume?.created.agreement ?? null,
   );
@@ -588,6 +592,7 @@ export function AgreementCreationWizard({
       setBusy(false);
     }
     setCreated(made);
+    setSourceIdentityKnown(true);
     setAgreement(made.agreement);
     if (read) setStage(WizardStage.READING);
     else {
@@ -720,6 +725,7 @@ export function AgreementCreationWizard({
       readingGeneration.current++;
       requestId.current = "";
       setCreated(null);
+      setSourceIdentityKnown(false);
       setAgreement(null);
       setAnswers(null);
       setLinks({});
@@ -919,6 +925,42 @@ export function AgreementCreationWizard({
           busy={busy}
           onUploadAgain={() => void uploadAgain()}
           onSetUpMyself={() => setCheckMode(CheckMode.MANUAL)}
+          document={
+            {
+              documentId: created?.documentId ?? "",
+              text: created?.documentText ?? "",
+              provenance: {
+                inputType:
+                  mode === DocumentMode.UPLOAD &&
+                  file?.name.toLowerCase().endsWith(".pdf")
+                    ? "PDF"
+                    : mode === DocumentMode.UPLOAD &&
+                        file?.name.toLowerCase().endsWith(".docx")
+                      ? "DOCX"
+                      : "TEXT",
+              },
+              hasOriginal: mode === DocumentMode.UPLOAD && !!file,
+            } satisfies DocumentRecord
+          }
+          originalUrl={
+            created && mode === DocumentMode.UPLOAD
+              ? originalDocumentUrl(workspaceBase(created.workspaceId), {
+                  documentId: created.documentId,
+                  hasOriginal: true,
+                  text: created.documentText,
+                })
+              : undefined
+          }
+          fileName={
+            mode === DocumentMode.UPLOAD && file
+              ? file.name
+              : "Pasted agreement"
+          }
+          sourceDocumentIds={
+            created && sourceIdentityKnown
+              ? { agreement: created.documentId, advance: created.documentId }
+              : undefined
+          }
         />
         {created?.lowConfidence && (
           <p className="wiz-warning" role="note">
@@ -1018,6 +1060,20 @@ export function AgreementCreationWizard({
       <WizardSendStep
         answers={answers}
         error={error || undefined}
+        currency={agreement?.value.details?.currency}
+        document={
+          mode === DocumentMode.UPLOAD && file
+            ? {
+                name: file.name,
+                detail: formatFileSize(file.size),
+              }
+            : text.trim()
+              ? {
+                  name: "Pasted agreement",
+                  detail: `${text.length.toLocaleString("en-US")} characters`,
+                }
+              : undefined
+        }
         onChange={(next) => {
           setError("");
           setAnswers(next);
@@ -1101,6 +1157,11 @@ export function AgreementCreationWizard({
       {errorBanner}
     </section>,
   );
+}
+
+function formatFileSize(bytes: number) {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 /** One person now holds this invitation (and the trimmed name and email it was made for). */

@@ -36,6 +36,7 @@ import { recoverSourceDocument } from "../lib/source-recovery";
 import { useRouter } from "next/navigation";
 import { Button } from "./ui";
 import { workspaceBase } from "../lib/workspace-base";
+import { reconcileOrganizerPayouts } from "../lib/payout-reconciliation";
 import { mutationIsCurrent } from "../lib/mutation-generation";
 import { AppShell } from "./app-shell";
 import { visibleTab } from "./agreement-tabs";
@@ -488,6 +489,19 @@ export default function FairshareApp() {
     const openRequestId = openRequest.current;
     const id = currentWorkspace.current;
     try {
+      if (section === Section.Payouts && user) {
+        await reconcileOrganizerPayouts({
+          payouts,
+          agreements,
+          userId: user.id,
+          reconcile: (payout) =>
+            api(
+              `${workspaceBase(payout.agreement.workspaceId)}/collaborations/${payout.agreement.id}/payouts/${payout.id}/reconcile`,
+              "POST",
+              {},
+            ),
+        });
+      }
       await loadWorkspace(id);
       if (
         workspaceRequestId !== workspaceRequest.current ||
@@ -1076,7 +1090,7 @@ export default function FairshareApp() {
         ) : (
           <Heading
             title="No agreements yet"
-            description="Upload a signed agreement or try the sample. Nothing moves money. Already invited? Open your invite link, or accept it in Settings."
+            description="Upload a signed agreement or try the sample. Nothing moves money. Already invited? Open your invite link."
             action={<Button onClick={startNewAgreement}>New agreement</Button>}
           />
         )
@@ -1162,15 +1176,12 @@ export default function FairshareApp() {
           )}
           {section === Section.Payouts && !selected && (
             <PayoutsSection
-              user={user}
               agreements={agreements}
               payouts={payouts}
-              workspace={workspace}
               busy={busy}
               run={run}
               navigate={navigate}
               openAgreement={openAgreement}
-              loadWorkspace={loadWorkspace}
             />
           )}
           {section === Section.Settings && !selected && (
@@ -1185,7 +1196,6 @@ export default function FairshareApp() {
               workspaces={workspaces}
               inviteLink={inviteLink}
               run={run}
-              acceptInvitation={acceptInvitation}
               setNotice={setNotice}
               setInviteLink={setInviteLink}
               setUser={setUser}

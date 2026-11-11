@@ -10,16 +10,26 @@ test("dashboard reminders open the selected agreement's People tab", () => {
   const section = component("sections/overview-section.tsx");
 
   assert.match(dashboard, /onSendReminder: \(agreement: Agreement\) => void/);
-  assert.match(dashboard, /sendReminder \? onSendReminder\(item\.agreement\) : onOpen\(item\.agreement\)/);
-  assert.match(dashboard, /sendReminder \? "Send reminder" : actionLabel\[kind\]/);
+  assert.match(
+    dashboard,
+    /sendReminder\s*\? onSendReminder\(item\.agreement\)\s*:\s*onOpen\(item\.agreement\)/,
+  );
+  assert.match(
+    dashboard,
+    /sendReminder \? "Send reminder" : actionLabel\[kind\]/,
+  );
   assert.match(section, /openAgreement\(a, AgreementTab\.People\)/);
+  assert.doesNotMatch(section, /View all agreements/);
 });
 
 test("only organizers get the dashboard reminder action", () => {
   const dashboard = component("overview-dashboard.tsx");
 
   assert.match(dashboard, /item\.key\.endsWith\(":waiting"\)/);
-  assert.match(dashboard, /member\.userId === userId && member\.role === "ORGANIZER"/);
+  assert.match(
+    dashboard,
+    /member\.userId === userId && member\.role === "ORGANIZER"/,
+  );
 });
 
 test("the agreement Nudge status action goes to People instead of opening a drawer", () => {
@@ -32,6 +42,9 @@ test("the agreement Nudge status action goes to People instead of opening a draw
     /action === StageAction\.Nudge\)\s*changeAgreementTab\(AgreementTab\.People\)/,
   );
   assert.doesNotMatch(header, /setNudging|<NudgeDrawer/);
-  assert.match(people, /mode=\{needsReminder \? ShareMode\.Nudge : ShareMode\.Link\}/);
+  assert.match(
+    people,
+    /mode=\{needsReminder \? ShareMode\.Nudge : ShareMode\.Link\}/,
+  );
   assert.match(people, /organizer &&[\s\S]*member\.userId !== userId/);
 });

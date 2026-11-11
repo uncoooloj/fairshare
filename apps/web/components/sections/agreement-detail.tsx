@@ -421,7 +421,6 @@ export function AgreementDetail({
           onAgreementChange={onAgreementChange}
           onBack={() => navigate(Section.Agreements)}
           onViewPayouts={() => navigate(Section.Payouts)}
-          renameSuggested={!!extraction?.suggestedTitle}
           menuItems={[
             ...(loadedDocument && shown === AgreementTab.Terms
               ? [

@@ -15,6 +15,9 @@ import type {
 } from "../lib/rules-answers";
 import { parseCents } from "../lib/model";
 import { formatMoneyHeadline } from "../lib/preferences";
+import type { DocumentCitation } from "../lib/document-citations";
+import type { DocumentRecord } from "./agreement-document";
+import { DocumentCitationView } from "./document-citation-view";
 import { SplitBar } from "./person";
 import { SplitDrawer, percentText, rosterTone } from "./split-drawer";
 import { WizardDrawer } from "./wizard-drawer";
@@ -223,35 +226,121 @@ export function advanceSentence(answers: AgreementAnswers) {
   return `${who} put in ${formatMoneyHeadline(answers.advance.value.amountCents)} upfront and is paid back first, before anyone splits.`;
 }
 
-function ClauseChip({ cited }: { cited?: Cited<unknown> }) {
+/** Draft answers have no Version yet. Keep only an unambiguous verbatim quote
+ * in the saved document; all other values stay visible but uncited. */
+export function wizardCitations(
+  answers: AgreementAnswers,
+  document: Pick<DocumentRecord, "documentId" | "text" | "provenance">,
+  sourceDocumentIds?: { agreement?: string; advance?: string },
+): DocumentCitation[] {
+  // Draft persistence stores answers but not their producing document ID.
+  // Without that identity, a matching phrase in a newer file is not evidence.
+  if (!sourceDocumentIds) return [];
+  const candidates: Array<{
+    id: string;
+    label: string;
+    summary: string;
+    cited?: Cited<unknown>;
+    documentId?: string;
+  }> = [
+    { id: "wizard-agreement", label: "The agreement", summary: answers.name.value || "Agreement details", cited: answers.name, documentId: sourceDocumentIds?.agreement },
+    // The agreement card has one citation chip. Prefer its name citation; use a
+    // term citation only when no document-sourced name exists.
+    { id: "wizard-dates", label: "Dates", summary: dateRange(answers), cited: answers.name.source === AnswerSource.DOCUMENT ? undefined : answers.effectiveFrom ?? answers.effectiveTo, documentId: sourceDocumentIds?.agreement },
+    { id: "wizard-split", label: "Who gets what", summary: splitSummary(answers.people.value), cited: answers.people, documentId: sourceDocumentIds?.agreement },
+    { id: "wizard-fees", label: "PayPal fees", summary: feeLine(answers), cited: answers.fees, documentId: sourceDocumentIds?.agreement },
+    { id: "wizard-advance", label: "Paid back first", summary: advanceSentence(answers) ?? "Advance", cited: answers.advance, documentId: sourceDocumentIds?.advance },
+  ];
+  const exact = candidates.flatMap((candidate) => {
+    const { cited, documentId } = candidate;
+    const quote = cited?.source === AnswerSource.DOCUMENT ? cited.quote?.trim() : undefined;
+    const start = quote ? document.text.indexOf(quote) : -1;
+    if (!quote || documentId !== document.documentId || start < 0 ||
+      document.text.indexOf(quote, start + 1) !== -1)
+      return [];
+    return [{ candidate, quote, start, end: start + quote.length }];
+  });
+  return exact.flatMap(({ candidate: { id, label, summary, cited }, quote, start, end }) => {
+    // A shared or intersecting span cannot tell which rule the person selected.
+    // Leave every owner uncited instead of making one rule masquerade as another.
+    if (
+      exact.filter(
+        (other) => other.start < end && other.end > start,
+      ).length !== 1
+    )
+      return [];
+    const pages = document.provenance?.pages;
+    const matches = Array.isArray(pages)
+      ? pages.filter((page) =>
+          Number.isInteger(page.page) && page.page > 0 &&
+          Number.isInteger(page.start) && Number.isInteger(page.end) &&
+          page.start >= 0 && page.end >= end && page.start <= start &&
+          page.end <= document.text.length,
+        )
+      : [];
+    return [{
+      id,
+      label,
+      summary,
+      reference: {
+        origin: "SOURCE_CLAUSE",
+        documentId: document.documentId,
+        clause: cited?.clause?.trim() || label,
+        excerpt: quote,
+      },
+      highlight: { id, label, kind: "SAVED_RULE", rawValue: quote, quote, start, end },
+      ...(matches.length === 1 ? { page: matches[0].page } : {}),
+    }];
+  });
+}
+
+function ClauseChip({
+  cited,
+  onOpen,
+  hideWhenUnavailable = false,
+}: {
+  cited?: Cited<unknown>;
+  onOpen?: (cited: Cited<unknown>) => void;
+  hideWhenUnavailable?: boolean;
+}) {
   const label = clauseLabel(cited);
-  if (!label) return null;
+  if (!label || (hideWhenUnavailable && !onOpen)) return null;
   return (
-    <span
+    <button
+      type="button"
       className="clause-chip wc-chip"
       title={cited?.quote ? `“${cited.quote}”` : "From your agreement"}
+      onClick={() => cited && onOpen?.(cited)}
     >
       <span className="sr-only">From your agreement, </span>
       {label}
-    </span>
+    </button>
   );
 }
 
 function CardHead({
   title,
   cited,
+  onOpenCitation,
+  hideUnavailableCitation,
   onChange,
   changeLabel,
 }: {
   title: string;
   cited?: Cited<unknown>;
+  onOpenCitation?: (cited: Cited<unknown>) => void;
+  hideUnavailableCitation?: boolean;
   onChange(): void;
   changeLabel: string;
 }) {
   return (
     <header className="wc-card-head">
       <h2>{title}</h2>
-      <ClauseChip cited={cited} />
+      <ClauseChip
+        cited={cited}
+        onOpen={onOpenCitation}
+        hideWhenUnavailable={hideUnavailableCitation}
+      />
       <button
         type="button"
         className="wc-link wc-change"
@@ -275,6 +364,10 @@ export function WizardCheckStep({
   onUploadAgain,
   onSetUpMyself,
   busy = false,
+  document,
+  originalUrl,
+  fileName,
+  sourceDocumentIds,
 }: {
   answers: AgreementAnswers;
   onChange(answers: AgreementAnswers): void;
@@ -291,6 +384,12 @@ export function WizardCheckStep({
   onSetUpMyself?: () => void;
   /** Disables both replacement choices while the current draft is being retired. */
   busy?: boolean;
+  /** The saved source document for Check; omitted only while it cannot be recovered. */
+  document?: DocumentRecord;
+  originalUrl?: string;
+  fileName?: string;
+  /** Source IDs keep a revise from borrowing a quote from a different file. */
+  sourceDocumentIds?: { agreement?: string; advance?: string };
 }) {
   const [setUpMyself, setSetUpMyself] = useState(false);
   // Once they chose to set it up (or already added people), it's a manual setup.
@@ -314,6 +413,21 @@ export function WizardCheckStep({
   const advanceWho = recipientName(answers);
   const amount = advance ? formatMoneyHeadline(advance.value.amountCents) : "";
   const close = () => setDrawer(undefined);
+  const citations = document
+    ? wizardCitations(answers, document, sourceDocumentIds)
+    : [];
+  const openCitation = (id?: string) => {
+    if (!id || !citations.some((citation) => citation.id === id)) return;
+    window.dispatchEvent(new CustomEvent("fairshare:open-citation", { detail: id }));
+  };
+  const focusRule = (id: string) => {
+    const target =
+      id === "wizard-dates" ? "wizard-agreement" :
+      id === "wizard-fees" ? "wizard-split" : id;
+    globalThis.document
+      .getElementById(`wc-rule-${target}`)
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
   // No advance card to pin an advance note to: it goes under the headline.
   const flagAt =
     flag?.card === CheckCard.ADVANCE && !advance ? CheckCard.TOP : flag?.card;
@@ -373,10 +487,31 @@ export function WizardCheckStep({
       <p className="wiz-lede">{lede}</p>
       {flagNote(CheckCard.TOP)}
 
-      <article className="wc-card">
+      {document ? (
+        <div className="wc-reader">
+          <DocumentCitationView
+            document={document}
+            citations={citations}
+            fileName={fileName ?? "Your agreement"}
+            nameOf={(id) => names.get(id) ?? "A participant"}
+            originalUrl={originalUrl}
+            onCitationSelect={focusRule}
+            hideCitationRail
+          />
+        </div>
+      ) : null}
+
+      <div className="wc-rules">
+      <article className="wc-card" id="wc-rule-wizard-agreement">
         <CardHead
           title="The agreement"
           cited={answers.name.value ? answers.name : answers.effectiveFrom}
+          onOpenCitation={
+            citations.some((citation) => citation.id === (answers.name.value ? "wizard-agreement" : "wizard-dates"))
+              ? () => openCitation(answers.name.value ? "wizard-agreement" : "wizard-dates")
+              : undefined
+          }
+          hideUnavailableCitation={!!document}
           onChange={() => setDrawer(OpenDrawer.AGREEMENT)}
           changeLabel="Change the agreement name and dates"
         />
@@ -392,11 +527,13 @@ export function WizardCheckStep({
         </p>
       </article>
 
-      <article className={flagged(CheckCard.SPLIT)}>
+      <article className={flagged(CheckCard.SPLIT)} id="wc-rule-wizard-split">
         {flagNote(CheckCard.SPLIT)}
         <CardHead
           title="Who gets what"
           cited={answers.people}
+          onOpenCitation={citations.some((citation) => citation.id === "wizard-split") ? () => openCitation("wizard-split") : undefined}
+          hideUnavailableCitation={!!document}
           onChange={() => setDrawer(OpenDrawer.SPLIT)}
           changeLabel="Change who gets what"
         />
@@ -439,7 +576,11 @@ export function WizardCheckStep({
         ) : null}
         <p className="wc-fees">
           <span>{fees}</span>
-          <ClauseChip cited={answers.fees} />
+          <ClauseChip
+            cited={answers.fees}
+            onOpen={citations.some((citation) => citation.id === "wizard-fees") ? () => openCitation("wizard-fees") : undefined}
+            hideWhenUnavailable={!!document}
+          />
           {feesAsked(answers) ? null : (
             <button
               type="button"
@@ -455,11 +596,13 @@ export function WizardCheckStep({
       </article>
 
       {advance ? (
-        <article className={flagged(CheckCard.ADVANCE)}>
+        <article className={flagged(CheckCard.ADVANCE)} id="wc-rule-wizard-advance">
           {flagNote(CheckCard.ADVANCE)}
           <CardHead
             title="Paid back first"
             cited={advance}
+            onOpenCitation={citations.some((citation) => citation.id === "wizard-advance") ? () => openCitation("wizard-advance") : undefined}
+            hideUnavailableCitation={!!document}
             onChange={() => setDrawer(OpenDrawer.ADVANCE)}
             changeLabel="Change who paid upfront and how much"
           />
@@ -506,6 +649,7 @@ export function WizardCheckStep({
           </button>
         </p>
       )}
+      </div>
 
       {drawer === OpenDrawer.AGREEMENT ? (
         <AgreementDrawer

@@ -1,13 +1,11 @@
 import dynamic from "next/dynamic";
 import { allocationTrace } from "../../lib/allocation-trace";
 import { payoutStatus } from "../../src/components/paymentGridModel";
-import { Section, api, type Agreement, type User } from "../../lib/model";
-import { workspaceBase } from "../../lib/workspace-base";
+import { Section, type Agreement } from "../../lib/model";
 import {
   agreementIdentityKey,
   findAgreementByIdentity,
 } from "../../lib/agreement-identity";
-import { Button } from "../ui";
 import type { Run } from "./types";
 
 const PaymentGrid = dynamic(
@@ -16,28 +14,22 @@ const PaymentGrid = dynamic(
 );
 
 export interface PayoutsSectionProps {
-  user: User;
   agreements: Agreement[];
   payouts: any[];
-  workspace: string;
   busy: boolean;
   run: Run;
   navigate: (s: Section) => boolean;
   openAgreement: (a: Agreement) => Promise<void>;
-  loadWorkspace: (id: string) => Promise<void>;
 }
 
-/** Payout history across agreements, with organizer status refresh. */
+/** Payout history across agreements. */
 export function PayoutsSection({
-  user,
   agreements,
   payouts,
-  workspace,
   busy,
   run,
   navigate,
   openAgreement,
-  loadWorkspace,
 }: PayoutsSectionProps) {
   return (
     <>
@@ -81,32 +73,6 @@ export function PayoutsSection({
           if (a) run(() => openAgreement(a));
         }}
       />
-      {payouts.length > 0 && (
-        <Button
-          variant="secondary"
-          style={{ marginTop: 16 }}
-          disabled={busy}
-          onClick={() =>
-            run(async () => {
-              for (const p of payouts.filter(
-                (p) =>
-                  p.agreement.value.members.find(
-                    (m: any) => m.userId === user.id,
-                  )?.role === "ORGANIZER" && p.batch_id,
-              )) {
-                await api(
-                  `${workspaceBase(p.agreement.workspaceId)}/collaborations/${p.agreement.id}/payouts/${p.id}/reconcile`,
-                  "POST",
-                  {},
-                );
-              }
-              await loadWorkspace(workspace);
-            })
-          }
-        >
-          Refresh
-        </Button>
-      )}
     </>
   );
 }

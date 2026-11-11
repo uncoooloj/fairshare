@@ -38,12 +38,6 @@ export function AgreementName({
       <summary>
         {suggestion ? "Review suggested agreement name" : "Edit agreement name"}
       </summary>
-      {suggestion && (
-        <p className="muted">
-          Suggested from your source document. Review or edit it before saving.
-          This does not change the agreement’s terms.
-        </p>
-      )}
       <form
         className="inline-form"
         onSubmit={(event) => {

@@ -26,7 +26,7 @@ test("invitation acceptance adopts the committed workspace before any reload", (
   assert.match(accept, /setFlowToken\(""\)/);
   assert.match(accept, /setSection\(Section.Agreements\)/);
   assert.doesNotMatch(accept, /await loadWorkspaces/);
-  assert.equal((source.match(/await acceptInvitation\(/g) || []).length, 2);
+  assert.equal((source.match(/await acceptInvitation\(/g) || []).length, 1);
 });
 
 test("invitation token stays in the fragment until the acceptance succeeds", () => {

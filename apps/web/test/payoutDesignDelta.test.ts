@@ -54,3 +54,30 @@ test("payout grid resets the global .ag-header margin that overlapped the first 
   );
   assert.match(css, /\.grid :global\(\.ag-header\) \{\s*margin: 0;/);
 });
+
+test("payout rows open their own details without taking over controls or the global refresh", () => {
+  const section = readFileSync(
+    new URL("../components/sections/payouts-section.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.doesNotMatch(section, />\s*Refresh\s*</);
+  assert.doesNotMatch(section, /\/payouts\/\$\{p\.id\}\/reconcile/);
+  assert.doesNotMatch(grid, /Totals are for all time\./);
+  assert.match(
+    grid,
+    /onCellClicked=\{\(event\) => \{[\s\S]*?openPayoutDetails\(event\.data\)/,
+  );
+  assert.match(
+    grid,
+    /onCellKeyDown=\{\(event\) =>[\s\S]*?openPayoutFromKeyboard\(event\.event, event\.data\)/,
+  );
+  assert.match(grid, /event\.key !== "Enter" && event\.key !== " "/);
+  assert.match(
+    grid,
+    /event\.stopPropagation\(\);[\s\S]*?onOpenAgreement\(row\.agreementKey\)/,
+  );
+  assert.match(
+    grid,
+    /event\.stopPropagation\(\);[\s\S]*?openPayoutDetails\(row\)/,
+  );
+});

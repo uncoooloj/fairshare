@@ -2,6 +2,41 @@
    the split drawer (components/split-drawer.tsx) and the wizard drawer (components/wizard-drawer.tsx). */
 
 /* Cards */
+.wc:has(.wc-reader) {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.65fr);
+  align-items: start;
+  gap: var(--space-5);
+}
+.wc:has(.wc-reader) > h1,
+.wc:has(.wc-reader) > .wiz-lede,
+.wc:has(.wc-reader) > .wc-flag-note {
+  grid-column: 1 / -1;
+}
+.wc-reader {
+  min-width: 0;
+  position: sticky;
+  top: var(--space-4);
+}
+.wc-rules {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+}
+.wc-chip {
+  border: 0;
+  padding: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+}
+.wc-chip:not(:disabled) {
+  cursor: pointer;
+}
+.wc-chip:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+}
 .wc-card {
   display: grid;
   gap: var(--space-3);
@@ -545,6 +580,18 @@ dialog.wd::backdrop {
 }
 
 @media (max-width: 599px) {
+  .wc:has(.wc-reader) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .wc:has(.wc-reader) > h1,
+  .wc:has(.wc-reader) > .wiz-lede,
+  .wc:has(.wc-reader) > .wc-flag-note {
+    grid-column: auto;
+  }
+  .wc-reader {
+    position: static;
+  }
   .wc-card {
     padding: var(--space-3) var(--space-4) var(--space-4);
   }

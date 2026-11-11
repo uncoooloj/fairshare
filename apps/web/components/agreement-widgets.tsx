@@ -1,5 +1,5 @@
 import { sourceHighlights } from "../lib/source-highlights";
-import { ChevronRightIcon } from "./icons";
+import { ChevronRightIcon, PaymentIcon } from "./icons";
 import { HighlightedSource } from "./source-rule-context";
 import { SplitRuleEditor } from "./split-rule-editor";
 import { RuleImpactReview } from "./rule-impact-review";
@@ -76,40 +76,6 @@ export function Metric({ label, value }: { label: string; value: string }) {
       <span>{label}</span>
       <strong>{value}</strong>
     </div>
-  );
-}
-export function SimpleForm({
-  label,
-  button,
-  onSubmit,
-  busy,
-  type = "text",
-}: {
-  label: string;
-  button: string;
-  onSubmit: (v: string) => void;
-  busy: boolean;
-  type?: string;
-}) {
-  const [value, setValue] = useState("");
-  return (
-    <form
-      className="inline-form"
-      onSubmit={(e) => {
-        e.preventDefault();
-        onSubmit(value);
-      }}
-    >
-      <Field label={label}>
-        <input
-          required
-          type={type}
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-        />
-      </Field>
-      <Button disabled={busy || !value.trim()}>{button}</Button>
-    </form>
   );
 }
 export { Auth } from "./designer-auth";
@@ -611,7 +577,7 @@ export function RevenueTable({
       </tbody>
     </table>
   ) : (
-    <Empty title="No payments yet">
+    <Empty title="No payments yet" icon={<PaymentIcon size={36} />}>
       Payments show up here once PayPal confirms them.
     </Empty>
   );
@@ -847,12 +813,15 @@ export function RulesEditor({
   const [splitDraft, setSplitDraft] = useState<Record<string, string> | null>(
     null,
   );
-  useEffect(() => {
-    setSplitDraft(null);
-  }, [agreement.revision]);
   const selectedFact = highlights.find((fact) => fact.id === selectedCitation);
-  function editSplit() {
+  const splitOpenerRef = useRef<HTMLElement | null>(null);
+  const splitWasOpen = useRef(false);
+  function closeSplitEditor() {
+    setSplitDraft(null);
+  }
+  function editSplit(opener: HTMLElement) {
     if (!formRef.current) return;
+    splitOpenerRef.current = opener;
     const fields = new FormData(formRef.current);
     setSplitDraft(
       Object.fromEntries(
@@ -865,6 +834,17 @@ export function RulesEditor({
   }
   const [draftRevision, setDraftRevision] = useState(0);
   const formRef = useRef<HTMLFormElement>(null);
+  const splitDrawerRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (splitWasOpen.current && !splitDraft) {
+      splitOpenerRef.current?.focus({ preventScroll: true });
+      splitOpenerRef.current = null;
+    }
+    splitWasOpen.current = !!splitDraft;
+  }, [splitDraft]);
+  useEffect(() => {
+    setSplitDraft(null);
+  }, [agreement.revision]);
   const [prefilled, setPrefilled] = useState(false);
   const suggestions = suggestedShares(
     extraction,
@@ -1029,7 +1009,7 @@ export function RulesEditor({
                 type="button"
                 variant="secondary"
                 disabled={!!splitDraft}
-                onClick={editSplit}
+                onClick={(event) => editSplit(event.currentTarget)}
               >
                 Edit proposed split
               </Button>
@@ -1037,44 +1017,85 @@ export function RulesEditor({
           </section>
         )}
         {splitDraft && (
-          <SplitRuleEditor
-            members={agreement.value.members}
-            values={splitDraft}
-            original={highlights
-              .filter((fact) => fact.kind === "SHARE")
-              .map((fact) => `${fact.label}: ${fact.rawValue} — ${fact.quote}`)}
-            onFocusMember={(name) => {
-              const fact = highlights.find(
-                (item) =>
-                  item.kind === "SHARE" &&
-                  item.label.trim().toLowerCase() === name.trim().toLowerCase(),
-              );
-              if (fact) setSelectedCitation(fact.id);
-            }}
-            onCancel={() => setSplitDraft(null)}
-            onApply={(values) => {
-              for (const [id, value] of Object.entries(values)) {
-                const input = formRef.current?.elements.namedItem(id);
-                if (input instanceof HTMLInputElement) input.value = value;
-              }
-              setOrigin("HUMAN_PROPOSAL");
-              const excerpt = formRef.current?.elements.namedItem("excerpt");
-              if (excerpt instanceof HTMLTextAreaElement) {
-                const proposal = `Proposed split clarification: ${agreement.value.members.map((member) => `${member.displayName} ${values[member.userId]}%`).join(", ")}.`;
-                excerpt.value =
-                  `${excerpt.value.replace(/\n?Proposed split clarification:[^\n]*/g, "").trim()}\n${proposal}`.trim();
-              }
-              onDirty?.();
-              setDraftRevision((value) => value + 1);
-              setSplitDraft(null);
-            }}
-          />
+          <div className="rule-editor-drawer-backdrop">
+            <aside
+              ref={splitDrawerRef}
+              className="rule-editor-drawer"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Edit revenue split"
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  closeSplitEditor();
+                  return;
+                }
+                if (event.key !== "Tab") return;
+                const items = [
+                  ...(splitDrawerRef.current?.querySelectorAll<HTMLElement>(
+                    "input:not([disabled]), button:not([disabled]), summary, [tabindex='0']",
+                  ) ?? []),
+                ];
+                if (!items.length) return;
+                const first = items[0];
+                const last = items.at(-1)!;
+                if (!items.includes(document.activeElement as HTMLElement)) {
+                  event.preventDefault();
+                  (event.shiftKey ? last : first).focus();
+                } else if (event.shiftKey && document.activeElement === first) {
+                  event.preventDefault();
+                  last.focus();
+                } else if (!event.shiftKey && document.activeElement === last) {
+                  event.preventDefault();
+                  first.focus();
+                }
+              }}
+            >
+              <SplitRuleEditor
+                members={agreement.value.members}
+                values={splitDraft}
+                original={highlights
+                  .filter((fact) => fact.kind === "SHARE")
+                  .map(
+                    (fact) => `${fact.label}: ${fact.rawValue} — ${fact.quote}`,
+                  )}
+                onFocusMember={(name) => {
+                  const fact = highlights.find(
+                    (item) =>
+                      item.kind === "SHARE" &&
+                      item.label.trim().toLowerCase() ===
+                        name.trim().toLowerCase(),
+                  );
+                  if (fact) setSelectedCitation(fact.id);
+                }}
+                onCancel={closeSplitEditor}
+                onApply={(values) => {
+                  for (const [id, value] of Object.entries(values)) {
+                    const input = formRef.current?.elements.namedItem(id);
+                    if (input instanceof HTMLInputElement) input.value = value;
+                  }
+                  setOrigin("HUMAN_PROPOSAL");
+                  const excerpt =
+                    formRef.current?.elements.namedItem("excerpt");
+                  if (excerpt instanceof HTMLTextAreaElement) {
+                    const proposal = `Proposed split clarification: ${agreement.value.members.map((member) => `${member.displayName} ${values[member.userId]}%`).join(", ")}.`;
+                    excerpt.value =
+                      `${excerpt.value.replace(/\n?Proposed split clarification:[^\n]*/g, "").trim()}\n${proposal}`.trim();
+                  }
+                  onDirty?.();
+                  setDraftRevision((value) => value + 1);
+                  closeSplitEditor();
+                }}
+              />
+            </aside>
+          </div>
         )}
         <Button
           type="button"
           variant="secondary"
           disabled={!!splitDraft}
-          onClick={editSplit}
+          onClick={(event) => editSplit(event.currentTarget)}
         >
           Edit revenue split
         </Button>
