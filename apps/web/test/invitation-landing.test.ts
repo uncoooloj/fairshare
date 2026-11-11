@@ -28,7 +28,10 @@ test("invitation confirmation suppresses competing application forms; creation r
   assert.match(source, /item.role === "OWNER" \|\| item.role === "MEMBER"/);
   assert.match(source, /!creating\s*&&\s*canCreateAgreement/);
   assert.match(source, /creating\s*&&\s*canCreateAgreement\s*\?\s*\(/);
-  assert.match(source, /setWorkspace\(fresh.workspaceId\)/);
+  assert.match(
+    source,
+    /if \(a.workspaceId !== currentWorkspace.current\)\s*commitWorkspace\(a.workspaceId\)/,
+  );
   assert.equal(source.match(/workspaceRole=\{workspaceRole\}/g)?.length, 1);
 });
 
@@ -49,6 +52,6 @@ test("expired or unwanted invitations can be dismissed without consuming them", 
   );
   assert.match(
     source,
-    /function\s+dismissAccessFlow\s*\(\)\s*\{\s*setFlowToken\(""\);\s*setError\(""\);\s*history\.replaceState/,
+    /function\s+dismissAccessFlow\s*\(\)\s*\{\s*setFlowToken\(""\);\s*setError\(""\);\s*router\.replace\("\/app"\)/,
   );
 });

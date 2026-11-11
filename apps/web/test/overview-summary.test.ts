@@ -36,6 +36,7 @@ function fixture(): Agreement {
       revenue: [
         {
           providerCaptureId: "cap",
+          currency: "USD",
           versionId: 1,
           grossCents: 100,
           feeCents: 0,
@@ -206,4 +207,47 @@ test("nonmembers and other recipients cannot leak totals or payout attention", (
     agreement: { ...a, workspaceId: "elsewhere" },
   };
   assert.equal(overviewSummary([a], [forged], "me").paid, 0);
+});
+
+test("incomplete payout loads never present financial totals as zero", () => {
+  const a = fixture();
+  const s = overviewSummary([a], [], "me", false);
+  assert.equal(s.allocated, null);
+  assert.equal(s.paid, null);
+  assert.equal(s.remaining, null);
+});
+
+test("review actions use the authoritative review state", () => {
+  const a = fixture();
+  a.value.versions[0].approvals = {
+    me: "2026-11-10T12:00:00Z",
+    other: "2026-11-10T12:00:00Z",
+  };
+  const organizer = overviewSummary([a], [], "me");
+  assert.match(organizer.attention[0].title, /Activate version 1/);
+  assert.equal(organizer.attention[0].key, '["w","a"]:activate');
+  const collaborator = overviewSummary([a], [], "other");
+  assert.match(
+    collaborator.waiting[0].title,
+    /Waiting for organizer to activate version 1/,
+  );
+  assert.equal(collaborator.waiting[0].key, '["w","a"]:waiting-activation');
+  a.value.versions[0].status = "ACTIVE";
+  assert.equal(overviewSummary([a], [], "other").waiting.length, 0);
+
+  const draft = fixture();
+  draft.value.versions[0].status = "DRAFT";
+  const send = overviewSummary([draft], [], "me");
+  assert.match(send.attention[0].title, /Send version 1 for review/);
+  assert.equal(send.attention[0].key, '["w","a"]:send-review');
+  draft.value.versions[0].rules.advance = {
+    id: "advance",
+    recipientId: "me",
+    amountCents: 10,
+    verified: false,
+    source: draft.value.versions[0].rules.source,
+  };
+  const blocked = overviewSummary([draft], [], "me");
+  assert.match(blocked.attention[0].detail, /Verify the existing advance/);
+  assert.equal(blocked.attention[0].key, '["w","a"]:review-blockers');
 });

@@ -153,6 +153,62 @@ test("in-app notifications respect channels, workspace and agreement membership,
       await app.inject({ url: "/api/auth/notifications", headers })
     ).json().events;
     assert.equal(events.length, 2);
+    const secondWorkspace = app.store.createWorkspace(a.user.id, "Second");
+    const duplicateAgreement = {
+      ...agreement,
+      name: "Second song",
+      audit: [
+        {
+          sequence: 1,
+          type: "SENT_FOR_REVIEW",
+          at: "2026-11-10T13:00:00Z",
+          details: { versionId: 1 },
+        },
+      ],
+    };
+    app.store.db
+      .prepare("INSERT INTO fairshare_collaborations VALUES(?,?,?,?)")
+      .run(
+        secondWorkspace.id,
+        duplicateAgreement.id,
+        1,
+        JSON.stringify(duplicateAgreement),
+      );
+    app.store.db
+      .prepare(
+        "INSERT INTO fairshare_payout_ops(id,workspace_id,collaboration_id,capture_id,user_id,recipient_id,amount,status) VALUES(?,?,?,?,?,?,?,?)",
+      )
+      .run(
+        "payout-second",
+        secondWorkspace.id,
+        duplicateAgreement.id,
+        "capture-second",
+        a.user.id,
+        "recipient",
+        100,
+        "SUCCESS",
+      );
+    events = (
+      await app.inject({ url: "/api/auth/notifications", headers })
+    ).json().events;
+    const duplicateEvents = events.filter(
+      (event: any) => event.agreementId === agreement.id,
+    );
+    assert.equal(duplicateEvents.length, 4);
+    assert.deepEqual(
+      new Set(duplicateEvents.map((event: any) => event.workspaceId)),
+      new Set([w.id, secondWorkspace.id]),
+    );
+    assert.deepEqual(
+      new Set(duplicateEvents.map((event: any) => event.agreementName)),
+      new Set([agreement.name, duplicateAgreement.name]),
+    );
+    assert.equal(
+      new Set(
+        duplicateEvents.map((event: any) => `${event.workspaceId}:${event.id}`),
+      ).size,
+      duplicateEvents.length,
+    );
     const preferences = defaultPreferences();
     preferences.notifications.approvalRequests.inApp = false;
     preferences.notifications.payoutCompleted.inApp = false;
@@ -174,6 +230,80 @@ test("in-app notifications respect channels, workspace and agreement membership,
       (await app.inject({ url: "/api/auth/notifications", headers })).json()
         .events.length,
       0,
+    );
+  } finally {
+    await app.close();
+  }
+});
+
+test("in-app notifications share the limited feed between audit events and payout states", async () => {
+  const app = await buildApp({ dbPath: ":memory:" });
+  try {
+    const user = app.store.register({
+      name: "A",
+      email: "a@example.test",
+      password,
+    });
+    const workspace = app.store.createWorkspace(user.user.id, "My workspace");
+    const agreement = {
+      id: "agreement-a",
+      name: "Song",
+      members: [{ userId: user.user.id }],
+      versions: [{ id: 1, status: "AWAITING_APPROVAL" }],
+      audit: Array.from({ length: 101 }, (_, index) => ({
+        sequence: index + 1,
+        type: "SENT_FOR_REVIEW",
+        at: new Date(Date.UTC(2026, 0, 1, 0, index)).toISOString(),
+        details: { versionId: 1 },
+      })),
+    };
+    app.store.db
+      .prepare("INSERT INTO fairshare_collaborations VALUES(?,?,?,?)")
+      .run(workspace.id, agreement.id, 1, JSON.stringify(agreement));
+    app.store.db
+      .prepare(
+        "INSERT INTO fairshare_payout_ops(id,workspace_id,collaboration_id,capture_id,user_id,recipient_id,amount,status) VALUES(?,?,?,?,?,?,?,?)",
+      )
+      .run(
+        "failed-payout",
+        workspace.id,
+        agreement.id,
+        "capture-a",
+        user.user.id,
+        "recipient",
+        100,
+        "FAILED",
+      );
+    const insertPayout = app.store.db.prepare(
+      "INSERT INTO fairshare_payout_ops(id,workspace_id,collaboration_id,capture_id,user_id,recipient_id,amount,status) VALUES(?,?,?,?,?,?,?,?)",
+    );
+    for (let index = 0; index < 100; index++)
+      insertPayout.run(
+        `successful-payout-${index}`,
+        workspace.id,
+        agreement.id,
+        `capture-${index}`,
+        user.user.id,
+        "recipient",
+        100,
+        "SUCCESS",
+      );
+
+    const events = (
+      await app.inject({
+        url: "/api/auth/notifications",
+        headers: { authorization: `Bearer ${user.token}` },
+      })
+    ).json().events;
+
+    assert.equal(events.length, 100);
+    assert.ok(
+      events.some(
+        (event: { id: string }) => event.id === "payout:failed-payout:FAILED",
+      ),
+    );
+    assert.ok(
+      events.some((event: { id: string }) => event.id === "agreement-a:101"),
     );
   } finally {
     await app.close();

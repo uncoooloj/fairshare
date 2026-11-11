@@ -56,6 +56,7 @@ export interface Version {
 }
 export interface Revenue {
   providerCaptureId: string;
+  currency: "USD";
   grossCents: number;
   feeCents: number;
   netCents: number;
