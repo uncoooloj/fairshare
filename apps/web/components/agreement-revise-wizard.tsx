@@ -35,6 +35,10 @@ import {
 } from "./wizard-check-step";
 import { WizardFrame } from "./wizard-chrome";
 import { WizardQuestionsStep } from "./wizard-questions-step";
+import {
+  originalDocumentUrl,
+  type DocumentRecord,
+} from "./agreement-document";
 
 /** The screens of a change to a sent agreement. Questions only when something is open. */
 export enum ReviseStage {
@@ -229,6 +233,7 @@ export function AgreementReviseWizard({
   const [stage, setStage] = useState(ReviseStage.CHECK);
   const [questionIndex, setQuestionIndex] = useState(0);
   const [documentText, setDocumentText] = useState<string>();
+  const [sourceDocument, setSourceDocument] = useState<DocumentRecord>();
   const [busy, setBusyState] = useState(false);
   const [error, setError] = useState("");
   const [confirmClose, setConfirmClose] = useState(false);
@@ -241,11 +246,14 @@ export function AgreementReviseWizard({
     const documentId = rules?.source.documentId;
     if (!documentId) return;
     let live = true;
-    api<{ text?: string }>(
+    api<DocumentRecord>(
       `${root}/documents/${encodeURIComponent(documentId)}`,
     )
       .then((doc) => {
-        if (live && typeof doc?.text === "string") setDocumentText(doc.text);
+        if (live && typeof doc?.text === "string") {
+          setDocumentText(doc.text);
+          setSourceDocument(doc);
+        }
       })
       .catch(() => {});
     return () => {
@@ -492,6 +500,17 @@ export function AgreementReviseWizard({
         }}
         mode={CheckMode.REVISE}
         peopleFixed
+        document={sourceDocument}
+        originalUrl={
+          sourceDocument
+            ? originalDocumentUrl(workspaceBase(agreement.workspaceId), sourceDocument)
+            : undefined
+        }
+        fileName="Original agreement"
+        sourceDocumentIds={{
+          agreement: rules.source.documentId,
+          advance: rules.advance?.source.documentId,
+        }}
         flag={
           request
             ? {
