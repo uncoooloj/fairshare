@@ -31,6 +31,9 @@ function mockProvider() {
     /** Fee PayPal gives back with a refund, as a function of the refund amount. */
     feeReturned: (_cents: number) => 0,
     payoutGate: null as Promise<void> | null,
+    /** Status PayPal gives new refunds and reports for payouts. */
+    refundStatus: "COMPLETED",
+    payoutStatus: "PENDING",
   };
   const capture = (orderId: string) => {
     const order = orders.get(orderId)!;
@@ -69,7 +72,7 @@ function mockProvider() {
     getPayout: async (batchId) => ({
       batchId,
       itemId: "ITEM",
-      status: "PENDING",
+      status: config.payoutStatus,
     }),
     verifyWebhook: async () => true,
     refundCapture: async (captureId, amountCents, currency, key) => {
@@ -85,7 +88,7 @@ function mockProvider() {
     const returned = config.feeReturned(amountCents);
     refunds.set(id, {
       id,
-      status: "COMPLETED",
+      status: config.refundStatus,
       amountCents,
       currency: "USD",
       captureId,
@@ -639,6 +642,150 @@ test("a PayPal reversal takes the whole payment out of the split and pauses", ()
     assert.equal(s.agreement().value.reviewHold, true);
     // PayPal's 300 fee is not returned on a reversal: shared 60/40.
     assert.deepEqual(s.owed(), { maya: 180, riley: 120 });
+  }));
+
+const reversalEvent = (
+  s: Setup,
+  eventId: string,
+  captureId: string,
+  cents: number,
+) =>
+  s.webhook(eventId, "PAYMENT.CAPTURE.REVERSED", {
+    id: captureId,
+    amount: { currency_code: "USD", value: (cents / 100).toFixed(2) },
+  });
+
+test("a reversal leaves room for a refund still going through; when it completes both reconcile", () =>
+  run(async (s) => {
+    const { id, captureId } = await s.pay();
+    s.mock.config.refundStatus = "PENDING";
+    const pending = await s.post(`/payments/${id}/refund`, {
+      confirmRefund: true,
+      amountCents: 3000,
+      requestKey: "in-flight",
+    });
+    assert.equal(pending.json().outcome, "WAITING_FOR_PAYPAL");
+    assert.equal(
+      (await reversalEvent(s, "rev", captureId, 10000)).statusCode,
+      200,
+    );
+    const revenue = () =>
+      s
+        .agreement()
+        .value.revenue.find((r) => r.providerCaptureId === captureId)!;
+    assert.deepEqual(
+      revenue().refunds!.map((r) => [r.kind, r.grossCents]),
+      [["REVERSAL", 7000]],
+    );
+    // PayPal completes the refund: it takes the last 3000, nothing is stuck.
+    s.mock.refunds.get(pending.json().providerRefundId)!.status = "COMPLETED";
+    const done = await s.post(`/refunds/${pending.json().id}/reconcile`);
+    assert.equal(done.statusCode, 200, done.body);
+    assert.deepEqual(s.totals(captureId), { maya: 0, riley: 0 });
+    assert.equal(
+      revenue().refunds!.reduce((sum, r) => sum + r.grossCents, 0),
+      10000,
+    );
+    assert.deepEqual((await s.recovery()).review.blockers, []);
+    assert.equal((await s.resume()).statusCode, 200);
+  }));
+
+test("a refund that completes before a reversal is left out of the reversal", () =>
+  run(async (s) => {
+    const { id, captureId } = await s.pay();
+    await s.post(`/payments/${id}/refund`, {
+      confirmRefund: true,
+      amountCents: 3000,
+      requestKey: "first",
+    });
+    await reversalEvent(s, "rev", captureId, 10000);
+    const refunds = s
+      .agreement()
+      .value.revenue.find((r) => r.providerCaptureId === captureId)!.refunds!;
+    assert.deepEqual(
+      refunds.map((r) => [r.kind, r.grossCents]),
+      [
+        ["REFUND", 3000],
+        ["REVERSAL", 7000],
+      ],
+    );
+    assert.deepEqual(s.totals(captureId), { maya: 0, riley: 0 });
+  }));
+
+test("a refund PayPal reports after a full reversal is settled by it, not stuck", () =>
+  run(async (s) => {
+    const { captureId } = await s.pay();
+    await reversalEvent(s, "rev", captureId, 10000);
+    const before = s.agreement().revision;
+    const late = s.mock.external(captureId, 3000);
+    const r = await s.refundEvent("late", late.id, captureId);
+    assert.equal(r.statusCode, 200, r.body);
+    assert.equal(s.agreement().revision, before);
+    assert.deepEqual((await s.recovery()).review.blockers, []);
+    assert.equal((await s.resume()).statusCode, 200);
+  }));
+
+test("a payout PayPal returns releases the overpayment it was counted for", () =>
+  run(async (s) => {
+    const { captureId } = await s.pay();
+    await s.setEmails();
+    const sent = await s.post("/payouts/dispatch", { captureId });
+    const paypal = s.mock.external(captureId, 5000);
+    await s.refundEvent("after", paypal.id, captureId);
+    assert.deepEqual(s.owed(), { maya: 3000, riley: 2000 });
+    s.mock.config.payoutStatus = "RETURNED";
+    const riley = sent
+      .json()
+      .payouts.find((p: any) => p.userId === s.riley.user.id).id;
+    assert.equal(
+      (await s.post(`/payouts/${riley}/reconcile`)).json().status,
+      "RETURNED",
+    );
+    assert.deepEqual(s.owed(), { maya: 3000 });
+    // Seeing it again changes nothing.
+    await s.app.store.db
+      .prepare("UPDATE fairshare_payout_ops SET status='UNCLAIMED' WHERE id=?")
+      .run(riley);
+    await s.post(`/payouts/${riley}/reconcile`);
+    assert.deepEqual(s.owed(), { maya: 3000 });
+  }));
+
+test("resume ignores PayPal events not linked to this agreement and catches disputes from before", () =>
+  run(async (s) => {
+    const { captureId } = await s.pay();
+    const paypal = s.mock.external(captureId, 10000);
+    await s.refundEvent("pause", paypal.id, captureId);
+    const insert = (id: string, status: string, action: unknown) =>
+      s.app.store.db
+        .prepare("INSERT INTO fairshare_webhook_inbox VALUES(?,?,?,?,NULL)")
+        .run(id, `fp-${id}`, JSON.stringify(action), status);
+    insert("stray", "PENDING", {
+      kind: "HOLD_CAPTURE",
+      providerId: "SOMEONE-ELSES",
+      eventType: "PAYMENT.CAPTURE.REVERSED",
+    });
+    // Unsupported or unlinkable events still stop payouts, but do not block every agreement's resume.
+    insert("unsupported", "PENDING", {
+      kind: "RECORD_UNMATCHED",
+      eventType: "UNSUPPORTED.NEW_EVENT",
+      reason: "UNSUPPORTED_WEBHOOK_EVENT",
+    });
+    assert.deepEqual((await s.recovery()).review.blockers, []);
+    // A dispute handled before disputes were recorded, never resolved.
+    insert("old-dispute", "DONE", {
+      kind: "HOLD_CAPTURE",
+      eventType: "CUSTOMER.DISPUTE.CREATED",
+      providerId: captureId,
+      providerIds: [captureId],
+    });
+    assert.equal((await s.resume()).json().error.code, "DISPUTE_OPEN");
+    insert("old-resolved", "DONE", {
+      kind: "HOLD_CAPTURE",
+      eventType: "CUSTOMER.DISPUTE.RESOLVED",
+      providerId: captureId,
+      providerIds: [captureId],
+    });
+    assert.equal((await s.resume()).statusCode, 200);
   }));
 
 test("legacy refunds migrate: COMPLETED is settled by the old pause and never reversed; PENDING still blocks", async () => {

@@ -156,7 +156,11 @@ export interface Revenue {
   allocations: Allocation[];
   status: RevenueStatus;
   at: string;
+  /** The advance this payment's repayment was counted against (absent on older payments). */
+  advanceId?: string;
   refunds?: RevenueRefund[];
+  /** People whose payout from this payment PayPal finally did not deliver after a refund. */
+  undeliveredUserIds?: string[];
 }
 export interface AuditEntry {
   sequence: number;
@@ -201,6 +205,8 @@ export interface Collaboration {
   owedBack?: Record<string, number>;
   /** Set by resumePayouts: owedBack is kept back from each person's next shares until settled. */
   offsetOwedBack?: boolean;
+  /** Advance ID -> the advance whose repaid count was carried onto it when it replaced it. */
+  advanceCarries?: Record<string, string>;
 }
 export class DomainError extends Error {
   constructor(
@@ -377,13 +383,23 @@ function replacedAdvance(c: Collaboration, r: Rules): number {
 /** Moves the repaid amount onto a replacement advance ID before its rules take effect. */
 function carryRecoupment(out: Collaboration, next: Rules) {
   const carried = replacedAdvance(out, next);
-  if (carried && next.advance)
+  if (carried && next.advance) {
     Object.defineProperty(out.recoupedByAdvance, next.advance.id, {
       value: carried,
       enumerable: true,
       writable: true,
       configurable: true,
     });
+    // Remember the chain so a refund lowers exactly the counts that include its repayment.
+    const from = recoupedInForce(out).advance!.id;
+    out.advanceCarries ??= {};
+    Object.defineProperty(out.advanceCarries, next.advance.id, {
+      value: from,
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    });
+  }
 }
 const CALENDAR_DATE = /^\d{4}-\d{2}-\d{2}$/;
 function sameCalendarDate(value: string): boolean {
@@ -1128,6 +1144,7 @@ function allocate(
     ...copy(input),
     netCents,
     versionId: v.id,
+    ...(r.advance ? { advanceId: r.advance.id } : {}),
     allocations,
     status: RevenueStatus.CONFIRMED,
     at,
@@ -1411,13 +1428,25 @@ export function applyCaptureRefund(
       if (was < fromAdvance) advanceUnclear = true;
       setOwn(out.recoupedByAdvance, id, Math.max(0, was - fromAdvance));
     };
-    lower(advance.id);
-    const inForce = recoupedInForce(out).advance;
-    if (inForce?.id !== advance.id) {
-      // The rules changed since; a carried-over repayment count may include this payment.
-      advanceUnclear = true;
-      if (inForce && Object.hasOwn(out.recoupedByAdvance, inForce.id))
-        lower(inForce.id);
+    if (revenue.advanceId) {
+      // Lower the advance this payment repaid and every advance its count was carried onto,
+      // never an unrelated later advance.
+      const chain = [revenue.advanceId];
+      for (let grew = true; grew; ) {
+        grew = false;
+        for (const [to, from] of Object.entries(out.advanceCarries ?? {}))
+          if (chain.includes(from) && !chain.includes(to)) {
+            chain.push(to);
+            grew = true;
+          }
+      }
+      for (const id of chain) lower(id);
+    } else {
+      // An older payment did not record its advance or carry-overs: lower its own advance and
+      // pause for review if different rules are in force now.
+      lower(advance.id);
+      if (recoupedInForce(out).advance?.id !== advance.id)
+        advanceUnclear = true;
     }
   }
   const owesNew = [...shares.values()].some(
@@ -1490,6 +1519,47 @@ export function applyCaptureRefund(
     });
   }
   return { collaboration: out, duplicate: false, held, refund: copy(refund) };
+}
+/** PayPal finally did not deliver a person's payout from this payment (returned, failed...).
+ * Refunds counted that payout as paid, so the part of their owed amount that came from being
+ * "overpaid" on this payment is released. Shortfalls and undone offsets stay owed. Once per
+ * person per payment. */
+export function releaseUndeliveredOverpayment(
+  c: Collaboration,
+  captureId: string,
+  userId: string,
+  at: string,
+): Collaboration {
+  timestamp(at);
+  const out = copy(c);
+  const revenue =
+    out.revenue.find((r) => r.providerCaptureId === captureId) ??
+    fail("UNKNOWN_CAPTURE", "Payment not found");
+  if (revenue.undeliveredUserIds?.includes(userId)) return copy(c);
+  const overpaid = (revenue.refunds ?? []).reduce((sum, refund) => {
+    const share = refund.shares.find((x) => x.userId === userId);
+    return share
+      ? sum + share.owedCents - share.shortfallCents - share.offsetRestoredCents
+      : sum;
+  }, 0);
+  (revenue.undeliveredUserIds ??= []).push(userId);
+  const owed = own(out.owedBack, userId);
+  const release = Math.min(owed, Math.max(0, overpaid));
+  if (release > 0) {
+    if (owed > release) setOwn(out.owedBack!, userId, owed - release);
+    else delete out.owedBack![userId];
+    if (!Object.keys(out.owedBack!).length) {
+      delete out.owedBack;
+      delete out.offsetOwedBack;
+    }
+  }
+  audit(out, AuditType.REFUND_APPLIED, "provider", at, {
+    captureId,
+    userId,
+    payoutNotDelivered: true,
+    releasedCents: release,
+  });
+  return out;
 }
 /** Settles each person's owed amount from their next shares, up to what each share pays. */
 function offsetOwedBack(c: Collaboration, allocations: Allocation[]) {

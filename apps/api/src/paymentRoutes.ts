@@ -31,6 +31,8 @@ import { registerPaymentRecovery } from "./paymentRecovery.js";
 import {
   applyCompletedRefundOp,
   applyRefundToCapture,
+  inFlightRefundCents,
+  notePayoutStatus,
   recordDispute,
   unrefundedCents,
 } from "./refundReversal.js";
@@ -493,14 +495,22 @@ export function registerPaymentRoutes(
       paymentError(e);
     }
     assertLease();
-    const fresh = db
-      .prepare("SELECT status,batch_id FROM fairshare_payout_ops WHERE id=?")
-      .get(op.id) as any;
-    if (!fresh || fresh.batch_id !== op.batch_id || fresh.status !== op.status)
-      fail("RECONCILIATION_CONFLICT", "Payout changed during provider read");
-    db.prepare(
-      "UPDATE fairshare_payout_ops SET status=?,item_id=? WHERE id=?",
-    ).run(r!.status, r!.itemId, op.id);
+    const fresh = tx(() => {
+      const fresh = db
+        .prepare("SELECT status,batch_id FROM fairshare_payout_ops WHERE id=?")
+        .get(op.id) as any;
+      if (
+        !fresh ||
+        fresh.batch_id !== op.batch_id ||
+        fresh.status !== op.status
+      )
+        fail("RECONCILIATION_CONFLICT", "Payout changed during provider read");
+      db.prepare(
+        "UPDATE fairshare_payout_ops SET status=?,item_id=? WHERE id=?",
+      ).run(r!.status, r!.itemId, op.id);
+      notePayoutStatus(db, aggregates, op, fresh.status, r!.status, now());
+      return fresh;
+    });
     if (r!.status !== fresh.status)
       app.store.audit("provider", op.workspace_id, "PAYOUT_STATUS_CHANGED", {
         agreementId: op.collaboration_id,
@@ -892,13 +902,18 @@ export function registerPaymentRoutes(
             }
             // PayPal took the whole payment back: it comes out of the split like a full refund
             // with the fee kept, and payouts pause for review.
+            // PayPal's stated amount, never more than is left once refunds still going
+            // through are set aside (they are taken out when they complete).
             const left =
               action.eventType === "PAYMENT.CAPTURE.REVERSED"
-                ? unrefundedCents(
-                    aggregates,
-                    match.workspace_id,
-                    match.collaboration_id,
-                    captureId,
+                ? Math.min(
+                    action.amountCents ?? Number.MAX_SAFE_INTEGER,
+                    unrefundedCents(
+                      aggregates,
+                      match.workspace_id,
+                      match.collaboration_id,
+                      captureId,
+                    ) - inFlightRefundCents(db, captureId),
                   )
                 : 0;
             if (left > 0)

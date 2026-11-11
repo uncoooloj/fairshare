@@ -7,11 +7,13 @@ import type { PaymentProvider } from "./paymentRoutes.js";
 import {
   webhookBelongsOnlyTo,
   pendingWebhookBlocksPayout,
+  pendingWebhookForAgreement,
 } from "./paymentSafety.js";
 import {
   applyCompletedRefundOp,
   capturePayoutState,
   ensureRefundSchema,
+  notePayoutStatus,
   openDisputeCount,
   unrefundedCents,
   UNSETTLED_REFUND_SQL,
@@ -137,10 +139,9 @@ export function registerPaymentRecovery({
     ...(openDisputeCount(db, p.workspaceId, p.collaborationId)
       ? [ResumeBlocker.DISPUTE_OPEN]
       : []),
-    ...(pendingWebhookBlocksPayout(db, {
+    ...(pendingWebhookForAgreement(db, {
       workspace_id: p.workspaceId,
       collaboration_id: p.collaborationId,
-      provider_capture_id: "",
     })
       ? [ResumeBlocker.WEBHOOK_UNRECONCILED]
       : []),
@@ -161,9 +162,10 @@ export function registerPaymentRecovery({
       .read(ctx.p.workspaceId, ctx.p.collaborationId)
       .value.revenue.find((r) => r.providerCaptureId === op.capture_id)
       ?.refunds?.find((r) => r.id === op.provider_refund_id);
-    return applied?.held
-      ? RefundOutcome.PAUSED_FOR_REVIEW
-      : RefundOutcome.REVERSED_BY_SPLIT;
+    // Not recorded on the payment: settled by an earlier pause or reversal instead.
+    return applied && !applied.held
+      ? RefundOutcome.REVERSED_BY_SPLIT
+      : RefundOutcome.PAUSED_FOR_REVIEW;
   };
   app.get(`${base}/recovery`, async (req) => {
     const ctx = access(req, true);
@@ -319,6 +321,14 @@ export function registerPaymentRecovery({
       db.prepare(
         "UPDATE fairshare_payout_ops SET batch_id=?,item_id=?,status=? WHERE id=?",
       ).run(batchId, verified.itemId, verified.status, payoutId);
+      notePayoutStatus(
+        db,
+        aggregates,
+        fresh,
+        fresh.status,
+        verified.status,
+        date(),
+      );
       audit(latest, "PAYOUT_EVIDENCE_LINKED", payoutId, batchId);
       return {
         id: payoutId,

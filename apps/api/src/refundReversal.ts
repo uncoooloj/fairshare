@@ -1,5 +1,6 @@
 import {
   applyCaptureRefund,
+  releaseUndeliveredOverpayment,
   DomainError,
   RefundKind,
   refundedCents,
@@ -112,6 +113,33 @@ export function capturePayoutState(
   return { payoutsStarted: rows.some((r) => !unsent(r)), paidCents };
 }
 
+/** Call inside a transaction whenever a payout's provider status changes. When PayPal finally
+ * did not deliver it, any overpayment a refund recorded against it is released. */
+export function notePayoutStatus(
+  db: Database,
+  aggregates: AggregateStore,
+  op: { capture_id: string; user_id: string },
+  previous: string,
+  next: string,
+  at: string,
+) {
+  if (!UNDELIVERED.includes(next) || UNDELIVERED.includes(previous)) return;
+  const match = db
+    .prepare("SELECT * FROM fairshare_captures WHERE provider_capture_id=?")
+    .get(op.capture_id) as any;
+  if (!match) return;
+  const row = aggregates.read(match.workspace_id, match.collaboration_id);
+  const revenue = row.value.revenue.find(
+    (r) => r.providerCaptureId === op.capture_id,
+  );
+  if (!revenue?.refunds?.length) return;
+  aggregates.updateInsideTransaction(
+    match.workspace_id,
+    match.collaboration_id,
+    row.revision,
+    (c) => releaseUndeliveredOverpayment(c, op.capture_id, op.user_id, at),
+  );
+}
 /** Call inside a transaction. Applies a provider-verified refund to its payment by the
  * payment's stored split, then lines up unsent payout rows with the new amounts. */
 export function applyRefundToCapture(
@@ -125,21 +153,46 @@ export function applyRefundToCapture(
     feeReturnedCents: number;
     at: string;
   },
-): { held: boolean; duplicate: boolean } {
+): { held: boolean; duplicate: boolean; settledByReversal?: boolean } {
   const match = db
     .prepare("SELECT * FROM fairshare_captures WHERE provider_capture_id=?")
     .get(input.captureId) as any;
   if (!match)
     fail("UNKNOWN_CAPTURE", "Refund does not match a recorded payment");
   const row = aggregates.read(match.workspace_id, match.collaboration_id);
+  let { grossCents, feeReturnedCents } = input;
+  const recorded = row.value.revenue.find(
+    (r) => r.providerCaptureId === input.captureId,
+  );
+  // A reversal already took (part of) this money: a refund completing afterwards only takes what
+  // is left, and when nothing is left it is settled by the reversal instead of failing forever.
+  if (
+    recorded?.refunds?.some((r) => r.kind === RefundKind.REVERSAL) &&
+    !recorded.refunds.some((r) => r.id === input.refundId)
+  ) {
+    const done = refundedCents(recorded);
+    const left = recorded.grossCents - done.grossCents;
+    if (left <= 0)
+      return {
+        held: !!row.value.reviewHold,
+        duplicate: false,
+        settledByReversal: true,
+      };
+    grossCents = Math.min(grossCents, left);
+    feeReturnedCents = Math.min(
+      feeReturnedCents,
+      grossCents,
+      recorded.feeCents - done.feeReturnedCents,
+    );
+  }
   const result = applyCaptureRefund(
     row.value,
     {
       refundId: input.refundId,
       captureId: input.captureId,
       kind: input.kind,
-      grossCents: input.grossCents,
-      feeReturnedCents: input.feeReturnedCents,
+      grossCents,
+      feeReturnedCents,
     },
     capturePayoutState(db, input.captureId),
     input.at,
@@ -208,6 +261,18 @@ export function applyCompletedRefundOp(
   return { applied: true, held: outcome.held };
 }
 
+/** Fairshare refunds on a payment still going through, which a reversal must leave for them. */
+export function inFlightRefundCents(db: Database, captureId: string): number {
+  return Number(
+    (
+      db
+        .prepare(
+          `SELECT coalesce(sum(amount),0) AS n FROM fairshare_refund_ops WHERE capture_id=? AND ${UNSETTLED_REFUND_SQL}`,
+        )
+        .get(captureId) as any
+    ).n,
+  );
+}
 /** Gross still unrefunded on a recorded payment. */
 export function unrefundedCents(
   aggregates: AggregateStore,
@@ -257,18 +322,62 @@ export function recordDispute(
       at,
     );
 }
+/** Open PayPal disputes on this agreement: recorded ones, plus any dispute events in the inbox
+ * (pending, or handled before disputes were recorded) about its payments that were never
+ * followed by a RESOLVED event for the same dispute. */
 export function openDisputeCount(
   db: Database,
   workspaceId: string,
   collaborationId: string,
 ): number {
-  return Number(
+  const recorded = db
+    .prepare(
+      "SELECT id,status FROM fairshare_disputes WHERE workspace_id=? AND collaboration_id=?",
+    )
+    .all(workspaceId, collaborationId) as { id: string; status: string }[];
+  const open = new Set(
+    recorded.filter((d) => d.status === DisputeStatus.OPEN).map((d) => d.id),
+  );
+  const resolved = new Set(
+    recorded
+      .filter((d) => d.status === DisputeStatus.RESOLVED)
+      .map((d) => d.id),
+  );
+  const captures = new Set(
     (
       db
         .prepare(
-          "SELECT count(*) AS n FROM fairshare_disputes WHERE workspace_id=? AND collaboration_id=? AND status=?",
+          "SELECT provider_capture_id FROM fairshare_captures WHERE workspace_id=? AND collaboration_id=?",
         )
-        .get(workspaceId, collaborationId, DisputeStatus.OPEN) as any
-    ).n,
+        .all(workspaceId, collaborationId) as any[]
+    ).map((r) => r.provider_capture_id as string),
   );
+  const seen = new Map<string, boolean>();
+  for (const entry of db
+    .prepare("SELECT action FROM fairshare_webhook_inbox ORDER BY rowid")
+    .all() as any[]) {
+    let action: any;
+    try {
+      action = JSON.parse(entry.action);
+    } catch {
+      continue;
+    }
+    if (
+      typeof action?.eventType !== "string" ||
+      !action.eventType.startsWith("CUSTOMER.DISPUTE.")
+    )
+      continue;
+    const ids: string[] = Array.isArray(action.providerIds)
+      ? action.providerIds
+      : action.providerId
+        ? [action.providerId]
+        : [];
+    if (!ids.some((id) => captures.has(id))) continue;
+    const key = action.disputeId ?? `captures:${[...ids].sort().join(",")}`;
+    const isResolved = action.eventType === "CUSTOMER.DISPUTE.RESOLVED";
+    seen.set(key, (seen.get(key) ?? false) || isResolved);
+  }
+  for (const [key, wasResolved] of seen)
+    if (!wasResolved && !resolved.has(key)) open.add(key);
+  return open.size;
 }

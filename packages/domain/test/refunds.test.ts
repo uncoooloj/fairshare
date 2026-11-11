@@ -11,6 +11,7 @@ import {
   allocatedNetCents,
   resumePayouts,
   previewVersion,
+  releaseUndeliveredOverpayment,
   MemberRole,
   RuleOrigin,
   FeePolicy,
@@ -224,17 +225,45 @@ test("a refund reduces what the payment paid back on the advance first, so the a
   assert.equal(r.collaboration.recoupedByAdvance["adv-1"], 1000);
 });
 
-test("a refund on a payment made under a replaced advance pauses for review", () => {
+function newVersion(c: Collaboration, r: Rules): Collaboration {
+  const n = c.versions.length + 1;
+  c = sendForReview(proposeVersion(c, r, "a", at), n, "a", at);
+  for (const id of ["a", "b", "c"]) c = approveVersion(c, n, id, at);
+  return activateVersion(c, n, "a", at);
+}
+
+test("a refund lowers the advance its payment repaid and the advance that count was carried onto", () => {
   let c = pay(active(rules({ advance: advance("adv-1", 2000) })), "CAP1");
-  c = proposeVersion(c, rules({ advance: advance("adv-2", 3000) }), "a", at);
-  c = sendForReview(c, 2, "a", at);
-  for (const id of ["a", "b", "c"]) c = approveVersion(c, 2, id, at);
-  c = activateVersion(c, 2, "a", at);
+  c = newVersion(c, rules({ advance: advance("adv-2", 3000) }));
   assert.equal(c.recoupedByAdvance["adv-2"], 2000);
+  const r = refund(c, "R1", 500);
+  assert.equal(r.held, false);
+  assert.equal(r.collaboration.recoupedByAdvance["adv-1"], 1500);
+  assert.equal(r.collaboration.recoupedByAdvance["adv-2"], 1500);
+});
+
+test("a refund never lowers a later, unrelated advance", () => {
+  let c = pay(active(rules({ advance: advance("A", 2000) })), "P1");
+  c = newVersion(c, rules()); // advance removed
+  c = newVersion(
+    c,
+    rules({ advance: { ...advance("B", 3000), recipientId: "b" } }),
+  );
+  c = pay(c, "P2");
+  assert.deepEqual({ ...c.recoupedByAdvance }, { A: 2000, B: 3000 });
+  const r = refund(c, "R1", 10000, 300, notPaid, "P1");
+  assert.deepEqual({ ...r.collaboration.recoupedByAdvance }, { A: 0, B: 3000 });
+  assert.equal(r.held, false);
+});
+
+test("an older payment without a recorded advance lowers only its own and pauses when rules changed", () => {
+  let c = pay(active(rules({ advance: advance("adv-1", 2000) })), "CAP1");
+  delete c.revenue[0].advanceId; // recorded before payments kept their advance
+  c = newVersion(c, rules({ advance: advance("adv-2", 3000) }));
   const r = refund(c, "R1", 500);
   assert.equal(r.held, true);
   assert.equal(r.collaboration.recoupedByAdvance["adv-1"], 1500);
-  assert.equal(r.collaboration.recoupedByAdvance["adv-2"], 1500);
+  assert.equal(r.collaboration.recoupedByAdvance["adv-2"], 2000);
 });
 
 test("organizer-covers-fees: refunds come off gross shares and only a returned fee goes back to the organizer", () => {
@@ -421,4 +450,24 @@ test("refunding a payment that settled an overpayment makes it owed again", () =
   assert.equal(r.refund.shares[1].offsetRestoredCents, 1200);
   assert.deepEqual({ ...r.collaboration.owedBack }, { b: 2910 });
   assert.deepEqual(totals(r.collaboration, "CAP2"), { a: 0, b: 0, c: 0 });
+});
+
+test("a payout PayPal never delivered releases the overpayment it caused, once; shortfalls stay owed", () => {
+  const c = pay(active(), "CAP1");
+  const held = refund(c, "R1", 10000, 0, {
+    payoutsStarted: true,
+    paidCents: { a: 4850, b: 2910 },
+  }).collaboration;
+  // a: 4850 paid + 150 fee shortfall; b: 2910 + 90; c: 60.
+  assert.deepEqual({ ...held.owedBack }, { a: 5000, b: 3000, c: 60 });
+  let next = resumePayouts(held, { offsetFromFuturePayouts: true }, "a", at);
+  next = releaseUndeliveredOverpayment(next, "CAP1", "b", at);
+  assert.deepEqual({ ...next.owedBack }, { a: 5000, b: 90, c: 60 });
+  assert.equal(next.offsetOwedBack, true);
+  assert.deepEqual(releaseUndeliveredOverpayment(next, "CAP1", "b", at), next);
+  // Nothing was overpaid to c, so nothing is released.
+  assert.deepEqual(
+    { ...releaseUndeliveredOverpayment(next, "CAP1", "c", at).owedBack },
+    { a: 5000, b: 90, c: 60 },
+  );
 });
