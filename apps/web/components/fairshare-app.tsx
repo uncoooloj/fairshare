@@ -1,9 +1,17 @@
 "use client";
+import { AgreementPeople } from "./agreement-people";
+import {
+  AgreementInvitation,
+  AgreementInvitationPreview,
+  AGREEMENT_INVITE_PREFIX,
+} from "./agreement-invitation";
+import { PostApprovalPayout } from "./post-approval-payout";
+
 import { OverviewDashboard } from "./overview-dashboard";
 import { AgreementAllocations } from "./agreement-allocations";
 import { allocationTrace } from "../lib/allocation-trace";
+import { NotificationPanel } from "./notification-panel";
 import { useEmailDelivery } from "../lib/email-capability";
-import { WorkspaceNameForm } from "./workspace-name-form";
 import {
   useDisplayPreferences,
   NotificationsSettings,
@@ -13,10 +21,9 @@ import { ProfileContact } from "./profile-contact";
 import { PaymentAccountsSettings } from "./payment-account-settings";
 import { ActivityLogSettings } from "./activity-log-settings";
 import { formatDate } from "../lib/preferences";
-import { LocalOcrChoice } from "./local-ocr-choice";
 import { AgreementInvoices } from "./agreement-invoices";
+import { ReviewDiscussion } from "./review-discussion";
 import { SandboxCheckoutForm } from "./sandbox-checkout-form";
-import { ReviewDiscussion, ReviewReminder } from "./review-discussion";
 import { RevenueRules } from "./revenue-rules";
 import {
   Logo,
@@ -69,6 +76,10 @@ import { MfaSettings } from "./mfa-settings";
 import { ProfileForm } from "./profile-form";
 import { recoverSourceDocument } from "../lib/source-recovery";
 import { createSandboxCheckout } from "../lib/checkout-retry";
+import {
+  agreementIdentityKey,
+  findAgreementByIdentity,
+} from "../lib/agreement-identity";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 const PaymentGrid = dynamic(
@@ -82,7 +93,6 @@ export default function FairshareApp() {
   const router = useRouter();
   const emailDelivery = useEmailDelivery();
   const [settingsTab, setSettingsTab] = useState("Profile");
-  const [useLocalOcr, setUseLocalOcr] = useState(false);
   const [user, setUser] = useState<User | null>(null),
     [ready, setReady] = useState(false),
     [busy, setBusy] = useState(false),
@@ -109,6 +119,7 @@ export default function FairshareApp() {
     [preview, setPreview] = useState<any>(null),
     [breakdown, setBreakdown] = useState<Revenue | null>(null),
     [inviteLink, setInviteLink] = useState(""),
+    [approvedForPayout, setApprovedForPayout] = useState(""),
     [flowToken, setFlowToken] = useState(""),
     [flowKind, setFlowKind] = useState("");
   const [draftDirty, setDraftDirty] = useState(false);
@@ -178,8 +189,14 @@ export default function FairshareApp() {
       (v) => v.id === selected.value.activeVersionId,
     );
   const workspaceRole = workspaces.find((item) => item.id === workspace)?.role;
-  const canCreateAgreement =
-    workspaceRole === "OWNER" || workspaceRole === "MEMBER";
+  const creationWorkspace =
+    workspaces.find(
+      (item) =>
+        item.id === workspace &&
+        (item.role === "OWNER" || item.role === "MEMBER"),
+    ) ??
+    workspaces.find((item) => item.role === "OWNER" || item.role === "MEMBER");
+  const canCreateAgreement = Boolean(creationWorkspace);
   const isInvitationFlow = Boolean(flowToken && flowKind === "/invitation");
   const needsWorkspace = !workspace && section !== Section.Settings;
   const organizer =
@@ -216,10 +233,29 @@ export default function FairshareApp() {
     }
   }
   async function acceptInvitation(token: string) {
-    const result = await api("invitations/accept", "POST", { token });
+    const scoped = token.startsWith(AGREEMENT_INVITE_PREFIX);
+    const result = await api(
+      scoped ? "agreement-invitations/accept" : "invitations/accept",
+      "POST",
+      { token: scoped ? token.slice(AGREEMENT_INVITE_PREFIX.length) : token },
+    );
     // Adopt the committed membership immediately. Do not make a consumed
     // one-use invitation look unsuccessful if a later workspace fetch fails.
-
+    openRequest.current++;
+    setSelected(null);
+    setPayments([]);
+    setPreview(null);
+    setBreakdown(null);
+    setEditing(false);
+    setSource("");
+    setDocumentId("");
+    setExtraction(null);
+    setDraftDirty(false);
+    rulesDirty.current = false;
+    setCreating(false);
+    setAgreements([]);
+    setMembers([]);
+    setPayouts([]);
     setWorkspaces((current) => [
       ...current.filter((item) => item.id !== result.workspace.id),
       result.workspace,
@@ -228,9 +264,26 @@ export default function FairshareApp() {
     setSection(Section.Agreements);
     setFlowToken("");
     router.replace("/app");
-    setNotice(
-      "Workspace joined. The organizer must add you to the agreement before you can review and approve its rules.",
-    );
+    if (result.agreement) {
+      setAgreements([result.agreement]);
+      setSelected(result.agreement);
+      setTab(AgreementTab.People);
+      setNotice(
+        "You joined this agreement. Joining has not approved any rules or moved money.",
+      );
+      if (workspace === result.workspace.id) {
+        try {
+          await loadWorkspace(result.workspace.id);
+        } catch {
+          setNotice(
+            "You joined this agreement. Refresh to see all your agreements.",
+          );
+        }
+      }
+    } else
+      setNotice(
+        "Invitation accepted. The organizer still needs to add you to an agreement before you can review its rules.",
+      );
   }
   async function loadWorkspace(id: string) {
     if (!id || id !== currentWorkspace.current) return;
@@ -238,19 +291,29 @@ export default function FairshareApp() {
     const isCurrent = () =>
       request === workspaceRequest.current && currentWorkspace.current === id;
     try {
-      const [r, m] = await Promise.all([
-        api(`${workspaceBase(id)}/collaborations`),
+      const [groups, m] = await Promise.all([
+        api("workspaces"),
         api(`${workspaceBase(id)}/members`),
       ]);
       if (!isCurrent()) return;
-      setAgreements(r.collaborations);
+      const lists = await Promise.all(
+        groups.workspaces.map((group: any) =>
+          api(`${workspaceBase(group.id)}/collaborations`),
+        ),
+      );
+      if (!isCurrent()) return;
+      const visibleAgreements: Agreement[] = lists.flatMap(
+        (list) => list.collaborations,
+      );
+      setWorkspaces(groups.workspaces);
+      setAgreements(visibleAgreements);
       setMembers(m.members);
       setPayouts([]);
       setPayoutsComplete(false);
       const all = await Promise.all(
-        r.collaborations.map(async (a: Agreement) => {
+        visibleAgreements.map(async (a: Agreement) => {
           const p = await api(
-            `${workspaceBase(id)}/collaborations/${a.id}/payouts`,
+            `${workspaceBase(a.workspaceId)}/collaborations/${a.id}/payouts`,
           );
           return p.payouts.map((v: any) => ({ ...v, agreement: a }));
         }),
@@ -266,7 +329,8 @@ export default function FairshareApp() {
     }
   }
   async function openAgreement(a: Agreement) {
-    if (a.workspaceId !== currentWorkspace.current) return;
+    if (a.workspaceId !== currentWorkspace.current)
+      commitWorkspace(a.workspaceId);
     const request = ++openRequest.current;
     const root = `${workspaceBase(a.workspaceId)}/collaborations/${a.id}`;
     try {
@@ -318,7 +382,7 @@ export default function FairshareApp() {
     try {
       const result = await api("agreements/intake", "POST", {
         ...input,
-        ...(workspace ? { workspaceId: workspace } : {}),
+        ...(creationWorkspace ? { workspaceId: creationWorkspace.id } : {}),
       });
       // Adopt the committed result before any optional refresh. A lost response
       // is safe to retry with the intake component's original request ID.
@@ -449,13 +513,14 @@ export default function FairshareApp() {
     if (workspace && user) run(() => loadWorkspace(workspace));
   }, [workspace]);
   function navigate(s: Section) {
-    if (!mayLeaveDraft()) return;
+    if (!mayLeaveDraft()) return false;
     openRequest.current++;
     setSection(s);
     setSelected(null);
     setCreating(false);
     setError("");
     setNotice("");
+    return true;
   }
   function dismissAccessFlow() {
     setFlowToken("");
@@ -477,7 +542,13 @@ export default function FairshareApp() {
       )
         return;
       setSelected(a);
-      await loadWorkspace(currentWorkspace.current);
+      try {
+        await loadWorkspace(currentWorkspace.current);
+      } catch {
+        setNotice(
+          "Agreement updated. Refresh to reload the rest of your workspace.",
+        );
+      }
     } catch (cause) {
       if (
         workspaceRequestId !== workspaceRequest.current ||
@@ -503,7 +574,7 @@ export default function FairshareApp() {
     return (
       <main className="boot" aria-live="polite">
         <Logo />
-        <p>Opening your workspace…</p>
+        <p>Opening your agreements…</p>
       </main>
     );
   if (!user)
@@ -564,26 +635,57 @@ export default function FairshareApp() {
       </aside>
       <main className="main" id="main-content" tabIndex={-1}>
         <div className="workspace-bar">
-          <span>Workspace</span>
-          {workspaces.length > 1 ? (
+          <span>Agreement</span>
+          {agreements.length ? (
             <select
-              aria-label="Workspace"
-              value={workspace}
+              aria-label="Open agreement"
+              value={selected ? agreementIdentityKey(selected) : ""}
+              disabled={busy}
               onChange={(e) => {
-                if (!mayLeaveDraft()) return;
-                commitWorkspace(e.target.value);
+                const agreement = findAgreementByIdentity(
+                  agreements,
+                  e.target.value,
+                );
+                if (!agreement || !mayLeaveDraft()) return;
+                void run(() => openAgreement(agreement));
               }}
             >
-              {workspaces.map((w) => (
-                <option key={w.id} value={w.id}>
-                  {w.name}
+              <option value="" disabled>
+                Choose an agreement
+              </option>
+              {agreements.map((agreement) => (
+                <option
+                  key={agreementIdentityKey(agreement)}
+                  value={agreementIdentityKey(agreement)}
+                >
+                  {agreement.value.name}
                 </option>
               ))}
             </select>
           ) : (
-            <strong>{workspaces[0]?.name || "No workspace yet"}</strong>
+            <strong>Your agreements</strong>
           )}
           <span className="spacer" />
+          <NotificationPanel
+            key={`${user.id}:${workspace}`}
+            agreements={agreements.map(({ workspaceId, id }) => ({
+              workspaceId,
+              id,
+            }))}
+            onOpenAgreement={(workspaceId, id) => {
+              const agreement = agreements.find(
+                (item) => item.workspaceId === workspaceId && item.id === id,
+              );
+              if (!agreement || !mayLeaveDraft()) return false;
+              void run(() => openAgreement(agreement));
+              return true;
+            }}
+            onPreferences={() => {
+              if (!navigate(Section.Settings)) return false;
+              setSettingsTab("Notifications");
+              return true;
+            }}
+          />
           <Button variant="quiet" disabled={busy} onClick={() => run(refresh)}>
             ↻ Refresh
           </Button>
@@ -608,32 +710,44 @@ export default function FairshareApp() {
             Working…
           </div>
         )}
-        {flowToken && (
-          <AccessPrompt
-            kind={flowKind === "/verify-email" ? "verification" : "invitation"}
+        {flowToken && flowToken.startsWith(AGREEMENT_INVITE_PREFIX) ? (
+          <AgreementInvitationPreview
             email={user.email}
+            token={flowToken.slice(AGREEMENT_INVITE_PREFIX.length)}
             busy={busy}
-            onCancel={isInvitationFlow ? dismissAccessFlow : undefined}
-            onContinue={() =>
-              run(async () => {
-                if (flowKind === "/verify-email") {
-                  const r = await api("auth/verification/confirm", "POST", {
-                    token: flowToken,
-                  });
-                  setUser(r.user);
-                  setNotice(
-                    r.verificationMode === "DEMO_SIMULATION"
-                      ? "Demo verification completed. This does not prove email ownership."
-                      : "Email verified.",
-                  );
-                } else {
-                  await acceptInvitation(flowToken);
-                }
-                setFlowToken("");
-                router.replace("/app");
-              })
-            }
+            onCancel={dismissAccessFlow}
+            onAccept={() => run(() => acceptInvitation(flowToken))}
           />
+        ) : (
+          flowToken && (
+            <AccessPrompt
+              kind={
+                flowKind === "/verify-email" ? "verification" : "invitation"
+              }
+              email={user.email}
+              busy={busy}
+              onCancel={isInvitationFlow ? dismissAccessFlow : undefined}
+              onContinue={() =>
+                run(async () => {
+                  if (flowKind === "/verify-email") {
+                    const r = await api("auth/verification/confirm", "POST", {
+                      token: flowToken,
+                    });
+                    setUser(r.user);
+                    setNotice(
+                      r.verificationMode === "DEMO_SIMULATION"
+                        ? "Demo verification completed. This does not prove email ownership."
+                        : "Email verified.",
+                    );
+                  } else {
+                    await acceptInvitation(flowToken);
+                  }
+                  setFlowToken("");
+                  router.replace("/app");
+                })
+              }
+            />
+          )
         )}
         {isInvitationFlow ? null : needsWorkspace ? (
           <>
@@ -650,8 +764,7 @@ export default function FairshareApp() {
               onBusyChange={setBusy}
             />
             <p className="muted">
-              Already invited? Open Settings to accept your workspace
-              invitation.
+              Already invited? Open Settings to accept your invitation.
             </p>
           </>
         ) : (
@@ -735,9 +848,10 @@ export default function FairshareApp() {
                     invitation={
                       workspaces.find((w) => w.id === workspace)?.role ===
                       "OWNER" ? (
-                        <PrivateInvitation
-                          key={workspace}
-                          workspace={workspace}
+                        <AgreementInvitation
+                          key={selected.id}
+                          base={base}
+                          name={selected.value.name}
                         />
                       ) : undefined
                     }
@@ -909,7 +1023,10 @@ export default function FairshareApp() {
                               <p>
                                 {
                                   payouts.filter(
-                                    (p) => p.agreement.id === selected.id,
+                                    (p) =>
+                                      p.agreement.workspaceId ===
+                                        selected.workspaceId &&
+                                      p.agreement.id === selected.id,
                                   ).length
                                 }{" "}
                                 payout items recorded
@@ -952,54 +1069,16 @@ export default function FairshareApp() {
                             title="People in this agreement"
                             description="Add everyone before drafting rules. Each person approves their own account’s decision."
                           />
-                          <table>
-                            <thead>
-                              <tr>
-                                <th>Name</th>
-                                <th>Role</th>
-                                <th>Latest approval</th>
-                                <th>Review reminder</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {selected.value.members.map((m) => (
-                                <tr key={m.userId}>
-                                  <td>
-                                    <span className="avatar small">
-                                      {m.displayName[0]}
-                                    </span>
-                                    {m.displayName}
-                                    {m.userId === user.id ? " (you)" : ""}
-                                  </td>
-                                  <td>{title(m.role)}</td>
-                                  <td>
-                                    <Badge
-                                      value={
-                                        latest?.approvals[m.userId]
-                                          ? "APPROVED"
-                                          : "PENDING"
-                                      }
-                                    />
-                                  </td>
-                                  <td>
-                                    {latest && (
-                                      <ReviewReminder
-                                        key={`${selected.id}:${latest.id}:${m.userId}`}
-                                        base={base}
-                                        agreement={selected}
-                                        version={latest}
-                                        userId={user.id}
-                                        recipientId={m.userId}
-                                      />
-                                    )}
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
+                          <AgreementPeople
+                            key={selected.id}
+                            agreement={selected}
+                            version={latest}
+                            userId={user.id}
+                            base={base}
+                          />
                           {organizer && !selected.value.versions.length && (
                             <section className="section">
-                              <h3>Add an existing workspace member</h3>
+                              <h3>Add someone you already work with</h3>
                               {members
                                 .filter(
                                   (m) =>
@@ -1027,14 +1106,18 @@ export default function FairshareApp() {
                                 ))}
                               {workspaces.find((w) => w.id === workspace)
                                 ?.role === "OWNER" && (
-                                <PrivateInvitation
-                                  key={workspace}
-                                  workspace={workspace}
+                                <AgreementInvitation
+                                  key={selected.id}
+                                  base={base}
+                                  name={selected.value.name}
                                 />
                               )}
                             </section>
                           )}
-                          <section className="section">
+                          <section
+                            className="section"
+                            id="agreement-payout-destination"
+                          >
                             <h3>Your payout destination</h3>
                             <p className="muted">
                               Only you can set your destination. This is a
@@ -1119,11 +1202,23 @@ export default function FairshareApp() {
                                       `/versions/${latest.id}/${action}`,
                                       payload,
                                     );
+                                    if (action === "approve")
+                                      setApprovedForPayout(selected.id);
                                   } finally {
                                     setBusy(false);
                                   }
                                 }}
                               />
+                              {approvedForPayout === selected.id && (
+                                <PostApprovalPayout
+                                  base={base}
+                                  onDismiss={() => setApprovedForPayout("")}
+                                  onSetup={() => {
+                                    setApprovedForPayout("");
+                                    changeAgreementTab(AgreementTab.People);
+                                  }}
+                                />
+                              )}
                               <ReviewDiscussion
                                 key={`${selected.id}:${latest.id}`}
                                 base={base}
@@ -1196,7 +1291,7 @@ export default function FairshareApp() {
                                     />
                                     <Field
                                       label="Agreement text"
-                                      hint="Use synthetic or authorized documents only. Text is stored privately in this workspace."
+                                      hint="Use synthetic or authorized documents only. Your document stays private."
                                     >
                                       <textarea
                                         rows={8}
@@ -1219,12 +1314,6 @@ export default function FairshareApp() {
                                         }}
                                       />
                                     </Field>
-                                    <LocalOcrChoice
-                                      base={base}
-                                      value={useLocalOcr}
-                                      onChange={setUseLocalOcr}
-                                      disabled={busy}
-                                    />
                                     <div className="actions">
                                       <label className="button secondary">
                                         Choose PDF, DOCX or text file
@@ -1283,9 +1372,6 @@ export default function FairshareApp() {
                                                       ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                                                       : "application/pdf",
                                                     base64: data,
-                                                    ...(!isDocx && useLocalOcr
-                                                      ? { useLocalOcr: true }
-                                                      : {}),
                                                   },
                                                 );
                                                 const saved = await api(
@@ -1294,7 +1380,7 @@ export default function FairshareApp() {
                                                 setSource(saved.text);
                                                 setDocumentId(doc.documentId);
                                                 setNotice(
-                                                  "Document text extracted locally. Review every amount and name against the saved original before AI processing; OCR can misread characters.",
+                                                  "Your document is ready. Check the names and amounts against the original before sharing the terms.",
                                                 );
                                               } else {
                                                 if (
@@ -1445,7 +1531,7 @@ export default function FairshareApp() {
                           <Heading
                             small
                             title="Incoming payments"
-                            description="Confirmed provider data is used to calculate each allocation. Browser returns are not proof of payment."
+                            description="Payments appear here when you create them, while they await buyer approval, and after PayPal confirms them. Shares are calculated only after confirmation."
                           />
                           <AgreementInvoices
                             key={selected.id}
@@ -1567,8 +1653,9 @@ export default function FairshareApp() {
                           </table>
                           {!payments.length && (
                             <Empty title="No incoming payments yet">
-                              An active, unanimously approved version and a
-                              configured sandbox provider are required.
+                              Once everyone approves your agreement, activate it
+                              and create an invoice to receive your first
+                              payment.
                             </Empty>
                           )}
                           {organizer && (
@@ -1672,6 +1759,7 @@ export default function FairshareApp() {
                   rows={payouts.map((p) => ({
                     id: p.id,
                     agreementId: p.agreement.id,
+                    agreementKey: agreementIdentityKey(p.agreement),
                     agreementName: p.agreement.value.name,
                     recipientName:
                       p.agreement.value.members.find(
@@ -1688,8 +1776,8 @@ export default function FairshareApp() {
                       p.amount,
                     ),
                   }))}
-                  onOpenAgreement={(id) => {
-                    const a = agreements.find((a) => a.id === id);
+                  onOpenAgreement={(key) => {
+                    const a = findAgreementByIdentity(agreements, key);
                     if (a) run(() => openAgreement(a));
                   }}
                 />
@@ -1706,7 +1794,7 @@ export default function FairshareApp() {
                             )?.role === "ORGANIZER" && p.batch_id,
                         )) {
                           await api(
-                            `${workspaceBase(workspace)}/collaborations/${p.agreement.id}/payouts/${p.id}/reconcile`,
+                            `${workspaceBase(p.agreement.workspaceId)}/collaborations/${p.agreement.id}/payouts/${p.id}/reconcile`,
                             "POST",
                             {},
                           );
@@ -1715,7 +1803,7 @@ export default function FairshareApp() {
                       })
                     }
                   >
-                    Refresh provider statuses
+                    Refresh payment statuses
                   </Button>
                 )}
               </>
@@ -1746,18 +1834,29 @@ export default function FairshareApp() {
                 </nav>
                 {settingsTab === "Payment accounts" &&
                   (workspace ? (
-                    <PaymentAccountsSettings
-                      key={workspace}
-                      workspace={workspace}
-                      canEdit={
-                        workspaces.find((w) => w.id === workspace)?.role !==
-                        "VIEWER"
-                      }
-                    />
+                    <>
+                      <p className="muted">
+                        These payout details apply to{" "}
+                        {agreements
+                          .filter((item) => item.workspaceId === workspace)
+                          .map((item) => item.value.name)
+                          .join(", ") || "agreements shared with this team"}
+                        . To manage another agreement, open it using the
+                        agreement picker above, then return here.
+                      </p>
+                      <PaymentAccountsSettings
+                        key={workspace}
+                        workspace={workspace}
+                        canEdit={
+                          workspaces.find((w) => w.id === workspace)?.role !==
+                          "VIEWER"
+                        }
+                      />
+                    </>
                   ) : (
                     <Empty title="Start an agreement first">
-                      Payment accounts are scoped to a workspace. Create your
-                      first agreement to set up a payout destination.
+                      Upload your first agreement to set up a payout
+                      destination.
                     </Empty>
                   ))}
                 {settingsTab === "Notifications" && (
@@ -1846,48 +1945,13 @@ export default function FairshareApp() {
                         }
                       />
                     </section>
-                    {workspaces.find((w) => w.id === workspace)?.role ===
-                      "OWNER" && (
-                      <section className="panel">
-                        <h2>Workspace</h2>
-                        <p className="muted">
-                          Rename your workspace without changing its agreements
-                          or access.
-                        </p>
-                        <WorkspaceNameForm
-                          key={workspace}
-                          name={
-                            workspaces.find((w) => w.id === workspace)?.name ??
-                            ""
-                          }
-                          busy={busy}
-                          onSave={(name) =>
-                            run(async () => {
-                              const result = await api(
-                                `${workspaceBase(workspace)}/name`,
-                                "POST",
-                                { name },
-                              );
-                              setWorkspaces((current) =>
-                                current.map((item) =>
-                                  item.id === workspace
-                                    ? { ...item, name: result.workspace.name }
-                                    : item,
-                                ),
-                              );
-                              setNotice("Workspace name updated.");
-                            })
-                          }
-                        />
-                      </section>
-                    )}
                     <MfaSettings
                       onSignOut={() => {
                         clearSession();
                       }}
                     />
                     <section className="panel">
-                      <h2>Workspace invitations</h2>
+                      <h2>Other invitations</h2>
                       {workspaces.find((w) => w.id === workspace)?.role ===
                         "OWNER" && (
                         <PrivateInvitation
@@ -1896,8 +1960,7 @@ export default function FairshareApp() {
                         />
                       )}
                       <p className="muted">
-                        Join a workspace using a private invitation shared with
-                        your account.
+                        Accept a private invitation shared with your account.
                       </p>
                       <SimpleForm
                         label="Invitation token (if shared manually)"
@@ -1951,10 +2014,10 @@ function PrivateInvitation({ workspace }: { workspace: string }) {
     <section className="section">
       <h3>Invite a collaborator</h3>
       <p className="muted">
-        Anyone holding this private link can join this workspace once as a
-        member after signing in. Share it only with your intended collaborator.
-        No email is sent, and joining does not approve an agreement or move
-        money.
+        Anyone holding this private link can join your team once as a member
+        after signing in. Share it only with your intended collaborator. No
+        email is sent. The organizer must still add them to an agreement;
+        joining does not approve rules or move money.
       </p>
       {!invitation ? (
         <Button
