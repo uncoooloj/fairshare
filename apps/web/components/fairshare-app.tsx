@@ -1,4 +1,5 @@
 "use client";
+import { AgreementPeople } from "./agreement-people";
 import {
   AgreementInvitation,
   AgreementInvitationPreview,
@@ -22,7 +23,7 @@ import { PaymentAccountsSettings } from "./payment-account-settings";
 import { ActivityLogSettings } from "./activity-log-settings";
 import { formatDate } from "../lib/preferences";
 import { AgreementInvoices } from "./agreement-invoices";
-import { ReviewDiscussion, ReviewReminder } from "./review-discussion";
+import { ReviewDiscussion } from "./review-discussion";
 import { RevenueRules } from "./revenue-rules";
 import {
   Logo,
@@ -896,51 +897,13 @@ export default function FairshareApp() {
                             title="People in this agreement"
                             description="Add everyone before drafting rules. Each person approves their own account’s decision."
                           />
-                          <table>
-                            <thead>
-                              <tr>
-                                <th>Name</th>
-                                <th>Role</th>
-                                <th>Latest approval</th>
-                                <th>Review reminder</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {selected.value.members.map((m) => (
-                                <tr key={m.userId}>
-                                  <td>
-                                    <span className="avatar small">
-                                      {m.displayName[0]}
-                                    </span>
-                                    {m.displayName}
-                                    {m.userId === user.id ? " (you)" : ""}
-                                  </td>
-                                  <td>{title(m.role)}</td>
-                                  <td>
-                                    <Badge
-                                      value={
-                                        latest?.approvals[m.userId]
-                                          ? "APPROVED"
-                                          : "PENDING"
-                                      }
-                                    />
-                                  </td>
-                                  <td>
-                                    {latest && (
-                                      <ReviewReminder
-                                        key={`${selected.id}:${latest.id}:${m.userId}`}
-                                        base={base}
-                                        agreement={selected}
-                                        version={latest}
-                                        userId={user.id}
-                                        recipientId={m.userId}
-                                      />
-                                    )}
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
+                          <AgreementPeople
+                            key={selected.id}
+                            agreement={selected}
+                            version={latest}
+                            userId={user.id}
+                            base={base}
+                          />
                           {organizer && !selected.value.versions.length && (
                             <section className="section">
                               <h3>Add an existing workspace member</h3>
@@ -979,7 +942,10 @@ export default function FairshareApp() {
                               )}
                             </section>
                           )}
-                          <section className="section">
+                          <section
+                            className="section"
+                            id="agreement-payout-destination"
+                          >
                             <h3>Your payout destination</h3>
                             <p className="muted">
                               Only you can set your destination. This is a
