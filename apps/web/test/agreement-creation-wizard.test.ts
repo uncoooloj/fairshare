@@ -1129,7 +1129,24 @@ test("a long source document widens the composed Check frame and stacks before n
   assert.match(html, /class="wc-reader"/);
   assert.match(
     wizardCss,
-    /\.wiz-scroll:has\(\.wc-reader\)[\s\S]*?padding-left:[\s\S]*?\.wiz-scroll:has\(\.wc-reader\) > \.wiz-stepper,[\s\S]*?max-width: 1280px/,
+    /\.wiz-scroll:has\(\.wc-reader\)[\s\S]*?padding-left:/,
+  );
+  assert.match(
+    wizardCss,
+    /\.wiz-scroll:has\(\.wc-reader\) > \.wiz-main\s*\{\s*max-width: 1280px;/,
+  );
+  assert.match(wizardCss, /\.wiz-stepper\s*\{\s*max-width: 560px;/);
+  assert.doesNotMatch(
+    wizardCss,
+    /\.wiz-scroll:has\(\.wc-reader\) > \.wiz-stepper/,
+  );
+  assert.match(
+    wizardCss,
+    /\.wiz-main:has\(\.wiz-send\)\s*\{\s*max-width: 886px;/,
+  );
+  assert.doesNotMatch(
+    wizardCss,
+    /\.wiz-scroll:has\(\.wiz-send\) \.wiz-stepper/,
   );
   assert.match(
     wizardCheckCss,
