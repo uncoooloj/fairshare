@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { api, type Agreement } from "../lib/model";
 import { recoverSourceDocument } from "../lib/source-recovery";
+import { DocumentCitationView } from "./document-citation-view";
 import { Button, Empty } from "./ui";
 interface DocumentRecord {
   hasOriginal?: boolean;
@@ -114,9 +115,8 @@ export function AgreementDocument({
         </div>
       </div>
       <p className="document-disclaimer">
-        This view shows extracted text, not a signature verification. Original
-        downloads are available for new PDF and DOCX uploads. A newer upload
-        does not replace a version’s source.
+        Read the saved agreement text below, or download the original. Each
+        version keeps the document it was created from.
       </p>
       {loading ? (
         <div className="panel" role="status">
@@ -138,64 +138,28 @@ export function AgreementDocument({
           here.
         </Empty>
       ) : (
-        <div className="document-layout">
-          <article className="panel source-paper">
-            <span className="eyebrow">
-              {document.provenance?.ocr
-                ? "Scanned document · check against the original"
-                : document.provenance?.inputType === "PDF"
-                  ? "Agreement text"
-                  : document.provenance?.inputType === "DOCX"
-                    ? "Agreement text"
-                    : "Agreement text"}
-            </span>
-            <pre>{document.text}</pre>
-          </article>
-          <aside className="panel document-provenance">
-            <h3>Source details</h3>
-            <dl>
-              <dt>Used by</dt>
-              <dd>
-                {version
-                  ? `Version ${version.id}`
-                  : "Latest saved draft source"}
-              </dd>
-              <dt>Document ID</dt>
-              <dd>
-                <code>{document.documentId}</code>
-              </dd>
-              {document.sourceHash && (
-                <>
-                  <dt>Source hash</dt>
-                  <dd>
-                    <code>{document.sourceHash}</code>
-                  </dd>
-                </>
-              )}
-              {document.provenance?.pages && (
-                <>
-                  <dt>Pages read</dt>
-                  <dd>
-                    {Array.isArray(document.provenance.pages)
-                      ? document.provenance.pages.length
-                      : document.provenance.pages}
-                  </dd>
-                </>
-              )}
-            </dl>
-            {version && (
+        <>
+          <p className="muted">
+            {document.provenance?.ocr
+              ? "Scanned document · check against the original"
+              : "Saved agreement text"}
+            {document.provenance?.pages && (
               <>
-                <h3>Referenced clause</h3>
-                <p>{version.rules.source.clause}</p>
-                <blockquote>{version.rules.source.excerpt}</blockquote>
+                {" "}
+                ·{" "}
+                {Array.isArray(document.provenance.pages)
+                  ? document.provenance.pages.length
+                  : document.provenance.pages}{" "}
+                pages read
               </>
             )}
-            <small>
-              PDF text reading order can differ from its visual layout. Compare
-              the wording before approving rules.
-            </small>
-          </aside>
-        </div>
+          </p>
+          <DocumentCitationView
+            key={`${document.documentId}:${version?.id ?? "draft"}`}
+            document={document}
+            version={version}
+          />
+        </>
       )}
     </section>
   );

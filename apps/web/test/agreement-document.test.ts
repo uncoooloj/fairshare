@@ -16,7 +16,13 @@ test("document view uses version-pinned API source and clears stale content", ()
   assert.match(source, /stale\s*=\s*true/);
 });
 test("document content is rendered as plain text and download accurately labelled", () => {
-  assert.match(source, /<pre>\{document.text\}<\/pre>/);
+  assert.match(source, /<DocumentCitationView/);
+  const renderer = readFileSync(
+    new URL("../components/source-rule-context.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(renderer, /\{segment.text\}/);
+  assert.doesNotMatch(renderer, /dangerouslySetInnerHTML|innerHTML/);
   assert.doesNotMatch(
     source,
     /dangerouslySetInnerHTML|innerHTML|application\/pdf/,
@@ -24,5 +30,8 @@ test("document content is rendered as plain text and download accurately labelle
   assert.match(source, /Download extracted text/);
   assert.match(source, /text\/plain;charset=utf-8/);
   assert.match(source, /URL.revokeObjectURL/);
-  assert.match(source, /not a signature verification/);
+  assert.match(
+    source,
+    /Each\s+version\s+keeps\s+the\s+document\s+it\s+was\s+created\s+from/,
+  );
 });
