@@ -1,0 +1,31 @@
+{
+  "result": {
+    "id": "chatcmpl-ec02bff5-8fbb-469e-ba33-d952f0fe15d6",
+    "object": "chat.completion",
+    "created": 1794392265,
+    "model": "@cf/deepseek-ai/deepseek-v4.1-flash-1017",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "{\"suggestedTitle\":\"MERCHANDISE COLLECTIVE AGREEMENT\",\"facts\":[{\"kind\":\"SHARE\",\"subject\":\"Omar Haddad\",\"rawValue\":\"40%\",\"quote\":\"Omar Haddad receives 40% of Net Revenue.\",\"recoupedBeforeSplit\":null,\"feePolicy\":null,\"refundStep\":null,\"termBoundary\":null},{\"kind\":\"SHARE\",\"subject\":\"Grace Liu\",\"rawValue\":\"35%\",\"quote\":\"Grace Liu receives 35% of Net Revenue.\",\"recoupedBeforeSplit\":null,\"feePolicy\":null,\"refundStep\":null,\"termBoundary\":null},{\"kind\":\"SHARE\",\"subject\":\"Nina Petrov\",\"rawValue\":\"25%\",\"quote\":\"Nina Petrov receives 25% of Net Revenue.\",\"recoupedBeforeSplit\":null,\"feePolicy\":null,\"refundStep\":null,\"termBoundary\":null},{\"kind\":\"FEES\",\"subject\":\"Payment processing fees and marketplace fees\",\"rawValue\":\"deducted from Gross Sales before the split\",\"quote\":\"Payment processing fees and marketplace fees are deducted from Gross Sales before the split.\",\"recoupedBeforeSplit\":null,\"feePolicy\":\"BEFORE_SPLIT\",\"refundStep\":null,\"termBoundary\":null},{\"kind\":\"REFUNDS\",\"subject\":\"Any refunds, chargebacks or credits issued to customers\",\"rawValue\":\"deducted from future Net Revenue\",\"quote\":\"Any refunds, chargebacks or credits issued to customers shall be deducted from future Net Revenue.\",\"recoupedBeforeSplit\":null,\"feePolicy\":null,\"refundStep\":\"BEFORE_SPLIT\",\"termBoundary\":null},{\"kind\":\"TERM\",\"subject\":\"July 1, 2026\",\"rawValue\":\"July 1, 2026\",\"quote\":\"This Agreement takes effect on July 1, 2026 and ends on June 30, 2028.\",\"recoupedBeforeSplit\":null,\"feePolicy\":null,\"refundStep\":null,\"termBoundary\":\"START\"},{\"kind\":\"TERM\",\"subject\":\"June 30, 2028\",\"rawValue\":\"June 30, 2028\",\"quote\":\"This Agreement takes effect on July 1, 2026 and ends on June 30, 2028.\",\"recoupedBeforeSplit\":null,\"feePolicy\":null,\"refundStep\":null,\"termBoundary\":\"END\"},{\"kind\":\"PERSON\",\"subject\":\"Omar Haddad\",\"rawValue\":\"Omar Haddad\",\"quote\":\"This Merchandise Collective Agreement (the “Agreement”) is made between Omar Haddad, Grace Liu and Nina Petrov (the “Members”).\",\"recoupedBeforeSplit\":null,\"feePolicy\":null,\"refundStep\":null,\"termBoundary\":null},{\"kind\":\"PERSON\",\"subject\":\"Grace Liu\",\"rawValue\":\"Grace Liu\",\"quote\":\"This Merchandise Collective Agreement (the “Agreement”) is made between Omar Haddad, Grace Liu and Nina Petrov (the “Members”).\",\"recoupedBeforeSplit\":null,\"feePolicy\":null,\"refundStep\":null,\"termBoundary\":null},{\"kind\":\"PERSON\",\"subject\":\"Nina Petrov\",\"rawValue\":\"Nina Petrov\",\"quote\":\"This Merchandise Collective Agreement (the “Agreement”) is made between Omar Haddad, Grace Liu and Nina Petrov (the “Members”).\",\"recoupedBeforeSplit\":null,\"feePolicy\":null,\"refundStep\":null,\"termBoundary\":null}],\"issues\":[]}"
+        },
+        "finish_reason": "stop",
+        "logprobs": null
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 1328,
+      "completion_tokens": 737,
+      "total_tokens": 2065,
+      "prompt_tokens_details": {
+        "cached_tokens": 832
+      },
+      "neurons": 94.38108825683594
+    }
+  },
+  "success": true,
+  "errors": [],
+  "messages": []
+}

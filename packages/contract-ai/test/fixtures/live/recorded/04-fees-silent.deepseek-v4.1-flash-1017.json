@@ -1,0 +1,31 @@
+{
+  "result": {
+    "id": "chatcmpl-142fc8ce-f1d4-4d11-9134-ce8297a4d330",
+    "object": "chat.completion",
+    "created": 1794392260,
+    "model": "@cf/deepseek-ai/deepseek-v4.1-flash-1017",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "{\"suggestedTitle\":\"ONLINE COURSE PARTNERSHIP AGREEMENT\",\"facts\":[{\"kind\":\"SHARE\",\"subject\":\"Dana Cole\",\"rawValue\":\"60%\",\"quote\":\"Dana Cole receives 60% of Course Revenue.\",\"recoupedBeforeSplit\":null,\"feePolicy\":null,\"refundStep\":null,\"termBoundary\":null},{\"kind\":\"SHARE\",\"subject\":\"Felix Grant\",\"rawValue\":\"40%\",\"quote\":\"Felix Grant receives 40% of Course Revenue.\",\"recoupedBeforeSplit\":null,\"feePolicy\":null,\"refundStep\":null,\"termBoundary\":null},{\"kind\":\"TERM\",\"subject\":\"June 1, 2026\",\"rawValue\":\"June 1, 2026\",\"quote\":\"This agreement starts on June 1, 2026 and ends on May 31, 2027.\",\"recoupedBeforeSplit\":null,\"feePolicy\":null,\"refundStep\":null,\"termBoundary\":\"START\"},{\"kind\":\"TERM\",\"subject\":\"May 31, 2027\",\"rawValue\":\"May 31, 2027\",\"quote\":\"This agreement starts on June 1, 2026 and ends on May 31, 2027.\",\"recoupedBeforeSplit\":null,\"feePolicy\":null,\"refundStep\":null,\"termBoundary\":\"END\"},{\"kind\":\"PERSON\",\"subject\":\"Dana Cole\",\"rawValue\":\"Dana Cole\",\"quote\":\"This agreement is between Dana Cole and Felix Grant (the “Partners”).\",\"recoupedBeforeSplit\":null,\"feePolicy\":null,\"refundStep\":null,\"termBoundary\":null},{\"kind\":\"PERSON\",\"subject\":\"Felix Grant\",\"rawValue\":\"Felix Grant\",\"quote\":\"This agreement is between Dana Cole and Felix Grant (the “Partners”).\",\"recoupedBeforeSplit\":null,\"feePolicy\":null,\"refundStep\":null,\"termBoundary\":null}],\"issues\":[{\"topic\":\"FEES\",\"question\":\"Who pays the payment-processing fees on student payments?\",\"quote\":null,\"readings\":[{\"label\":\"Off the top\",\"explanation\":\"Fees come out of Course Revenue before the 60/40 split.\",\"setting\":{\"feePolicy\":\"BEFORE_SPLIT\",\"feeBearer\":null,\"advanceRecoupedBeforeSplit\":null,\"shares\":null}},{\"label\":\"Dana pays\",\"explanation\":\"Dana Cole, who runs the store, covers the fees from her own share.\",\"setting\":{\"feePolicy\":\"ORGANIZER_SHARE\",\"feeBearer\":\"Dana Cole\",\"advanceRecoupedBeforeSplit\":null,\"shares\":null}},{\"label\":\"Felix pays\",\"explanation\":\"Felix Grant covers the fees from his own share.\",\"setting\":{\"feePolicy\":\"ORGANIZER_SHARE\",\"feeBearer\":\"Felix Grant\",\"advanceRecoupedBeforeSplit\":null,\"shares\":null}}]}]}"
+        },
+        "finish_reason": "stop",
+        "logprobs": null
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 1245,
+      "completion_tokens": 616,
+      "total_tokens": 1861,
+      "prompt_tokens_details": {
+        "cached_tokens": 832
+      },
+      "neurons": 78.91744995117188
+    }
+  },
+  "success": true,
+  "errors": [],
+  "messages": []
+}

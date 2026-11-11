@@ -1,0 +1,31 @@
+{
+  "result": {
+    "id": "chatcmpl-e9f7ea59-ff82-4acb-9c97-d7f8f81d1459",
+    "object": "chat.completion",
+    "created": 1794392270,
+    "model": "@cf/deepseek-ai/deepseek-v4.1-flash-1017",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "{\"suggestedTitle\": null, \"facts\": [{\"kind\": \"SHARE\", \"subject\": \"the Artist\", \"rawValue\": \"45%\", \"quote\": \"With effect from June 1, 2026, Schedule A is deleted and replaced with the following: the Artist receives 45% of Net Receipts, the Producer receives 30% of Net Receipts, and the Manager receives 25% of Net Receipts.\" , \"recoupedBeforeSplit\": null, \"feePolicy\": null, \"refundStep\": null, \"termBoundary\": null}, {\"kind\": \"SHARE\", \"subject\": \"the Producer\", \"rawValue\": \"30%\", \"quote\": \"With effect from June 1, 2026, Schedule A is deleted and replaced with the following: the Artist receives 45% of Net Receipts, the Producer receives 30% of Net Receipts, and the Manager receives 25% of Net Receipts.\", \"recoupedBeforeSplit\": null, \"feePolicy\": null, \"refundStep\": null, \"termBoundary\": null}, {\"kind\": \"SHARE\", \"subject\": \"the Manager\", \"rawValue\": \"25%\", \"quote\": \"With effect from June 1, 2026, Schedule A is deleted and replaced with the following: the Artist receives 45% of Net Receipts, the Producer receives 30% of Net Receipts, and the Manager receives 25% of Net Receipts.\", \"recoupedBeforeSplit\": null, \"feePolicy\": null, \"refundStep\": null, \"termBoundary\": null}, {\"kind\": \"ADVANCE\", \"subject\": \"the Producer\", \"rawValue\": \"$3,000\", \"quote\": \"The Producer received an advance of $3,000 (the “Production Advance”) towards studio and mixing costs.\", \"recoupedBeforeSplit\": null, \"feePolicy\": null, \"refundStep\": null, \"termBoundary\": null}, {\"kind\": \"ADVANCE\", \"subject\": \"the Producer\", \"rawValue\": \"$3,000\", \"quote\": \"The Production Advance shall be recouped from Net Receipts before any distribution under Schedule A.\", \"recoupedBeforeSplit\": true, \"feePolicy\": null, \"refundStep\": null, \"termBoundary\": null}, {\"kind\": \"FEES\", \"subject\": \"payment processing fees and platform and distributor fees\", \"rawValue\": \"payment processing fees and platform and distributor fees\", \"quote\": \"Payment processing fees and platform and distributor fees shall be deducted from Gross Receipts before any distribution of Net Receipts under Schedule A.\", \"recoupedBeforeSplit\": null, \"feePolicy\": \"BEFORE_SPLIT\", \"refundStep\": null, \"termBoundary\": null}, {\"kind\": \"REFUNDS\", \"subject\": \"the Artist\", \"rawValue\": \"the amount refunded shall be charged against the Artist's Revenue Share\", \"quote\": \"Where any customer is refunded or a chargeback is made in respect of a sale of the Album, the amount refunded shall be charged against the Artist's Revenue Share for the Statement Period in which the refund is made.\", \"recoupedBeforeSplit\": null, \"feePolicy\": null, \"refundStep\": \"FROM_PARTY_SHARE\", \"termBoundary\": null}, {\"kind\": \"TERM\", \"subject\": \"January 15, 2026\", \"rawValue\": \"January 15, 2026\", \"quote\": \"This Agreement shall commence on the Effective Date and, unless terminated earlier in accordance with Article 8, the Term ends on January 14, 2028.\", \"recoupedBeforeSplit\": null, \"feePolicy\": null, \"refundStep\": null, \"termBoundary\": \"START\"}, {\"kind\": \"TERM\", \"subject\": \"January 14, 2028\", \"rawValue\": \"January 14, 2028\", \"quote\": \"This Agreement shall commence on the Effective Date and, unless terminated earlier in accordance with Article 8, the Term ends on January 14, 2028.\", \"recoupedBeforeSplit\": null, \"feePolicy\": null, \"refundStep\": null, \"termBoundary\": \"END\"}, {\"kind\": \"CURRENCY\", \"subject\": \"USD\", \"rawValue\": \"USD\", \"quote\": \"All payments under this Agreement shall be made in USD.\", \"recoupedBeforeSplit\": null, \"feePolicy\": null, \"refundStep\": null, \"termBoundary\": null}, {\"kind\": \"PERSON\", \"subject\": \"KEMI ADEYEMI\", \"rawValue\": \"KEMI ADEYEMI\", \"quote\": \"(1) KEMI ADEYEMI, an individual professionally known as “Kemi A.” (the “Artist”);\", \"recoupedBeforeSplit\": null, \"feePolicy\": null, \"refundStep\": null, \"termBoundary\": null}, {\"kind\": \"PERSON\", \"subject\": \"DANIEL OSEI\", \"rawValue\": \"DANIEL OSEI\", \"quote\": \"(2) DANIEL OSEI, an individual (the “Producer”); and\", \"recoupedBeforeSplit\": null, \"feePolicy\": null, \"refundStep\": null, \"termBoundary\": null}, {\"kind\": \"PERSON\", \"subject\": \"RUTH MENSAH\", \"rawValue\": \"RUTH MENSAH\", \"quote\": \"(3) RUTH MENSAH, an individual (the “Manager”),\", \"recoupedBeforeSplit\": null, \"feePolicy\": null, \"refundStep\": null, \"termBoundary\": null}], \"issues\": []}"
+        },
+        "finish_reason": "stop",
+        "logprobs": null
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 2223,
+      "completion_tokens": 1244,
+      "total_tokens": 3467,
+      "prompt_tokens_details": {
+        "cached_tokens": 896
+      },
+      "neurons": 172.3887176513672
+    }
+  },
+  "success": true,
+  "errors": [],
+  "messages": []
+}

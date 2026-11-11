@@ -1,0 +1,31 @@
+{
+  "result": {
+    "id": "chatcmpl-c7b54554-0ded-4e0a-95ac-a70475f0a64c",
+    "object": "chat.completion",
+    "created": 1794392245,
+    "model": "@cf/deepseek-ai/deepseek-v4.1-flash-1017",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "{\"suggestedTitle\":null,\"facts\":[{\"kind\":\"SHARE\",\"subject\":\":\",\"rawValue\":\":\",\"quote\":\":\",\"recoupedBeforeSplit\":null,\"feePolicy\":null,\"refundStep\":null,\"termBoundary\":null},{\"kind\":\"FEES\",\"subject\":\"Podcast Income is shared net of payment processor fees\",\"rawValue\":\"Podcast Income is shared net of payment processor fees\",\"quote\":\"Podcast Income is shared net of payment processor fees, which are deducted before any amount is divided.\",\"recoupedBeforeSplit\":null,\"feePolicy\":\"BEFORE_SPLIT\",\"refundStep\":null,\"termBoundary\":null},{\"kind\":\"TERM\",\"subject\":\"April 15, 2026\",\"rawValue\":\"April 15, 2026\",\"quote\":\"This Agreement starts on April 15, 2026 and continues until terminated by any Contributor on thirty (30) days' written notice.\",\"recoupedBeforeSplit\":null,\"feePolicy\":null,\"refundStep\":null,\"termBoundary\":\"START\"},{\"kind\":\"PERSON\",\"subject\":\"Lena Park\",\"rawValue\":\"Lena Park\",\"quote\":\"This Collaboration Agreement is made between Lena Park, Marcus Webb and Priya Nair (the “Contributors”).\",\"recoupedBeforeSplit\":null,\"feePolicy\":null,\"refundStep\":null,\"termBoundary\":null},{\"kind\":\"PERSON\",\"subject\":\"Marcus Webb\",\"rawValue\":\"Marcus Webb\",\"quote\":\"This Collaboration Agreement is made between Lena Park, Marcus Webb and Priya Nair (the “Contributors”).\",\"recoupedBeforeSplit\":null,\"feePolicy\":null,\"refundStep\":null,\"termBoundary\":null},{\"kind\":\"PERSON\",\"subject\":\"Priya Nair\",\"rawValue\":\"Priya Nair\",\"quote\":\"This Collaboration Agreement is made between Lena Park, Marcus Webb and Priya Nair (the “Contributors”).\",\"recoupedBeforeSplit\":null,\"feePolicy\":null,\"refundStep\":null,\"termBoundary\":null}],\"issues\":[{\"topic\":\"SPLIT\",\"question\":\"How is the podcast money split between Lena, Marcus and Priya?\",\"quote\":\"Podcast Income shall be divided among the Contributors in proportions to be agreed by the Contributors in writing.\",\"readings\":[{\"label\":\"Equal split\",\"explanation\":\"All three get the same amount.\",\"setting\":{\"feePolicy\":null,\"feeBearer\":null,\"advanceRecoupedBeforeSplit\":null,\"shares\":[{\"name\":\"Lena Park\",\"percent\":34},{\"name\":\"Marcus Webb\",\"percent\":33},{\"name\":\"Priya Nair\",\"percent\":33}]}},{\"label\":\"Host gets more\",\"explanation\":\"Lena takes half, the other two split the rest.\",\"setting\":{\"feePolicy\":null,\"feeBearer\":null,\"advanceRecoupedBeforeSplit\":null,\"shares\":[{\"name\":\"Lena Park\",\"percent\":50},{\"name\":\"Marcus Webb\",\"percent\":25},{\"name\":\"Priya Nair\",\"percent\":25}]}},{\"label\":\"No split yet\",\"explanation\":\"Nothing is divided until they agree in writing.\",\"setting\":{\"feePolicy\":null,\"feeBearer\":null,\"advanceRecoupedBeforeSplit\":null,\"shares\":null}}]}]}"
+        },
+        "finish_reason": "stop",
+        "logprobs": null
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 1322,
+      "completion_tokens": 683,
+      "total_tokens": 2005,
+      "prompt_tokens_details": {
+        "cached_tokens": 1216
+      },
+      "neurons": 78.06327056884766
+    }
+  },
+  "success": true,
+  "errors": [],
+  "messages": []
+}
