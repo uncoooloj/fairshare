@@ -1,3 +1,4 @@
+import { registerAgreementInvitations } from "./agreementInvitations.js";
 import type { DocumentReaders } from "./documentReaders.js";
 import type { DatabaseBackend } from "./database.js";
 import { registerProfileRoutes } from "./profileRoutes.js";
@@ -476,5 +477,6 @@ export async function buildApp(
   registerPaymentRoutes(app, domainRoutes.store, options.payment);
   registerReviewCollaboration(app, domainRoutes.store, options);
   registerAccountSettings(app, !!options.payment?.provider);
+  registerAgreementInvitations(app, domainRoutes.store);
   return app;
 }
