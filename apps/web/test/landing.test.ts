@@ -26,12 +26,15 @@ test("login and workspace retain the existing app and invitation entry points", 
     assert.match(read(`../app/${route}/page.tsx`), /<FairshareApp/);
   }
   const app = read("../components/fairshare-app.tsx");
-  assert.match(app, /\["\/app", "\/login"\]\.includes\(location.pathname\)/);
-  assert.match(app, /user \? "\/app" : "\/login"/);
+  assert.match(app, /user && location\.pathname === "\/login"/);
+  assert.match(app, /!user && location\.pathname === "\/app"/);
+  assert.match(app, /import \{ useRouter \} from "next\/navigation"/);
+  assert.match(app, /router\.replace\("\/app"\)/);
+  assert.match(app, /router\.replace\("\/login"\)/);
   assert.match(
     app,
     /\["\/verify-email", "\/invitation"\]\.includes\(location.pathname\)/,
   );
-  assert.ok(!app.includes('history.replaceState(null, "", "/")'));
+  assert.ok(!app.includes("history.replaceState"));
   assert.match(read("../components/password-recovery.tsx"), /href="\/login"/);
 });
