@@ -16,6 +16,7 @@ import {
   MemberRole,
   RuleOrigin,
   FeePolicy,
+  holdReversedRevenue,
 } from "@fairshare/domain";
 
 const auth = (token: string) => ({ authorization: `Bearer ${token}` });
@@ -640,32 +641,167 @@ test("a PayPal reversal takes the whole payment out of the split and pauses", ()
     assert.deepEqual(s.owed(), { maya: 180, riley: 120 });
   }));
 
-test("the first refund table (one refund per payment) is migrated with its rows kept", async () => {
+test("legacy refunds migrate: COMPLETED is settled by the old pause and never reversed; PENDING still blocks", async () => {
   const dir = mkdtempSync(join(tmpdir(), "fairshare-refunds-"));
   try {
     const path = join(dir, "db.sqlite");
+    // 1. Payments made under the new code, then refunds recorded the old way.
+    const first = await setup(path);
+    const done = await first.pay();
+    const inFlight = await first.pay();
+    const { w, maya } = first;
+    const before = first.agreement().value;
+    // The old code paused the whole agreement for a completed full refund.
+    first.agg.update(w.id, "collab", first.agreement().revision, (c) =>
+      holdReversedRevenue(
+        c,
+        done.captureId,
+        "Full refund",
+        new Date().toISOString(),
+      ),
+    );
+    await first.app.close();
     const legacy = new DatabaseSync(path);
     legacy.exec(
-      "CREATE TABLE fairshare_refund_ops(id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL,collaboration_id TEXT NOT NULL,payment_id TEXT NOT NULL UNIQUE,capture_id TEXT NOT NULL UNIQUE,amount INTEGER NOT NULL,request_key TEXT NOT NULL UNIQUE,provider_refund_id TEXT UNIQUE,status TEXT NOT NULL,created_by TEXT NOT NULL,created_at TEXT NOT NULL);" +
-        "INSERT INTO fairshare_refund_ops VALUES('old','w','c','p','CAP9',100,'refund-old','REF9','COMPLETED','u','then');",
+      "DROP TABLE fairshare_refund_ops;" +
+        "CREATE TABLE fairshare_refund_ops(id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL,collaboration_id TEXT NOT NULL,payment_id TEXT NOT NULL UNIQUE,capture_id TEXT NOT NULL UNIQUE,amount INTEGER NOT NULL,request_key TEXT NOT NULL UNIQUE,provider_refund_id TEXT UNIQUE,status TEXT NOT NULL,created_by TEXT NOT NULL,created_at TEXT NOT NULL);",
+    );
+    const insert = legacy.prepare(
+      "INSERT INTO fairshare_refund_ops VALUES(?,?,'collab',?,?,10000,?,?,?,?,'2026-01-01T00:00:00.000Z')",
+    );
+    insert.run(
+      "old-done",
+      w.id,
+      done.id,
+      done.captureId,
+      "refund-old-done",
+      "REFDONE",
+      "COMPLETED",
+      maya.user.id,
+    );
+    insert.run(
+      "old-pending",
+      w.id,
+      inFlight.id,
+      inFlight.captureId,
+      "refund-old-pending",
+      "REFPEND",
+      "PENDING",
+      maya.user.id,
     );
     legacy.close();
-    const s = await setup(path);
+
+    // 2. Reopen: the migration runs.
+    const mock = mockProvider();
+    const app = await buildApp({
+      dbPath: path,
+      payment: {
+        provider: mock.provider,
+        publicOrigin: "https://callbacks.example.test",
+      },
+    });
     try {
-      const row = s.app.store.db
-        .prepare("SELECT * FROM fairshare_refund_ops WHERE id='old'")
-        .get() as any;
-      assert.equal(row.client_key, "full");
-      assert.equal(row.applied_at, null);
-      assert.equal(row.provider_refund_id, "REF9");
-      // A second refund on the same payment is now allowed by the table.
-      s.app.store.db
-        .prepare(
-          "INSERT INTO fairshare_refund_ops(id,workspace_id,collaboration_id,payment_id,capture_id,amount,request_key,status,created_by,created_at,client_key) VALUES('new','w','c','p','CAP9',50,'refund-new','SUBMITTING','u','now','k')",
-        )
-        .run();
+      const agg = new AggregateStore(app.store.db, (f) => app.store.tx(f));
+      const base = `/api/workspaces/${w.id}/collaborations/collab`;
+      const post = (suffix: string, payload: any = {}) =>
+        app.inject({
+          method: "POST",
+          url: base + suffix,
+          headers: auth(maya.token),
+          payload,
+        });
+      const rows = Object.fromEntries(
+        (
+          app.store.db
+            .prepare("SELECT * FROM fairshare_refund_ops")
+            .all() as any[]
+        ).map((r) => [r.id, r]),
+      );
+      assert.equal(rows["old-done"].client_key, "full");
+      assert.equal(rows["old-done"].settled_by_hold, 1);
+      assert.equal(rows["old-done"].applied_at, "2026-01-01T00:00:00.000Z");
+      assert.equal(rows["old-pending"].settled_by_hold, 0);
+      assert.equal(rows["old-pending"].applied_at, null);
+      // PENDING is still moving money: resume waits for it.
+      const refused = await post("/payments/resume", {
+        expectedRevision: agg.read(w.id, "collab").revision,
+      });
+      assert.equal(
+        refused.json().error?.code,
+        "REFUND_UNRECONCILED",
+        refused.body,
+      );
+      // PayPal reports it failed; now resume works.
+      mock.refunds.set("REFPEND", {
+        id: "REFPEND",
+        status: "FAILED",
+        amountCents: 10000,
+        currency: "USD",
+        captureId: inFlight.captureId,
+        reference: "refund-old-pending",
+      });
+      assert.equal(
+        (await post("/refunds/old-pending/reconcile")).json().status,
+        "FAILED",
+      );
+      // Re-checking the completed legacy refund never reverses it by the split.
+      mock.refunds.set("REFDONE", {
+        id: "REFDONE",
+        status: "COMPLETED",
+        amountCents: 10000,
+        currency: "USD",
+        captureId: done.captureId,
+        reference: "refund-old-done",
+      });
+      assert.equal((await post("/refunds/old-done/reconcile")).statusCode, 200);
+      const resumed = await post("/payments/resume", {
+        expectedRevision: agg.read(w.id, "collab").revision,
+      });
+      assert.equal(resumed.statusCode, 200, resumed.body);
+      const after = agg.read(w.id, "collab").value;
+      assert.equal(after.reviewHold, false);
+      for (const captureId of [done.captureId, inFlight.captureId]) {
+        const revenue = after.revenue.find(
+          (r) => r.providerCaptureId === captureId,
+        )!;
+        assert.equal(revenue.refunds, undefined);
+        assert.deepEqual(
+          revenue.allocations.map((a) => a.totalCents),
+          before.revenue
+            .find((r) => r.providerCaptureId === captureId)!
+            .allocations.map((a) => a.totalCents),
+        );
+      }
+      // The failed refund's payment pays out again. The fully refunded one never does: its money is gone.
+      assert.equal(
+        (await post("/payouts/dispatch", { captureId: inFlight.captureId }))
+          .statusCode,
+        200,
+      );
+      const stopped = await post("/payouts/dispatch", {
+        captureId: done.captureId,
+      });
+      assert.equal(stopped.statusCode, 400);
+      assert.match(stopped.json().error.message, /refund/);
+      // And it cannot be refunded again here.
+      const again = await post(`/payments/${done.id}/refund`, {
+        confirmFullRefund: true,
+      });
+      assert.equal(again.json().id, "old-done");
+      assert.equal(again.json().outcome, "PAUSED_FOR_REVIEW");
+      assert.equal(
+        (
+          await post(`/payments/${done.id}/refund`, {
+            confirmRefund: true,
+            amountCents: 100,
+            requestKey: "more",
+          })
+        ).json().error.code,
+        "REFUND_EXCEEDS_PAYMENT",
+      );
+      assert.equal(mock.counts.refundWrites, 0);
     } finally {
-      await s.app.close();
+      await app.close();
     }
   } finally {
     rmSync(dir, { recursive: true, force: true });

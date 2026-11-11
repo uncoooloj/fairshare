@@ -85,6 +85,8 @@ export function refundBlocked(
       blockingPayout.status !== "RESERVED"
       ? "A payout has already started from this payment, so it can’t be refunded here. Refund it in PayPal and payouts will pause so you can review who was paid."
       : "A payout from this payment is about to go out, so it can’t be refunded here. Refund it in PayPal and payouts will pause so you can review who was paid.";
+  if (refunds.some((r) => r.payment_id === payment.id && r.settled_by_hold))
+    return "This payment has been fully refunded.";
   if (held)
     return "Payouts are paused. Review the refund before refunding more.";
   if (refundableCents(payment, refunds) < 1)

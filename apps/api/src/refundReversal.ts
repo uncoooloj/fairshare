@@ -12,13 +12,16 @@ const fail = (code: string, message: string): never => {
   throw new DomainError(code, message);
 };
 
-const REFUND_OPS_SQL = `CREATE TABLE IF NOT EXISTS fairshare_refund_ops(id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL,collaboration_id TEXT NOT NULL,payment_id TEXT NOT NULL,capture_id TEXT NOT NULL,amount INTEGER NOT NULL,request_key TEXT NOT NULL UNIQUE,provider_refund_id TEXT UNIQUE,status TEXT NOT NULL,created_by TEXT NOT NULL,created_at TEXT NOT NULL,client_key TEXT NOT NULL,fee_returned INTEGER,applied_at TEXT,UNIQUE(payment_id,client_key))`;
+const REFUND_OPS_SQL = `CREATE TABLE IF NOT EXISTS fairshare_refund_ops(id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL,collaboration_id TEXT NOT NULL,payment_id TEXT NOT NULL,capture_id TEXT NOT NULL,amount INTEGER NOT NULL,request_key TEXT NOT NULL UNIQUE,provider_refund_id TEXT UNIQUE,status TEXT NOT NULL,created_by TEXT NOT NULL,created_at TEXT NOT NULL,client_key TEXT NOT NULL,fee_returned INTEGER,applied_at TEXT,settled_by_hold INTEGER NOT NULL DEFAULT 0,UNIQUE(payment_id,client_key))`;
 const LEGACY_COLUMNS =
   "id,workspace_id,collaboration_id,payment_id,capture_id,amount,request_key,provider_refund_id,status,created_by,created_at";
 
 /** Refund operations allow several partial refunds per payment. The first version allowed one
- * refund per payment and capture; its rows are copied as full refunds ("full" client key) and
- * stay unapplied, so they keep blocking that payment's payouts until reconciled. */
+ * full refund per payment and capture, and handled a completed one by pausing the agreement
+ * instead of reversing the split. Migrated rows keep the "full" client key. A legacy COMPLETED
+ * row is marked settled by that pause (applied_at = created_at, settled_by_hold = 1): it is
+ * never reversed by the split, it no longer blocks resuming, and since the whole payment went
+ * back, that payment's payouts stay stopped. Legacy rows still in flight stay unapplied. */
 export function ensureRefundSchema(db: Database, tx: <T>(fn: () => T) => T) {
   tx(() => {
     const existing = db
@@ -32,7 +35,7 @@ export function ensureRefundSchema(db: Database, tx: <T>(fn: () => T) => T) {
       );
       db.exec(REFUND_OPS_SQL);
       db.exec(
-        `INSERT INTO fairshare_refund_ops(${LEGACY_COLUMNS},client_key) SELECT ${LEGACY_COLUMNS},'full' FROM fairshare_refund_ops_v1`,
+        `INSERT INTO fairshare_refund_ops(${LEGACY_COLUMNS},client_key,applied_at,settled_by_hold) SELECT ${LEGACY_COLUMNS},'full',CASE WHEN status='COMPLETED' THEN created_at END,CASE WHEN status='COMPLETED' THEN 1 ELSE 0 END FROM fairshare_refund_ops_v1`,
       );
       db.exec("DROP TABLE fairshare_refund_ops_v1");
     } else db.exec(REFUND_OPS_SQL);
@@ -45,6 +48,9 @@ export function ensureRefundSchema(db: Database, tx: <T>(fn: () => T) => T) {
 /** A refund operation still moving money: it blocks that payment's payouts and resuming. */
 export const UNSETTLED_REFUND_SQL =
   "applied_at IS NULL AND status NOT IN ('FAILED','CANCELLED')";
+/** A refund that stops that payment's payouts: still moving money, or a legacy full refund
+ * whose money is gone but whose shares were never reversed. */
+export const PAYOUT_BLOCKING_REFUND_SQL = `((${UNSETTLED_REFUND_SQL}) OR settled_by_hold=1)`;
 
 /** Payout rows that never reached PayPal and are not reserved for sending. A refund while
  * every row for a payment is in one of these states is a refund "before payouts". */

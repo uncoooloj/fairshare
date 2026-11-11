@@ -337,9 +337,11 @@ export function PaymentRecovery({
                 <Badge value={r.status} />
               </p>
               <p>
-                {r.applied_at
-                  ? "Refunded. It came back out of the split for this payment."
-                  : refundMessage(r.status)}
+                {r.settled_by_hold
+                  ? "Refunded in full before refunds came out of the split. Payouts from this payment stay stopped."
+                  : r.applied_at
+                    ? "Refunded. It came back out of the split for this payment."
+                    : refundMessage(r.status)}
               </p>
               {r.provider_refund_id ? (
                 <Button

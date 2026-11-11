@@ -1,7 +1,7 @@
 import { AllocationStatus } from "@fairshare/domain";
 import type { Database } from "./database.js";
 import { pendingWebhookBlocksPayout } from "./paymentSafety.js";
-import { UNSETTLED_REFUND_SQL } from "./refundReversal.js";
+import { PAYOUT_BLOCKING_REFUND_SQL } from "./refundReversal.js";
 
 /** Why outgoing money for a capture must wait. Any of these blocks every
  * person's payout for that capture, not just one person. */
@@ -51,11 +51,12 @@ export function payoutHoldReason(
   if (agreement.reviewHold) return PayoutHoldReason.REVIEW_HOLD;
   if (allocations.some((a) => a.status !== AllocationStatus.ALLOCATED))
     return PayoutHoldReason.ALLOCATION_HELD;
-  // Only a refund still moving money blocks; a refund applied to the split no longer does.
+  // A refund applied to the split no longer blocks; one still moving money, or a legacy full
+  // refund that was never taken out of the split, does.
   if (
     db
       .prepare(
-        `SELECT id FROM fairshare_refund_ops WHERE capture_id=? AND ${UNSETTLED_REFUND_SQL} LIMIT 1`,
+        `SELECT id FROM fairshare_refund_ops WHERE capture_id=? AND ${PAYOUT_BLOCKING_REFUND_SQL} LIMIT 1`,
       )
       .get(capture.provider_capture_id)
   )

@@ -156,6 +156,7 @@ export function registerPaymentRecovery({
     if (["FAILED", "CANCELLED"].includes(op.status))
       return RefundOutcome.NOT_REFUNDED;
     if (!op.applied_at) return RefundOutcome.WAITING_FOR_PAYPAL;
+    if (op.settled_by_hold) return RefundOutcome.PAUSED_FOR_REVIEW;
     const applied = aggregates
       .read(ctx.p.workspaceId, ctx.p.collaborationId)
       .value.revenue.find((r) => r.providerCaptureId === op.capture_id)
@@ -206,7 +207,7 @@ export function registerPaymentRecovery({
         .all(p.workspaceId, p.collaborationId),
       refunds: db
         .prepare(
-          "SELECT id,payment_id,capture_id,amount,provider_refund_id,status,fee_returned,applied_at FROM fairshare_refund_ops WHERE workspace_id=? AND collaboration_id=? ORDER BY created_at,rowid",
+          "SELECT id,payment_id,capture_id,amount,provider_refund_id,status,fee_returned,applied_at,settled_by_hold FROM fairshare_refund_ops WHERE workspace_id=? AND collaboration_id=? ORDER BY created_at,rowid",
         )
         .all(p.workspaceId, p.collaborationId),
       audit: db
@@ -431,6 +432,17 @@ export function registerPaymentRecovery({
       }
       if (fresh.status !== "ALLOCATED" || !fresh.provider_capture_id)
         fail("REFUND_NOT_READY", "Verified allocated capture required");
+      if (
+        db
+          .prepare(
+            "SELECT id FROM fairshare_refund_ops WHERE payment_id=? AND settled_by_hold=1",
+          )
+          .get(op.id)
+      )
+        fail(
+          "REFUND_EXCEEDS_PAYMENT",
+          "This payment was already refunded in full.",
+        );
       // Reserved counts as started: a dispatcher may claim it at any moment.
       if (capturePayoutState(db, fresh.provider_capture_id).payoutsStarted)
         fail(
