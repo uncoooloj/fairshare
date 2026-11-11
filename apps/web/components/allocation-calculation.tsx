@@ -1,3 +1,4 @@
+import { statusLabel } from "../lib/status-labels";
 import type { AllocationTrace } from "../lib/allocation-trace";
 import { formatDay, formatExact } from "../lib/dates";
 import { money, title } from "../lib/model";
@@ -18,13 +19,13 @@ export function AllocationCalculation({
   const percent = trace.shareBasisPoints / 100;
   const reasonParts = [
     trace.advanceSource && a.recoupmentCents > 0
-      ? `${money(a.recoupmentCents)} was allocated to advance recoupment.`
+      ? `${money(a.recoupmentCents)} went to paying back the advance.`
       : undefined,
     trace.poolCents > 0
-      ? `${money(a.shareCents)} is this person's recorded ${percent}% share of the ${money(trace.poolCents)} split pool.`
+      ? `${money(a.shareCents)} is this person's ${percent}% share of the ${money(trace.poolCents)} left to split.`
       : undefined,
     a.feeCents > 0
-      ? `${money(a.feeCents)} recipient fee was deducted from that share.`
+      ? `${money(a.feeCents)} PayPal fee came out of that share.`
       : undefined,
   ].filter(Boolean);
   const reason = reasonParts.length
@@ -62,9 +63,9 @@ export function AllocationCalculation({
       <div className="calculation-chips">
         <span
           className={`status-chip ${trace.held ? "warning" : ""}`}
-          title="An allocation records what is owed. The payout is tracked separately."
+          title="This is what they’re owed. Sending it is tracked in Payouts."
         >
-          {trace.held ? "On hold for review" : title(a.status)}
+          {trace.held ? "Paused" : statusLabel(a.status)}
         </span>
       </div>
 
@@ -95,7 +96,7 @@ export function AllocationCalculation({
             {advanceHolder ? `Advance → ${advanceHolder}` : "Advance"}
           </span>
         )}
-        {trace.poolCents > 0 && <span className="key-pool">Split pool</span>}
+        {trace.poolCents > 0 && <span className="key-pool">Left to split</span>}
         {a.shareCents > 0 && (
           <span className={`key-share ${toneClass}`}>{name}&rsquo;s share</span>
         )}
@@ -108,8 +109,8 @@ export function AllocationCalculation({
 
       <h3 className="calculation-label">Rules used</h3>
       <p>
-        <span className="version-chip">v{trace.versionId}</span> The rules in
-        force when this payment arrived
+        <span className="version-chip">v{trace.versionId}</span> The split in
+        use when this payment came in
       </p>
 
       <h3 className="calculation-label">Calculation</h3>
@@ -129,7 +130,7 @@ export function AllocationCalculation({
               <td>{step++}</td>
               <td>
                 <span className="calculation-step-title">
-                  Recoup advance
+                  Pay back advance
                   {trace.advanceSource.clause && (
                     <span className="clause-chip">
                       § {trace.advanceSource.clause}
@@ -179,7 +180,7 @@ export function AllocationCalculation({
           )}
           <tr className="calculation-total">
             <td />
-            <td>Allocated to {name}</td>
+            <td>Owed to {name}</td>
             <td className="numeric">{money(a.totalCents)}</td>
           </tr>
         </tbody>
@@ -208,11 +209,11 @@ export function AllocationCalculation({
       <details className="disclosure">
         <summary>Show working</summary>
         <dl className="facts-list">
-          <dt>PayPal capture</dt>
+          <dt>PayPal payment ID</dt>
           <dd>
             <code>{trace.captureId}</code>
           </dd>
-          <dt>Provider fee / net received</dt>
+          <dt>PayPal fee / received after fee</dt>
           <dd>
             {money(trace.providerFeeCents)} / {money(trace.netCents)}
           </dd>
@@ -221,8 +222,7 @@ export function AllocationCalculation({
             {trace.roundingCents === 0
               ? "No extra cent assigned."
               : `${trace.roundingCents} cent assigned above the whole-cent share.`}{" "}
-            Fractional cents use largest remainder, with participant ID as the
-            tie-break.
+            Leftover cents go to whoever had the biggest fraction.
           </dd>
           <dt>Source document</dt>
           <dd>

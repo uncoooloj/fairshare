@@ -13,7 +13,7 @@ export function reviewMessage(
   return [
     message,
     `Please review version ${versionId} of “${agreementName}” in Fairshare.`,
-    "Sign in with the account added to this agreement. Your approval applies only to this version.",
+    "Sign in with the email I invited.",
     new URL("/app", url.origin).href,
   ]
     .filter(Boolean)

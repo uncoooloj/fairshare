@@ -8,15 +8,18 @@ test("joined members wait for an agreement rather than re-uploading the source",
   const state = agreementEmptyState("MEMBER");
   assert.equal(state.title, "No agreements shared with you yet");
   assert.match(state.description, /organizer to add you/);
-  assert.match(state.description, /Refresh/);
-  assert.match(state.description, /do not need to upload/);
+  assert.match(state.description, /refresh/);
+  assert.doesNotMatch(state.description, /upload/i);
 });
 test("owners retain creation guidance and viewers get role-appropriate access guidance", () => {
   assert.match(agreementEmptyState("OWNER").description, /Create an agreement/);
-  assert.match(agreementEmptyState("VIEWER").description, /read-only/);
   assert.match(
     agreementEmptyState("VIEWER").description,
-    /person who invited you/,
+    /view but not approve/,
+  );
+  assert.match(
+    agreementEmptyState("VIEWER").description,
+    /whoever invited you/,
   );
 });
 test("invitation confirmation suppresses competing application forms; creation respects membership", () => {

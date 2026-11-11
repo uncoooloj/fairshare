@@ -32,11 +32,11 @@ test("refund offer blocks unverified capture, existing refund, any reserved payo
   assert.equal(refundBlocked(payment, [], [], false), null);
   assert.match(
     refundBlocked({ ...payment, status: "OUTCOME_UNKNOWN" }, [], [], false)!,
-    /payment is confirmed/,
+    /payment has been split/,
   );
   assert.match(
     refundBlocked({ ...payment, provider_capture_id: null }, [], [], false)!,
-    /payment is confirmed/,
+    /payment has been split/,
   );
   assert.match(
     refundBlocked(
@@ -50,7 +50,7 @@ test("refund offer blocks unverified capture, existing refund, any reserved payo
   for (const status of ["RESERVED", "FAILED", "SUCCESS", "OUTCOME_UNKNOWN"])
     assert.match(
       refundBlocked(payment, [{ capture_id: "cap1", status }], [], false)!,
-      /payout has already started/,
+      /payout has been reserved/,
     );
   assert.match(refundBlocked(payment, [], [], true)!, /hold/);
   assert.equal(
@@ -59,8 +59,8 @@ test("refund offer blocks unverified capture, existing refund, any reserved payo
   );
 });
 test("refund wording never confuses request acceptance with verified completion", () => {
-  assert.match(refundMessage("COMPLETED"), /PayPal confirmed the refund.*hold/);
-  assert.match(refundMessage("OUTCOME_UNKNOWN"), /Don’t send another refund/);
+  assert.match(refundMessage("COMPLETED"), /Refunded\..*paused/);
+  assert.match(refundMessage("OUTCOME_UNKNOWN"), /Don’t refund again/);
   for (const status of ["SUBMITTING", "PENDING", "FAILED", "CANCELLED"])
     assert.match(
       refundMessage(status),
@@ -113,7 +113,7 @@ test("failed recovery refresh hides stale refund actions and clears success noti
   );
   assert.match(source, /await flight\.current/);
   assert.match(source, /setData\(\s*null\s*\);\s*setNotice\(\s*["']{2}\s*\);/);
-  assert.match(source, /Do not resubmit an uncertain transfer/);
+  assert.match(source, /Refresh before you do anything else/);
   assert.match(
     source,
     /setConfirmed\(\s*false\s*\);\s*setError\(\s*["']{2}\s*\);\s*setNotice\(\s*["']{2}\s*\)/,

@@ -18,8 +18,6 @@ export const MAX_QUESTIONS = 3;
 /** The spec's example payment and the matching PayPal fee ($105 on $3,000). */
 export const SAMPLE_GROSS_CENTS = 300_000;
 const FEE_RATE = 0.035;
-/** The refund used to show who loses how much. */
-export const SAMPLE_REFUND_CENTS = 10_000;
 
 /** PayPal-style fee for a sample payment, so a changed sample keeps the same ratio. */
 export function sampleFeeCents(grossCents: number): number {
@@ -52,13 +50,18 @@ export function feeQuestion(answers: AgreementAnswers): Question {
     id: value,
     label,
     explanation,
-    apply: (a) => ({
-      ...a,
-      fees: fromPerson(value),
-      ...(value === FeeChoice.ORGANIZER_SHARE
-        ? { feeBearerChoice: "ORGANIZER" as const }
-        : {}),
-    }),
+    apply: (a) => {
+      if (value !== FeeChoice.ORGANIZER_SHARE)
+        return { ...a, fees: fromPerson(value) };
+      // A new answer selects today's organizer, so the old bearer must not be
+      // reused by the Check or Send copy while the rules use the new one.
+      const { feeBearerId: _priorBearer, ...next } = a;
+      return {
+        ...next,
+        fees: fromPerson(value),
+        feeBearerChoice: "ORGANIZER",
+      };
+    },
   });
   return {
     id: StandardQuestionId.FEES,
@@ -96,17 +99,17 @@ export function refundQuestion(
   });
   return {
     id: StandardQuestionId.REFUNDS,
-    text: "Do refunds come off the advance or the split?",
+    text: "How should we record this refund preference for review?",
     choices: [
       choice(
         RefundChoice.SPLIT,
-        "Off the split",
-        "Everyone's share shrinks a little.",
+        "Record a shared split",
+        "This note is for organizer review and does not change a refund amount.",
       ),
       choice(
         RefundChoice.ADVANCE,
-        "Off the advance",
-        `${recipient} gets paid back less.`,
+        "Record the advance holder",
+        `This note names ${recipient}'s advance for organizer review and does not change a refund amount.`,
       ),
     ],
   };
@@ -127,41 +130,6 @@ export function choiceEffect(
 ): PersonEffect[] | undefined {
   try {
     return exampleSplit(choice.apply(answers), grossCents, feeCents);
-  } catch {
-    return undefined;
-  }
-}
-
-/**
- * Who loses how much on a refund (negative cents). Off the split: shared by percentage,
- * using the same split maths with no advance or fee. Off the advance: the person paid back first.
- */
-export function refundEffect(
-  answers: AgreementAnswers,
-  choice: QuestionChoice,
-  refundCents = SAMPLE_REFUND_CENTS,
-): PersonEffect[] | undefined {
-  const applied = choice.apply(answers);
-  if (applied.refunds?.value === RefundChoice.ADVANCE) {
-    const advance = applied.advance?.value;
-    const person = applied.people.value.find(
-      (p) => p.key === advance?.recipientKey,
-    );
-    if (!person) return undefined;
-    return [{ key: person.key, name: person.name, cents: -refundCents }];
-  }
-  try {
-    return exampleSplit(
-      {
-        ...applied,
-        advance: undefined,
-        fees: fromPerson(FeeChoice.BEFORE_SPLIT),
-      },
-      refundCents,
-      0,
-    )
-      .filter((row) => row.cents !== 0)
-      .map((row) => ({ ...row, cents: -row.cents }));
   } catch {
     return undefined;
   }
@@ -203,16 +171,20 @@ export function questionsFor(
     const refunds = refundQuestion(answers);
     if (refunds) standard.push(refunds);
   }
-  // An extracted issue on the same subject keeps its quote and clause.
+  // An extracted question on the same subject wins when it has its own choices;
+  // otherwise only its quote and clause carry over onto the standard one.
   for (const q of standard) {
     const extracted = extractedIssues.find((e) => e.id === q.id);
     add(
-      extracted
-        ? { ...q, quote: extracted.quote, clause: extracted.clause }
-        : q,
+      extracted?.choices.length
+        ? extracted
+        : extracted
+          ? { ...q, quote: extracted.quote, clause: extracted.clause }
+          : q,
     );
   }
   for (const q of extractedIssues) {
+    if (!q.choices.length) continue;
     if (q.id === StandardQuestionId.FEES && answers.fees) continue;
     if (q.id === StandardQuestionId.REFUNDS && answers.refunds) continue;
     add(q);

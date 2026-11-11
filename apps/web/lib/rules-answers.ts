@@ -251,11 +251,11 @@ function feesLine(a: AgreementAnswers): string | undefined {
 function refundsLine(a: AgreementAnswers): string | undefined {
   switch (a.refunds?.value) {
     case RefundChoice.SPLIT:
-      return "Refunds come off the split.";
+      return "Refund preference recorded for organizer review: shared split.";
     case RefundChoice.ADVANCE:
       return a.advance
-        ? `Refunds come off ${firstName(advanceRecipient(a))}'s advance.`
-        : "Refunds come off the advance.";
+        ? `Refund preference recorded for organizer review: ${firstName(advanceRecipient(a))}'s advance.`
+        : "Refund preference recorded for organizer review: advance.";
     default:
       return undefined;
   }

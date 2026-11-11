@@ -1,3 +1,4 @@
+import { statusLabel } from "../../../lib/status-labels";
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import { PostApprovalPayout } from "../../post-approval-payout";
 import { CollaboratorTerms } from "../../collaborator-review";
@@ -19,7 +20,6 @@ import {
 import {
   AgreementTab,
   api,
-  title,
   sampleAgreement,
   type Agreement,
   type User,
@@ -52,6 +52,10 @@ export interface AgreementTermsTabProps {
   rulesDirty: MutableRefObject<boolean>;
   run: Run;
   mutate: Mutate;
+  mutateWithResult: (
+    action: string,
+    extra?: Record<string, unknown>,
+  ) => Promise<boolean>;
   mayLeaveDraft: () => boolean;
   changeAgreementTab: (next: AgreementTab) => void;
   setBusy: Dispatch<SetStateAction<boolean>>;
@@ -91,6 +95,7 @@ export function AgreementTermsTab({
   rulesDirty,
   run,
   mutate,
+  mutateWithResult,
   mayLeaveDraft,
   changeAgreementTab,
   setBusy,
@@ -124,8 +129,8 @@ export function AgreementTermsTab({
           justApproved={approvedForPayout === selected.id}
           onApprove={async () => {
             if (!latest) return;
-            await mutate(`/versions/${latest.id}/approve`);
-            setApprovedForPayout(selected.id);
+            if (await mutateWithResult(`/versions/${latest.id}/approve`))
+              setApprovedForPayout(selected.id);
           }}
           onRequestChange={async (reason) => {
             if (!latest) return;
@@ -153,8 +158,8 @@ export function AgreementTermsTab({
       {(editing || !latest) && (
         <Heading
           small
-          title="Terms everyone can understand"
-          description="AI suggests an interpretation. People agree on the rules. The engine calculates the money."
+          title="Agree on the split"
+          description="AI suggests. You all agree. Fairshare does the maths."
         />
       )}
       {!editing && latest ? (
@@ -199,13 +204,10 @@ export function AgreementTermsTab({
                     }`}
                   >
                     {latest.id === selected.value.activeVersionId
-                      ? "Active"
-                      : title(latest.status)}
+                      ? "In use"
+                      : statusLabel(latest.status)}
                   </span>
                 </div>
-                <p className="muted">
-                  People agree on the rules; the engine calculates the money.
-                </p>
               </div>
               <Button
                 variant="secondary"
@@ -228,8 +230,8 @@ export function AgreementTermsTab({
               <figure className="ag-source">
                 <figcaption>
                   {latest.rules.source.origin === "HUMAN_PROPOSAL"
-                    ? "Human proposal"
-                    : "Source wording"}
+                    ? "Written by your team"
+                    : "From the agreement"}
                   {latest.rules.source.clause && (
                     <span className="clause-chip">
                       §{" "}
@@ -254,8 +256,12 @@ export function AgreementTermsTab({
                 setError("");
                 setNotice("");
                 try {
-                  await mutate(`/versions/${latest.id}/${action}`, payload);
-                  if (action === "approve") setApprovedForPayout(selected.id);
+                  const committed = await mutateWithResult(
+                    `/versions/${latest.id}/${action}`,
+                    payload,
+                  );
+                  if (action === "approve" && committed)
+                    setApprovedForPayout(selected.id);
                 } finally {
                   setBusy(false);
                 }
@@ -278,10 +284,8 @@ export function AgreementTermsTab({
               onDirtyChange={setDraftDirty}
             />
             <section className="section">
-              <h3>Preview an incoming payment</h3>
-              <p className="muted">
-                Illustrative only. No payment or payout is created.
-              </p>
+              <h3>Try a payment</h3>
+              <p className="muted">Just a preview. No money moves.</p>
               <PreviewForm
                 busy={busy}
                 onSubmit={(grossCents, feeCents) =>

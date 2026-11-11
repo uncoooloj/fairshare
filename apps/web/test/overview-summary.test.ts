@@ -1,6 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { overviewSummary, type OverviewPayout } from "../lib/overview-summary";
+import {
+  overviewSummary,
+  splitSentences,
+  type OverviewPayout,
+} from "../lib/overview-summary";
 import type { Agreement } from "../lib/model";
 function fixture(): Agreement {
   return {
@@ -86,6 +90,25 @@ test("totals use successful matched payouts, not submitted batches", () => {
   assert.equal(s.paid, 100);
   assert.equal(s.remaining, 0);
 });
+test("advance summary reports allocated progress while its payout is pending", () => {
+  const a = fixture();
+  const rules = a.value.versions[0].rules;
+  rules.advance = {
+    id: "advance",
+    recipientId: "me",
+    amountCents: 100,
+    verified: true,
+    source: rules.source,
+  };
+  a.value.recoupedByAdvance.advance = 50;
+
+  assert.equal(overviewSummary([a], [payout(a, "PENDING")], "me").paid, 0);
+  assert.ok(
+    splitSentences(a, rules, "me").includes(
+      "$1 is allocated toward your advance before the split ($0.50 allocated so far).",
+    ),
+  );
+});
 test("unknown, unclaimed, reversed and mismatched payouts never inflate paid", () => {
   const a = fixture();
   for (const status of ["OUTCOME_UNKNOWN", "UNCLAIMED", "REVERSED", "REFUNDED"])
@@ -130,6 +153,20 @@ test("holds are visible and activity uses recorded times, newest first", () => {
   assert.equal(s.activity[0].text, "Payment paused for a check");
   assert.equal(s.activity[1].text, "You created the agreement");
   assert.equal(s.remaining, 100);
+});
+test("recipient and automatic payout holds remain visible until resolved", () => {
+  const a = fixture();
+  for (const status of ["WAITING_RECIPIENT", "AUTO_HELD"]) {
+    const summary = overviewSummary([a], [payout(a, status)], "me");
+    const item = summary.attention.find((item) =>
+      item.key.startsWith("payout:"),
+    );
+    assert.ok(item);
+    assert.match(
+      item.detail,
+      new RegExp(status.toLowerCase().replaceAll("_", " ")),
+    );
+  }
 });
 test("empty workspace has honest zero totals and no synthetic activity", () => {
   const s = overviewSummary([], [], "me");
@@ -248,7 +285,7 @@ test("review actions use the authoritative review state", () => {
     source: draft.value.versions[0].rules.source,
   };
   const blocked = overviewSummary([draft], [], "me");
-  assert.match(blocked.attention[0].detail, /Verify the existing advance/);
+  assert.match(blocked.attention[0].detail, /Confirm the advance amount/);
   assert.equal(blocked.attention[0].key, '["w","a"]:review-blockers');
 });
 

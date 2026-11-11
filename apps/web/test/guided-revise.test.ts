@@ -28,9 +28,11 @@ import {
   AnswerSource,
   FeeChoice,
   RefundChoice,
+  summarySentences,
   toRules,
   type AgreementAnswers,
 } from "../lib/rules-answers";
+import { feeLine } from "../components/wizard-check-step";
 import { feeQuestion, StandardQuestionId } from "../lib/standard-questions";
 import {
   openChangeRequests,
@@ -482,6 +484,9 @@ test("revise keeps a former organizer as fee bearer unless the fee choice is cha
   const b = feeQuestion(a)
     .choices.find((choice) => choice.id === FeeChoice.ORGANIZER_SHARE)!
     .apply(a);
+  assert.equal(b.feeBearerId, undefined);
+  assert.ok(summarySentences(b).includes("Jordan covers the PayPal fees."));
+  assert.equal(feeLine(b), "PayPal fees come out of Jordan's share.");
   const switched = revisedRules(b, prior, { organizerId: "jordan" });
   assert.equal(switched.feeBearerId, "jordan");
 });
@@ -508,6 +513,26 @@ test("revise submit recovery adopts only this attempt's exact sent rules", () =>
   assert.equal(
     revisedSubmissionWasCommitted(before, committed, submitted),
     true,
+  );
+  const details = { name: "Revised title", effectiveFrom: "2026-12-01" };
+  const matchingDetails = {
+    ...committed,
+    value: {
+      ...committed.value,
+      name: details.name,
+      details: {
+        currency: "USD" as const,
+        effectiveFrom: details.effectiveFrom,
+      },
+    },
+  } as Agreement;
+  assert.equal(
+    revisedSubmissionWasCommitted(before, matchingDetails, submitted, details),
+    true,
+  );
+  assert.equal(
+    revisedSubmissionWasCommitted(before, committed, submitted, details),
+    false,
   );
   assert.equal(
     revisedSubmissionWasCommitted(

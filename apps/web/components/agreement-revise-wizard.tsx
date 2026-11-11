@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { submitForApproval } from "../lib/agreement-api";
 import {
   answersFromRules,
@@ -107,14 +107,25 @@ export function revisedSubmissionWasCommitted(
   before: Agreement,
   recovered: Agreement,
   rules: Rules,
+  details?: Record<string, unknown>,
 ): boolean {
-  return recovered.value.versions
-    .slice(before.value.versions.length)
-    .some(
-      (version) =>
-        version.status !== "DRAFT" &&
-        JSON.stringify(version.rules) === JSON.stringify(rules),
-    );
+  const detailsMatch = Object.entries(details ?? {}).every(([key, value]) =>
+    key === "name"
+      ? recovered.value.name === value
+      : (recovered.value.details as Record<string, unknown> | undefined)?.[
+          key
+        ] === value,
+  );
+  return (
+    detailsMatch &&
+    recovered.value.versions
+      .slice(before.value.versions.length)
+      .some(
+        (version) =>
+          version.status !== "DRAFT" &&
+          JSON.stringify(version.rules) === JSON.stringify(rules),
+      )
+  );
 }
 
 function mayHaveCommitted(cause: unknown): boolean {
@@ -293,7 +304,7 @@ export function AgreementReviseWizard({
         if (!mayHaveCommitted(cause)) throw cause;
         try {
           const recovered = await api<Agreement>(root);
-          if (!revisedSubmissionWasCommitted(agreement, recovered, next))
+          if (!revisedSubmissionWasCommitted(agreement, recovered, next, patch))
             throw cause;
           current = recovered;
         } catch {
@@ -341,7 +352,7 @@ export function AgreementReviseWizard({
     </div>
   );
 
-  const frame = (footer: React.ReactNode, body: React.ReactNode) => (
+  const frame = (footer: ReactNode, body: ReactNode) => (
     <WizardFrame
       title="Change agreement"
       closeLabel="Close without sending"

@@ -148,8 +148,7 @@ function StatCard({
   note: string;
 }) {
   const shown = useCountUp(value);
-  const final =
-    value === null ? "Needs reconciliation" : formatMoneyHeadline(value);
+  const final = value === null ? "Being checked" : formatMoneyHeadline(value);
   return (
     <div className="ov-stat">
       <span className="ov-eyebrow">{label}</span>
@@ -230,46 +229,43 @@ export function OverviewDashboard({
     <>
       <p className="ov-caveat">
         {summary.scope === "personal"
-          ? "Your shares across agreements · all time"
+          ? "Your money, all agreements"
           : summary.scope === "managed"
             ? "All participants in agreements you manage · all time"
-            : "All participants where you organize; only your share where you collaborate · all time"}
+            : "Everyone’s shares on agreements you run, and your own share on the rest"}
       </p>
       <div className="ov-stats">
         <StatCard
           label={
             summary.scope === "personal"
               ? "Your allocated share"
-              : "Allocated shares"
+              : "Owed so far"
           }
           value={summary.allocated}
-          note="All time · recorded shares"
+          note="From every payment so far"
         />
         <StatCard
-          label={
-            summary.scope === "personal" ? "Paid to you" : "Confirmed paid out"
-          }
+          label={summary.scope === "personal" ? "Paid to you" : "Paid out"}
           value={summary.paid}
-          note="Matching successful payouts"
+          note="Money that reached people"
         />
         <StatCard
-          label="Not yet confirmed paid"
+          label="Not confirmed paid"
           value={summary.remaining}
-          note="Allocated, no confirmed payout"
+          note="Owed, not yet confirmed paid"
         />
       </div>
       <p
         className="ov-caveat"
-        title="These are recorded shares, not an available balance. Holds, refunds and reversals may require reconciliation. Paid out includes only matching successful provider payouts."
+        title="This is what people are owed, not money sitting in an account. Paid out only counts money PayPal says arrived."
       >
-        <span aria-hidden="true">ⓘ</span> Recorded shares, not an available
-        balance.
+        <span aria-hidden="true">ⓘ</span> Owed, not money in an account.
       </p>
       {!payoutsComplete && (
         <p className="ov-caveat" role={payoutsUnavailable ? "alert" : "status"}>
           {payoutsUnavailable
-            ? "Payout history could not be loaded. Financial totals and payout attention are hidden until it is available."
-            : "Loading payout history. Financial totals and payout attention will appear when it is ready."}
+            ? "We couldn’t load payouts, so totals are hidden. Refresh to try again."
+            : "Loading your totals…"}
         </p>
       )}
 
@@ -316,7 +312,7 @@ export function OverviewDashboard({
               <p className="ov-empty">
                 {payoutsComplete
                   ? "Nothing needs you right now."
-                  : "Payout-related attention is not available yet."}
+                  : "We’ll show payout issues once payouts load."}
               </p>
             )}
             {summary.waiting.length > 0 && (
@@ -376,8 +372,7 @@ export function OverviewDashboard({
             </ol>
           ) : (
             <p className="ov-empty">
-              Activity appears here as people review rules and payments are
-              recorded.
+              Approvals and payments will show up here.
             </p>
           )}
         </section>

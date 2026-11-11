@@ -108,6 +108,22 @@ export function registerAgreementInvitations(
       throw new ApiError(403, "FORBIDDEN", "Agreement organizer required.");
     return { user, agreement, workspaceId, agreementId };
   }
+  /** A handover may make the agreement organizer a workspace MEMBER. They can keep an
+   * existing named seat usable, but cannot create invitations or gain workspace-owner powers. */
+  function canManagePendingSeat(req: any) {
+    const { workspaceId, agreementId } = req.params;
+    const { user } = app.requireWorkspace(req, workspaceId, [
+      Role.OWNER,
+      Role.MEMBER,
+    ]);
+    const agreement = aggregates.read(workspaceId, agreementId);
+    if (
+      agreement.value.members.find((m) => m.userId === user.id)?.role !==
+      MemberRole.ORGANIZER
+    )
+      throw new ApiError(403, "FORBIDDEN", "Agreement organizer required.");
+    return { user, agreement, workspaceId, agreementId };
+  }
   function validLink(token: unknown) {
     if (typeof token !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(token))
       throw new ApiError(
@@ -132,10 +148,19 @@ export function registerAgreementInvitations(
         "SELECT u.name,m.role FROM memberships m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=? AND m.user_id=?",
       )
       .get(row.workspace_id, row.created_by) as any;
+    const seat = pendingSeat(agreement.value, row.id);
+    const creatorIsMember =
+      creator?.role === Role.OWNER || creator?.role === Role.MEMBER;
+    const creatorIsOrganizer =
+      agreement.value.members.find((m) => m.userId === row.created_by)?.role ===
+      MemberRole.ORGANIZER;
+    // A named seat binds this token to a person already in the agreement, so it can survive
+    // handover while its creator remains a workspace member. Open links still require their
+    // creator to be both the workspace owner and current agreement organizer.
     if (
-      creator?.role !== Role.OWNER ||
-      agreement.value.members.find((m) => m.userId === row.created_by)?.role !==
-        MemberRole.ORGANIZER
+      !(seat
+        ? creatorIsMember
+        : creator?.role === Role.OWNER && creatorIsOrganizer)
     )
       throw new ApiError(
         400,
@@ -143,7 +168,7 @@ export function registerAgreementInvitations(
         "The organizer can no longer grant this invitation.",
       );
     // Named people keep their seat after the rules are sent; open links stop at sending.
-    if (!pendingSeat(agreement.value, row.id) && rulesEverSent(agreement.value))
+    if (!seat && rulesEverSent(agreement.value))
       throw new ApiError(
         409,
         "MEMBERS_LOCKED",
@@ -342,7 +367,7 @@ export function registerAgreementInvitations(
   });
   // Replace a named person's link (lost or expired). Works after sending; the old link stops working.
   app.post(`${base}/people/:userId/invitation`, async (req: any, reply) => {
-    const { user, workspaceId, agreementId } = canInvite(req);
+    const { user, workspaceId, agreementId } = canManagePendingSeat(req);
     store.limit(`agreement-invite:${user.id}`, 30);
     const revision = expectedRevision((req.body ?? {}).expectedRevision);
     const result = store.tx(() => {
@@ -387,7 +412,7 @@ export function registerAgreementInvitations(
   });
   // Remove someone before the rules are sent; a named person's link is revoked with them.
   app.delete(`${base}/people/:userId`, async (req: any, reply) => {
-    const { user, workspaceId, agreementId } = canInvite(req);
+    const { user, workspaceId, agreementId } = canManagePendingSeat(req);
     const revision = expectedRevision(req.query?.expectedRevision);
     const result = store.tx(() => {
       const agreement = aggregates.updateInsideTransaction(

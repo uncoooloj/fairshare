@@ -4,4 +4,5 @@ export type Run = (fn: () => Promise<void>) => Promise<void>;
 export type Mutate = (
   action: string,
   extra?: Record<string, unknown>,
+  method?: "POST" | "DELETE",
 ) => Promise<void>;

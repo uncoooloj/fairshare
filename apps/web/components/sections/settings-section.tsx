@@ -56,16 +56,13 @@ export function SettingsSection({
 }: SettingsSectionProps) {
   return (
     <>
-      <Heading
-        title="Settings"
-        description="Your account and test environment."
-      />
+      <Heading title="Settings" description="Your account." />
       <div className="settings-layout">
         <nav className="settings-subnav" aria-label="Settings sections">
           {[
             "Profile",
             "Notifications",
-            "Payment accounts",
+            "PayPal",
             "Currency & display",
             "Activity log",
           ].map((tab) => (
@@ -81,7 +78,7 @@ export function SettingsSection({
           ))}
         </nav>
         <div className="settings-content">
-          {settingsTab === "Payment accounts" &&
+          {settingsTab === "PayPal" &&
             (workspace ? (
               <>
                 <p className="muted">
@@ -90,8 +87,7 @@ export function SettingsSection({
                     .filter((item) => item.workspaceId === workspace)
                     .map((item) => item.value.name)
                     .join(", ") || "agreements shared with this team"}
-                  . To manage another agreement, open it using the agreement
-                  picker above, then return here.
+                  .
                 </p>
                 <PaymentAccountsSettings
                   key={workspace}
@@ -171,9 +167,7 @@ export function SettingsSection({
                         name,
                       });
                       setUser(result.user);
-                      setNotice(
-                        "Display name saved. Existing agreement names are unchanged.",
-                      );
+                      setNotice("Name saved.");
                     }}
                   />
                 </ProfileContact>
@@ -189,12 +183,15 @@ export function SettingsSection({
                     })
                   }
                 />
-                <SettingsRow label="Environment" hint="Live money is disabled.">
+                <SettingsRow
+                  label="Environment"
+                  hint="Test mode. No real money."
+                >
                   <span className="status-chip warning">{mode}</span>
                 </SettingsRow>
                 {inviteLink && (
                   <a className="block-link" href={inviteLink}>
-                    Open demo verification/invitation link
+                    Open test link
                   </a>
                 )}
               </section>
@@ -204,13 +201,13 @@ export function SettingsSection({
                 }}
               />
               <section className="panel">
-                <h2>Other invitations</h2>
+                <h2>Invites</h2>
                 {workspaces.find((w) => w.id === workspace)?.role ===
                   "OWNER" && (
                   <PrivateInvitation key={workspace} workspace={workspace} />
                 )}
                 <SimpleForm
-                  label="Invitation token (if shared manually)"
+                  label="Invite code"
                   button="Accept invitation"
                   busy={busy}
                   onSubmit={(token) =>

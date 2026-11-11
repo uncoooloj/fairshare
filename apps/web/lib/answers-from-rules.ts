@@ -30,6 +30,16 @@ function refundsFrom(excerpt: string): RefundChoice | undefined {
   if (/Refunds come off the split\./.test(excerpt)) return RefundChoice.SPLIT;
   if (/Refunds come off [^.]*advance\./.test(excerpt))
     return RefundChoice.ADVANCE;
+  if (
+    /Refund preference recorded for organizer review: shared split\./.test(
+      excerpt,
+    )
+  )
+    return RefundChoice.SPLIT;
+  if (
+    /Refund preference recorded for organizer review: .*advance\./.test(excerpt)
+  )
+    return RefundChoice.ADVANCE;
   return undefined;
 }
 

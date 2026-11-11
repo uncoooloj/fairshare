@@ -14,7 +14,7 @@ test("notification panel uses the authenticated feed and distinguishes loading, 
   assert.match(panel, /if \(active\) setEvents/);
   assert.match(panel, /active = false/);
   assert.match(panel, /role="alert"/);
-  assert.match(panel, /No matching updates yet/);
+  assert.match(panel, /Nothing yet\. Approvals and payouts show up here\./);
   assert.doesNotMatch(panel, /mark.*read|unreadCount|"POST"/i);
 });
 test("panel has keyboard dismissal, focus restoration and actual user-triggered refresh", () => {
@@ -39,5 +39,5 @@ test("notification navigation preserves draft guards and accounts are isolated",
     panel,
     /onOpenAgreement\(event.workspaceId, event.agreementId\)/,
   );
-  assert.match(panel, /no longer available to your account/);
+  assert.match(panel, /no longer have access to this agreement/);
 });

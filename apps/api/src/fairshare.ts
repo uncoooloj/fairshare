@@ -45,6 +45,12 @@ export interface FairshareApp extends FastifyInstance {
     db: Database;
     tx<T>(fn: () => T): T;
     limit(key: string, max: number): void;
+    audit(
+      userId: string,
+      workspaceId: string,
+      action: string,
+      detail?: Record<string, unknown>,
+    ): void;
   };
   requireSession(req: FastifyRequest): {
     id: string;
@@ -336,7 +342,21 @@ export function registerFairshareRoutes(
         details?.name === undefined
           ? withDetails
           : { ...withDetails, name: details.name };
-      return submitForApproval(named, sourcedRules(p, b.rules), user.id, now());
+      const submitted = submitForApproval(
+        named,
+        sourcedRules(p, b.rules),
+        user.id,
+        now(),
+      );
+      if (details)
+        app.store.audit(user.id, p.workspaceId, "AGREEMENT_DETAILS_UPDATED", {
+          agreementId: p.collaborationId,
+          fields: [
+            ...(details.name === undefined ? [] : ["name"]),
+            ...Object.keys(details.patch ?? {}),
+          ],
+        });
+      return submitted;
     });
   });
   // Discard a private draft: organizer only, never sent, nothing paid.

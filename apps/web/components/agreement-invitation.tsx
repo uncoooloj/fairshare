@@ -45,10 +45,8 @@ export function AgreementInvitation({
     <section className="section">
       <h3>Invite someone to {name}</h3>
       <p className="muted">
-        This private, single-use link adds its holder to your team and this
-        agreement after sign-in and acceptance. Share only with your intended
-        collaborator. Wait for everyone to join before drafting rules; joining
-        never approves rules or moves money.
+        Send this link to one person. It works once and adds them to this
+        agreement.
       </p>
       {!invitation ? (
         <Button
@@ -60,12 +58,12 @@ export function AgreementInvitation({
             })
           }
         >
-          Create agreement invitation
+          Create invite link
         </Button>
       ) : (
         <>
           <label>
-            Private agreement invitation
+            Invite link
             <input readOnly value={link} onFocus={(e) => e.target.select()} />
           </label>
           <p className="muted">
@@ -81,7 +79,7 @@ export function AgreementInvitation({
                     return;
                   }
                   await navigator.clipboard.writeText(link);
-                  setMessage("Agreement invitation copied.");
+                  setMessage("Link copied.");
                 })
               }
             >

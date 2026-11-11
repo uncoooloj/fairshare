@@ -48,6 +48,9 @@ export function AppShell({
   clearSession,
   children,
 }: AppShellProps) {
+  const guardedRefresh = () => {
+    if (mayLeaveDraft()) void run(refresh);
+  };
   return (
     <div className="app-shell">
       <a className="skip-link" href="#main-content">
@@ -129,7 +132,7 @@ export function AppShell({
             type="button"
             className={`icon-button${busy ? " is-spinning" : ""}`}
             disabled={busy}
-            onClick={() => run(refresh)}
+            onClick={guardedRefresh}
             aria-label="Refresh"
             title="Refresh"
           >
@@ -152,7 +155,7 @@ export function AppShell({
           <div className="message error" role="alert">
             {error}
             {error.includes("Reload") && (
-              <Button variant="quiet" onClick={() => run(refresh)}>
+              <Button variant="quiet" onClick={guardedRefresh}>
                 Reload latest
               </Button>
             )}

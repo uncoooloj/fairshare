@@ -13,6 +13,10 @@ const impactReview = readFileSync(
   "utf8",
 );
 const editor = widgets.slice(widgets.indexOf("export function RulesEditor("));
+const shell = readFileSync(
+  new URL("../components/app-shell.tsx", import.meta.url),
+  "utf8",
+);
 
 test("agreement edits guard navigation and closing the browser before discarding work", () => {
   assert.match(app, /draftDirty\s*&&\s*!window\.confirm/);
@@ -25,6 +29,10 @@ test("agreement edits guard navigation and closing the browser before discarding
   assert.match(app, /onNavigate=\{changeAgreementTab\}/);
   assert.match(app, /changeAgreementTab\(next\)/);
   assert.match(app, /Back to proposed terms/);
+  assert.match(
+    shell,
+    /const guardedRefresh = \(\) => \{\s*if \(mayLeaveDraft\(\)\) void run\(refresh\);/,
+  );
 });
 test("manual rules and suggested shares both mark the proposal dirty; saving clears it only after server success", () => {
   assert.match(

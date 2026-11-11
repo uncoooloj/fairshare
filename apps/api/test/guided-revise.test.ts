@@ -213,6 +213,7 @@ test("submit rolls back details when a revised advance is below what was recoupe
       .run(JSON.stringify(active.value), active.workspaceId, active.id);
     const before = await f.read();
     const invalid = structuredClone(first);
+    invalid.advance!.id = "advance-2";
     invalid.advance!.amountCents = 30_000;
     const response = await f.app.inject({
       method: "POST",
@@ -224,9 +225,46 @@ test("submit rolls back details when a revised advance is below what was recoupe
         details: { name: "Changed title", effectiveFrom: "2026-12-01" },
       },
     });
-    assert.equal(response.statusCode, 400, response.body);
+    assert.equal(response.statusCode, 409, response.body);
     assert.equal(response.json().error.code, "ADVANCE_BELOW_RECOUPED");
     assert.deepEqual(await f.read(), before);
+    assert.equal(
+      f.app.store.db
+        .prepare("SELECT count(*) AS count FROM audit WHERE action=?")
+        .get("AGREEMENT_DETAILS_UPDATED").count,
+      0,
+    );
+  } finally {
+    await f.app.close();
+  }
+});
+
+test("submit records details audit only with a committed proposal", async () => {
+  const f = await setup();
+  try {
+    const before = await f.read();
+    const response = await f.app.inject({
+      method: "POST",
+      url: `/api/workspaces/${before.workspaceId}/collaborations/${before.id}/submit`,
+      headers: { authorization: `Bearer ${f.maya.token}` },
+      payload: {
+        expectedRevision: before.revision,
+        rules: f.rules([5000, 3000, 2000]),
+        details: { name: "Revised title", effectiveFrom: "2026-12-01" },
+      },
+    });
+    assert.equal(response.statusCode, 200, response.body);
+    assert.deepEqual(
+      JSON.parse(
+        f.app.store.db
+          .prepare("SELECT detail FROM audit WHERE action=?")
+          .get("AGREEMENT_DETAILS_UPDATED").detail,
+      ),
+      {
+        agreementId: before.id,
+        fields: ["name", "effectiveFrom"],
+      },
+    );
   } finally {
     await f.app.close();
   }

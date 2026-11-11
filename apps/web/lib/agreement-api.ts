@@ -111,3 +111,72 @@ export async function deleteDraft(
     "DELETE",
   );
 }
+
+/** The organizer's open offer to hand the role to another joined member. */
+export interface OrganizerHandover {
+  fromUserId: string;
+  toUserId: string;
+  at: string;
+}
+
+/** The open handover offer on an agreement, if any. */
+export const organizerHandoverOf = (
+  agreement: Agreement,
+): OrganizerHandover | undefined =>
+  (agreement.value as { organizerHandover?: OrganizerHandover })
+    .organizerHandover;
+
+const handoverPath = (workspaceId: string, agreementId: string) =>
+  `${agreementPath(workspaceId, agreementId)}/organizer-transfer`;
+
+/** Organizer offers the role to a joined member. Offering again replaces the open offer.
+ * Nothing about the split changes, now or when they accept. */
+export function offerOrganizerHandover(
+  workspaceId: string,
+  agreementId: string,
+  expectedRevision: number,
+  toUserId: string,
+): Promise<Agreement> {
+  return api<Agreement>(handoverPath(workspaceId, agreementId), "POST", {
+    expectedRevision,
+    toUserId,
+  });
+}
+
+/** Organizer withdraws the open offer. */
+export function cancelOrganizerHandover(
+  workspaceId: string,
+  agreementId: string,
+  expectedRevision: number,
+): Promise<Agreement> {
+  return api<Agreement>(
+    `${handoverPath(workspaceId, agreementId)}?expectedRevision=${expectedRevision}`,
+    "DELETE",
+  );
+}
+
+/** The person the offer names takes over organizing; the roles swap. */
+export function acceptOrganizerHandover(
+  workspaceId: string,
+  agreementId: string,
+  expectedRevision: number,
+): Promise<Agreement> {
+  return api<Agreement>(
+    `${handoverPath(workspaceId, agreementId)}/accept`,
+    "POST",
+    { expectedRevision },
+  );
+}
+
+/** The person the offer names says no; nothing else changes. */
+export function declineOrganizerHandover(
+  workspaceId: string,
+  agreementId: string,
+  expectedRevision: number,
+): Promise<Agreement> {
+  return api<Agreement>(
+    `${handoverPath(workspaceId, agreementId)}/decline`,
+    "POST",
+    { expectedRevision },
+  );
+}
