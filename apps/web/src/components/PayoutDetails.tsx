@@ -25,13 +25,21 @@ export function PayoutDetails({
   onOpenAgreement?: (agreementKey: string) => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
+  const opener = useRef<HTMLElement | null>(null);
   const title = useId();
   const created = payoutDate(row.createdAt);
   const sent = payoutSentLabel(row);
   useEffect(() => {
+    opener.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
     const element = dialog.current;
-    element?.showModal();
-    return () => element?.close();
+    if (element && !element.open) element.showModal();
+    return () => {
+      element?.close();
+      opener.current?.focus();
+    };
   }, []);
   return (
     <dialog
@@ -39,7 +47,17 @@ export function PayoutDetails({
       className={styles.drawer}
       aria-labelledby={title}
       onCancel={onClose}
-      onClose={onClose}
+      onClick={(event) => {
+        if (event.target !== event.currentTarget) return;
+        const bounds = event.currentTarget.getBoundingClientRect();
+        if (
+          event.clientX < bounds.left ||
+          event.clientX > bounds.right ||
+          event.clientY < bounds.top ||
+          event.clientY > bounds.bottom
+        )
+          onClose();
+      }}
     >
       <header className={styles.drawerHeader}>
         <h2 id={title}>Payout details</h2>
