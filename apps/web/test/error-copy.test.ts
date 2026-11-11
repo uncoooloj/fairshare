@@ -26,7 +26,7 @@ test("unexpected errors never leak diagnostics or encourage repeating payments b
 });
 test("actionable validation messages survive while raw codes do not", () => {
   assert.equal(
-    errorCopy(400, "BAD_EMAIL", "Enter a valid email address."),
+    errorCopy(400, "INVALID_EMAIL", "Enter a valid email address."),
     "Enter a valid email address.",
   );
   assert.doesNotMatch(

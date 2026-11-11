@@ -166,15 +166,17 @@ function StatCard({
 export function OverviewDashboard({
   agreements,
   payouts,
+  payoutsComplete,
   userId,
   onOpen,
 }: {
   agreements: Agreement[];
   payouts: OverviewPayout[];
+  payoutsComplete: boolean;
   userId: string;
   onOpen: (agreement: Agreement) => void;
 }) {
-  const summary = overviewSummary(agreements, payouts, userId);
+  const summary = overviewSummary(agreements, payouts, userId, payoutsComplete);
 
   function row(item: AttentionItem, kind: AttentionKind) {
     return (
@@ -244,6 +246,12 @@ export function OverviewDashboard({
         <span aria-hidden="true">ⓘ</span> Recorded shares, not an available
         balance.
       </p>
+      {!payoutsComplete && (
+        <p className="ov-caveat" role="status">
+          Payout records are unavailable until every agreement payout list
+          loads. Financial totals are not shown as zero.
+        </p>
+      )}
       {allClear && (
         <div className="ov-card ov-all-clear" role="status">
           <span className="ov-all-clear-dot" aria-hidden="true" />
