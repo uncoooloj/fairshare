@@ -405,8 +405,15 @@ export default function FairshareApp() {
   }, [ready, user]);
   useEffect(() => {
     if (!ready) return;
-    document.title = user ? `${section} · Fairshare` : "Log in · Fairshare";
-  }, [ready, user, section]);
+    document.title =
+      flowKind === "/invitation"
+        ? "Invitation · Fairshare"
+        : flowKind === "/verify-email"
+          ? "Verify email · Fairshare"
+          : user
+            ? `${section} · Fairshare`
+            : "Log in · Fairshare";
+  }, [ready, user, section, flowKind]);
   useEffect(() => {
     if (user)
       run(async () => {
@@ -649,7 +656,7 @@ export default function FairshareApp() {
           section === Section.Payouts ? (
             <Heading
               title="No payouts yet"
-              description="Your payouts will appear here once an agreement receives a payment."
+              description="Payouts appear here after a received payment is allocated and payout dispatch is recorded."
               action={
                 <Button onClick={() => navigate(Section.Agreements)}>
                   Create an agreement
