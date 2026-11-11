@@ -17,11 +17,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: ./.github/actions/setup-ci
         with:
-          node-version: "22.16.0"
-          cache: npm
-      - run: npm ci
+          save-cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
       - run: npm run format:check
 
   test_api_shard_1:
@@ -29,11 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22.16.0"
-          cache: npm
-      - run: npm ci
+      - uses: ./.github/actions/setup-ci
       # Preserve the API test command while splitting its test-file glob across runners.
       - run: cd apps/api && node --import tsx --test --test-shard=1/2 test/*.test.ts
 
@@ -42,11 +36,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22.16.0"
-          cache: npm
-      - run: npm ci
+      - uses: ./.github/actions/setup-ci
       - run: cd apps/api && node --import tsx --test --test-shard=2/2 test/*.test.ts
 
   test_web_and_packages:
@@ -54,11 +44,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22.16.0"
-          cache: npm
-      - run: npm ci
+      - uses: ./.github/actions/setup-ci
       # Adding a workspace requires adding it to one of the test lanes below.
       - name: Assert all workspaces are covered by test lanes
         run: |
@@ -82,11 +68,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22.16.0"
-          cache: npm
-      - run: npm ci
+      - uses: ./.github/actions/setup-ci
       - run: npm run typecheck
 
   build:
@@ -95,17 +77,13 @@ jobs:
       NEXT_TELEMETRY_DISABLED: "1"
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22.16.0"
-          cache: npm
+      - uses: ./.github/actions/setup-ci
       - uses: actions/cache@v4
         with:
           path: apps/web/.next/cache
           key: ${{ runner.os }}-nextjs-${{ hashFiles('package-lock.json') }}-${{ hashFiles('apps/web/**') }}
           restore-keys: |
             ${{ runner.os }}-nextjs-${{ hashFiles('package-lock.json') }}-
-      - run: npm ci
       - run: npm run build
 
   verify:

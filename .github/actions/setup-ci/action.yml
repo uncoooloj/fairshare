@@ -1,0 +1,69 @@
+name: Setup CI dependencies
+description: Restore exact locked Node dependencies or install and seed them from trusted main.
+
+inputs:
+  save-cache:
+    description: Save an exact dependency cache after a cache miss.
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - id: node
+      uses: actions/setup-node@v4
+      with:
+        node-version: "22.16.0"
+
+    - id: cache-key
+      shell: bash
+      run: |
+        node_version="$(node --version)"
+        npm_version="$(npm --version)"
+        image_os="${ImageOS:-unknown}"
+        runner_os="${RUNNER_OS:-unknown}"
+        architecture="$(uname -m)"
+        manifest_hash="$(
+          {
+            for file in package-lock.json package.json .npmrc; do
+              printf '%s\0' "$file"
+              if [ -f "$file" ]; then
+                cat "$file"
+              else
+                printf '%s\0' absent
+              fi
+            done
+            for file in apps/*/package.json packages/*/package.json; do
+              printf '%s\0' "$file"
+              cat "$file"
+            done
+          } | sha256sum | cut -d ' ' -f1
+        )"
+        echo "key=fairshare-node-modules-v1-${image_os}-${runner_os}-${architecture}-${node_version}-${npm_version}-${manifest_hash}" >> "$GITHUB_OUTPUT"
+        echo "Node ${node_version}; npm ${npm_version}; image ${image_os}; runner ${runner_os}; architecture ${architecture}; manifests ${manifest_hash}"
+
+    - id: modules-cache
+      uses: actions/cache/restore@v4
+      with:
+        path: |
+          node_modules
+          apps/*/node_modules
+          packages/*/node_modules
+        key: ${{ steps.cache-key.outputs.key }}
+
+    - if: ${{ steps.modules-cache.outputs.cache-hit != 'true' }}
+      shell: bash
+      run: npm ci
+
+    - if: ${{ steps.modules-cache.outputs.cache-hit == 'true' }}
+      shell: bash
+      run: npm ls --all
+
+    - if: ${{ inputs.save-cache == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.modules-cache.outputs.cache-hit != 'true' }}
+      uses: actions/cache/save@v4
+      with:
+        path: |
+          node_modules
+          apps/*/node_modules
+          packages/*/node_modules
+        key: ${{ steps.cache-key.outputs.key }}
