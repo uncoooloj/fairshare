@@ -1847,32 +1847,28 @@ export function applyCaptureRefund(
       );
     }
   }
-  // 5. Never negative: undo an offset this payment can no longer cover, then any fee it no
-  // longer covers. Both become owed again.
+  // 5. Never negative: undo an offset this payment's own entitlement can no longer cover,
+  // then any fee it no longer covers. A credit from another liability is added afterwards;
+  // it cannot fund this payment's offset or fee.
   for (const a of revenue.allocations) {
     const share = shares.get(a.userId)!;
     let offset = a.offsetCents ?? 0,
-      total =
-        a.recoupmentCents +
-        a.shareCents -
-        a.feeCents -
-        offset +
-        (a.creditCents ?? 0);
-    if (total < 0) {
-      const restore = Math.min(offset, -total);
+      fundedTotal = a.recoupmentCents + a.shareCents - a.feeCents - offset;
+    if (fundedTotal < 0) {
+      const restore = Math.min(offset, -fundedTotal);
       offset -= restore;
-      total += restore;
+      fundedTotal += restore;
       share.offsetRestoredCents = restore;
       if (restore) restoreOffsetAttributions(a, restore);
     }
-    if (total < 0) {
-      a.feeCents += total;
-      share.shortfallCents -= total;
-      total = 0;
+    if (fundedTotal < 0) {
+      a.feeCents += fundedTotal;
+      share.shortfallCents -= fundedTotal;
+      fundedTotal = 0;
     }
     if (offset) a.offsetCents = offset;
     else delete a.offsetCents;
-    a.totalCents = total;
+    a.totalCents = fundedTotal + (a.creditCents ?? 0);
   }
   // 6. Advance bookkeeping, and whether it can be trusted without a person looking.
   let advanceUnclear = false;
