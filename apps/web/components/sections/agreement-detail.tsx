@@ -20,6 +20,7 @@ import { AgreementVersions } from "../agreement-versions";
 import { AgreementName } from "../agreement-name";
 import { AgreementSetup } from "../agreement-setup";
 import { OrganizerHandoverBanner } from "../organizer-handover-banner";
+import { RefundPausedBanner } from "../refund-paused-banner";
 import { AgreementReviseWizard } from "../agreement-revise-wizard";
 import {
   ChangeRequestDrawer,
@@ -430,6 +431,12 @@ export function AgreementDetail({
           busy={busy}
           run={run}
           mutate={mutate}
+        />
+        <RefundPausedBanner
+          agreement={selected}
+          userId={user.id}
+          base={base}
+          refresh={refresh}
         />
         <AgreementSetup
           agreement={selected}

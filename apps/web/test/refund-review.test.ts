@@ -66,3 +66,17 @@ test("copy avoids engine words", async () => {
     );
   }
 });
+
+test("the pause review is mounted above agreement tabs with its recovery endpoint", async () => {
+  const source = await readFile(
+    new URL("../components/sections/agreement-detail.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    source,
+    /<RefundPausedBanner[\s\S]*base=\{base\}[\s\S]*refresh=\{refresh\}/,
+  );
+  assert.ok(
+    source.indexOf("<RefundPausedBanner") < source.indexOf("<AgreementTabs"),
+  );
+});
