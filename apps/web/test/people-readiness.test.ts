@@ -37,7 +37,7 @@ test("organizers see readiness only, never a destination", () => {
   assert.equal(payoutReadinessLabel("SAVED_UNVERIFIED"), "Status unavailable");
   assert.equal(payoutReadinessLabel(undefined), "Status unavailable");
 });
-test("row actions do not mutate membership, other people's destinations, or resend email", () => {
+test("row actions do not mutate membership or expose other people's destinations", () => {
   const source = readFileSync(
     new URL("../components/agreement-people.tsx", import.meta.url),
     "utf8",
@@ -45,10 +45,33 @@ test("row actions do not mutate membership, other people's destinations, or rese
   assert.doesNotMatch(source, /"DELETE"|"PATCH"|"POST"|"PUT"|ownPaypalId/);
   assert.match(
     source,
-    /canRemind\(\s*agreement,\s*version,\s*userId,\s*member.userId,?\s*\)/,
+    /canRemind\(\s*currentAgreement,\s*currentVersion,\s*userId,\s*member.userId,?\s*\)/,
   );
   assert.match(source, /member.userId === userId/);
   assert.doesNotMatch(source, /accountHint|PayPal ID|recipient ID|merchant/i);
   assert.match(source, /<PayoutEmailStep/);
   assert.match(source, /if \(active\)/);
+});
+
+test("organizers can recover a sent pending person's link without putting its token in a query", async () => {
+  const { personInviteLink } = await import("../components/agreement-people");
+  const source = readFileSync(
+    new URL("../components/agreement-people.tsx", import.meta.url),
+    "utf8",
+  );
+  const link = personInviteLink(
+    "one-time-token",
+    "https://fairshare-web.udaleamehoj.workers.dev",
+  );
+  assert.equal(
+    link,
+    "https://usefairshare.app/invitation#token=agreement%3Aone-time-token",
+  );
+  assert.match(
+    source,
+    /organizer && sent && isPendingMember\(member\)/,
+  );
+  assert.match(source, /replacePersonLink\(/);
+  assert.match(source, /currentAgreement\.revision/);
+  assert.match(source, /agreementIdentityRef\.current !== requestIdentity/);
 });

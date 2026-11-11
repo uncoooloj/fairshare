@@ -49,6 +49,7 @@ export function AgreementPeopleTab({
         version={latest}
         userId={user.id}
         base={base}
+        organizer={organizer}
       />
       {organizer && !selected.value.versions.length && (
         <section className="section">
