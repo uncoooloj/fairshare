@@ -88,6 +88,11 @@ test("layout joins a trailing soft hyphen at a line wrap", () => {
   assert.equal(text, "The nonexclusive licence applies.");
 });
 
+test("layout joins a soft-hyphen-wrapped proper name", () => {
+  const { text } = layoutPage([line("Pay­", 800, 495), line("Pal", 788, 200)]);
+  assert.equal(text, "PayPal");
+});
+
 test("normalization expands ligatures but keeps meaning-bearing characters", () => {
   assert.equal(
     normalizeExtractedText(

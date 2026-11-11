@@ -136,7 +136,7 @@ export function layoutPage(input: LayoutLine[]): PageLayout {
     const previous = lines[index - 1];
     const current = lines[index];
     const join =
-      previous.softHyphenWrap && /^\p{Ll}/u.test(current.text)
+      previous.softHyphenWrap && /^\p{L}/u.test(current.text)
         ? LineJoin.HYPHEN
         : chooseJoin(previous, current, page);
     text += join;
