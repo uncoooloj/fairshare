@@ -36,6 +36,7 @@ function fixture(): Agreement {
       revenue: [
         {
           providerCaptureId: "cap",
+          currency: "USD",
           versionId: 1,
           grossCents: 100,
           feeCents: 0,
