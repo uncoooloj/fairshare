@@ -89,9 +89,6 @@ export interface WizardResume {
   extraction: unknown;
 }
 
-const PRIVACY_LINE =
-  "Read my agreement sends it to AI (Cloudflare Workers AI, with an Anthropic fallback) to suggest the split.";
-
 /** Screens a reopened draft can land on. Upload and Reading are behind it; Sent means it's gone. */
 const RESUMABLE = new Set<string>([
   WizardStage.CHECK,
@@ -1079,7 +1076,6 @@ export function AgreementCreationWizard({
         >
           {busy ? "Saving…" : "Read my agreement"}
         </button>
-        <small>{PRIVACY_LINE}</small>
       </span>
     </>,
     <section className="wiz-step" aria-labelledby="wiz-step-title">
