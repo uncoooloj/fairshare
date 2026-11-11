@@ -289,6 +289,32 @@ test("organizer-covers-fees: refunds come off gross shares and only a returned f
   assert.deepEqual({ ...full.collaboration.owedBack }, { a: 300 });
 });
 
+test("organizer fee return can repay a prior shortfall up to the original fee", () => {
+  const organizerPays = rules({
+    feePolicy: FeePolicy.ORGANIZER_SHARE,
+    feeBearerId: "a",
+    shares: [
+      { userId: "a", basisPoints: 1000 },
+      { userId: "b", basisPoints: 4500 },
+      { userId: "c", basisPoints: 4500 },
+    ],
+  });
+  const c = pay(active(organizerPays), "CAP1", 10000, 900);
+  const partial = refund(c, "R1", 5000, 0).collaboration;
+  assert.deepEqual({ ...partial.owedBack }, { a: 400 });
+  const unchanged = structuredClone(partial);
+  assert.throws(
+    () => refund(partial, "bad", 5000, 901),
+    code("REFUND_FEE_MISMATCH"),
+  );
+  assert.deepEqual(partial, unchanged);
+  const complete = refund(partial, "R2", 5000, 900);
+  assert.deepEqual(totals(complete.collaboration), { a: 0, b: 0, c: 0 });
+  assert.equal(complete.collaboration.owedBack, undefined);
+  assert.equal(complete.refund.shares[0].shortfallReturnedCents, 400);
+  assert.equal(allocatedNetCents(complete.collaboration.revenue[0]), 0);
+});
+
 test("full refund before payout with the fee kept: the fee is shared by the split as owed and the agreement pauses", () => {
   const c = pay(active(), "CAP1");
   const r = refund(c, "R1", 10000, 0);
@@ -372,12 +398,57 @@ test("resume needs the organizer and a pause; without offset the owed amounts ar
   assert.equal(entry.type, "PAYOUTS_RESUMED");
   assert.deepEqual(entry.details.owedCents, { a: 2500 });
   assert.equal(entry.details.note, "Maya paid it back by bank");
+  assert.deepEqual(resumed.externallySettledOverpayments, {
+    CAP1: { a: 2500 },
+  });
   // New payments allocate normally afterwards.
   assert.deepEqual(totals(pay(resumed, "CAP2"), "CAP2"), {
     a: 4850,
     b: 2910,
     c: 1940,
   });
+});
+
+test("a returned payout restores credit after its overpayment was settled outside Fairshare", () => {
+  const held = refund(pay(active(), "CAP1"), "R1", 10000, 300, {
+    payoutsStarted: true,
+    paidCents: { b: 2910 },
+  }).collaboration;
+  const resumed = resumePayouts(
+    held,
+    { offsetFromFuturePayouts: false, note: "Jordan settled by bank" },
+    "a",
+    at,
+  );
+  assert.deepEqual(resumed.externallySettledOverpayments, {
+    CAP1: { b: 2910 },
+  });
+  const returned = releaseUndeliveredOverpayment(resumed, "CAP1", "b", at);
+  assert.deepEqual(returned.creditBack, { b: 2910 });
+  assert.equal(returned.externallySettledOverpayments, undefined);
+  assert.deepEqual(
+    releaseUndeliveredOverpayment(returned, "CAP1", "b", at),
+    returned,
+  );
+});
+
+test("external settlement keeps the full overpayment across sequential refunds", () => {
+  const paid = { payoutsStarted: true, paidCents: { a: 4850 } };
+  const once = refund(pay(active(), "CAP1"), "R1", 5000, 0, paid).collaboration;
+  const held = refund(once, "R2", 5000, 0, paid).collaboration;
+  const resumed = resumePayouts(
+    held,
+    { offsetFromFuturePayouts: false },
+    "a",
+    at,
+  );
+  assert.deepEqual(resumed.externallySettledOverpayments, {
+    CAP1: { a: 4850 },
+  });
+  assert.deepEqual(
+    releaseUndeliveredOverpayment(resumed, "CAP1", "a", at).creditBack,
+    { a: 4850 },
+  );
 });
 
 test("offset: each person's overpayment comes off their next shares until settled", () => {

@@ -133,6 +133,8 @@ export interface RefundShare {
   offsetRestoredCents: number;
   /** Their part of an unreturned fee that this payment no longer covers. */
   shortfallCents: number;
+  /** An earlier fee shortfall repaid by this refund's returned fee. */
+  shortfallReturnedCents?: number;
   /** Added to owedBack: paid out beyond what they are now entitled to, plus shortfall and restored offset. */
   owedCents: number;
 }
@@ -212,6 +214,9 @@ export interface Collaboration {
   /** Per person: kept back for an overpayment that turned out not to be one; added to their
    * next share. */
   creditBack?: Record<string, number>;
+  /** Capture -> person -> overpayment that the organizer recorded as settled outside
+   * Fairshare. Kept so a later returned payout can restore the person's credit once. */
+  externallySettledOverpayments?: Record<string, Record<string, number>>;
   /** Advance ID -> the advance whose repaid count was carried onto it when it replaced it. */
   advanceCarries?: Record<string, string>;
 }
@@ -1247,7 +1252,10 @@ export function allocatedNetCents(r: Revenue): number {
     (sum, x) =>
       sum -
       (x.grossCents - x.feeReturnedCents) +
-      x.shares.reduce((s, p) => s + p.shortfallCents, 0),
+      x.shares.reduce(
+        (s, p) => s + p.shortfallCents - (p.shortfallReturnedCents ?? 0),
+        0,
+      ),
     r.netCents,
   );
 }
@@ -1395,13 +1403,42 @@ export function applyCaptureRefund(
     const bearer =
       revenue.allocations.find((a) => a.userId === rules.feeBearerId) ??
       fail("REFUND_FEE_MISMATCH", "The fee was not covered by anyone");
-    if (bearer.feeCents < input.feeReturnedCents)
+    const shortfallLeft = (revenue.refunds ?? []).reduce((sum, refund) => {
+      const prior = refund.shares.find(
+        (share) => share.userId === bearer.userId,
+      );
+      return prior
+        ? sum + prior.shortfallCents - (prior.shortfallReturnedCents ?? 0)
+        : sum;
+    }, 0);
+    if (bearer.feeCents + shortfallLeft < input.feeReturnedCents)
       fail(
         "REFUND_FEE_MISMATCH",
-        "Returned fees cannot exceed the fee covered",
+        "Returned fees cannot exceed the fee still covered or owed",
       );
-    bearer.feeCents -= input.feeReturnedCents;
+    const returnedFromFee = Math.min(bearer.feeCents, input.feeReturnedCents);
+    const returnedFromShortfall = input.feeReturnedCents - returnedFromFee;
+    bearer.feeCents -= returnedFromFee;
     shares.get(bearer.userId)!.feeCents = input.feeReturnedCents;
+    if (returnedFromShortfall) {
+      shares.get(bearer.userId)!.shortfallReturnedCents = returnedFromShortfall;
+      const owed = own(out.owedBack, bearer.userId);
+      const settled = Math.min(owed, returnedFromShortfall);
+      if (settled) {
+        if (owed > settled)
+          setOwn(out.owedBack!, bearer.userId, owed - settled);
+        else delete out.owedBack![bearer.userId];
+        if (!Object.keys(out.owedBack!).length) delete out.owedBack;
+      }
+      if (settled < returnedFromShortfall) {
+        out.creditBack ??= {};
+        setOwn(
+          out.creditBack,
+          bearer.userId,
+          own(out.creditBack, bearer.userId) + returnedFromShortfall - settled,
+        );
+      }
+    }
   }
   // 5. Never negative: undo an offset this payment can no longer cover, then any fee it no
   // longer covers. Both become owed again.
@@ -1579,12 +1616,29 @@ export function releaseUndeliveredOverpayment(
     out.creditBack ??= {};
     setOwn(out.creditBack, userId, own(out.creditBack, userId) + credit);
   }
+  const externallySettled = own(
+    out.externallySettledOverpayments?.[captureId],
+    userId,
+  );
+  if (externallySettled > 0) {
+    out.creditBack ??= {};
+    setOwn(
+      out.creditBack,
+      userId,
+      own(out.creditBack, userId) + externallySettled,
+    );
+    delete out.externallySettledOverpayments![captureId]![userId];
+    if (!Object.keys(out.externallySettledOverpayments![captureId]!).length)
+      delete out.externallySettledOverpayments![captureId];
+    if (!Object.keys(out.externallySettledOverpayments!).length)
+      delete out.externallySettledOverpayments;
+  }
   audit(out, AuditType.REFUND_APPLIED, "provider", at, {
     captureId,
     userId,
     payoutNotDelivered: true,
     releasedCents: release,
-    creditedCents: credit,
+    creditedCents: credit + externallySettled,
   });
   return out;
 }
@@ -1653,6 +1707,42 @@ export function resumePayouts(
   const anyOwed = Object.values(owed).some((v) => v > 0);
   if (input.offsetFromFuturePayouts && anyOwed) out.offsetOwedBack = true;
   else {
+    if (anyOwed) {
+      for (const revenue of out.revenue) {
+        const byPerson: Record<string, number> = {};
+        for (const refund of revenue.refunds ?? [])
+          for (const share of refund.shares) {
+            const overpayment =
+              share.owedCents -
+              share.shortfallCents -
+              share.offsetRestoredCents;
+            if (overpayment > 0)
+              setOwn(
+                byPerson,
+                share.userId,
+                own(byPerson, share.userId) + overpayment,
+              );
+          }
+        for (const [userId, overpayment] of Object.entries(byPerson)) {
+          const alreadySettled = own(
+            out.externallySettledOverpayments?.[revenue.providerCaptureId],
+            userId,
+          );
+          const record = Math.min(
+            Math.max(0, overpayment - alreadySettled),
+            own(owed, userId),
+          );
+          if (!record) continue;
+          out.externallySettledOverpayments ??= {};
+          out.externallySettledOverpayments[revenue.providerCaptureId] ??= {};
+          setOwn(
+            out.externallySettledOverpayments[revenue.providerCaptureId],
+            userId,
+            alreadySettled + record,
+          );
+        }
+      }
+    }
     delete out.owedBack;
     delete out.offsetOwedBack;
   }
