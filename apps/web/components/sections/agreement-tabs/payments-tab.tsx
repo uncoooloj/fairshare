@@ -5,6 +5,7 @@ import { AgreementInvoices } from "../../agreement-invoices";
 import { Drawer } from "../../allocation-drawer";
 import { safePayPalUrl } from "../../agreement-widgets";
 import { PaymentRecovery } from "../../payment-recovery";
+import { RowMenu } from "../../row-menu";
 import {
   api,
   money,
@@ -26,7 +27,7 @@ const PAYMENT_STATUS: Record<string, string> = {
   CREATING: "Starting",
   AWAITING_BUYER: "Waiting for payer",
   CAPTURING: "Collecting",
-  ALLOCATED: "Received and allocated",
+  ALLOCATED: "Split",
   HELD: "Being checked",
   OUTCOME_UNKNOWN: "Being checked",
 };
@@ -48,7 +49,7 @@ export interface AgreementPaymentsTabProps {
   setBreakdown: Dispatch<SetStateAction<Revenue | null>>;
 }
 
-/** Get paid (payment links), the payments list, the splits, and recovery behind a drawer. */
+/** Invoices (payment links), the payments list, the splits, and recovery behind a drawer. */
 export function AgreementPaymentsTab({
   selected,
   active,
@@ -72,14 +73,6 @@ export function AgreementPaymentsTab({
         </Notice>
       )}
       <section className="panel ag-card ag-get-paid" id="get-paid">
-        <h2>Get paid</h2>
-        <p className="muted">
-          {active
-            ? "Request a payment and share the link. When it's paid, it's split automatically."
-            : organizer
-              ? "Once everyone approves, you can request payments here."
-              : "Once everyone approves, payments show up here."}
-        </p>
         <AgreementInvoices
           key={selected.id}
           base={base}
@@ -87,6 +80,13 @@ export function AgreementPaymentsTab({
           userId={user.id}
           canCreate={organizer && !!active}
           onReconciled={refresh}
+          intro={
+            active
+              ? undefined
+              : organizer
+                ? "Once everyone approves, you can bill people here."
+                : "Once everyone approves, invoices show up here."
+          }
         />
       </section>
       <section className="panel ag-card">
@@ -119,7 +119,7 @@ export function AgreementPaymentsTab({
                       </span>
                     </td>
                     <td>
-                      <div className="actions">
+                      <div className="ag-row-actions">
                         {p.approval_url && safePayPalUrl(p.approval_url) && (
                           <a
                             href={p.approval_url}
@@ -149,23 +149,27 @@ export function AgreementPaymentsTab({
                               Collect payment
                             </Button>
                           )}
-                        {organizer && (
-                          <Button
-                            variant="quiet"
-                            disabled={busy}
-                            onClick={() =>
-                              run(async () => {
-                                await api(
-                                  `${base}/${paymentReconcilePath(p)}`,
-                                  "POST",
-                                  {},
-                                );
-                                await refresh();
-                              })
-                            }
-                          >
-                            Check status
-                          </Button>
+                        {/* An invoice payment is checked from its invoice row above. */}
+                        {organizer && (!p.invoice_id || !active) && (
+                          <RowMenu
+                            label={`More for payment from ${p.source_name || "PayPal"}`}
+                            items={[
+                              {
+                                id: "check",
+                                label: "Check status",
+                                disabled: busy,
+                                onSelect: () =>
+                                  run(async () => {
+                                    await api(
+                                      `${base}/${paymentReconcilePath(p)}`,
+                                      "POST",
+                                      {},
+                                    );
+                                    await refresh();
+                                  }),
+                              },
+                            ]}
+                          />
                         )}
                       </div>
                     </td>
@@ -177,8 +181,8 @@ export function AgreementPaymentsTab({
         ) : (
           <Empty title="No payments yet">
             {active
-              ? "Request a payment above to get paid."
-              : "When everyone has approved, request a payment to get paid."}
+              ? "Create an invoice above to get paid."
+              : "When everyone has approved, create an invoice to get paid."}
           </Empty>
         )}
         {organizer && (
@@ -193,7 +197,7 @@ export function AgreementPaymentsTab({
           </p>
         )}
       </section>
-      <AgreementAllocations agreement={selected} />
+      <AgreementAllocations agreement={selected} payouts={payouts} />
       {fixing && (
         <Drawer
           label="Something wrong with a payment?"

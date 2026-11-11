@@ -1,5 +1,5 @@
 "use client";
-import { Fragment, useState } from "react";
+import { useState } from "react";
 import type { Agreement } from "../lib/model";
 import { money, title } from "../lib/model";
 import { allocationRows } from "../lib/allocation-trace";
@@ -9,21 +9,41 @@ import { AllocationCalculation } from "./allocation-calculation";
 import { Drawer } from "./allocation-drawer";
 import { Avatar, AvatarSize } from "./person";
 import { ChevronRightIcon } from "./icons";
+import {
+  payoutGridStatus,
+  type PaymentGridStatus,
+} from "../src/components/paymentGridModel";
 
-export function AgreementAllocations({ agreement }: { agreement: Agreement }) {
+/** One stored payout operation, as `/payouts` returns it (the Payouts page reads the same list). */
+export interface AgreementPayout {
+  capture_id: string;
+  user_id: string;
+  status: string;
+  agreement?: { id: string };
+}
+
+export function AgreementAllocations({
+  agreement,
+  payouts = [],
+}: {
+  agreement: Agreement;
+  payouts?: AgreementPayout[];
+}) {
   const rows = allocationRows(agreement);
   const [open, setOpen] = useState<string | null>(null);
   const members = agreement.value.members;
-  const groups = rows.reduce<{ captureId: string; rows: typeof rows }[]>(
-    (list, row) => {
-      const last = list.at(-1);
-      if (last?.captureId === row.revenue.providerCaptureId)
-        last.rows.push(row);
-      else list.push({ captureId: row.revenue.providerCaptureId, rows: [row] });
-      return list;
-    },
-    [],
-  );
+  // The payment itself lives in the drawer; a date column tells payments apart.
+  const multiplePayments =
+    new Set(rows.map((row) => row.revenue.providerCaptureId)).size > 1;
+  const payoutStatus = (captureId: string, userId: string) => {
+    const payout = payouts.find(
+      (p) =>
+        (!p.agreement || p.agreement.id === agreement.id) &&
+        p.capture_id === captureId &&
+        p.user_id === userId,
+    );
+    return payout ? payoutGridStatus(payout.status) : undefined;
+  };
   const selected = rows.find(
     (row) =>
       `${row.revenue.providerCaptureId}:${row.allocation.userId}` === open,
@@ -42,12 +62,19 @@ export function AgreementAllocations({ agreement }: { agreement: Agreement }) {
         </div>
       ) : (
         <div style={{ overflowX: "auto" }}>
-          <table className="ledger-table">
+          <table
+            className={`ledger-table${multiplePayments ? " has-dates" : ""}`}
+          >
             <caption className="sr-only">
               Who is owed what from each payment
             </caption>
             <thead>
               <tr>
+                {multiplePayments && (
+                  <th scope="col" className="ledger-date">
+                    Date
+                  </th>
+                )}
                 <th scope="col">Person</th>
                 <th scope="col" className="numeric">
                   Amount
@@ -61,92 +88,71 @@ export function AgreementAllocations({ agreement }: { agreement: Agreement }) {
               </tr>
             </thead>
             <tbody>
-              {groups.map((group, index) => {
-                const revenue = group.rows[0].revenue;
-                const ordinal = groups.length - index;
+              {rows.map(({ revenue, allocation, name, trace }) => {
+                const key = `${revenue.providerCaptureId}:${allocation.userId}`;
+                const held =
+                  agreement.value.reviewHold ||
+                  allocation.status === "HELD" ||
+                  revenue.status === "REVIEW_REQUIRED";
                 return (
-                  <Fragment key={group.captureId}>
-                    <tr className="ledger-group">
-                      <th scope="colgroup" colSpan={4}>
-                        Payment {ordinal} ·{" "}
-                        <span title={formatExact(revenue.at)}>
-                          {formatDay(revenue.at)}
-                        </span>{" "}
-                        · {money(revenue.grossCents)} via PayPal
-                        <span className="muted">
-                          {revenue.feeCents
-                            ? `${money(revenue.feeCents)} fee`
-                            : "No fee"}{" "}
-                        </span>
-                      </th>
-                    </tr>
-                    {group.rows.map(({ allocation, name, trace }) => {
-                      const key = `${revenue.providerCaptureId}:${allocation.userId}`;
-                      const held =
-                        agreement.value.reviewHold ||
-                        allocation.status === "HELD" ||
-                        revenue.status === "REVIEW_REQUIRED";
-                      return (
-                        <tr
-                          key={key}
-                          className={`ledger-row${allocation.totalCents === 0 ? " is-zero" : ""}`}
-                          onClick={() => trace && setOpen(key)}
+                  <tr
+                    key={key}
+                    className={`ledger-row${allocation.totalCents === 0 ? " is-zero" : ""}`}
+                    onClick={() => trace && setOpen(key)}
+                  >
+                    {multiplePayments && (
+                      <td
+                        className="ledger-date muted"
+                        title={formatExact(revenue.at)}
+                      >
+                        {formatDay(revenue.at)}
+                      </td>
+                    )}
+                    <td>
+                      {trace ? (
+                        <button
+                          type="button"
+                          className="row-open"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setOpen(key);
+                          }}
+                          aria-label={`Why ${name} got ${money(allocation.totalCents)}`}
                         >
-                          <td>
-                            {trace ? (
-                              <button
-                                type="button"
-                                className="row-open"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  setOpen(key);
-                                }}
-                                aria-label={`Why ${name} got ${money(allocation.totalCents)}`}
-                              >
-                                <Avatar
-                                  name={name}
-                                  tone={toneInRoster(
-                                    allocation.userId,
-                                    members,
-                                  )}
-                                  size={AvatarSize.SMALL}
-                                  label={false}
-                                />
-                                {name}
-                              </button>
-                            ) : (
-                              name
-                            )}
-                          </td>
-                          <td className="numeric">
-                            {money(allocation.totalCents)}
-                          </td>
-                          <td>
-                            {!trace ? (
-                              <span className="status-chip warning">
-                                Being checked
-                              </span>
-                            ) : held ? (
-                              <span className="status-chip warning">
-                                On hold
-                              </span>
-                            ) : allocation.status !== "ALLOCATED" ? (
-                              <span className="status-chip">
-                                {title(allocation.status)}
-                              </span>
-                            ) : null}
-                          </td>
-                          <td className="numeric" aria-hidden="true">
-                            {trace && (
-                              <span className="row-chevron">
-                                <ChevronRightIcon />
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </Fragment>
+                          <Avatar
+                            name={name}
+                            tone={toneInRoster(allocation.userId, members)}
+                            size={AvatarSize.SMALL}
+                            label={false}
+                          />
+                          {name}
+                        </button>
+                      ) : (
+                        name
+                      )}
+                    </td>
+                    <td className="numeric">{money(allocation.totalCents)}</td>
+                    <td>
+                      {!trace ? (
+                        <span className="status-chip warning">
+                          Being checked
+                        </span>
+                      ) : held ? (
+                        <span className="status-chip warning">On hold</span>
+                      ) : allocation.status !== "ALLOCATED" ? (
+                        <span className="status-chip">
+                          {title(allocation.status)}
+                        </span>
+                      ) : null}
+                    </td>
+                    <td className="numeric" aria-hidden="true">
+                      {trace && (
+                        <span className="row-chevron">
+                          <ChevronRightIcon />
+                        </span>
+                      )}
+                    </td>
+                  </tr>
                 );
               })}
             </tbody>
@@ -159,6 +165,10 @@ export function AgreementAllocations({ agreement }: { agreement: Agreement }) {
             trace={selected.trace}
             name={selected.name}
             tone={toneInRoster(selected.allocation.userId, members)}
+            payout={payoutStatus(
+              selected.revenue.providerCaptureId,
+              selected.allocation.userId,
+            )}
             advanceTo={
               members.find(
                 (m) =>

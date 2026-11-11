@@ -83,20 +83,90 @@ export function invoiceStatusLabel(status: string): string {
     CREATING: "Creating",
     DRAFT: "Draft",
     PUBLISHING: "Preparing link",
-    SHARED: "Ready to share",
+    SHARED: "Waiting for payment",
     PAYMENT_PENDING: "Payment pending",
-    PAYMENT_RECORDED: "Payment recorded · settlement unverified",
-    PAID: "Paid · allocation verified",
+    // PayPal says it's paid, but the amount and fee aren't confirmed, so nothing is split yet.
+    PAYMENT_RECORDED: "Checking with PayPal",
+    PAID: "Paid · split",
     PARTIALLY_PAID: "Partially paid",
     CANCELLED: "Cancelled",
     REFUNDED: "Refunded",
     PARTIALLY_REFUNDED: "Partially refunded",
-    MARKED_AS_PAID: "Marked as paid externally",
-    MARKED_AS_REFUNDED: "Marked as refunded externally",
+    MARKED_AS_PAID: "Paid externally · not split",
+    MARKED_AS_REFUNDED: "Refunded externally",
     FAILED: "Needs attention",
-    UNKNOWN: "Check status",
+    UNKNOWN: "Checking with PayPal",
   };
   return labels[status] || status;
+}
+
+export enum InvoiceTone {
+  NEUTRAL = "",
+  GOOD = "good",
+  WARNING = "warning",
+}
+
+/** Statuses where the customer still owes money, so a past due date means overdue. */
+const AWAITING_PAYMENT = new Set([
+  "SHARED",
+  "PAYMENT_PENDING",
+  "PARTIALLY_PAID",
+]);
+const NEEDS_LOOK = new Set([
+  "FAILED",
+  "REFUNDED",
+  "PARTIALLY_REFUNDED",
+  "MARKED_AS_PAID",
+  "MARKED_AS_REFUNDED",
+]);
+
+/** Today as a calendar date in the viewer's own time zone. */
+export function localToday(now = new Date()) {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
+/** The one chip an invoice row shows. A hold always wins: nothing is split while held. */
+export function invoiceChip(
+  invoice: Pick<Invoice, "status" | "settlementStatus" | "dueDate">,
+  today = localToday(),
+): { label: string; tone: InvoiceTone } {
+  if (invoice.settlementStatus === "HELD")
+    return { label: "On hold", tone: InvoiceTone.WARNING };
+  if (invoice.status === "PAID" && invoice.settlementStatus === "VERIFIED")
+    return { label: invoiceStatusLabel("PAID"), tone: InvoiceTone.GOOD };
+  if (invoice.status === "PAID")
+    return { label: "Checking with PayPal", tone: InvoiceTone.NEUTRAL };
+  if (AWAITING_PAYMENT.has(invoice.status) && invoice.dueDate < today)
+    return { label: "Overdue", tone: InvoiceTone.WARNING };
+  return {
+    label: invoiceStatusLabel(invoice.status),
+    tone: NEEDS_LOOK.has(invoice.status)
+      ? InvoiceTone.WARNING
+      : InvoiceTone.NEUTRAL,
+  };
+}
+
+/** What the split side of an invoice looks like, in plain words. */
+export function invoiceSplitLabel(settlement: Invoice["settlementStatus"]) {
+  return settlement === "VERIFIED"
+    ? "Split done"
+    : settlement === "HELD"
+      ? "Split paused for review"
+      : "Not split yet";
+}
+
+/** Calendar dates (YYYY-MM-DD) read the same in every time zone: "Nov 12", or "Nov 12, 2027". */
+export function invoiceDay(value: string, now = new Date()) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  const date = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+    ...(date.getUTCFullYear() === now.getFullYear() ? {} : { year: "numeric" }),
+  });
 }
 
 /** Unknown provider balances must not be represented as zero. */
