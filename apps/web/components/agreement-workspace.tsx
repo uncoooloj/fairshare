@@ -20,7 +20,6 @@ import {
 } from "../lib/agreement-status";
 import { Button } from "./ui";
 import { ActionMenu, type MenuItem } from "./action-menu";
-import { ActionMenu, type MenuItem } from "./action-menu";
 
 export enum RuleKind {
   Fees = "PayPal fee",

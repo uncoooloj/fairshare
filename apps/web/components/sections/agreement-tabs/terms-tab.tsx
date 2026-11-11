@@ -1,4 +1,9 @@
-import type { Dispatch, MutableRefObject, SetStateAction } from "react";
+import {
+  useRef,
+  type Dispatch,
+  type MutableRefObject,
+  type SetStateAction,
+} from "react";
 import { PostApprovalPayout } from "../../post-approval-payout";
 import { CollaboratorTerms } from "../../collaborator-review";
 import {
@@ -150,6 +155,7 @@ function ruleCommentSlot(
   agreement: Agreement,
   version: Version,
   canWrite: boolean,
+  onDirtyChange: (topic: RuleStep, dirty: boolean) => void,
 ) {
   return (kind: RuleKind) => {
     const step = RULE_COMMENT_STEP[kind];
@@ -159,6 +165,7 @@ function ruleCommentSlot(
         version={version}
         topic={ruleStepTopic[step]}
         canWrite={canWrite}
+        onDirtyChange={(dirty) => onDirtyChange(step, dirty)}
       />
     ) : null;
   };
@@ -204,6 +211,18 @@ export function AgreementTermsTab({
   onSeeRequest,
   onRevise,
 }: AgreementTermsTabProps) {
+  const commentDrafts = useRef(new Map<string, boolean>());
+  const commentScope = `${selected.id}:${latest?.id ?? "draft"}`;
+  const previousCommentScope = useRef(commentScope);
+  if (previousCommentScope.current !== commentScope) {
+    previousCommentScope.current = commentScope;
+    commentDrafts.current.clear();
+  }
+  const setCommentDraftDirty = (topic: string, dirty: boolean) => {
+    if (dirty) commentDrafts.current.set(topic, true);
+    else commentDrafts.current.delete(topic);
+    setDraftDirty(commentDrafts.current.size > 0);
+  };
   const isOrganizer =
     selected.value.members.find((m) => m.userId === user.id)?.role ===
     "ORGANIZER";
@@ -240,7 +259,12 @@ export function AgreementTermsTab({
             <RevenueRulesCard
               agreement={selected}
               version={latest}
-              ruleSlot={ruleCommentSlot(selected, latest, canWrite)}
+              ruleSlot={ruleCommentSlot(
+                selected,
+                latest,
+                canWrite,
+                setCommentDraftDirty,
+              )}
             />
             <section className="ag-comments" aria-label="Comments">
               <h3>Comments</h3>
@@ -252,7 +276,9 @@ export function AgreementTermsTab({
                 userId={user.id}
                 canWrite={canWrite}
                 compact
-                onDirtyChange={setDraftDirty}
+                onDirtyChange={(dirty) =>
+                  setCommentDraftDirty(RuleStep.OVERALL, dirty)
+                }
                 onRequestChange={() => {
                   const heading = reviewHeadingRef?.current;
                   heading?.scrollIntoView({
@@ -307,7 +333,12 @@ export function AgreementTermsTab({
               agreement={selected}
               version={latest}
               headingId="agreement-proposal-review"
-              ruleSlot={ruleCommentSlot(selected, latest, canWrite)}
+              ruleSlot={ruleCommentSlot(
+                selected,
+                latest,
+                canWrite,
+                setCommentDraftDirty,
+              )}
               action={
                 <Button
                   variant="secondary"
@@ -367,7 +398,9 @@ export function AgreementTermsTab({
                 userId={user.id}
                 canWrite={canWrite}
                 compact
-                onDirtyChange={setDraftDirty}
+                onDirtyChange={(dirty) =>
+                  setCommentDraftDirty(RuleStep.OVERALL, dirty)
+                }
                 onRequestChange={changeAgreement}
               />
             </section>
