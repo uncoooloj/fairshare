@@ -350,7 +350,7 @@ export function ReviewReminder({
         type="button"
         variant="quiet"
         onClick={async () => {
-          const message = `Hi ${name}, please sign in to Fairshare, open “${agreement.value.name}” in our workspace, and review version ${version.id}. ${window.location.origin}`;
+          const message = `Hi ${name}, please sign in to Fairshare, open “${agreement.value.name}” in our workspace, and review version ${version.id}. ${window.location.origin}/app`;
           try {
             await navigator.clipboard.writeText(message);
             setFallback("");

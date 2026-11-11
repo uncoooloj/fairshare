@@ -52,6 +52,6 @@ test("expired or unwanted invitations can be dismissed without consuming them", 
   );
   assert.match(
     source,
-    /function\s+dismissAccessFlow\s*\(\)\s*\{\s*setFlowToken\(""\);\s*setError\(""\);\s*history\.replaceState/,
+    /function\s+dismissAccessFlow\s*\(\)\s*\{\s*setFlowToken\(""\);\s*setError\(""\);\s*router\.replace\("\/app"\)/,
   );
 });
