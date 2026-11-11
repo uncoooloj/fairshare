@@ -7,7 +7,7 @@ import {
 import { useEmailDelivery } from "../lib/email-capability";
 import { useDisplayPreferences } from "./settings-preferences";
 import { Logo, Heading, Auth } from "./agreement-widgets";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type SetStateAction } from "react";
 import {
   ApiError,
   AgreementTab,
@@ -31,11 +31,29 @@ import { Button } from "./ui";
 import { workspaceBase } from "../lib/workspace-base";
 import { mutationIsCurrent } from "../lib/mutation-generation";
 import { AppShell } from "./app-shell";
+import { visibleTab } from "./agreement-tabs";
 import { OverviewSection } from "./sections/overview-section";
 import { AgreementsSection } from "./sections/agreements-section";
 import { AgreementDetail } from "./sections/agreement-detail";
 import { PayoutsSection } from "./sections/payouts-section";
 import { SettingsSection } from "./sections/settings-section";
+import {
+  AppHistoryMark,
+  AppView,
+  APP_ROOT,
+  appPath,
+  historyMark,
+  isAppPath,
+  markedState,
+  parseAppPath,
+  safeAppPath,
+  type AppRoute,
+} from "../lib/app-routes";
+
+/** Where to go after signing in: the app page that sent you to login, or Overview. */
+function loginDestination() {
+  return safeAppPath(new URLSearchParams(location.search).get("next"));
+}
 
 export default function FairshareApp() {
   const router = useRouter();
@@ -76,6 +94,17 @@ export default function FairshareApp() {
     [flowToken, setFlowToken] = useState(""),
     [flowKind, setFlowKind] = useState("");
   const [draftDirty, setDraftDirty] = useState(false);
+  // The draft the open wizard saved, so its URL becomes /app/agreements/:id/setup.
+  const [wizardDraftId, setWizardDraftId] = useState("");
+  const [agreementsLoaded, setAgreementsLoaded] = useState(false);
+  // The address the app opened at, applied once agreements have loaded.
+  const pendingRoute = useRef<AppRoute | null>(null);
+  const applied = useRef(false);
+  // A history move or deep link being opened; the URL already shows it.
+  const navigating = useRef("");
+  // Replace instead of push for the next URL change (wizard saved, link corrected).
+  const replaceNext = useRef(false);
+  const [routeTick, setRouteTick] = useState(0);
   const workspaceRequest = useRef(0);
   const currentWorkspace = useRef("");
   const openRequest = useRef(0);
@@ -88,6 +117,7 @@ export default function FairshareApp() {
     setSelected(null);
     setCreating(false);
     setAgreements([]);
+    setAgreementsLoaded(!id);
     setMembers([]);
     setPayments([]);
     setPayouts([]);
@@ -258,6 +288,7 @@ export default function FairshareApp() {
       );
       setWorkspaces(groups.workspaces);
       setAgreements(visibleAgreements);
+      setAgreementsLoaded(true);
       setMembers(m.members);
       setPayouts([]);
       setPayoutsComplete(false);
@@ -281,7 +312,10 @@ export default function FairshareApp() {
       throw error;
     }
   }
-  async function openAgreement(a: Agreement) {
+  async function openAgreement(
+    a: Agreement,
+    initialTab: AgreementTab = AgreementTab.Overview,
+  ) {
     if (user && isDraftAgreement(a, user.id)) return resumeDraft(a);
     if (a.workspaceId !== currentWorkspace.current)
       commitWorkspace(a.workspaceId);
@@ -295,7 +329,7 @@ export default function FairshareApp() {
       if (request !== openRequest.current) return;
       setDraftDirty(false);
       rulesDirty.current = false;
-      setTab(AgreementTab.Overview);
+      setTab(initialTab);
       setSelected(fresh);
       setPayments(p.payments);
       setSection(Section.Agreements);
@@ -370,6 +404,8 @@ export default function FairshareApp() {
       commitWorkspace(result.workspace.id);
     // The wizard stays open through Check, People and Send.
     setCreating(true);
+    replaceNext.current = true;
+    setWizardDraftId(result.agreement.id);
     setSection(Section.Agreements);
     // The draft shows in Agreements ("Finish setting up") if the wizard is closed.
     setAgreements((current) => [
@@ -396,7 +432,10 @@ export default function FairshareApp() {
   function leaveWizard() {
     setCreating(false);
     setResume(null);
+    setWizardDraftId("");
     setSection(Section.Agreements);
+    // Closing replaces the wizard's entry, so Back doesn't reopen it.
+    replaceNext.current = true;
     const id = currentWorkspace.current;
     if (id) void loadWorkspace(id).catch(() => {});
   }
@@ -404,6 +443,9 @@ export default function FairshareApp() {
   function finishCreation(agreement: Agreement) {
     setResume(null);
     setCreating(false);
+    setWizardDraftId("");
+    // Sent replaces the wizard's entry: Back goes to the list, not into the wizard.
+    replaceNext.current = true;
     run(() => openAgreement(agreement));
     void loadWorkspace(agreement.workspaceId).catch(() => {});
   }
@@ -466,9 +508,15 @@ export default function FairshareApp() {
     // Invitation and verification routes retain their fragments through sign-in.
     // Only ordinary app/auth entry points redirect with the session state so
     // Next can render the destination route's metadata as well as its page.
-    if (ready && user && location.pathname === "/login") router.replace("/app");
-    else if (ready && !user && location.pathname === "/app")
-      router.replace("/login");
+    // Both are replaces: Back from the app never returns to the login form.
+    if (ready && user && location.pathname === "/login")
+      router.replace(loginDestination());
+    else if (ready && !user && isAppPath(location.pathname))
+      router.replace(
+        location.pathname === APP_ROOT
+          ? "/login"
+          : `/login?next=${encodeURIComponent(location.pathname)}`,
+      );
   }, [ready, user, router]);
   useEffect(() => {
     if (!ready) return;
@@ -491,15 +539,186 @@ export default function FairshareApp() {
   useEffect(() => {
     if (workspace && user) run(() => loadWorkspace(workspace));
   }, [workspace]);
-  function navigate(s: Section) {
-    if (!mayLeaveDraft()) return false;
+  const showWizard =
+    !flowToken &&
+    ((creating && (canCreateAgreement || needsWorkspace)) ||
+      (workspacesLoaded &&
+        needsWorkspace &&
+        !skippedFirstRun &&
+        section !== Section.Payouts));
+  // The address for what is on screen. The first-run chooser keeps whatever URL it opened at.
+  const routePath =
+    !user || flowToken
+      ? ""
+      : showWizard
+        ? creating
+          ? appPath(
+              resume || wizardDraftId
+                ? {
+                    view: AppView.DraftSetup,
+                    section: Section.Agreements,
+                    agreementId: resume?.created.agreementId ?? wizardDraftId,
+                  }
+                : { view: AppView.NewAgreement, section: Section.Agreements },
+            )
+          : ""
+        : selected && section === Section.Agreements
+          ? appPath({
+              view: AppView.Agreement,
+              section,
+              agreementId: selected.id,
+              tab,
+            })
+          : appPath({ view: AppView.Section, section });
+  // Signed in at an app path: remember the deep link, and make this visit's
+  // first entry a guard so Back never leaves the app for the home or login page.
+  useEffect(() => {
+    if (!user || flowToken || pendingRoute.current) return;
+    if (!isAppPath(location.pathname)) return;
+    pendingRoute.current = parseAppPath(location.pathname);
+    const here = location.pathname + location.search;
+    const mark = historyMark(history.state);
+    if (!mark)
+      history.replaceState(
+        markedState(history.state, AppHistoryMark.Guard),
+        "",
+        here,
+      );
+    if (mark !== AppHistoryMark.Entry)
+      history.pushState(markedState(null, AppHistoryMark.Entry), "", here);
+  }, [user?.id, flowToken]);
+  // Open the deep link once there is something to open it in. Runs once.
+  useEffect(() => {
+    const route = pendingRoute.current;
+    if (applied.current || !route || !user || !workspacesLoaded) return;
+    const needsAgreements =
+      route.view === AppView.Agreement || route.view === AppView.DraftSetup;
+    if (needsAgreements && workspace && !agreementsLoaded) return;
+    applied.current = true;
+    // Plain /app keeps what is already open (an accepted invitation opens its agreement).
+    if (appPath(route) !== APP_ROOT) applyRoute(route);
+    replaceNext.current = true;
+    setRouteTick((n) => n + 1);
+  }, [user?.id, flowToken, workspacesLoaded, agreementsLoaded, workspace]);
+  // Back and Forward inside the app. The listener is attached once and reads the
+  // latest render: Next's own popstate handler re-renders synchronously, and a
+  // listener swapped mid-dispatch would miss the event.
+  const onPopState = useRef<(event: PopStateEvent) => void>(() => {});
+  onPopState.current = (event: PopStateEvent) => {
+    if (!user || !isAppPath(location.pathname)) return;
+    if (historyMark(event.state) === AppHistoryMark.Guard) {
+      // Back past the first app page: stay where you were.
+      history.forward();
+      return;
+    }
+    if (!applied.current) return;
+    if (!mayLeaveDraft()) {
+      // Put the address back to what is still on screen.
+      if (routePath)
+        history.pushState(
+          markedState(null, AppHistoryMark.Entry),
+          "",
+          routePath,
+        );
+      return;
+    }
+    replaceNext.current = true;
+    applyRoute(parseAppPath(location.pathname));
+    setRouteTick((n) => n + 1);
+  };
+  useEffect(() => {
+    const listener = (event: PopStateEvent) => onPopState.current(event);
+    window.addEventListener("popstate", listener);
+    return () => window.removeEventListener("popstate", listener);
+  }, []);
+  // Keep the address in step with the screen: push for moves, replace for corrections.
+  useEffect(() => {
+    if (!routePath || !applied.current || navigating.current) return;
+    if (!isAppPath(location.pathname)) return;
+    const replace = replaceNext.current;
+    replaceNext.current = false;
+    if (location.pathname === routePath) return;
+    const state = markedState(null, AppHistoryMark.Entry);
+    if (replace) history.replaceState(state, "", routePath);
+    else history.pushState(state, "", routePath);
+  }, [routePath, routeTick]);
+  function showSection(s: Section) {
     openRequest.current++;
     setSection(s);
     setSelected(null);
     setCreating(false);
+    setResume(null);
+    setWizardDraftId("");
     setError("");
     setNotice("");
+  }
+  function navigate(s: Section) {
+    if (!mayLeaveDraft()) return false;
+    showSection(s);
     return true;
+  }
+  function freshWizard() {
+    openRequest.current++;
+    setSelected(null);
+    setResume(null);
+    setWizardDraftId("");
+    setSection(Section.Agreements);
+    setCreating(true);
+  }
+  /** Every "New agreement" button: always a fresh wizard, never a stale draft or an agreement page. */
+  function startNewAgreement() {
+    if (mayLeaveDraft()) freshWizard();
+  }
+  /** Section props take a setter; `true` starts a fresh wizard. */
+  function setCreatingFromSection(value: SetStateAction<boolean>) {
+    const next = typeof value === "function" ? value(creating) : value;
+    if (next) startNewAgreement();
+    else setCreating(false);
+  }
+  /** Opens what a URL names (leaving unsaved work was already confirmed). */
+  function applyRoute(route: AppRoute) {
+    if (route.view === AppView.NewAgreement) return freshWizard();
+    if (route.view === AppView.Section) return showSection(route.section);
+    if (
+      route.view === AppView.Agreement &&
+      selected?.id === route.agreementId &&
+      !creating
+    ) {
+      setSection(Section.Agreements);
+      if (route.tab && visibleTab(route.tab) !== visibleTab(tab)) {
+        setTab(route.tab);
+        setBreakdown(null);
+      }
+      return;
+    }
+    const a = route.agreementId
+      ? agreements.find((item) => item.id === route.agreementId)
+      : undefined;
+    if (!a) {
+      showSection(Section.Agreements);
+      replaceNext.current = true;
+      setNotice("We couldn’t find that agreement.");
+      return;
+    }
+    const target = appPath(route);
+    openRequest.current++;
+    setCreating(false);
+    setResume(null);
+    setWizardDraftId("");
+    navigating.current = target;
+    void run(async () => {
+      try {
+        await openAgreement(a, route.tab);
+      } finally {
+        // Opening can land elsewhere (a draft opens its setup) or fail:
+        // correct the address to what is on screen.
+        if (navigating.current === target) {
+          navigating.current = "";
+          replaceNext.current = true;
+          setRouteTick((n) => n + 1);
+        }
+      }
+    });
   }
   function dismissAccessFlow() {
     setFlowToken("");
@@ -639,13 +858,6 @@ export default function FairshareApp() {
         />
       </>
     );
-  const showWizard =
-    !flowToken &&
-    ((creating && (canCreateAgreement || needsWorkspace)) ||
-      (workspacesLoaded &&
-        needsWorkspace &&
-        !skippedFirstRun &&
-        section !== Section.Payouts));
   if (showWizard)
     return (
       <AgreementIntake
@@ -732,9 +944,7 @@ export default function FairshareApp() {
           <Heading
             title="No agreements yet"
             description="Upload a signed agreement or try the sample. Nothing moves money. Already invited? Open your invite link, or accept it in Settings."
-            action={
-              <Button onClick={() => setCreating(true)}>New agreement</Button>
-            }
+            action={<Button onClick={startNewAgreement}>New agreement</Button>}
           />
         )
       ) : (
@@ -748,7 +958,7 @@ export default function FairshareApp() {
               payoutsUnavailable={payoutsUnavailable}
               canCreateAgreement={canCreateAgreement}
               setSection={setSection}
-              setCreating={setCreating}
+              setCreating={setCreatingFromSection}
               run={run}
               openAgreement={openAgreement}
             />
@@ -760,7 +970,7 @@ export default function FairshareApp() {
               agreements={agreements}
               workspaces={workspaces}
               workspace={workspace}
-              setCreating={setCreating}
+              setCreating={setCreatingFromSection}
               run={run}
               openAgreement={openAgreement}
             />
