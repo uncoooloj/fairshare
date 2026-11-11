@@ -303,11 +303,105 @@ test("notification reads are authenticated, user-scoped and persisted", async ()
     ).json().events;
     assert.equal(bEvents[0].read, false);
     const receipts = app.store.db
-      .prepare("SELECT user_id,event_id FROM user_notification_reads")
-      .all() as { user_id: string; event_id: string }[];
+      .prepare(
+        "SELECT user_id,workspace_id,event_id FROM user_notification_read_receipts",
+      )
+      .all() as { user_id: string; workspace_id: string; event_id: string }[];
     assert.deepEqual(
-      receipts.map(({ user_id, event_id }) => ({ user_id, event_id })),
-      [{ user_id: a.user.id, event_id: "agreement-read:1" }],
+      receipts.map(({ user_id, workspace_id, event_id }) => ({
+        user_id,
+        workspace_id,
+        event_id,
+      })),
+      [
+        {
+          user_id: a.user.id,
+          workspace_id: workspace.id,
+          event_id: "agreement-read:1",
+        },
+      ],
+    );
+  } finally {
+    await app.close();
+  }
+});
+
+test("a receipt cannot read a later same-ID event in another workspace", async () => {
+  const app = await buildApp({ dbPath: ":memory:" });
+  try {
+    const a = app.store.register({
+      name: "A",
+      email: "collision-a@example.test",
+      password,
+    });
+    const b = app.store.register({
+      name: "B",
+      email: "collision-b@example.test",
+      password,
+    });
+    const first = app.store.createWorkspace(a.user.id, "First workspace");
+    const event = {
+      id: "workspace-local-agreement",
+      name: "First agreement",
+      members: [{ userId: a.user.id }],
+      versions: [{ id: 1, status: "AWAITING_APPROVAL" }],
+      audit: [
+        {
+          sequence: 1,
+          type: "SENT_FOR_REVIEW",
+          at: "2026-11-10T12:00:00Z",
+          details: { versionId: 1 },
+        },
+      ],
+    };
+    app.store.db
+      .prepare("INSERT INTO fairshare_collaborations VALUES(?,?,?,?)")
+      .run(first.id, event.id, 1, JSON.stringify(event));
+    const headers = { authorization: `Bearer ${a.token}` };
+    await app.inject({
+      method: "POST",
+      url: "/api/auth/notifications/mark-all-read",
+      headers,
+    });
+
+    const second = app.store.createWorkspace(b.user.id, "Second workspace");
+    app.store.db
+      .prepare("INSERT INTO memberships VALUES(?,?,?)")
+      .run(second.id, a.user.id, "MEMBER");
+    app.store.db
+      .prepare("INSERT INTO fairshare_collaborations VALUES(?,?,?,?)")
+      .run(
+        second.id,
+        event.id,
+        1,
+        JSON.stringify({
+          ...event,
+          name: "Second agreement",
+          members: [{ userId: a.user.id }, { userId: b.user.id }],
+        }),
+      );
+
+    const events = (
+      await app.inject({ url: "/api/auth/notifications", headers })
+    ).json().events;
+    assert.deepEqual(
+      events
+        .filter(
+          (item: { id: string }) => item.id === "workspace-local-agreement:1",
+        )
+        .map((item: { workspaceId: string; read: boolean }) => ({
+          workspaceId: item.workspaceId,
+          read: item.read,
+        }))
+        .sort((left: { workspaceId: string }, right: { workspaceId: string }) =>
+          left.workspaceId.localeCompare(right.workspaceId),
+        ),
+      [
+        { workspaceId: first.id, read: true },
+        { workspaceId: second.id, read: false },
+      ].sort((left, right) =>
+        left.workspaceId.localeCompare(right.workspaceId),
+      ),
     );
   } finally {
     await app.close();

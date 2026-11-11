@@ -20,6 +20,9 @@ type NotificationEvent = {
   at: string | null;
   message: string;
 };
+function notificationReceiptKey(workspaceId: string, eventId: string) {
+  return `${workspaceId}\u0000${eventId}`;
+}
 
 function notificationKindForAuditEvent(
   type: string,
@@ -92,8 +95,11 @@ export function registerPreferences(app: FairshareApp) {
   store.db.exec(
     "CREATE TABLE IF NOT EXISTS user_preferences(user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,value TEXT NOT NULL)",
   );
+  // Keep v1 receipts untouched: their public event IDs lack workspace identity,
+  // so migrating them would wrongly mark a same-ID agreement in another workspace.
+  // This additive table is compatible with local SQLite and Durable Object SQLite.
   store.db.exec(
-    "CREATE TABLE IF NOT EXISTS user_notification_reads(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,event_id TEXT NOT NULL,read_at INTEGER NOT NULL,PRIMARY KEY(user_id,event_id))",
+    "CREATE TABLE IF NOT EXISTS user_notification_read_receipts(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,workspace_id TEXT NOT NULL,event_id TEXT NOT NULL,read_at INTEGER NOT NULL,PRIMARY KEY(user_id,workspace_id,event_id))",
   );
   const channels = {
     type: "object",
@@ -238,19 +244,21 @@ export function registerPreferences(app: FairshareApp) {
   app.get("/api/auth/notifications", async (req) => {
     const user = app.requireSession(req);
     const events = eventsForUser(user.id);
-    const readIds = new Set(
+    const readReceipts = new Set(
       (
         store.db
           .prepare(
-            "SELECT event_id FROM user_notification_reads WHERE user_id=?",
+            "SELECT workspace_id,event_id FROM user_notification_read_receipts WHERE user_id=?",
           )
-          .all(user.id) as { event_id: string }[]
-      ).map((row) => row.event_id),
+          .all(user.id) as { workspace_id: string; event_id: string }[]
+      ).map((row) => notificationReceiptKey(row.workspace_id, row.event_id)),
     );
     return {
       events: events.map((event) => ({
         ...event,
-        read: readIds.has(event.id),
+        read: readReceipts.has(
+          notificationReceiptKey(event.workspaceId, event.id),
+        ),
       })),
     };
   });
@@ -260,9 +268,10 @@ export function registerPreferences(app: FairshareApp) {
     const events = eventsForUser(user.id);
     store.tx(() => {
       const mark = store.db.prepare(
-        "INSERT INTO user_notification_reads(user_id,event_id,read_at) VALUES(?,?,?) ON CONFLICT(user_id,event_id) DO UPDATE SET read_at=excluded.read_at",
+        "INSERT INTO user_notification_read_receipts(user_id,workspace_id,event_id,read_at) VALUES(?,?,?,?) ON CONFLICT(user_id,workspace_id,event_id) DO UPDATE SET read_at=excluded.read_at",
       );
-      for (const event of events) mark.run(user.id, event.id, store.now());
+      for (const event of events)
+        mark.run(user.id, event.workspaceId, event.id, store.now());
     });
     return { marked: events.length };
   });
