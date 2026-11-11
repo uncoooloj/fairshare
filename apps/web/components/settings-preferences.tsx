@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useState, type ReactNode } from "react";
 import { api } from "../lib/model";
-import { formatExact, formatWhen } from "../lib/dates";
 import {
   formatDate,
   formatMoney,
@@ -128,26 +127,6 @@ function Feedback({ error, notice }: { error: string; notice: string }) {
 export function NotificationsSettings() {
   const state = usePreferences();
   const { preferences, setPreferences, saving } = state;
-  const [events, setEvents] = useState<
-    { id: string; message: string; agreementName: string; at: string | null }[]
-  >([]);
-  const [feedError, setFeedError] = useState("");
-  useEffect(() => {
-    let active = true;
-    api<{ events: typeof events }>("auth/notifications")
-      .then((result) => {
-        if (active) {
-          setEvents(result.events);
-          setFeedError("");
-        }
-      })
-      .catch(() => {
-        if (active) setFeedError("Could not load recent notifications.");
-      });
-    return () => {
-      active = false;
-    };
-  }, [state.notice]);
   return (
     <section className="settings-pane">
       <SettingsPaneHeader
@@ -225,30 +204,6 @@ export function NotificationsSettings() {
             </button>
           </div>
         </form>
-      )}
-      <h3 className="settings-subhead">Recent notifications</h3>
-      {feedError ? (
-        <p role="alert">{feedError}</p>
-      ) : !events.length ? (
-        <p className="muted">
-          Nothing yet. Approvals and payouts show up here.
-        </p>
-      ) : (
-        <ul className="settings-feed">
-          {events.map((event) => (
-            <li key={event.id}>
-              <div>
-                <strong>{event.agreementName}</strong>
-                <p>{event.message}</p>
-              </div>
-              {event.at && (
-                <time dateTime={event.at} title={formatExact(event.at)}>
-                  {formatWhen(event.at)}
-                </time>
-              )}
-            </li>
-          ))}
-        </ul>
       )}
     </section>
   );
