@@ -4,6 +4,50 @@ import type { FairshareApp } from "./app.js";
 import type { AggregateStore } from "./fairshare.js";
 import { ApiError, digest, Role } from "./identity.js";
 
+export enum InviteeRole {
+  COLLABORATOR = "COLLABORATOR",
+}
+export enum InvitationStatus {
+  PENDING = "PENDING",
+  ACCEPTED = "ACCEPTED",
+  REVOKED = "REVOKED",
+  EXPIRED = "EXPIRED",
+}
+export interface Invitee {
+  name: string;
+  email: string;
+  role: InviteeRole;
+}
+
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+function invalid(message: string): never {
+  throw new ApiError(400, "INVALID_INVITEE", message);
+}
+/** Invitee details are all-or-nothing; legacy link-only invitations send none. */
+export function parseInvitee(body: unknown): Invitee | null {
+  const input = (body ?? {}) as Record<string, unknown>;
+  const { name, email, role } = input;
+  if (
+    [name, email, role].every((value) => value === undefined || value === null)
+  )
+    return null;
+  if (typeof name !== "string" || typeof email !== "string")
+    invalid("Add a name, email and role for this person.");
+  const trimmedName = name.trim();
+  if (trimmedName.length < 1 || trimmedName.length > 80)
+    invalid("Names must be 1 to 80 characters.");
+  const normalizedEmail = email.trim().toLowerCase();
+  if (normalizedEmail.length > 254 || !EMAIL.test(normalizedEmail))
+    invalid("Enter a valid email address.");
+  if (!Object.values(InviteeRole).includes(role as InviteeRole))
+    invalid("Choose a valid role.");
+  return {
+    name: trimmedName,
+    email: normalizedEmail,
+    role: role as InviteeRole,
+  };
+}
+
 /** Agreement links grant workspace membership AND a draft roster seat, never approval. */
 export function registerAgreementInvitations(
   app: FairshareApp,
@@ -14,6 +58,23 @@ export function registerAgreementInvitations(
     id TEXT PRIMARY KEY, hash TEXT NOT NULL UNIQUE, workspace_id TEXT NOT NULL,
     agreement_id TEXT NOT NULL, created_by TEXT NOT NULL, expires_at INTEGER NOT NULL,
     accepted_at INTEGER, revoked_at INTEGER);`);
+  const inviteColumns = new Set(
+    (
+      store.db
+        .prepare("PRAGMA table_info(fairshare_agreement_invites)")
+        .all() as any[]
+    ).map((row) => row.name),
+  );
+  for (const column of [
+    "invitee_name",
+    "invitee_email",
+    "invitee_role",
+    "accepted_by",
+  ])
+    if (!inviteColumns.has(column))
+      store.db.exec(
+        `ALTER TABLE fairshare_agreement_invites ADD COLUMN ${column} TEXT`,
+      );
   const base = "/api/workspaces/:workspaceId/collaborations/:agreementId";
   function canInvite(req: any) {
     const { workspaceId, agreementId } = req.params;
@@ -71,6 +132,7 @@ export function registerAgreementInvitations(
   app.post(`${base}/invitation-links`, async (req, reply) => {
     const { user, agreement, workspaceId, agreementId } = canInvite(req);
     store.limit(`agreement-invite:${user.id}`, 30);
+    const invitee = parseInvitee(req.body);
     if (agreement.value.versions.length)
       throw new ApiError(
         409,
@@ -83,9 +145,19 @@ export function registerAgreementInvitations(
     store.tx(() => {
       store.db
         .prepare(
-          "INSERT INTO fairshare_agreement_invites(id,hash,workspace_id,agreement_id,created_by,expires_at) VALUES(?,?,?,?,?,?)",
+          "INSERT INTO fairshare_agreement_invites(id,hash,workspace_id,agreement_id,created_by,expires_at,invitee_name,invitee_email,invitee_role) VALUES(?,?,?,?,?,?,?,?,?)",
         )
-        .run(id, digest(token), workspaceId, agreementId, user.id, expiresAt);
+        .run(
+          id,
+          digest(token),
+          workspaceId,
+          agreementId,
+          user.id,
+          expiresAt,
+          invitee?.name ?? null,
+          invitee?.email ?? null,
+          invitee?.role ?? null,
+        );
       store.audit(user.id, workspaceId, "AGREEMENT_INVITATION_CREATED", {
         invitationId: id,
         agreementId,
@@ -93,8 +165,48 @@ export function registerAgreementInvitations(
     });
     reply.header("Cache-Control", "no-store").code(201);
     return {
-      invitation: { id, token, expiresAt },
+      invitation: { id, token, expiresAt, invitee },
       agreement: { id: agreementId, name: agreement.value.name },
+    };
+  });
+  app.get(`${base}/invitation-links`, async (req: any, reply) => {
+    const { workspaceId, agreementId } = canInvite(req);
+    reply.header("Cache-Control", "no-store");
+    const now = store.now();
+    const rows = store.db
+      .prepare(
+        `SELECT i.id,i.expires_at,i.accepted_at,i.revoked_at,i.invitee_name,i.invitee_email,i.invitee_role,i.accepted_by,u.name AS accepted_by_name
+         FROM fairshare_agreement_invites i LEFT JOIN users u ON u.id=i.accepted_by
+         WHERE i.workspace_id=? AND i.agreement_id=? ORDER BY i.rowid DESC`,
+      )
+      .all(workspaceId, agreementId) as any[];
+    return {
+      invitations: rows.map((row) => ({
+        id: row.id,
+        invitee: row.invitee_email
+          ? {
+              name: row.invitee_name,
+              email: row.invitee_email,
+              role: row.invitee_role,
+            }
+          : null,
+        expiresAt: row.expires_at,
+        status: row.accepted_at
+          ? InvitationStatus.ACCEPTED
+          : row.revoked_at
+            ? InvitationStatus.REVOKED
+            : row.expires_at <= now
+              ? InvitationStatus.EXPIRED
+              : InvitationStatus.PENDING,
+        ...(row.accepted_by
+          ? {
+              acceptedBy: {
+                userId: row.accepted_by,
+                name: row.accepted_by_name ?? null,
+              },
+            }
+          : {}),
+      })),
     };
   });
   app.delete(`${base}/invitation-links/:invitationId`, async (req: any) => {
@@ -165,9 +277,9 @@ export function registerAgreementInvitations(
       );
       store.db
         .prepare(
-          "UPDATE fairshare_agreement_invites SET accepted_at=? WHERE id=?",
+          "UPDATE fairshare_agreement_invites SET accepted_at=?, accepted_by=? WHERE id=?",
         )
-        .run(store.now(), row.id);
+        .run(store.now(), user.id, row.id);
       store.audit(user.id, row.workspace_id, "AGREEMENT_INVITATION_ACCEPTED", {
         invitationId: row.id,
         agreementId: row.agreement_id,

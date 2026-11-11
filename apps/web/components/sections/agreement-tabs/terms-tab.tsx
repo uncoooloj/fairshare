@@ -41,6 +41,8 @@ export interface AgreementTermsTabProps {
   source: string;
   documentId: string;
   extraction: any;
+  /** Just created by the wizard with a reading result: open on Proposed rules. */
+  rulesLanding?: boolean;
   draftDirty: boolean;
   rulesDirty: MutableRefObject<boolean>;
   run: Run;
@@ -74,6 +76,7 @@ export function AgreementTermsTab({
   source,
   documentId,
   extraction,
+  rulesLanding = false,
   draftDirty,
   rulesDirty,
   run,
@@ -246,6 +249,7 @@ export function AgreementTermsTab({
           <AgreementTermsFlow
             key={selected.id}
             documentId={documentId}
+            openRules={rulesLanding && !!extraction}
             busy={busy}
             sourceText={source}
             source={

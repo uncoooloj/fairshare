@@ -1,0 +1,224 @@
+/* New-agreement wizard: People step (components/people-step.tsx). */
+.people-step {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.people-step h2 {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+}
+
+.people-step-lede {
+  margin: calc(var(--space-3) * -1) 0 var(--space-2);
+  color: var(--color-muted);
+}
+
+.people-table {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.people-head,
+.people-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr) minmax(0, 0.9fr) 32px;
+  gap: var(--space-2);
+  align-items: start;
+}
+
+.people-head {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+}
+
+.people-cell {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+/* Labels are read by screen readers on desktop and shown on phone cards. */
+.people-field-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.people-input,
+.people-static {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 40px;
+  padding: 0 var(--control-padding-x);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font: inherit;
+  font-size: var(--text-sm);
+}
+
+.people-input:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 1px;
+  border-color: var(--color-brand);
+}
+
+.people-input[aria-invalid="true"] {
+  border-color: var(--color-danger);
+}
+
+.people-select {
+  appearance: none;
+  padding-right: 32px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23737373' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+}
+
+.people-static {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: var(--color-surface);
+}
+
+.people-static-muted {
+  color: var(--color-muted);
+}
+
+.people-static-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.people-you {
+  color: var(--color-muted);
+  flex: none;
+}
+
+.people-error {
+  color: var(--color-danger);
+  font-size: var(--text-xs);
+}
+
+.people-remove {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--color-muted);
+  cursor: pointer;
+}
+
+.people-remove:hover:not(:disabled) {
+  color: var(--color-danger);
+  background: var(--color-surface);
+}
+
+.people-add {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 36px;
+  padding: 0 var(--space-1);
+  border: 0;
+  background: none;
+  color: var(--color-ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+.people-add:hover:not(:disabled) {
+  color: var(--color-brand);
+}
+
+.people-hint {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}
+
+.people-callout {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-2) 0 0;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}
+
+.people-callout svg {
+  flex: none;
+}
+
+@media (max-width: 599px) {
+  .people-head {
+    display: none;
+  }
+
+  .people-row {
+    grid-template-columns: minmax(0, 1fr) 44px;
+    gap: var(--space-3);
+    padding: var(--space-4);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-md);
+  }
+
+  .people-row .people-cell {
+    grid-column: 1 / -1;
+  }
+
+  .people-row .people-cell:first-child {
+    grid-column: 1;
+  }
+
+  .people-row .people-remove,
+  .people-row .people-remove-slot {
+    grid-column: 2;
+    grid-row: 1;
+    align-self: end;
+  }
+
+  .people-field-label {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip: auto;
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
+  }
+
+  .people-input,
+  .people-static {
+    min-height: var(--control-min-height);
+    font-size: 16px;
+  }
+
+  .people-remove,
+  .people-add {
+    width: 44px;
+    min-height: 44px;
+    height: 44px;
+  }
+
+  .people-add {
+    width: auto;
+  }
+}

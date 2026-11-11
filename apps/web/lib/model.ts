@@ -65,12 +65,24 @@ export interface Revenue {
   status: string;
   allocations: Allocation[];
 }
+/** Agreement metadata currency; payments and payouts remain USD-only. */
+export enum Currency {
+  USD = "USD",
+}
+/** Dates are YYYY-MM-DD. effectiveTo null = no end date; undefined = not set.
+ * Agreements created before details existed omit it; treat as { currency: USD }. */
+export interface AgreementDetails {
+  currency: Currency;
+  effectiveFrom?: string;
+  effectiveTo?: string | null;
+}
 export interface Agreement {
   workspaceId: string;
   id: string;
   revision: number;
   value: {
     name: string;
+    details?: AgreementDetails;
     members: Member[];
     versions: Version[];
     activeVersionId?: number;

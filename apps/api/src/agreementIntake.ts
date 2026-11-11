@@ -4,7 +4,15 @@ import {
   type DocumentReaders,
 } from "./documentReaders.js";
 import { randomUUID } from "node:crypto";
-import { createCollaboration, MemberRole } from "@fairshare/domain";
+import {
+  createCollaboration,
+  Currency,
+  MemberRole,
+  updateAgreementDetails,
+  validateAgreementDetails,
+  type AgreementDetails,
+  type AgreementDetailsPatch,
+} from "@fairshare/domain";
 import { sourceHash, type SourceDocument } from "@fairshare/contract-ai";
 import type { FairshareApp } from "./app.js";
 import type { AggregateStore } from "./fairshare.js";
@@ -28,6 +36,8 @@ type Intake = {
   mimeType?: string;
   filename?: string;
   useLocalOcr?: boolean;
+  name?: string;
+  details?: AgreementDetails;
 };
 
 type IntakeReplayRow = {
@@ -47,6 +57,29 @@ function invalid(message: string): never {
   throw new ApiError(400, "INVALID_INPUT", message);
 }
 
+const DETAIL_FIELDS = ["currency", "effectiveFrom", "effectiveTo"] as const;
+
+/** Same rules as the rename route: 1–200 characters, no control characters. */
+function agreementName(value: unknown): string {
+  if (
+    typeof value !== "string" ||
+    !value.trim() ||
+    value.length > 200 ||
+    /[\u0000-\u001f\u007f]/.test(value)
+  )
+    invalid("Name must contain 1–200 characters.");
+  return value.trim();
+}
+
+/** Picks provided detail fields; returns undefined when none were sent. */
+function detailFields(
+  value: Record<string, unknown>,
+): Record<string, unknown> | undefined {
+  const present = DETAIL_FIELDS.filter((key) => value[key] !== undefined);
+  if (!present.length) return undefined;
+  return Object.fromEntries(present.map((key) => [key, value[key]]));
+}
+
 function validateInput(raw: unknown): Intake {
   if (!raw || typeof raw !== "object" || Array.isArray(raw))
     invalid("JSON object required.");
@@ -59,6 +92,8 @@ function validateInput(raw: unknown): Intake {
     "mimeType",
     "filename",
     "useLocalOcr",
+    "name",
+    ...DETAIL_FIELDS,
   ];
   if (Object.keys(value).some((key) => !allowed.includes(key)))
     invalid("Unknown upload field.");
@@ -96,7 +131,18 @@ function validateInput(raw: unknown): Intake {
   }
   if (value.useLocalOcr === true && value.mimeType !== "application/pdf")
     invalid("OCR is available for PDFs only.");
-  return { ...value, requestId: value.requestId.toLowerCase() } as Intake;
+  const name = value.name === undefined ? undefined : agreementName(value.name);
+  const fields = detailFields(value);
+  const details = fields
+    ? validateAgreementDetails({ currency: Currency.USD, ...fields })
+    : undefined;
+  for (const key of ["name", ...DETAIL_FIELDS]) delete value[key];
+  return {
+    ...value,
+    requestId: value.requestId.toLowerCase(),
+    name,
+    details,
+  } as Intake;
 }
 
 function initialTitle(filename: string | undefined, text: string): string {
@@ -155,16 +201,21 @@ export function registerAgreementIntake(
     async (request, reply) => {
       const user = app.requireSession(request);
       const input = validateInput(request.body);
-      const fingerprint = sourceHash(
-        JSON.stringify([
-          input.workspaceId ?? null,
-          input.text ?? null,
-          input.base64 ?? null,
-          input.mimeType ?? null,
-          input.filename ?? null,
-          input.useLocalOcr === true,
-        ]),
-      );
+      const fingerprinted: unknown[] = [
+        input.workspaceId ?? null,
+        input.text ?? null,
+        input.base64 ?? null,
+        input.mimeType ?? null,
+        input.filename ?? null,
+        input.useLocalOcr === true,
+      ];
+      // Appended only when sent, so fingerprints of pre-details requests are unchanged.
+      if (input.name !== undefined || input.details !== undefined)
+        fingerprinted.push({
+          name: input.name ?? null,
+          details: input.details ?? null,
+        });
+      const fingerprint = sourceHash(JSON.stringify(fingerprinted));
       const replay = () => {
         const prior = db
           .prepare(
@@ -262,13 +313,16 @@ export function registerAgreementIntake(
       return app.store.tx(() => {
         const concurrent = replay();
         if (concurrent) return concurrent;
-        const title = initialTitle(input.filename, text);
+        const title = input.name ?? initialTitle(input.filename, text);
         const workspace = input.workspaceId
           ? app.requireWorkspace(request, input.workspaceId, [
               Role.OWNER,
               Role.MEMBER,
             ]).workspace
-          : app.store.createWorkspaceInsideTransaction(user.id, title);
+          : app.store.createWorkspaceInsideTransaction(
+              user.id,
+              title.slice(0, 100),
+            );
         const collaboration = createCollaboration(
           {
             id: randomUUID(),
@@ -280,6 +334,7 @@ export function registerAgreementIntake(
                 role: MemberRole.ORGANIZER,
               },
             ],
+            ...(input.details ? { details: input.details } : {}),
           },
           user.id,
           new Date().toISOString(),
@@ -397,6 +452,66 @@ export function registerAgreementIntake(
             agreementId: collaborationId,
           });
           return { ...current, name };
+        },
+      );
+    },
+  );
+
+  /** Edits name, currency and effective dates together. Details are metadata only;
+   * allocation, payments and payouts stay USD-only. */
+  app.post<{ Params: { workspaceId: string; collaborationId: string } }>(
+    "/api/workspaces/:workspaceId/collaborations/:collaborationId/details",
+    async (request) => {
+      const { workspaceId, collaborationId } = request.params;
+      const { user } = app.requireWorkspace(request, workspaceId, [
+        Role.OWNER,
+        Role.MEMBER,
+      ]);
+      const input = request.body as Record<string, unknown> | undefined;
+      if (!input || typeof input !== "object" || Array.isArray(input))
+        invalid("JSON object required.");
+      if (
+        Object.keys(input).some(
+          (key) =>
+            !["expectedRevision", "name", ...DETAIL_FIELDS].includes(key),
+        )
+      )
+        invalid("Unknown agreement detail.");
+      if (
+        !Number.isSafeInteger(input.expectedRevision) ||
+        Number(input.expectedRevision) < 1
+      )
+        invalid("expectedRevision required.");
+      const name =
+        input.name === undefined ? undefined : agreementName(input.name);
+      const patch = detailFields(input) as AgreementDetailsPatch | undefined;
+      if (name === undefined && !patch)
+        invalid("Provide a name, currency or effective dates to change.");
+      return aggregates.update(
+        workspaceId,
+        collaborationId,
+        Number(input.expectedRevision),
+        (current) => {
+          if (
+            !current.members.some(
+              (member) =>
+                member.userId === user.id &&
+                member.role === MemberRole.ORGANIZER,
+            )
+          ) {
+            throw new ApiError(403, "FORBIDDEN", "Organizer required.");
+          }
+          const next = patch
+            ? updateAgreementDetails(current, patch, user.id)
+            : current;
+          app.store.audit(user.id, workspaceId, "AGREEMENT_DETAILS_UPDATED", {
+            agreementId: collaborationId,
+            fields: [
+              ...(name === undefined ? [] : ["name"]),
+              ...Object.keys(patch ?? {}),
+            ],
+          });
+          return name === undefined ? next : { ...next, name };
         },
       );
     },

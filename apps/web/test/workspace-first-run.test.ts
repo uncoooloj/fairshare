@@ -18,7 +18,8 @@ test("account settings and invitations remain accessible before workspace creati
     app,
     /isInvitationFlow\s*\?\s*null\s*:\s*needsWorkspace\s*\?\s*\(/,
   );
-  assert.match(app, /<AgreementIntake\s+first\s+busy=\{busy\}/);
+  assert.match(app, /<AgreementIntake\s+first=\{needsWorkspace && !creating\}/);
+  assert.match(app, /const showWizard =\s*!flowToken &&/);
 });
 test("atomic creation adopts the returned workspace and document before optional refresh", () => {
   const creation = app.slice(
@@ -41,6 +42,7 @@ test("first-run payouts explains its empty state without requiring a workspace n
     app.indexOf("{section === Section.Overview"),
   );
   assert.match(firstRun, /No payouts yet/);
-  assert.match(firstRun, /AgreementIntake\s+first/);
+  assert.match(firstRun, /No agreements yet/);
+  assert.match(firstRun, /setCreating\(true\)/);
   assert.doesNotMatch(firstRun, /WorkspaceOnboarding|Workspace name/);
 });

@@ -221,3 +221,194 @@ test("existing workspace member can join draft without role escalation", async (
     await f.app.close();
   }
 });
+test("organizer can invite named people, list statuses without tokens, and others cannot list", async () => {
+  const f = await setup();
+  const { app } = f;
+  const invite = (payload: unknown, user = f.owner) =>
+    app.inject({
+      method: "POST",
+      url: `${f.url}/invitation-links`,
+      headers: f.headers(user),
+      payload: payload as any,
+    });
+  const list = (user = f.owner) =>
+    app.inject({
+      url: `${f.url}/invitation-links`,
+      headers: f.headers(user),
+    });
+  try {
+    const created = await invite({
+      name: "  Jordan Lee ",
+      email: "Jordan@Example.TEST",
+      role: "COLLABORATOR",
+    });
+    assert.equal(created.statusCode, 201, created.body);
+    assert.deepEqual(created.json().invitation.invitee, {
+      name: "Jordan Lee",
+      email: "jordan@example.test",
+      role: "COLLABORATOR",
+    });
+    const auditRows = JSON.stringify(
+      app.store.db.prepare("SELECT * FROM audit").all(),
+    );
+    assert(!auditRows.includes("jordan@example.test"));
+
+    for (const bad of [
+      { name: "Jordan" },
+      { name: "", email: "a@b.co", role: "COLLABORATOR" },
+      { name: "x".repeat(81), email: "a@b.co", role: "COLLABORATOR" },
+      { name: "Jordan", email: "not-an-email", role: "COLLABORATOR" },
+      {
+        name: "Jordan",
+        email: `${"a".repeat(250)}@b.co`,
+        role: "COLLABORATOR",
+      },
+      { name: "Jordan", email: "a@b.co", role: "ORGANIZER" },
+      { name: 42, email: "a@b.co", role: "COLLABORATOR" },
+    ]) {
+      const response = await invite(bad);
+      assert.equal(response.statusCode, 400, JSON.stringify(bad));
+      assert.equal(response.json().error.code, "INVALID_INVITEE");
+    }
+
+    const legacy = (await invite({})).json().invitation;
+    assert.equal(legacy.invitee, null);
+    const revoked = (
+      await invite({
+        name: "Riley",
+        email: "riley@example.test",
+        role: "COLLABORATOR",
+      })
+    ).json().invitation;
+    await app.inject({
+      method: "DELETE",
+      url: `${f.url}/invitation-links/${revoked.id}`,
+      headers: f.headers(),
+    });
+    const accepted = (
+      await invite({
+        name: "Guest",
+        email: "guest@example.test",
+        role: "COLLABORATOR",
+      })
+    ).json().invitation;
+    assert.equal((await f.accept(accepted.token)).statusCode, 200);
+    const pending = (
+      await invite({
+        name: "Sam",
+        email: "sam@example.test",
+        role: "COLLABORATOR",
+      })
+    ).json().invitation;
+
+    // Non-organizers (non-member, and an accepted collaborator) cannot list.
+    assert.equal((await list(f.other)).statusCode, 404);
+    assert.equal((await list(f.guest)).statusCode, 403);
+
+    const listed = await list();
+    assert.equal(listed.statusCode, 200, listed.body);
+    assert.equal(listed.headers["cache-control"], "no-store");
+    const invitations = listed.json().invitations;
+    assert.deepEqual(
+      invitations.map((i: any) => [i.id, i.status]),
+      [
+        [pending.id, "PENDING"],
+        [accepted.id, "ACCEPTED"],
+        [revoked.id, "REVOKED"],
+        [legacy.id, "PENDING"],
+        [created.json().invitation.id, "PENDING"],
+      ],
+    );
+    assert.deepEqual(invitations[1].acceptedBy, {
+      userId: f.guest.user.id,
+      name: "guest",
+    });
+    assert.equal(invitations[0].acceptedBy, undefined);
+    assert.equal(invitations[3].invitee, null);
+    const body = listed.body;
+    for (const token of [
+      legacy.token,
+      revoked.token,
+      accepted.token,
+      pending.token,
+    ])
+      assert(!body.includes(token));
+    assert(!/hash|token/i.test(body));
+
+    f.advance();
+    const later = (await list()).json().invitations;
+    assert.equal(later[0].status, "EXPIRED");
+    assert.equal(later[1].status, "ACCEPTED");
+  } finally {
+    await app.close();
+  }
+});
+test("legacy invite rows without invitee columns still list and accept", async () => {
+  const f = await setup();
+  try {
+    const invite = (await f.create()).json().invitation;
+    // Simulate a row written before invitee/accepted_by existed.
+    f.app.store.db
+      .prepare(
+        "UPDATE fairshare_agreement_invites SET invitee_name=NULL,invitee_email=NULL,invitee_role=NULL,accepted_by=NULL WHERE id=?",
+      )
+      .run(invite.id);
+    assert.equal((await f.accept(invite.token)).statusCode, 200);
+    f.app.store.db
+      .prepare(
+        "UPDATE fairshare_agreement_invites SET accepted_by=NULL WHERE id=?",
+      )
+      .run(invite.id);
+    const [row] = (
+      await f.app.inject({
+        url: `${f.url}/invitation-links`,
+        headers: f.headers(),
+      })
+    ).json().invitations;
+    assert.equal(row.status, "ACCEPTED");
+    assert.equal(row.invitee, null);
+    assert.equal(row.acceptedBy, undefined);
+  } finally {
+    await f.app.close();
+  }
+});
+test("invitee columns are added idempotently to a pre-existing table", async () => {
+  const { DatabaseSync } = await import("node:sqlite");
+  const { mkdtempSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const { tmpdir } = await import("node:os");
+  const dbPath = join(mkdtempSync(join(tmpdir(), "fs-invites-")), "db.sqlite");
+  const legacy = new DatabaseSync(dbPath);
+  legacy.exec(`CREATE TABLE fairshare_agreement_invites(
+    id TEXT PRIMARY KEY, hash TEXT NOT NULL UNIQUE, workspace_id TEXT NOT NULL,
+    agreement_id TEXT NOT NULL, created_by TEXT NOT NULL, expires_at INTEGER NOT NULL,
+    accepted_at INTEGER, revoked_at INTEGER);
+    INSERT INTO fairshare_agreement_invites(id,hash,workspace_id,agreement_id,created_by,expires_at) VALUES('old','h','w','a','u',1);`);
+  legacy.close();
+  for (let i = 0; i < 2; i++) {
+    const app = await buildApp({ dbPath });
+    const columns = (
+      app.store.db
+        .prepare("PRAGMA table_info(fairshare_agreement_invites)")
+        .all() as any[]
+    ).map((c) => c.name);
+    for (const c of [
+      "invitee_name",
+      "invitee_email",
+      "invitee_role",
+      "accepted_by",
+    ])
+      assert(columns.includes(c));
+    assert.equal(
+      (
+        app.store.db
+          .prepare(
+            "SELECT invitee_email FROM fairshare_agreement_invites WHERE id='old'",
+          )
+          .get() as any
+      ).invitee_email,
+      null,
+    );
+    await app.close();
+  }
+});

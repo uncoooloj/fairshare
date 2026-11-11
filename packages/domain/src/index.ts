@@ -26,6 +26,11 @@ export enum AllocationStatus {
   ALLOCATED = "ALLOCATED",
   HELD = "HELD",
 }
+/** Agreement metadata currency. Allocation, payments and payouts remain USD-only
+ * (see Rules.currency and Revenue.currency); this only labels the agreement. */
+export enum Currency {
+  USD = "USD",
+}
 export enum AuditType {
   CREATED = "CREATED",
   VERSION_PROPOSED = "VERSION_PROPOSED",
@@ -101,9 +106,23 @@ export interface AuditEntry {
   at: string;
   details: Record<string, unknown>;
 }
+/** Display/storage metadata only. Dates are calendar dates (YYYY-MM-DD).
+ * effectiveTo null means "no end date"; undefined means not set. */
+export interface AgreementDetails {
+  currency: Currency;
+  effectiveFrom?: string;
+  effectiveTo?: string | null;
+}
+export interface AgreementDetailsPatch {
+  currency?: Currency;
+  effectiveFrom?: string;
+  effectiveTo?: string | null;
+}
 export interface Collaboration {
   id: string;
   name: string;
+  /** Absent on agreements created before details existed; read via agreementDetails(). */
+  details?: AgreementDetails;
   members: Member[];
   versions: AgreementVersion[];
   activeVersionId?: number;
@@ -219,14 +238,92 @@ export function validateRules(c: Collaboration, r: Rules): void {
     }
   }
 }
+const CALENDAR_DATE = /^\d{4}-\d{2}-\d{2}$/;
+function sameCalendarDate(value: string): boolean {
+  const parsed = Date.parse(`${value}T00:00:00Z`);
+  // Rejects rollover such as 2023-02-29 -> 2023-03-01 and impossible months.
+  return (
+    Number.isFinite(parsed) &&
+    new Date(parsed).toISOString().slice(0, 10) === value
+  );
+}
+function calendarDate(value: unknown, label: string): string {
+  if (
+    typeof value !== "string" ||
+    !CALENDAR_DATE.test(value) ||
+    Number(value.slice(0, 4)) < 1900 ||
+    !sameCalendarDate(value)
+  )
+    fail("INVALID_DATE", `${label} must be a real calendar date (YYYY-MM-DD)`);
+  return value as string;
+}
+/** Details for any agreement; legacy agreements without details are USD. */
+export function agreementDetails(c: Collaboration): AgreementDetails {
+  return c.details ? copy(c.details) : { currency: Currency.USD };
+}
+/** Validates untrusted details and returns a normalized copy. */
+export function validateAgreementDetails(input: unknown): AgreementDetails {
+  if (!input || typeof input !== "object" || Array.isArray(input))
+    fail("INVALID_INPUT", "Agreement details must be an object");
+  const value = input as Record<string, unknown>;
+  if (
+    Object.keys(value).some(
+      (key) => !["currency", "effectiveFrom", "effectiveTo"].includes(key),
+    )
+  )
+    fail("INVALID_INPUT", "Unknown agreement detail");
+  if (!Object.values(Currency).includes(value.currency as Currency))
+    fail(
+      "INVALID_CURRENCY",
+      `Currency must be one of: ${Object.values(Currency).join(", ")}`,
+    );
+  const details: AgreementDetails = { currency: value.currency as Currency };
+  if (value.effectiveFrom !== undefined)
+    details.effectiveFrom = calendarDate(value.effectiveFrom, "Start date");
+  if (value.effectiveTo === null) details.effectiveTo = null;
+  else if (value.effectiveTo !== undefined)
+    details.effectiveTo = calendarDate(value.effectiveTo, "End date");
+  if (
+    details.effectiveFrom &&
+    details.effectiveTo &&
+    details.effectiveTo < details.effectiveFrom
+  )
+    fail("INVALID_DATE_RANGE", "End date must be on or after the start date");
+  return details;
+}
+/** Organizer-only merge of a details patch; omitted fields keep their value. */
+export function updateAgreementDetails(
+  c: Collaboration,
+  patch: AgreementDetailsPatch,
+  actorId: string,
+): Collaboration {
+  organizer(c, actorId);
+  const next = copy(c);
+  next.details = validateAgreementDetails({
+    ...agreementDetails(c),
+    ...Object.fromEntries(
+      Object.entries(patch).filter(([, value]) => value !== undefined),
+    ),
+  });
+  return next;
+}
 export function createCollaboration(
-  input: { id: string; name: string; members: Member[] },
+  input: {
+    id: string;
+    name: string;
+    members: Member[];
+    details?: AgreementDetails;
+  },
   actorId: string,
   at: string,
 ): Collaboration {
   nonempty(input.id, "ID");
   nonempty(input.name, "Name");
   timestamp(at);
+  const details =
+    input.details === undefined
+      ? undefined
+      : validateAgreementDetails(input.details);
   if (
     !Array.isArray(input.members) ||
     !input.members.length ||
@@ -245,6 +342,7 @@ export function createCollaboration(
     fail("INVALID_MEMBERS", "Exactly one organizer required");
   const c: Collaboration = {
     ...copy(input),
+    ...(details ? { details } : {}),
     versions: [],
     revenue: [],
     recoupedByAdvance: Object.create(null),

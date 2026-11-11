@@ -1,335 +1,468 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import type { Agreement } from "../lib/model";
-import { Button, Field, Notice } from "./ui";
+import { useEffect, useRef, useState } from "react";
+import { createInvitation } from "../lib/agreement-invitations";
+import { readAgreement, type ExtractionResponse } from "../lib/reading";
+import {
+  DocumentMode,
+  DocumentStep,
+  MAX_DOCUMENT_TEXT_LENGTH,
+  validateDocumentFile,
+} from "./document-step";
+import { PeopleStep, validatePeople, type PersonDraft } from "./people-step";
+import { ReadingDocument } from "./reading-document";
+import {
+  WIZARD_STEP_LABELS,
+  WizardFrame,
+  WizardStep,
+  WizardStepper,
+} from "./wizard-chrome";
+import {
+  DetailsStep,
+  emptyDetails,
+  validateDetails,
+  type DetailsDraft,
+} from "./wizard-details-step";
+import {
+  buildIntakeInput,
+  isUnreadableDocument,
+  type AgreementIntakeInput,
+  type CreatedAgreement,
+} from "./wizard-intake";
+import { InviteLinks, type InviteResult } from "./wizard-invite-links";
+import { ReviewStep } from "./wizard-review-step";
 
-export const creationSteps = [
-  "Document",
-  "Details",
-  "People",
-  "Review",
-] as const;
-
-/** One navigation model for the entire upload-first creation journey. */
-export function CreationStepper({
-  step,
-  onStep,
-  disabled = false,
-}: {
-  step: number;
-  onStep?: (step: number) => void;
-  disabled?: boolean;
-}) {
-  return (
-    <nav aria-label="New agreement progress" className="creation-progress">
-      <ol>
-        {creationSteps.map((label, index) => (
-          <li key={label} aria-current={index === step ? "step" : undefined}>
-            <button
-              type="button"
-              disabled={disabled || !onStep || index > step}
-              onClick={() => onStep?.(index)}
-            >
-              <span className="creation-number" aria-hidden="true">
-                {index < step ? "✓" : index + 1}
-              </span>
-              {label}
-            </button>
-          </li>
-        ))}
-      </ol>
-    </nav>
-  );
+/** Where the wizard is after the user leaves the four editable steps. */
+export enum CreationPhase {
+  EDITING = "editing",
+  CREATING = "creating",
+  SHARING = "sharing",
+  READING = "reading",
 }
 
+export const creationSteps = [
+  WizardStep.DETAILS,
+  WizardStep.DOCUMENT,
+  WizardStep.PEOPLE,
+  WizardStep.REVIEW,
+].map((step) => WIZARD_STEP_LABELS[step]);
+
+const STEP_INTRO: Record<WizardStep, string> = {
+  [WizardStep.DETAILS]:
+    "Name the agreement and set when it applies. Nothing is saved until you create it.",
+  [WizardStep.DOCUMENT]:
+    "Upload the signed agreement. Fairshare reads the revenue clauses from it.",
+  [WizardStep.PEOPLE]:
+    "Everyone who shares in this agreement’s revenue. You’re the owner.",
+  [WizardStep.REVIEW]: "Check the details, then create the agreement.",
+};
+
+export interface WizardPrefill {
+  details?: Partial<DetailsDraft>;
+  text?: string;
+}
+
+/**
+ * Details → Document → People → Review, all held in memory. Review's button is the only
+ * thing that writes: intake (agreement + source + details, idempotent per attempt), one
+ * invitation per person, then optional reading.
+ */
 export function AgreementCreationWizard({
-  agreement,
-  source,
-  members,
-  userId,
-  invitation,
-  onSaveName,
-  onAddMember,
-  onRefresh,
-  onComplete,
+  owner,
+  prefill,
+  onCreate,
+  onFinish,
   onClose,
-  onDirtyChange,
   onBusyChange,
 }: {
-  agreement: Agreement;
-  source: string;
-  members: { id: string; name: string; email: string }[];
-  userId: string;
-  invitation?: ReactNode;
-  onSaveName: (name: string) => Promise<void>;
-  onAddMember: (id: string) => Promise<void>;
-  onRefresh: () => Promise<void>;
-  onComplete: () => void;
+  owner: { id: string; name: string; email: string };
+  prefill?: WizardPrefill;
+  onCreate: (input: AgreementIntakeInput) => Promise<CreatedAgreement>;
+  onFinish: (
+    created: CreatedAgreement,
+    extraction: ExtractionResponse | null,
+  ) => void;
   onClose: () => void;
-  onDirtyChange: (dirty: boolean) => void;
   onBusyChange: (busy: boolean) => void;
 }) {
-  const [step, setStep] = useState(1);
-  const [name, setName] = useState(agreement.value.name);
-  const [pending, setPending] = useState(false);
-  const pendingRequest = useRef(false);
+  const [step, setStep] = useState(WizardStep.DETAILS);
+  const [phase, setPhase] = useState(CreationPhase.EDITING);
+  const [details, setDetailsState] = useState<DetailsDraft>(() => ({
+    ...emptyDetails(),
+    ...prefill?.details,
+  }));
+  const [detailsTouched, setDetailsTouched] = useState(false);
+  const [mode, setModeState] = useState(
+    prefill?.text ? DocumentMode.PASTE : DocumentMode.UPLOAD,
+  );
+  const [file, setFileState] = useState<File | null>(null);
+  const [text, setTextState] = useState(prefill?.text ?? "");
+  const [documentError, setDocumentError] = useState("");
+  const [people, setPeopleState] = useState<PersonDraft[]>([]);
+  const [consent, setConsentState] = useState(false);
   const [error, setError] = useState("");
-  useEffect(() => {
-    onDirtyChange(name.trim() !== agreement.value.name);
-    return () => onDirtyChange(false);
-  }, [name, agreement.value.name, onDirtyChange]);
+  const [created, setCreated] = useState<CreatedAgreement | null>(null);
+  const [invites, setInvites] = useState<InviteResult[]>([]);
+  const [retrying, setRetrying] = useState(false);
+  // One idempotency key per attempt: kept across a retry of the same input, cleared on any edit.
+  const requestId = useRef("");
+  const locked = useRef(false);
+  const extraction = useRef<ExtractionResponse | null>(null);
   const heading = useRef<HTMLHeadingElement>(null);
+
   useEffect(() => {
-    heading.current?.focus();
-  }, [step]);
-  async function perform(action: () => Promise<void>) {
-    if (pendingRequest.current) return;
-    pendingRequest.current = true;
-    setPending(true);
+    if (phase === CreationPhase.EDITING) heading.current?.focus();
+  }, [step, phase]);
+
+  function changed() {
+    requestId.current = "";
+    setError("");
+  }
+  const setDetails = (next: DetailsDraft) => {
+    changed();
+    setDetailsTouched(true);
+    setDetailsState(next);
+  };
+  const setFile = (next: File | null) => {
+    changed();
+    setDocumentError("");
+    setFileState(next);
+  };
+  const setText = (next: string) => {
+    changed();
+    setDocumentError("");
+    setTextState(next);
+  };
+  const setMode = (next: DocumentMode) => {
+    changed();
+    setDocumentError("");
+    setModeState(next);
+  };
+  const setPeople = (next: PersonDraft[]) => {
+    changed();
+    setPeopleState(next);
+  };
+  const setConsent = (next: boolean) => {
+    // Consent isn't sent to intake, so it doesn't change the idempotency key.
+    setError("");
+    setConsentState(next);
+  };
+
+  function stepProblem(target: WizardStep): string | undefined {
+    if (target === WizardStep.DETAILS) return validateDetails(details);
+    if (target === WizardStep.DOCUMENT) {
+      if (documentError) return documentError;
+      if (mode === DocumentMode.UPLOAD)
+        return file
+          ? validateDocumentFile(file)
+          : "Choose a document to continue.";
+      if (!text.trim()) return "Paste the agreement text to continue.";
+      if (text.length > MAX_DOCUMENT_TEXT_LENGTH)
+        return "Use up to 40,000 characters of agreement text.";
+      return undefined;
+    }
+    if (target === WizardStep.PEOPLE)
+      return validatePeople(people, owner.email);
+    return undefined;
+  }
+  const problem = stepProblem(step);
+  const dirty =
+    !!details.name.trim() ||
+    !!details.effectiveFrom ||
+    !!details.effectiveTo ||
+    details.noEndDate ||
+    !!file ||
+    !!text.trim() ||
+    people.length > 0;
+  const creating = phase === CreationPhase.CREATING;
+
+  function go(next: WizardStep) {
+    if (creating) return;
+    setError("");
+    setStep(next);
+  }
+
+  async function createInvites(
+    made: CreatedAgreement,
+    pending: InviteResult[],
+  ): Promise<InviteResult[]> {
+    const results: InviteResult[] = [];
+    for (const invite of pending) {
+      if (invite.token) {
+        results.push(invite);
+        continue;
+      }
+      const person = people.find((item) => item.key === invite.key);
+      try {
+        const result = await createInvitation(
+          made.workspaceId,
+          made.agreementId,
+          {
+            name: invite.name,
+            email: invite.email,
+            role: person!.role,
+          },
+        );
+        results.push({
+          ...invite,
+          token: result.invitation.token,
+          error: undefined,
+        });
+      } catch (cause) {
+        results.push({
+          ...invite,
+          error:
+            cause instanceof Error
+              ? cause.message
+              : "Couldn’t create this link.",
+        });
+      }
+    }
+    return results;
+  }
+
+  function afterInvites(made: CreatedAgreement, results: InviteResult[]) {
+    if (results.length) setPhase(CreationPhase.SHARING);
+    else if (consent) setPhase(CreationPhase.READING);
+    else onFinish(made, null);
+  }
+
+  async function create() {
+    if (locked.current || created) return;
+    locked.current = true;
+    setPhase(CreationPhase.CREATING);
     onBusyChange(true);
     setError("");
+    let made: CreatedAgreement;
     try {
-      await action();
+      requestId.current ||= crypto.randomUUID();
+      const input = await buildIntakeInput({
+        requestId: requestId.current,
+        mode,
+        file,
+        text,
+        details,
+      });
+      made = await onCreate(input);
+      setCreated(made);
     } catch (cause) {
-      setError(
+      const message =
         cause instanceof Error
           ? cause.message
-          : "Could not save. Your changes are still here. Please retry.",
+          : "We couldn’t create the agreement. Your inputs are still here; try again.";
+      setPhase(CreationPhase.EDITING);
+      if (isUnreadableDocument(cause)) {
+        requestId.current = "";
+        setDocumentError(message);
+        setStep(WizardStep.DOCUMENT);
+      } else setError(message);
+      locked.current = false;
+      onBusyChange(false);
+      return;
+    }
+    try {
+      const results = await createInvites(
+        made,
+        people.map((person) => ({
+          key: person.key,
+          name: person.name.trim(),
+          email: person.email.trim(),
+        })),
       );
+      setInvites(results);
+      afterInvites(made, results);
     } finally {
-      pendingRequest.current = false;
-      setPending(false);
+      locked.current = false;
       onBusyChange(false);
     }
   }
-  function go(next: number) {
-    if (!pending) {
-      setError("");
-      setStep(next);
+
+  async function retryInvites() {
+    if (!created || locked.current) return;
+    locked.current = true;
+    setRetrying(true);
+    onBusyChange(true);
+    try {
+      setInvites(await createInvites(created, invites));
+    } finally {
+      locked.current = false;
+      setRetrying(false);
+      onBusyChange(false);
     }
   }
-  async function continueStep() {
-    if (step === 1) {
-      await perform(async () => {
-        if (!name.trim())
-          throw new Error("Give this agreement a name before continuing.");
-        if (name.trim() !== agreement.value.name) await onSaveName(name.trim());
-        setStep(2);
-      });
-    } else go(step + 1);
+
+  function close() {
+    if (creating) return;
+    if (created) {
+      onFinish(created, null);
+      return;
+    }
+    if (
+      dirty &&
+      !window.confirm(
+        "Discard this agreement? Nothing has been created yet, so your inputs will be lost.",
+      )
+    )
+      return;
+    onClose();
   }
-  const available = members.filter(
-    (member) =>
-      !agreement.value.members.some((person) => person.userId === member.id),
-  );
-  return (
-    <section
-      className="creation-wizard"
-      aria-label="Create agreement"
-      aria-busy={pending}
-    >
-      <header className="creation-header">
-        <h1>New agreement</h1>
-        <Button
-          variant="quiet"
-          disabled={pending}
-          onClick={() =>
-            perform(async () => {
-              if (!name.trim())
-                throw new Error("Give this agreement a name before saving.");
-              if (name.trim() !== agreement.value.name)
-                await onSaveName(name.trim());
-              onClose();
-            })
-          }
-        >
-          Save and close
-        </Button>
-      </header>
-      <CreationStepper step={step} onStep={go} disabled={pending} />
-      <div className="creation-body">
-        <h2 ref={heading} tabIndex={-1}>
-          {creationSteps[step]}
-        </h2>
-        {error && <Notice warning>{error}</Notice>}
-        {step === 0 && (
+
+  if (phase === CreationPhase.READING && created)
+    return (
+      <ReadingDocument
+        key={created.documentId}
+        fileName={
+          mode === DocumentMode.UPLOAD && file ? file.name : details.name.trim()
+        }
+        run={async () => {
+          const result = await readAgreement({
+            workspaceId: created.workspaceId,
+            agreementId: created.agreementId,
+            documentId: created.documentId,
+            consent,
+          });
+          extraction.current = result.extraction;
+          return result.outcome;
+        }}
+        onDone={() => onFinish(created, extraction.current)}
+      />
+    );
+
+  if (phase === CreationPhase.SHARING && created)
+    return (
+      <WizardFrame
+        onClose={close}
+        closeLabel="Close and open the agreement"
+        closeDisabled={retrying}
+        footer={
           <>
-            <p className="muted">
-              Your document has been saved. Check the extracted text before
-              continuing.
-            </p>
-            <div className="creation-document">
-              <strong>Source agreement</strong>
-              <span>
-                Saved privately · {source.length.toLocaleString()} characters
-              </span>
-            </div>
-            <details>
-              <summary>Read extracted document</summary>
-              <pre className="creation-source">{source}</pre>
-            </details>
-            <p className="muted">
-              Need a different document? Save and close, then replace the source
-              in Terms before proposing any rules.
-            </p>
-          </>
-        )}
-        {step === 1 && (
-          <>
-            <p className="muted">
-              We named this from your document. Make it easy for everyone to
-              recognise.
-            </p>
-            <Field label="Agreement name">
-              <input
-                value={name}
-                maxLength={200}
-                disabled={pending}
-                onChange={(event) => setName(event.target.value)}
-              />
-            </Field>
-            <Field
-              label="Payment currency"
-              hint="USD is currently supported. Currency and money rules are confirmed when you review the extracted terms."
+            <span />
+            <button
+              type="button"
+              className="button primary"
+              disabled={retrying}
+              onClick={() =>
+                consent
+                  ? setPhase(CreationPhase.READING)
+                  : onFinish(created, null)
+              }
             >
-              <input value="USD – US dollar" readOnly />
-            </Field>
+              {consent ? "Read document" : "Open agreement"}
+            </button>
           </>
-        )}
-        {step === 2 && (
-          <>
-            <p className="muted">
-              Everyone who shares in this agreement’s revenue. Add everyone
-              before proposing rules.
-            </p>
-            <div className="creation-people">
-              {agreement.value.members.map((person) => (
-                <div key={person.userId} className="creation-person">
-                  <span className="avatar small" aria-hidden="true">
-                    {person.displayName[0]}
-                  </span>
-                  <strong>
-                    {person.displayName}
-                    {person.userId === userId ? " (you)" : ""}
-                  </strong>
-                  <span>
-                    {person.role === "ORGANIZER" ? "Owner" : "Collaborator"}
-                  </span>
-                </div>
-              ))}
-            </div>
-            {available.length > 0 && (
-              <section className="creation-section">
-                <h3>Add someone you already work with</h3>
-                {available.map((person) => (
-                  <div className="creation-person" key={person.id}>
-                    <span>
-                      {person.name}
-                      <small className="creation-email">{person.email}</small>
-                    </span>
-                    <Button
-                      variant="secondary"
-                      disabled={pending}
-                      onClick={() => perform(() => onAddMember(person.id))}
-                    >
-                      Add person
-                    </Button>
-                  </div>
-                ))}
-              </section>
-            )}
-            <details className="creation-section">
-              <summary>Invite someone new</summary>
-              <p className="muted">
-                Share a private invitation to this agreement. Once they accept,
-                refresh to see them here.
-              </p>
-              {invitation || <p>Ask the organizer for an invitation link.</p>}
-              <Button
-                variant="secondary"
-                disabled={pending}
-                onClick={() => perform(onRefresh)}
-              >
-                Refresh accepted invitations
-              </Button>
-            </details>
-            <p className="muted">
-              Nothing is sent for approval yet. You can review on your own, but
-              finish the participant list before saving a proposal.
-            </p>
-          </>
-        )}
-        {step === 3 && (
-          <>
-            <p className="muted">
-              Check the details, then review the document’s revenue rules.
-            </p>
-            <dl className="creation-review">
-              <div>
-                <dt>Name</dt>
-                <dd>
-                  {agreement.value.name}
-                  <Button variant="quiet" onClick={() => go(1)}>
-                    Edit
-                  </Button>
-                </dd>
-              </div>
-              <div>
-                <dt>Currency</dt>
-                <dd>USD – US dollar</dd>
-              </div>
-              <div>
-                <dt>Document</dt>
-                <dd>
-                  Source saved · {source.length.toLocaleString()} characters
-                  <Button variant="quiet" onClick={() => go(0)}>
-                    Review
-                  </Button>
-                </dd>
-              </div>
-              <div>
-                <dt>People</dt>
-                <dd>
-                  {agreement.value.members.map((person) => (
-                    <span key={person.userId}>
-                      {person.displayName}
-                      {person.userId === userId ? " (you)" : ""}
-                    </span>
-                  ))}
-                  <Button variant="quiet" onClick={() => go(2)}>
-                    Edit
-                  </Button>
-                </dd>
-              </div>
-            </dl>
-            <p className="muted">
-              Next, choose whether AI may interpret your source. Check every
-              proposed rule and resolve questions before anyone approves.
-              Creating this draft does not move money.
-            </p>
-          </>
-        )}
-        <footer className="creation-footer">
-          <Button
-            variant="secondary"
-            disabled={pending || step === 0}
-            onClick={() => go(step - 1)}
+        }
+      >
+        <InviteLinks
+          invites={invites}
+          retrying={retrying}
+          onRetry={retryInvites}
+        />
+      </WizardFrame>
+    );
+
+  const primaryLabel = creating
+    ? "Creating…"
+    : step !== WizardStep.REVIEW
+      ? "Continue"
+      : consent
+        ? "Create & read document"
+        : "Create agreement";
+
+  return (
+    <WizardFrame
+      onClose={close}
+      closeDisabled={creating}
+      busy={creating}
+      stepper={<WizardStepper step={step} />}
+      footer={
+        <>
+          {step === WizardStep.DETAILS ? (
+            <span />
+          ) : (
+            <button
+              type="button"
+              className="button secondary"
+              disabled={creating}
+              onClick={() => go(step - 1)}
+            >
+              Back
+            </button>
+          )}
+          <button
+            type="submit"
+            form="wiz-form"
+            className="button primary"
+            disabled={creating || !!problem}
           >
-            Back
-          </Button>
-          <Button
-            disabled={pending || (step === 1 && !name.trim())}
-            onClick={step === 3 ? onComplete : continueStep}
-          >
-            {pending
-              ? "Saving…"
-              : step === 3
-                ? "Continue to read document"
-                : "Continue"}
-          </Button>
-        </footer>
-      </div>
-    </section>
+            {primaryLabel}
+          </button>
+        </>
+      }
+    >
+      <form
+        id="wiz-form"
+        className="wiz-step"
+        noValidate
+        aria-labelledby="wiz-step-title"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (creating || problem) return;
+          if (step === WizardStep.REVIEW) void create();
+          else go(step + 1);
+        }}
+      >
+        <h1 id="wiz-step-title" ref={heading} tabIndex={-1}>
+          {WIZARD_STEP_LABELS[step]}
+        </h1>
+        <p className="wiz-lede">{STEP_INTRO[step]}</p>
+        {error && (
+          <p className="wiz-error wiz-error-banner" role="alert">
+            {error}
+          </p>
+        )}
+        {step === WizardStep.DETAILS && (
+          <DetailsStep
+            details={details}
+            showErrors={detailsTouched}
+            disabled={creating}
+            onChange={setDetails}
+          />
+        )}
+        {step === WizardStep.DOCUMENT && (
+          <DocumentStep
+            file={file}
+            text={text}
+            mode={mode}
+            error={documentError || undefined}
+            disabled={creating}
+            onFile={setFile}
+            onText={setText}
+            onMode={setMode}
+          />
+        )}
+        {step === WizardStep.PEOPLE && (
+          <PeopleStep
+            owner={{ name: owner.name, email: owner.email }}
+            people={people}
+            onChange={setPeople}
+            disabled={creating}
+          />
+        )}
+        {step === WizardStep.REVIEW && (
+          <ReviewStep
+            details={details}
+            mode={mode}
+            file={file}
+            text={text}
+            owner={owner}
+            people={people}
+            consent={consent}
+            disabled={creating}
+            onConsent={setConsent}
+            onEdit={go}
+          />
+        )}
+      </form>
+    </WizardFrame>
   );
 }
