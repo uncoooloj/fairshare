@@ -22,10 +22,59 @@ export function joinNames(names: string[]) {
 
 const firstName = (name: string) => name.trim().split(/\s+/)[0] || name;
 
+/** What the Share button can do here: the system share sheet, or a copy as the fallback. */
+export enum ShareMethod {
+  SHEET = "sheet",
+  COPY = "copy",
+}
+
+export function shareMethod(
+  nav: Pick<Navigator, "share" | "canShare"> | undefined,
+  data: ShareData,
+): ShareMethod {
+  if (!nav || typeof nav.share !== "function") return ShareMethod.COPY;
+  if (typeof nav.canShare === "function" && !nav.canShare(data))
+    return ShareMethod.COPY;
+  return ShareMethod.SHEET;
+}
+
+enum RowState {
+  IDLE = "idle",
+  COPIED = "copied",
+  SHOW_LINK = "show-link",
+}
+
 function InviteRow({ invite }: { invite: SentInvite }) {
-  const [copied, setCopied] = useState(false);
-  const [failed, setFailed] = useState(false);
+  const [state, setState] = useState(RowState.IDLE);
   const link = invite.token ? inviteLink(invite.token) : "";
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(link);
+      setState(RowState.COPIED);
+    } catch {
+      // No clipboard access: show the link so it can be copied by hand.
+      setState(RowState.SHOW_LINK);
+    }
+  }
+
+  async function share() {
+    const data: ShareData = {
+      title: "Approve our split",
+      text: `${firstName(invite.name)}, here's your link to review and approve the split.`,
+      url: link,
+    };
+    if (shareMethod(globalThis.navigator, data) === ShareMethod.COPY)
+      return copy();
+    try {
+      await navigator.share(data);
+    } catch (cause) {
+      // Closing the share sheet isn't a failure; anything else falls back to copying.
+      if (cause instanceof DOMException && cause.name === "AbortError") return;
+      await copy();
+    }
+  }
+
   return (
     <li className="wiz-invite">
       <span className="wiz-invite-who">
@@ -34,7 +83,7 @@ function InviteRow({ invite }: { invite: SentInvite }) {
       </span>
       {link ? (
         <span className="wiz-invite-link">
-          {failed && (
+          {state === RowState.SHOW_LINK && (
             <input
               readOnly
               value={link}
@@ -45,17 +94,18 @@ function InviteRow({ invite }: { invite: SentInvite }) {
           <button
             type="button"
             className="button secondary"
-            onClick={async () => {
-              try {
-                await navigator.clipboard.writeText(link);
-                setCopied(true);
-              } catch {
-                // No clipboard access: show the link so it can be copied by hand.
-                setFailed(true);
-              }
-            }}
+            aria-label={`Copy ${firstName(invite.name)}'s link`}
+            onClick={() => void copy()}
           >
-            {copied ? "Copied" : "Copy invite link"}
+            {state === RowState.COPIED ? "Copied" : "Copy link"}
+          </button>
+          <button
+            type="button"
+            className="button secondary"
+            aria-label={`Share ${firstName(invite.name)}'s link`}
+            onClick={() => void share()}
+          >
+            Share
           </button>
         </span>
       ) : (
@@ -67,7 +117,7 @@ function InviteRow({ invite }: { invite: SentInvite }) {
   );
 }
 
-/** Step 7. Invite tokens only exist here, and no email is sent. */
+/** Step 7. No email is sent: the organizer copies or shares each person's link. */
 export function WizardSentStep({ invites }: { invites: SentInvite[] }) {
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => heading.current?.focus(), []);

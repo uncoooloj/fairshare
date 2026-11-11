@@ -95,6 +95,23 @@
 .wiz-stepper-item.current .wiz-stepper-label {
   font-weight: var(--weight-medium);
 }
+.wiz-stepper-label {
+  position: relative;
+}
+.wiz-stepper:has(.wiz-stepper-detail) {
+  padding-bottom: var(--space-4);
+}
+/* "Question 1 of 2" under the current dot, without pushing the row out of line. */
+.wiz-stepper-detail {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 2px;
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-normal);
+  white-space: nowrap;
+}
 .wiz-stepper-mark {
   display: inline-grid;
   place-items: center;
@@ -252,14 +269,18 @@
   list-style: none;
 }
 .wiz-invite {
-  display: grid;
-  gap: var(--space-2);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
   padding: var(--space-4);
   border: 1px solid var(--color-line);
   border-radius: var(--radius-md);
 }
 .wiz-invite-who {
   display: flex;
+  min-width: 0;
   flex-wrap: wrap;
   gap: var(--space-2);
   align-items: baseline;
@@ -271,11 +292,13 @@
 }
 .wiz-invite-link {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: var(--space-2);
   min-width: 0;
 }
 .wiz-invite-link input {
-  flex: 1 1 auto;
+  flex: 1 1 100%;
   min-width: 0;
   min-height: var(--control-min-height);
   font-family: var(--font-mono);
@@ -451,7 +474,10 @@
     margin-top: 10vh;
   }
   .wiz-invite-link {
-    flex-direction: column;
+    flex: 1 1 100%;
+  }
+  .wiz-invite-link .button {
+    flex: 1 1 0;
   }
 }
 
@@ -465,14 +491,16 @@
 .wiz-footer-primary {
   display: grid;
   justify-items: end;
-  gap: var(--space-1);
-  max-width: 360px;
+  gap: var(--space-2);
+  max-width: 440px;
   text-align: right;
 }
 .wiz-footer-primary small {
+  display: block;
   color: var(--color-muted);
   font-size: var(--text-xs);
-  line-height: 1.4;
+  line-height: 1.5;
+  text-wrap: balance;
 }
 .wiz-manual {
   white-space: nowrap;
@@ -602,6 +630,9 @@
     justify-items: stretch;
     max-width: none;
     text-align: left;
+  }
+  .wiz-footer-primary small {
+    text-wrap: pretty;
   }
   .wiz-drafts li {
     flex-direction: column;

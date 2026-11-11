@@ -12,8 +12,12 @@ import {
   resumedAnswers,
   readingResultIsCurrent,
   submissionWasCommitted,
+  resumePlace,
+  stageDetail,
   STAGE_STEP,
+  syncPendingPeople,
   WizardStage,
+  type PeopleApi,
 } from "../components/agreement-creation-wizard";
 import { WizardStep, WizardStepper } from "../components/wizard-chrome";
 import { WizardSendStep } from "../components/wizard-send-step";
@@ -26,7 +30,14 @@ import { CheckMode } from "../components/wizard-check-step";
 import { emptyAnswers, FeeChoice, AnswerSource } from "../lib/rules-answers";
 import { StandardQuestionId } from "../lib/standard-questions";
 import type { Agreement } from "../lib/model";
-import { saveDraftAnswers } from "../lib/wizard-persistence";
+import {
+  inviteLinksKey,
+  loadDraftAnswers,
+  loadInviteLinks,
+  saveDraftAnswers,
+  saveInviteLinks,
+} from "../lib/wizard-persistence";
+import { shareMethod, ShareMethod } from "../components/wizard-sent-step";
 import { appSource } from "./app-source";
 import {
   MIDNIGHT,
@@ -85,10 +96,14 @@ test("the wizard opens on Upload with the spec's copy and one privacy line", () 
   assert.match(html, /Read my agreement/);
   assert.match(html, /Set it up myself/);
   assert.equal(
-    (html.match(/Read my agreement sends it to AI/g) || []).length,
+    (
+      html.match(
+        /We use AI to read it and suggest the split\. Nothing is shared with anyone else\./g,
+      ) || []
+    ).length,
     1,
   );
-  assert.match(html, /Cloudflare Workers AI, with an Anthropic fallback/);
+  assert.doesNotMatch(html, /Cloudflare|Anthropic|Workers AI/);
   assert.doesNotMatch(html, /sandbox|Agreement name|Details/i);
 });
 
@@ -220,16 +235,28 @@ test("Send shows the summary, what blocks it, and the one safety line", () => {
   assert.equal(joinNames(["A", "B", "C"]), "A, B and C");
 });
 
-test("the draft is saved on Read my agreement; people on People; one submit on Send", () => {
+test("the draft is saved on Read my agreement; people and one submit on Send", () => {
   assert.match(wizard, /requestId\.current \|\|= crypto\.randomUUID\(\)/);
   assert.match(wizard, /isUnreadableDocument\(cause\)/);
-  assert.match(wizard, /await addPerson\(/);
-  assert.match(wizard, /await removePerson\(/);
+  assert.match(wizard, /await calls\.addPerson\(/);
+  assert.match(wizard, /await calls\.removePerson\(/);
   assert.match(wizard, /await deleteDraft\(/);
   const send = wizard.slice(wizard.indexOf("async function send()"));
-  const rules = send.indexOf("toRules(answers");
+  const sync = send.indexOf("await syncPeople(");
+  const rules = send.indexOf("toRules(synced.answers");
   const submit = send.indexOf("await submitForApproval(");
-  assert.ok(rules > 0 && submit > rules);
+  assert.ok(sync > 0 && rules > sync && submit > rules);
+  // Leaving People (and every other screen change) is local: no server call, no link.
+  const leave = wizard.slice(
+    wizard.indexOf("function leavePeople()"),
+    wizard.indexOf("async function send()"),
+  );
+  assert.doesNotMatch(leave, /await|syncPeople|addPerson|replacePersonLink/);
+  // Background work never disables the email fields.
+  assert.doesNotMatch(
+    wizard.slice(wizard.indexOf("<PeopleStep")),
+    /^\s*disabled=\{busy\}\s*selfEmail/m,
+  );
   assert.doesNotMatch(wizard, /consentToCloudflare|fetch\(/);
 });
 
@@ -568,4 +595,314 @@ test("resuming never overwrites a later manual edit with a saved reading choice"
   } finally {
     delete (globalThis as any).localStorage;
   }
+});
+
+/** A tiny server for People: pending seats, revisions, and every call counted. */
+function fakePeopleServer(initial: Agreement) {
+  let agreement = structuredClone(initial) as any;
+  let next = 0;
+  const count = { add: 0, remove: 0, replace: 0 };
+  const bump = () => {
+    agreement = { ...agreement, revision: agreement.revision + 1 };
+    return agreement as Agreement;
+  };
+  const checkRevision = (expected: number) =>
+    assert.equal(expected, agreement.revision, "stale revision");
+  const calls: PeopleApi = {
+    addPerson: async (_w, _a, revision, person) => {
+      checkRevision(revision);
+      count.add++;
+      const id = `inv${++next}`;
+      agreement.value.members = [
+        ...agreement.value.members,
+        {
+          userId: `pending:${id}`,
+          displayName: person.name,
+          role: "COLLABORATOR",
+          pending: { invitationId: id, email: person.email },
+        },
+      ];
+      return {
+        agreement: bump(),
+        invitation: { id, token: `token-${id}`, expiresAt: 0 },
+      } as any;
+    },
+    removePerson: async (_w, _a, revision, userId) => {
+      checkRevision(revision);
+      count.remove++;
+      agreement.value.members = agreement.value.members.filter(
+        (m: any) => m.userId !== userId,
+      );
+      return bump();
+    },
+    replacePersonLink: async (_w, _a, revision, userId) => {
+      checkRevision(revision);
+      count.replace++;
+      const id = `inv${++next}`;
+      agreement.value.members = agreement.value.members.map((m: any) =>
+        m.userId === userId
+          ? {
+              ...m,
+              userId: `pending:${id}`,
+              pending: { ...m.pending, invitationId: id },
+            }
+          : m,
+      );
+      return {
+        agreement: bump(),
+        invitation: { id, token: `token-${id}`, expiresAt: 0 },
+      } as any;
+    },
+  };
+  return { calls, count, current: () => agreement as Agreement };
+}
+
+const draftAgreement = (members: unknown[] = []) =>
+  ({
+    workspaceId: "w",
+    id: "a",
+    revision: 1,
+    value: {
+      name: "Night",
+      members: [
+        { userId: "owner", displayName: "Maya Okafor", role: "ORGANIZER" },
+        ...members,
+      ],
+      versions: [],
+    },
+  }) as unknown as Agreement;
+
+const withPeople = (people: any[]) => ({
+  ...emptyAnswers(self),
+  name: { value: "Night", source: AnswerSource.PERSON },
+  people: {
+    value: [
+      { ...emptyAnswers(self).people.value[0], basisPoints: 5000 },
+      ...people,
+    ],
+    source: AnswerSource.PERSON,
+  },
+});
+
+test("links are made once per person at Send; a second Send or retry makes none", async () => {
+  const server = fakePeopleServer(draftAgreement());
+  const answers = withPeople([
+    {
+      key: "j",
+      name: "Jordan ",
+      email: "j@example.test",
+      basisPoints: 3000,
+      isSelf: false,
+    },
+    {
+      key: "r",
+      name: "Riley",
+      email: "r@example.test",
+      basisPoints: 2000,
+      isSelf: false,
+    },
+  ]);
+  const saved: Record<string, string> = {};
+  const first = await syncPendingPeople({
+    workspaceId: "w",
+    agreementId: "a",
+    agreement: server.current(),
+    answers,
+    links: {},
+    onLink: (id, token) => (saved[id] = token),
+    calls: server.calls,
+  });
+  assert.deepEqual(server.count, { add: 2, remove: 0, replace: 0 });
+  assert.deepEqual(saved, { inv1: "token-inv1", inv2: "token-inv2" });
+  assert.deepEqual(
+    first.answers.people.value.map((p) => [p.name, p.invitationId]),
+    [
+      ["Maya Okafor", undefined],
+      ["Jordan", "inv1"],
+      ["Riley", "inv2"],
+    ],
+  );
+  // Back to People and Send again, five times over: nothing new is made or revoked.
+  for (let i = 0; i < 5; i++)
+    await syncPendingPeople({
+      workspaceId: "w",
+      agreementId: "a",
+      agreement: server.current(),
+      answers: first.answers,
+      links: first.links,
+      calls: server.calls,
+    });
+  assert.deepEqual(server.count, { add: 2, remove: 0, replace: 0 });
+});
+
+test("a person saved by an older build gets one link, once; edits and removals replace seats", async () => {
+  const server = fakePeopleServer(
+    draftAgreement([
+      {
+        userId: "pending:old",
+        displayName: "Jordan",
+        role: "COLLABORATOR",
+        pending: { invitationId: "old", email: "j@example.test" },
+      },
+      {
+        userId: "pending:gone",
+        displayName: "Sam",
+        role: "COLLABORATOR",
+        pending: { invitationId: "gone", email: "s@example.test" },
+      },
+    ]),
+  );
+  const answers = withPeople([
+    {
+      key: "j",
+      name: "Jordan",
+      email: "j@example.test",
+      invitationId: "old",
+      basisPoints: 5000,
+      isSelf: false,
+    },
+  ]);
+  const once = await syncPendingPeople({
+    workspaceId: "w",
+    agreementId: "a",
+    agreement: server.current(),
+    answers,
+    links: {},
+    calls: server.calls,
+  });
+  assert.deepEqual(server.count, { add: 0, remove: 1, replace: 1 });
+  await syncPendingPeople({
+    workspaceId: "w",
+    agreementId: "a",
+    agreement: server.current(),
+    answers: once.answers,
+    links: once.links,
+    calls: server.calls,
+  });
+  assert.deepEqual(server.count, { add: 0, remove: 1, replace: 1 });
+  // A changed email: the old seat goes and one new seat (and link) is made.
+  const edited = {
+    ...once.answers,
+    people: {
+      ...once.answers.people,
+      value: once.answers.people.value.map((p) =>
+        p.key === "j" ? { ...p, email: "jordan@example.test" } : p,
+      ),
+    },
+  };
+  await syncPendingPeople({
+    workspaceId: "w",
+    agreementId: "a",
+    agreement: server.current(),
+    answers: edited,
+    links: once.links,
+    calls: server.calls,
+  });
+  assert.deepEqual(server.count, { add: 1, remove: 2, replace: 1 });
+});
+
+test("resume lands where the organizer stopped, or the earliest screen that needs them", () => {
+  const ready = withPeople([
+    {
+      key: "j",
+      name: "Jordan",
+      email: "j@example.test",
+      basisPoints: 5000,
+      isSelf: false,
+    },
+  ]);
+  const twoQuestions = mergeQuestions({ ...ready, fees: undefined });
+  const at = (answers: any, stage: string, questionIndex = 0) =>
+    resumePlace(answers, { stage, questionIndex }, owner.email);
+  assert.deepEqual(at(ready, WizardStage.SEND), {
+    stage: WizardStage.SEND,
+    questionIndex: 0,
+  });
+  assert.equal(at(ready, WizardStage.PEOPLE).stage, WizardStage.PEOPLE);
+  assert.equal(at(ready, WizardStage.CHECK).stage, WizardStage.CHECK);
+  // No place saved (older draft), or a screen a draft can't reopen on: Check.
+  assert.equal(resumePlace(ready, undefined).stage, WizardStage.CHECK);
+  assert.equal(at(ready, WizardStage.SENT).stage, WizardStage.CHECK);
+  assert.equal(at(ready, "nonsense").stage, WizardStage.CHECK);
+  // Send with a missing email goes back to People.
+  const noEmail = withPeople([
+    { key: "j", name: "Jordan", basisPoints: 5000, isSelf: false },
+  ]);
+  assert.equal(at(noEmail, WizardStage.SEND).stage, WizardStage.PEOPLE);
+  // The split no longer adds up: Check, wherever it was closed.
+  const broken = withPeople([
+    {
+      key: "j",
+      name: "Jordan",
+      email: "j@example.test",
+      basisPoints: 100,
+      isSelf: false,
+    },
+  ]);
+  assert.equal(at(broken, WizardStage.SEND).stage, WizardStage.CHECK);
+  // Questions: the saved index, clamped; none left means People.
+  if (twoQuestions.questions.length) {
+    const last = twoQuestions.questions.length - 1;
+    assert.deepEqual(at(twoQuestions, WizardStage.QUESTIONS, 9), {
+      stage: WizardStage.QUESTIONS,
+      questionIndex: last,
+    });
+  }
+  assert.equal(
+    at({ ...ready, questions: [] }, WizardStage.QUESTIONS, 1).stage,
+    WizardStage.PEOPLE,
+  );
+});
+
+test("the place and invite links are stored per draft, merged, and read back", () => {
+  const store = new Map<string, string>();
+  (globalThis as any).localStorage = {
+    getItem: (k: string) => store.get(k) ?? null,
+    setItem: (k: string, v: string) => store.set(k, v),
+    removeItem: (k: string) => store.delete(k),
+  };
+  try {
+    const answers = withPeople([]);
+    saveDraftAnswers("w", "a", answers, {
+      stage: WizardStage.QUESTIONS,
+      questionIndex: 1,
+    });
+    assert.deepEqual(loadDraftAnswers("w", "a")?.place, {
+      stage: WizardStage.QUESTIONS,
+      questionIndex: 1,
+    });
+    saveInviteLinks("w", "a", { i1: "t1" });
+    saveInviteLinks("w", "a", { i2: "t2" });
+    assert.equal(inviteLinksKey("w", "a"), "fairshare:invite-links:v1:w:a");
+    assert.deepEqual(loadInviteLinks("w", "a"), { i1: "t1", i2: "t2" });
+    store.set(inviteLinksKey("w", "a"), "not json");
+    assert.deepEqual(loadInviteLinks("w", "a"), {});
+  } finally {
+    delete (globalThis as any).localStorage;
+  }
+});
+
+test("the stepper says which question you're on; Share falls back to copy", () => {
+  assert.equal(stageDetail(WizardStage.QUESTIONS, 0, 2), "Question 1 of 2");
+  assert.equal(stageDetail(WizardStage.QUESTIONS, 5, 2), "Question 2 of 2");
+  assert.equal(stageDetail(WizardStage.CHECK, 0, 2), undefined);
+  const html = renderToStaticMarkup(
+    createElement(WizardStepper, {
+      step: WizardStep.CHECK,
+      detail: "Question 1 of 2",
+    }),
+  );
+  assert.match(html, /wiz-stepper-detail[^>]*>.*Question 1 of 2/);
+  assert.equal((html.match(/aria-current="step"/g) || []).length, 1);
+  const data = { url: "https://example.test" };
+  assert.equal(shareMethod(undefined, data), ShareMethod.COPY);
+  assert.equal(shareMethod({} as any, data), ShareMethod.COPY);
+  assert.equal(
+    shareMethod({ share: async () => {}, canShare: () => false } as any, data),
+    ShareMethod.COPY,
+  );
+  assert.equal(
+    shareMethod({ share: async () => {} } as any, data),
+    ShareMethod.SHEET,
+  );
 });
