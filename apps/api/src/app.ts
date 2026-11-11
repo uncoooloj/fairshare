@@ -78,6 +78,15 @@ function domainErrorStatus(code: string): number {
 export async function buildApp(
   options: AppOptions = {},
 ): Promise<FairshareApp> {
+  if (
+    options.payment?.automaticPayoutsEnabled &&
+    (options.demo ||
+      !options.payment.provider ||
+      !options.payment.reconciliation?.enabled)
+  )
+    throw new Error(
+      "Automatic payouts require SANDBOX provider and durable reconciliation",
+    );
   if (options.localOcrEnabled && !options.documentReaders)
     await verifyLocalOcrTools();
   if (

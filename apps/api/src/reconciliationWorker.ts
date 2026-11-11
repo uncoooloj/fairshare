@@ -14,9 +14,10 @@ export interface ReconciliationWorkerOptions {
   leaseMs?: number;
   batchSize?: number;
 }
-/** Provider reads only. Durable deterministic backoff and per-job fenced leases.
+/** Durable deterministic backoff and per-job fenced leases.
  * The reconcile callback MUST call assertLease immediately before every local write
- * after an await. No provider money-writing methods belong in this worker. */
+ * after an await. Money-writing jobs must durably reserve unique operations before
+ * provider I/O and must never retry uncertain submissions. */
 export function createReconciliationWorker(
   options: ReconciliationWorkerOptions,
 ) {

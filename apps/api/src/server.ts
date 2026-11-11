@@ -28,6 +28,8 @@ const app = await buildApp({
   localOcrEnabled: process.env.LOCAL_OCR_ENABLED === "true",
   payment: {
     provider,
+    automaticPayoutsEnabled:
+      process.env.PAYPAL_AUTOMATIC_PAYOUTS_ENABLED === "true",
     publicOrigin: process.env.PUBLIC_API_URL,
     reconciliation: {
       enabled: process.env.PAYPAL_RECONCILIATION_ENABLED === "true",
