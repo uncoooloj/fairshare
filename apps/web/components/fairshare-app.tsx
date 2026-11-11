@@ -324,9 +324,25 @@ export default function FairshareApp() {
         "pending",
       );
       // Member refresh must not make a committed upload appear to fail.
+      const intakeWorkspaceId = result.workspace.id;
+      const intakeWorkspaceRequest = workspaceRequest.current;
       api(`${workspaceBase(result.workspace.id)}/members`)
-        .then((result) => setMembers(result.members))
-        .catch(() => setMembers([]));
+        .then((members) => {
+          if (
+            intakeWorkspaceRequest !== workspaceRequest.current ||
+            currentWorkspace.current !== intakeWorkspaceId
+          )
+            return;
+          setMembers(members.members);
+        })
+        .catch(() => {
+          if (
+            intakeWorkspaceRequest !== workspaceRequest.current ||
+            currentWorkspace.current !== intakeWorkspaceId
+          )
+            return;
+          setMembers([]);
+        });
       setCreating(false);
       setSection(Section.Agreements);
       setTab(AgreementTab.Terms);
