@@ -18,7 +18,7 @@ test("payout empty-state action navigates to real agreements without inventing p
     app,
     /emptyActions=\{\s*<Button[\s\S]+?navigate\(Section\.Agreements\)[\s\S]+?View agreements/,
   );
-  assert.match(grid, /An allocation alone does not move money/);
+  assert.match(grid, /When you pay people, it shows up here\./);
   assert.match(grid, /!loading && !data.rows.length/);
   assert.match(grid, /No matching payouts/);
 });

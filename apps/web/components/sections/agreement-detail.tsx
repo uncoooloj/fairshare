@@ -57,6 +57,11 @@ export interface AgreementDetailProps {
   rulesDirty: MutableRefObject<boolean>;
   run: Run;
   mutate: Mutate;
+  mutateWithResult: (
+    action: string,
+    extra?: Record<string, unknown>,
+  ) => Promise<boolean>;
+  onAgreementChange: (agreement: Agreement) => void;
   refresh: () => Promise<void>;
   loadWorkspace: (id: string) => Promise<void>;
   navigate: (s: Section) => boolean;
@@ -107,6 +112,8 @@ export function AgreementDetail({
   rulesDirty,
   run,
   mutate,
+  mutateWithResult,
+  onAgreementChange,
   refresh,
   loadWorkspace,
   navigate,
@@ -243,8 +250,8 @@ export function AgreementDetail({
               workspace={workspace}
               run={run}
               mutate={mutate}
+              onAgreementChange={onAgreementChange}
               setNotice={setNotice}
-              setSelected={setSelected}
             />
           )}
           {shown === AgreementTab.Terms && (
@@ -268,6 +275,7 @@ export function AgreementDetail({
                 rulesDirty={rulesDirty}
                 run={run}
                 mutate={mutate}
+                mutateWithResult={mutateWithResult}
                 mayLeaveDraft={mayLeaveDraft}
                 changeAgreementTab={changeAgreementTab}
                 setBusy={setBusy}
@@ -289,9 +297,10 @@ export function AgreementDetail({
                     aria-label="The agreement document"
                   >
                     <AgreementDocument
-                      key={selected.id}
+                      key={`${selected.id}:${latest?.id ?? ""}`}
                       agreement={selected}
                       base={base}
+                      reviewedVersionId={latest?.id}
                     />
                   </section>
                   <details className="panel ag-history">

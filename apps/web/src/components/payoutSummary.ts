@@ -27,6 +27,7 @@ export function summarizePayouts(rows: readonly PaymentGridRow[]) {
                 PaymentGridStatus.Held,
                 PaymentGridStatus.Unknown,
                 PaymentGridStatus.Unclaimed,
+                PaymentGridStatus.WaitingRecipient,
               ].includes(row.status)
             ? "attention"
             : null;

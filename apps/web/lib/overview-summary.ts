@@ -22,7 +22,9 @@ const actionStatuses = new Set([
   "BLOCKED",
   "HELD",
   "ONHOLD",
+  "AUTO_HELD",
   "UNCLAIMED",
+  "WAITING_RECIPIENT",
   "OUTCOME_UNKNOWN",
   "REVERSED",
   "REFUNDED",
@@ -110,11 +112,11 @@ export function splitSentences(
     );
   if (advance) {
     const paidBack = agreement.value.recoupedByAdvance[advance.id] || 0;
-    const subject = advanceTo === "you" ? "Your" : `${advanceTo}'s`;
+    const advanceOwner = advanceTo === "you" ? "your" : `${advanceTo}'s`;
     out.push(
-      `${subject} ${formatMoneyHeadline(advance.amountCents)} advance is paid back first${
+      `${formatMoneyHeadline(advance.amountCents)} is allocated toward ${advanceOwner} advance before the split${
         paidBack > 0
-          ? ` (${formatMoneyHeadline(Math.min(paidBack, advance.amountCents))} so far)`
+          ? ` (${formatMoneyHeadline(Math.min(paidBack, advance.amountCents))} allocated so far)`
           : ""
       }.`,
     );
@@ -291,7 +293,7 @@ export function overviewSummary(
         key: `payout:${operationKey}`,
         agreement,
         title: `Payout needs attention: ${agreement.value.members.find((m) => m.userId === payout.user_id)?.displayName || "participant"}`,
-        detail: `PayPal says: ${payout.status.toLowerCase().replaceAll("_", " ")}. Check it before sending again.`,
+        detail: `Recorded payout state: ${payout.status.toLowerCase().replaceAll("_", " ")}. Open the agreement to review the payout and resolve its blocker.`,
       });
   }
   activity.sort((a, b) => Date.parse(b.at) - Date.parse(a.at));

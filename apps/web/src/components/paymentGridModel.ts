@@ -2,6 +2,7 @@ import type { AllocationTrace } from "../../lib/allocation-trace";
 /** Read-only projection: amounts originate in the server's deterministic ledger. */
 export enum PaymentGridStatus {
   Unclaimed = "UNCLAIMED",
+  WaitingRecipient = "WAITING_RECIPIENT",
   Pending = "PENDING",
   Held = "HELD",
   Processing = "PROCESSING",
@@ -28,14 +29,32 @@ export interface PaymentGridRow {
 }
 export const paymentStatusLabels: Record<PaymentGridStatus, string> = {
   UNCLAIMED: "Unclaimed",
+  WAITING_RECIPIENT: "Waiting for PayPal details",
   PENDING: "Pending",
   HELD: "On hold",
   PROCESSING: "Processing",
   PAID: "Paid",
   FAILED: "Failed",
   REVERSED: "Reversed",
-  UNKNOWN: "Needs reconciliation",
+  UNKNOWN: "Being checked",
 };
+/** Projects raw payout-operation states into the finite UI status set. */
+export function payoutStatus(status: string): PaymentGridStatus {
+  if (status === "SUCCESS") return PaymentGridStatus.Paid;
+  if (status === "UNCLAIMED") return PaymentGridStatus.Unclaimed;
+  if (status === "WAITING_RECIPIENT") return PaymentGridStatus.WaitingRecipient;
+  if (["FAILED", "DENIED", "BLOCKED"].includes(status))
+    return PaymentGridStatus.Failed;
+  if (["HELD", "ONHOLD", "AUTO_HELD"].includes(status))
+    return PaymentGridStatus.Held;
+  if (["REFUNDED", "REVERSED", "RETURNED"].includes(status))
+    return PaymentGridStatus.Reversed;
+  if (["SUBMITTING", "PROCESSING"].includes(status))
+    return PaymentGridStatus.Processing;
+  if (["PENDING", "RESERVED"].includes(status))
+    return PaymentGridStatus.Pending;
+  return PaymentGridStatus.Unknown;
+}
 export function formatPaymentAmount(cents: number, currency: "USD"): string {
   if (!Number.isSafeInteger(cents) || cents < 0 || currency !== "USD")
     return "Invalid amount";

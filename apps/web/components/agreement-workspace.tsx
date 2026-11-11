@@ -450,20 +450,20 @@ export function RecoupmentCard({
   return (
     <section className="panel ag-card ag-recoupment">
       <div className="ag-card-head">
-        <h2>Advance paid back</h2>
+        <h2>Advance allocation</h2>
         <span className={`status-chip ${complete ? "good" : ""}`}>
           {complete ? "Complete" : "In progress"}
         </span>
       </div>
       <p className="ag-recoupment-amount numeric">
         <strong>
-          {money(recouped)} of {money(amount)} paid back
+          {money(recouped)} of {money(amount)} allocated toward the advance
         </strong>{" "}
         <span className="muted">
           · advance to {memberName(agreement, rules.advance.recipientId)}
         </span>
       </p>
-      <ThinProgress value={recouped} max={amount} label="Advance paid back" />
+      <ThinProgress value={recouped} max={amount} label="Advance allocation" />
       {children}
     </section>
   );

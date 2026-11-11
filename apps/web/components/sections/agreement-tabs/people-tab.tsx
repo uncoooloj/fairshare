@@ -20,10 +20,9 @@ export interface AgreementPeopleTabProps {
   workspace: string;
   run: Run;
   mutate: Mutate;
+  onAgreementChange: (agreement: Agreement) => void;
   /** Unused since the payout email moved to its own step; kept for callers. */
   setNotice: Dispatch<SetStateAction<string>>;
-  /** Receives the agreement after cancelling a handover offer. */
-  setSelected?: Dispatch<SetStateAction<Agreement | null>>;
 }
 
 const firstName = (name: string) => name.trim().split(/\s+/)[0] || name;
@@ -41,7 +40,7 @@ export function AgreementPeopleTab({
   workspace,
   run,
   mutate,
-  setSelected,
+  onAgreementChange,
 }: AgreementPeopleTabProps) {
   const [handingTo, setHandingTo] = useState("");
   const nameOf = (id: string) =>
@@ -55,7 +54,7 @@ export function AgreementPeopleTab({
       <Heading
         small
         title="People in this agreement"
-        description="Add everyone before drafting rules. Each person approves their own account’s decision."
+        description="Add everyone before you set the split. Each person approves for themselves."
       />
       {organizer && offer && (
         <Notice announcement="polite">
@@ -78,12 +77,14 @@ export function AgreementPeopleTab({
         </Notice>
       )}
       <AgreementPeople
-        key={selected.id}
+        key={`${selected.workspaceId}:${selected.id}`}
         agreement={selected}
         version={latest}
         userId={user.id}
         base={base}
         onHandOver={organizer ? setHandingTo : undefined}
+        organizer={organizer}
+        onAgreementChange={onAgreementChange}
       />
       {handingTo && (
         <Drawer label="Hand over organizing" onClose={() => setHandingTo("")}>
@@ -121,7 +122,7 @@ export function AgreementPeopleTab({
       )}
       {organizer && !selected.value.versions.length && (
         <section className="section">
-          <h3>Add someone you already work with</h3>
+          <h3>People you’ve worked with</h3>
           {members
             .filter(
               (m) => !selected.value.members.some((s) => s.userId === m.id),
