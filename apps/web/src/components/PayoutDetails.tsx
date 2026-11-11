@@ -4,7 +4,7 @@ import { formatDay, formatExact } from "../../lib/dates";
 import { useEffect, useId, useRef } from "react";
 import {
   formatPaymentAmount,
-  paymentStatusLabels,
+  paymentStatusLabel,
   type PaymentGridRow,
 } from "./paymentGridModel";
 import { payoutGuidance } from "./payoutPresentation";
@@ -52,7 +52,7 @@ export function PayoutDetails({
       </strong>
       <p>
         <span className={styles.status} data-status={row.status}>
-          {paymentStatusLabels[row.status]}
+          {paymentStatusLabel(row)}
         </span>
       </p>
       <p className={styles.guidance}>{payoutGuidance[row.status]}</p>

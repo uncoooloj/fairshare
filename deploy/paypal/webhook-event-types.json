@@ -1,0 +1,115 @@
+{
+  "event_types": [
+    {
+      "name": "INVOICING.INVOICE.CREATED"
+    },
+    {
+      "name": "INVOICING.INVOICE.SENT"
+    },
+    {
+      "name": "INVOICING.INVOICE.UPDATED"
+    },
+    {
+      "name": "INVOICING.INVOICE.SCHEDULED"
+    },
+    {
+      "name": "INVOICING.INVOICE.PAID"
+    },
+    {
+      "name": "INVOICING.INVOICE.REFUNDED"
+    },
+    {
+      "name": "INVOICING.INVOICE.CANCELLED"
+    },
+    {
+      "name": "PAYMENT.CAPTURE.COMPLETED"
+    },
+    {
+      "name": "PAYMENT.CAPTURE.PENDING"
+    },
+    {
+      "name": "PAYMENT.CAPTURE.DECLINED"
+    },
+    {
+      "name": "PAYMENT.CAPTURE.DENIED"
+    },
+    {
+      "name": "PAYMENT.CAPTURE.REFUNDED"
+    },
+    {
+      "name": "PAYMENT.CAPTURE.REVERSED"
+    },
+    {
+      "name": "PAYMENT.REFUND.PENDING"
+    },
+    {
+      "name": "PAYMENT.REFUND.FAILED"
+    },
+    {
+      "name": "PAYMENT.PAYOUTSBATCH.DENIED"
+    },
+    {
+      "name": "PAYMENT.PAYOUTSBATCH.PROCESSING"
+    },
+    {
+      "name": "PAYMENT.PAYOUTSBATCH.SUCCESS"
+    },
+    {
+      "name": "PAYMENT.PAYOUTS-ITEM.BLOCKED"
+    },
+    {
+      "name": "PAYMENT.PAYOUTS-ITEM.CANCELED"
+    },
+    {
+      "name": "PAYMENT.PAYOUTS-ITEM.FAILED"
+    },
+    {
+      "name": "PAYMENT.PAYOUTS-ITEM.HELD"
+    },
+    {
+      "name": "PAYMENT.PAYOUTS-ITEM.REFUNDED"
+    },
+    {
+      "name": "PAYMENT.PAYOUTS-ITEM.RETURNED"
+    },
+    {
+      "name": "PAYMENT.PAYOUTS-ITEM.SUCCEEDED"
+    },
+    {
+      "name": "PAYMENT.PAYOUTS-ITEM.UNCLAIMED"
+    },
+    {
+      "name": "CHECKOUT.ORDER.APPROVED"
+    },
+    {
+      "name": "CHECKOUT.ORDER.COMPLETED"
+    },
+    {
+      "name": "CHECKOUT.PAYMENT-APPROVAL.REVERSED"
+    },
+    {
+      "name": "CUSTOMER.DISPUTE.CREATED"
+    },
+    {
+      "name": "CUSTOMER.DISPUTE.UPDATED"
+    },
+    {
+      "name": "CUSTOMER.DISPUTE.RESOLVED"
+    },
+    {
+      "name": "PAYMENT.SALE.COMPLETED"
+    },
+    {
+      "name": "PAYMENT.SALE.PENDING"
+    },
+    {
+      "name": "PAYMENT.SALE.DENIED"
+    },
+    {
+      "name": "PAYMENT.SALE.REFUNDED"
+    },
+    {
+      "name": "PAYMENT.SALE.REVERSED"
+    }
+  ]
+}

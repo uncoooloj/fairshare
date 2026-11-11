@@ -2,6 +2,7 @@ import {
   invoiceBody,
   invoiceId,
   parseInvoice,
+  parseInvoiceSettlement,
   type CreateInvoice,
 } from "./invoices.js";
 /** PayPal SANDBOX adapter. Captured payments are not escrow or guaranteed prizes. */
@@ -211,6 +212,20 @@ export class PayPalSandbox {
     return parseInvoice(
       await this.call(`/v2/invoicing/invoices/${id}`, undefined),
       id,
+    );
+  }
+  /** Read-only invoice settlement verification; never captures or moves money. */
+  async getInvoiceSettlement(id: string, transactionId: string) {
+    invoiceId(id);
+    if (!/^[A-Za-z0-9]{1,22}$/.test(transactionId))
+      throw new PayPalError("INVALID_TRANSACTION_ID", 400);
+    if (!this.config.merchantId)
+      throw new PayPalError("MERCHANT_VERIFICATION_REQUIRED");
+    return parseInvoiceSettlement(
+      await this.call(`/v2/payments/captures/${transactionId}`, undefined),
+      id,
+      transactionId,
+      this.config.merchantId,
     );
   }
   /** Publishes a payable link without notifying customer or merchant by email. */
@@ -518,9 +533,18 @@ export class PayPalSandbox {
       status: status as string,
     };
   }
+  /** True when webhook signatures can be verified. Exposes no configuration value. */
+  get webhookConfigured(): boolean {
+    return Boolean(this.config.webhookId);
+  }
+  /** True when this adapter is permitted to submit sandbox payouts. Exposes no configuration values. */
+  get payoutsReady(): boolean {
+    return Boolean(
+      this.config.payoutsEnabled && this.config.payoutsEligibilityConfirmed,
+    );
+  }
   private requirePayouts() {
-    if (!this.config.payoutsEnabled || !this.config.payoutsEligibilityConfirmed)
-      throw new PayPalError("PAYOUT_NOT_CONFIGURED", 503);
+    if (!this.payoutsReady) throw new PayPalError("PAYOUT_NOT_CONFIGURED", 503);
   }
   async verifyWebhook(
     headers: Record<string, string | string[] | undefined>,
