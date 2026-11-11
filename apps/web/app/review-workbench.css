@@ -160,6 +160,29 @@
 .source-rules-review .impact-person dd {
   font-variant-numeric: tabular-nums;
 }
+
+/* Split editing is deliberately isolated from the draft form. It stays local
+   until Apply, while the source and proposal remain visible behind the drawer. */
+.rule-editor-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  justify-content: flex-end;
+  background: rgb(23 23 23 / 36%);
+}
+.rule-editor-drawer {
+  box-sizing: border-box;
+  width: min(var(--drawer-width, 520px), 100%);
+  min-height: 100%;
+  overflow: auto;
+  padding: 32px;
+  background: var(--color-canvas);
+  box-shadow: -16px 0 48px rgb(23 23 23 / 18%);
+}
+.rule-editor-drawer .split-rule-editor.panel {
+  margin: 0;
+}
 @media (max-width: 1100px) {
   .source-rules-review {
     --review-gutter: 20px;
@@ -192,5 +215,8 @@
   }
   .source-rules-review .rules-editor > .panel {
     padding: 16px;
+  }
+  .rule-editor-drawer {
+    padding: 24px 16px;
   }
 }
