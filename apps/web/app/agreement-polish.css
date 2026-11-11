@@ -547,3 +547,28 @@
     transition: none;
   }
 }
+
+/* Overview follow-ups */
+.ag-rule-live {
+  margin: var(--space-3) 0 0;
+}
+.ag-rule-live small {
+  text-align: left;
+}
+.ag-card-title {
+  margin-bottom: var(--space-4);
+}
+.ag-card .activity {
+  margin: 0;
+}
+.ag-payments-card table {
+  margin: 0;
+}
+.ag-payments-card .ag-card-head {
+  margin-bottom: var(--space-2);
+}
+.ag-people-table tbody th {
+  background: none;
+  font-size: var(--text-base);
+  color: var(--color-ink);
+}

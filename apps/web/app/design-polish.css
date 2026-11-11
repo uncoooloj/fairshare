@@ -633,7 +633,7 @@ input[type="file"] {
   letter-spacing: -0.6px;
 }
 .logo-mark {
-  fill: var(--color-brand);
+  color: var(--color-brand);
   flex: none;
 }
 .environment {
@@ -671,5 +671,74 @@ input[type="file"] {
 @keyframes spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+/* Colour hierarchy: blue means "you can act here". Status is neutral unless it is good news or needs attention. */
+.status-chip {
+  background: #f5f5f5;
+  color: var(--color-muted);
+}
+.status-chip.info {
+  background: var(--color-brand-soft);
+  color: var(--color-brand);
+}
+.badge.neutral {
+  color: var(--color-muted);
+  background: #f5f5f5;
+}
+.inline-icon {
+  flex: none;
+  vertical-align: -3px;
+}
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+/* Ledger density and drawer clause */
+.ledger-table td {
+  padding-top: var(--space-3);
+  padding-bottom: var(--space-3);
+}
+.ledger-table td:first-child {
+  width: 36%;
+}
+.ledger-table td:nth-child(2) {
+  width: 140px;
+}
+.ledger-table .ledger-group th {
+  padding-top: var(--space-3);
+  padding-bottom: var(--space-3);
+}
+.row-chevron {
+  display: inline-flex;
+}
+.clause-card blockquote {
+  border-left: 0;
+  padding: 0;
+  background: none;
+}
+
+/* Compact inline version picker in the Document toolbar. Phones keep the 44px touch target. */
+.document-version {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+@media (min-width: 768px) {
+  .document-version select {
+    width: auto;
+    min-height: 32px;
+    height: 32px;
+    padding: 0 28px 0 10px;
+    font-size: var(--text-sm);
+    border-color: var(--color-line);
+    background-position: right 8px center;
   }
 }

@@ -15,8 +15,19 @@ export function toneForId(id: string) {
   return hash % PERSON_TONES;
 }
 
-/** Inside an agreement, roster order guarantees distinct tones for up to six people. */
+/**
+ * A person keeps their own tone (the same one the sidebar shows) unless someone earlier
+ * in the roster already has it; then they take the next free tone, so up to six
+ * people in one agreement never share a colour.
+ */
 export function toneInRoster(userId: string, roster: { userId: string }[]) {
-  const index = roster.findIndex((member) => member.userId === userId);
-  return index < 0 ? toneForId(userId) : index % PERSON_TONES;
+  const taken = new Set<number>();
+  for (const member of roster) {
+    let tone = toneForId(member.userId);
+    if (taken.size < PERSON_TONES)
+      while (taken.has(tone)) tone = (tone + 1) % PERSON_TONES;
+    if (member.userId === userId) return tone;
+    taken.add(tone);
+  }
+  return toneForId(userId);
 }

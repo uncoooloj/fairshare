@@ -30,11 +30,10 @@ test("initials use first and last name, single names stay one letter", () => {
 });
 
 test("roster tones are distinct within an agreement and stable outside it", () => {
-  const roster = ["a", "b", "c"].map((userId) => ({ userId }));
-  assert.deepEqual(
-    roster.map((m) => toneInRoster(m.userId, roster)),
-    [0, 1, 2],
-  );
+  const roster = ["a", "b", "c", "d", "e", "f"].map((userId) => ({ userId }));
+  const tones = roster.map((m) => toneInRoster(m.userId, roster));
+  assert.equal(new Set(tones).size, 6);
+  assert.equal(toneInRoster("a", roster), toneForId("a"));
   assert.equal(toneForId("user-1"), toneForId("user-1"));
   assert.ok(toneForId("user-1") < PERSON_TONES);
 });

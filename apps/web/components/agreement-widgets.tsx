@@ -1,4 +1,5 @@
 import { sourceHighlights } from "../lib/source-highlights";
+import { ChevronRightIcon } from "./icons";
 import { HighlightedSource } from "./source-rule-context";
 import { SplitRuleEditor } from "./split-rule-editor";
 import { RuleImpactReview } from "./rule-impact-review";
@@ -28,20 +29,11 @@ import {
 } from "./person";
 import { toneInRoster as listTone } from "../lib/person";
 import { formatDay as listDay, formatExact as listExact } from "../lib/dates";
+import { LogoMark } from "./logo-mark";
 export function Logo() {
   return (
     <div className="logo">
-      <svg
-        className="logo-mark"
-        width="22"
-        height="22"
-        viewBox="0 0 22 22"
-        aria-hidden="true"
-      >
-        <rect x="1" y="3" width="20" height="4" rx="2" />
-        <rect x="1" y="9" width="14" height="4" rx="2" />
-        <rect x="1" y="15" width="8" height="4" rx="2" />
-      </svg>
+      <LogoMark />
       Fairshare
     </div>
   );
@@ -327,21 +319,9 @@ export function AgreementList({
                       )}
                     </td>
                     <td className="ov-chevron-cell" aria-hidden="true">
-                      <svg
-                        viewBox="0 0 24 24"
-                        width="16"
-                        height="16"
-                        fill="none"
-                        className="ov-chevron"
-                      >
-                        <path
-                          d="m9 6 6 6-6 6"
-                          stroke="currentColor"
-                          strokeWidth="1.75"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
+                      <span className="ov-chevron">
+                        <ChevronRightIcon />
+                      </span>
                     </td>
                   </tr>
                 );

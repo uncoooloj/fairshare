@@ -7,11 +7,13 @@ export function AllocationCalculation({
   trace,
   name = "This person",
   tone,
+  advanceTo,
   onOpenDocument,
 }: {
   trace: AllocationTrace;
   name?: string;
   tone?: number;
+  advanceTo?: string;
   onOpenDocument?: () => void;
 }) {
   const a = trace.allocation;
@@ -31,10 +33,12 @@ export function AllocationCalculation({
       </p>
       <p className="calculation-reason">{reason}</p>
       <div className="calculation-chips">
-        <span className={`status-chip ${trace.held ? "warning" : "info"}`}>
+        <span
+          className={`status-chip ${trace.held ? "warning" : ""}`}
+          title="An allocation records what is owed. The payout is tracked separately."
+        >
           {trace.held ? "On hold for review" : title(a.status)}
         </span>
-        <span className="muted">Not the same as paid out</span>
       </div>
 
       <div
@@ -99,11 +103,19 @@ export function AllocationCalculation({
                 <small> · clause {trace.advanceSource.clause}</small>
               )}
               <small>
-                {money(trace.recoupedCents)} across everyone from this payment
+                {a.recoupmentCents > 0
+                  ? `${name} is paid back first`
+                  : `Paid back to ${advanceTo || "the advance holder"} first`}
               </small>
             </td>
             <td className="numeric">
-              {money(a.recoupmentCents)} to {name}
+              {a.recoupmentCents > 0 ? (
+                money(a.recoupmentCents)
+              ) : (
+                <span className="muted">
+                  {money(trace.recoupedCents)} to {advanceTo || "advance"}
+                </span>
+              )}
             </td>
           </tr>
           <tr>

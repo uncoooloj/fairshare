@@ -254,6 +254,9 @@
 .settings-toggle-table tbody th {
   text-align: left;
   font-weight: 400;
+  text-transform: none;
+  background: transparent;
+  color: var(--color-ink);
 }
 .settings-toggle-table tbody th .settings-row-title,
 .settings-toggle-table tbody th .settings-row-hint {
@@ -261,7 +264,7 @@
 }
 
 /* Switch: native checkbox, styled */
-.settings-switch {
+input.settings-switch {
   appearance: none;
   -webkit-appearance: none;
   width: 36px;
@@ -481,7 +484,7 @@
 .settings-inline-form input {
   margin: 0;
 }
-.settings-footnote {
+.settings-card .settings-footnote {
   font-size: var(--text-xs);
   margin: var(--space-2) 0 0;
 }

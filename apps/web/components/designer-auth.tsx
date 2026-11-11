@@ -4,15 +4,12 @@ import { useRef, useState, type ReactNode } from "react";
 import { useEmailDelivery } from "../lib/email-capability";
 import { prepareAuthForm } from "../lib/auth-form";
 import styles from "./designer-auth.module.css";
+import { LogoMark } from "./logo-mark";
 
 function Brand() {
   return (
     <div className={styles.brand}>
-      <span className={styles.mark} aria-hidden="true">
-        <i />
-        <i />
-        <i />
-      </span>
+      <LogoMark />
       Fairshare
     </div>
   );

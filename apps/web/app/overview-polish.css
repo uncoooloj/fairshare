@@ -166,13 +166,67 @@
 
 /* Recent activity rail */
 .ov-activity {
-  padding: 22px 24px 16px;
-  margin-top: 40px; /* aligns the rail with the attention card, not its heading */
+  padding: 0 24px 16px;
 }
-.ov-rail-title {
-  margin: 0 0 16px;
+/* One heading pattern for every overview card: title inside the card. */
+.ov-card-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 18px 16px 14px;
   font-size: 16px;
   font-weight: 600;
+}
+.ov-attention .ov-card-title {
+  border-bottom: 1px solid var(--color-line);
+}
+.ov-activity .ov-card-title {
+  padding: 18px 0 14px;
+}
+.ov-system-avatar {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--color-surface);
+  color: var(--color-muted);
+  box-shadow:
+    0 0 0 1px var(--color-line),
+    0 0 0 3px var(--color-canvas);
+  position: relative;
+}
+.ov-system-avatar .inline-icon {
+  vertical-align: 0;
+}
+/* All clear: compact status line; activity then takes the full width. */
+.ov-all-clear {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  padding: 14px 18px;
+  margin-bottom: 24px;
+}
+.ov-all-clear-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-success, #12b76a);
+  flex: none;
+}
+.ov-all-clear-text {
+  font-weight: 500;
+  color: var(--color-ink);
+}
+.ov-all-clear-meta {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--color-muted);
+}
+.ov-grid.is-clear {
+  grid-template-columns: minmax(0, 1fr);
 }
 .ov-activity .ov-empty {
   padding: 0 0 8px;
@@ -239,9 +293,6 @@
 @media (max-width: 960px) {
   .ov-grid {
     grid-template-columns: minmax(0, 1fr);
-  }
-  .ov-activity {
-    margin-top: 0;
   }
 }
 @media (max-width: 720px) {

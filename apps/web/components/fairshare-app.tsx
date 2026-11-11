@@ -8,6 +8,7 @@ import {
 import { PostApprovalPayout } from "./post-approval-payout";
 
 import { OverviewDashboard } from "./overview-dashboard";
+import { PlusIcon } from "./icons";
 import { AgreementAllocations } from "./agreement-allocations";
 import { Avatar } from "./person";
 import { toneForId } from "../lib/person";
@@ -647,7 +648,8 @@ export default function FairshareApp() {
                           setCreating(true);
                         }}
                       >
-                        + New agreement
+                        <PlusIcon />
+                        New agreement
                       </Button>
                     )
                   }
@@ -681,7 +683,8 @@ export default function FairshareApp() {
                     !creating &&
                     canCreateAgreement && (
                       <Button onClick={() => setCreating(true)}>
-                        + New agreement
+                        <PlusIcon />
+                        New agreement
                       </Button>
                     )
                   }
@@ -853,6 +856,38 @@ export default function FairshareApp() {
                                   </p>
                                 </RecoupmentCard>
                               )}
+                              <section className="panel ag-card ag-payments-card">
+                                <div className="ag-card-head">
+                                  <h2>Recent payments</h2>
+                                  <button
+                                    type="button"
+                                    className="text-button"
+                                    onClick={() =>
+                                      changeAgreementTab(AgreementTab.Payments)
+                                    }
+                                  >
+                                    View all payments →
+                                  </button>
+                                </div>
+                                <RevenueTable
+                                  agreement={selected}
+                                  onOpen={setBreakdown}
+                                />
+                              </section>
+                              <section className="panel ag-card">
+                                <h2 className="ag-card-title">Activity</h2>
+                                <ul className="activity">
+                                  {selected.value.audit
+                                    .slice(-6)
+                                    .reverse()
+                                    .map((e) => (
+                                      <li key={e.sequence}>
+                                        <span>{title(e.type)}</span>
+                                        <time>{formatDate(e.at)}</time>
+                                      </li>
+                                    ))}
+                                </ul>
+                              </section>
                             </div>
                             <MoneyCard
                               agreement={selected}
@@ -877,27 +912,6 @@ export default function FairshareApp() {
                               }
                             />
                           </div>
-                          <section className="section">
-                            <h2>Incoming payments</h2>
-                            <RevenueTable
-                              agreement={selected}
-                              onOpen={setBreakdown}
-                            />
-                          </section>
-                          <section className="section">
-                            <h2>Activity</h2>
-                            <ul className="activity">
-                              {selected.value.audit
-                                .slice(-6)
-                                .reverse()
-                                .map((e) => (
-                                  <li key={e.sequence}>
-                                    <span>{title(e.type)}</span>
-                                    <time>{formatDate(e.at)}</time>
-                                  </li>
-                                ))}
-                            </ul>
-                          </section>
                         </>
                       )}
                       {tab === AgreementTab.People && (

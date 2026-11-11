@@ -8,6 +8,7 @@ import { toneInRoster } from "../lib/person";
 import { AllocationCalculation } from "./allocation-calculation";
 import { Drawer } from "./allocation-drawer";
 import { Avatar, AvatarSize } from "./person";
+import { ChevronRightIcon } from "./icons";
 
 export function AgreementAllocations({
   agreement,
@@ -50,7 +51,7 @@ export function AgreementAllocations({
         </div>
       ) : (
         <div style={{ overflowX: "auto" }}>
-          <table>
+          <table className="ledger-table">
             <caption className="sr-only">Recorded allocation ledger</caption>
             <thead>
               <tr>
@@ -58,9 +59,12 @@ export function AgreementAllocations({
                 <th scope="col" className="numeric">
                   Amount
                 </th>
-                <th scope="col">Rules</th>
-                <th scope="col">Status</th>
-                <th scope="col" aria-label="Open" />
+                <th scope="col">
+                  <span className="sr-only">Exceptions</span>
+                </th>
+                <th scope="col">
+                  <span className="sr-only">Open</span>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -70,7 +74,7 @@ export function AgreementAllocations({
                 return (
                   <Fragment key={group.captureId}>
                     <tr className="ledger-group">
-                      <th scope="colgroup" colSpan={5}>
+                      <th scope="colgroup" colSpan={4}>
                         Payment {ordinal} ·{" "}
                         <span title={formatExact(revenue.at)}>
                           {formatDay(revenue.at)}
@@ -79,7 +83,8 @@ export function AgreementAllocations({
                         <span className="muted">
                           {revenue.feeCents
                             ? `${money(revenue.feeCents)} fee`
-                            : "No fee"}
+                            : "No fee"}{" "}
+                          · rules v{revenue.versionId}
                         </span>
                       </th>
                     </tr>
@@ -125,25 +130,26 @@ export function AgreementAllocations({
                             {money(allocation.totalCents)}
                           </td>
                           <td>
-                            <span className="version-chip">
-                              v{revenue.versionId}
-                            </span>
-                          </td>
-                          <td>
-                            {trace ? (
-                              <span
-                                className={`status-chip${held ? " warning" : ""}`}
-                              >
-                                {held ? "On hold" : title(allocation.status)}
-                              </span>
-                            ) : (
+                            {!trace ? (
                               <span className="status-chip warning">
                                 Needs reconciling
                               </span>
-                            )}
+                            ) : held ? (
+                              <span className="status-chip warning">
+                                On hold
+                              </span>
+                            ) : allocation.status !== "ALLOCATED" ? (
+                              <span className="status-chip">
+                                {title(allocation.status)}
+                              </span>
+                            ) : null}
                           </td>
                           <td className="numeric" aria-hidden="true">
-                            {trace && <span className="row-chevron">›</span>}
+                            {trace && (
+                              <span className="row-chevron">
+                                <ChevronRightIcon />
+                              </span>
+                            )}
                           </td>
                         </tr>
                       );
@@ -161,6 +167,15 @@ export function AgreementAllocations({
             trace={selected.trace}
             name={selected.name}
             tone={toneInRoster(selected.allocation.userId, members)}
+            advanceTo={
+              members.find(
+                (m) =>
+                  m.userId ===
+                  selected.revenue.allocations.find(
+                    (item) => item.recoupmentCents > 0,
+                  )?.userId,
+              )?.displayName
+            }
             onOpenDocument={
               onOpenDocument
                 ? () => {

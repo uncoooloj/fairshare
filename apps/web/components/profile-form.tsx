@@ -47,7 +47,7 @@ export function ProfileForm({
     >
       <SettingsRow
         label={<label htmlFor="settings-display-name">Name</label>}
-        hint="Existing agreement names stay as recorded."
+        hint="Your account only, not names recorded in existing agreements."
       >
         <input
           id="settings-display-name"

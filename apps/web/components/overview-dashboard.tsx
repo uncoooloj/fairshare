@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import type { Agreement } from "../lib/model";
-import { money } from "../lib/model";
+import { formatMoneyHeadline } from "../lib/preferences";
 import {
   overviewSummary,
   type OverviewPayout,
@@ -11,6 +11,7 @@ import { formatExact, formatWhen } from "../lib/dates";
 import { toneInRoster } from "../lib/person";
 import { Button } from "./ui";
 import { Avatar, AvatarSize } from "./person";
+import { PaymentIcon } from "./icons";
 
 enum AttentionKind {
   HOLD = "hold",
@@ -22,6 +23,9 @@ enum AttentionKind {
 
 const COUNT_UP_MS = 600;
 const ACTIVITY_LIMIT = 6;
+const MINUTE_MS = 60_000;
+const PAYMENT_ALLOCATED = "Payment allocated";
+const PROVIDER_NAME = "Payment provider";
 /** The count-up plays once per page load, not on every return to Overview. */
 let countUpPlayed = false;
 
@@ -103,6 +107,36 @@ function useCountUp(value: number | null) {
   return shown;
 }
 
+type ActivityEvent = ReturnType<typeof overviewSummary>["activity"][number];
+type ActivityGroup = ActivityEvent & { count: number };
+
+/** Merges consecutive identical events (same text, agreement and minute) into one counted line. */
+function collapseActivity(events: ActivityEvent[]): ActivityGroup[] {
+  const groups: ActivityGroup[] = [];
+  for (const event of events) {
+    const last = groups.at(-1);
+    if (
+      last &&
+      last.text === event.text &&
+      last.agreement.id === event.agreement.id &&
+      Math.floor(Date.parse(last.at) / MINUTE_MS) ===
+        Math.floor(Date.parse(event.at) / MINUTE_MS)
+    ) {
+      last.count += 1;
+      continue;
+    }
+    groups.push({ ...event, count: 1 });
+  }
+  return groups;
+}
+
+function activityText(group: ActivityGroup) {
+  if (group.count === 1) return group.text;
+  if (group.text === PAYMENT_ALLOCATED)
+    return `${group.count} payments allocated`;
+  return `${group.text} ×${group.count}`;
+}
+
 function StatCard({
   label,
   value,
@@ -113,12 +147,15 @@ function StatCard({
   note: string;
 }) {
   const shown = useCountUp(value);
-  const final = value === null ? "Needs reconciliation" : money(value);
+  const final =
+    value === null ? "Needs reconciliation" : formatMoneyHeadline(value);
   return (
     <div className="ov-stat">
       <span className="ov-eyebrow">{label}</span>
       <strong className={value === null ? "ov-stat-flag" : "ov-stat-value"}>
-        <span aria-hidden="true">{shown === null ? final : money(shown)}</span>
+        <span aria-hidden="true">
+          {shown === null ? final : formatMoneyHeadline(shown)}
+        </span>
         <span className="sr-only">{final}</span>
       </strong>
       <span className="ov-stat-note">{note}</span>
@@ -166,7 +203,7 @@ export function OverviewDashboard({
       (a) => `${event.agreement.id}:${a.sequence}` === event.key,
     );
     if (!audit || audit.actorId === "provider")
-      return { name: "Payment provider", tone: 5 };
+      return { name: PROVIDER_NAME, tone: 5 };
     const member = value.members.find((m) => m.userId === audit.actorId);
     return {
       name: member?.displayName || "Participant",
@@ -174,7 +211,12 @@ export function OverviewDashboard({
     };
   }
 
-  const activity = summary.activity.slice(0, ACTIVITY_LIMIT);
+  const activity = collapseActivity(summary.activity).slice(0, ACTIVITY_LIMIT);
+  const allClear = !summary.attention.length && !summary.waiting.length;
+  const lastSplitAt = agreements
+    .flatMap((a) => a.value.revenue.map((r) => r.at))
+    .filter((at) => Number.isFinite(Date.parse(at)))
+    .sort((a, b) => Date.parse(b) - Date.parse(a))[0];
 
   return (
     <>
@@ -199,24 +241,42 @@ export function OverviewDashboard({
         className="ov-caveat"
         title="These are recorded shares, not an available balance. Holds, refunds and reversals may require reconciliation. Paid out includes only matching successful provider payouts."
       >
-        <span aria-hidden="true">ⓘ</span> Recorded shares across agreements
-        visible to you, not an available balance. Holds and refunds may need
-        reconciliation.
+        <span aria-hidden="true">ⓘ</span> Recorded shares, not an available
+        balance.
       </p>
-      <div className="ov-grid">
-        <section className="ov-attention" aria-labelledby="ov-attention-title">
-          <h2 id="ov-attention-title" className="ov-section-title">
-            Needs your attention
-            {summary.attention.length > 0 && (
-              <span
-                className="ov-count"
-                aria-label={`${summary.attention.length} items`}
-              >
-                {summary.attention.length}
-              </span>
-            )}
-          </h2>
-          <div className="ov-card">
+      {allClear && (
+        <div className="ov-card ov-all-clear" role="status">
+          <span className="ov-all-clear-dot" aria-hidden="true" />
+          <span className="ov-all-clear-text">
+            Nothing needs you right now.
+          </span>
+          {lastSplitAt && (
+            <span className="ov-all-clear-meta">
+              Last payment split{" "}
+              <time dateTime={lastSplitAt} title={formatExact(lastSplitAt)}>
+                {formatWhen(lastSplitAt)}
+              </time>
+            </span>
+          )}
+        </div>
+      )}
+      <div className={allClear ? "ov-grid is-clear" : "ov-grid"}>
+        {!allClear && (
+          <section
+            className="ov-card ov-attention"
+            aria-labelledby="ov-attention-title"
+          >
+            <h2 id="ov-attention-title" className="ov-card-title">
+              Needs your attention
+              {summary.attention.length > 0 && (
+                <span
+                  className="ov-count"
+                  aria-label={`${summary.attention.length} items`}
+                >
+                  {summary.attention.length}
+                </span>
+              )}
+            </h2>
             {summary.attention.length ? (
               <ul className="ov-list">
                 {summary.attention.map((item) =>
@@ -236,13 +296,13 @@ export function OverviewDashboard({
                 </ul>
               </>
             )}
-          </div>
-        </section>
+          </section>
+        )}
         <section
           className="ov-card ov-activity"
           aria-labelledby="ov-activity-title"
         >
-          <h2 id="ov-activity-title" className="ov-rail-title">
+          <h2 id="ov-activity-title" className="ov-card-title">
             Recent activity
           </h2>
           {activity.length ? (
@@ -251,13 +311,19 @@ export function OverviewDashboard({
                 const actor = actorFor(event);
                 return (
                   <li key={event.key}>
-                    <Avatar
-                      name={actor.name}
-                      tone={actor.tone}
-                      size={AvatarSize.SMALL}
-                    />
+                    {actor.name === PROVIDER_NAME ? (
+                      <span className="ov-system-avatar" aria-hidden="true">
+                        <PaymentIcon size={13} />
+                      </span>
+                    ) : (
+                      <Avatar
+                        name={actor.name}
+                        tone={actor.tone}
+                        size={AvatarSize.SMALL}
+                      />
+                    )}
                     <p>
-                      {event.text} ·{" "}
+                      {activityText(event)} ·{" "}
                       <button
                         className="ov-activity-link"
                         onClick={() => onOpen(event.agreement)}

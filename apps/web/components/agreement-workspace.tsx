@@ -171,22 +171,6 @@ export function RuleSteps({
               <ClauseChip clause={step.clause} />
             </div>
             <p className="ag-rule-sentence">{step.sentence}</p>
-            {step.kind === RuleKind.Recoupment &&
-              rules.advance &&
-              layout === RuleStepsLayout.List && (
-                <div className="ag-rule-live">
-                  <ThinProgress
-                    value={recouped}
-                    max={rules.advance.amountCents}
-                    label="Advance recouped"
-                  />
-                  <small className="muted numeric">
-                    {money(recouped)} of {money(rules.advance.amountCents)}{" "}
-                    recouped
-                    {!rules.advance.verified && " · unverified advance"}
-                  </small>
-                </div>
-              )}
             {step.kind === RuleKind.Split &&
             layout === RuleStepsLayout.Cards ? (
               <div className="ag-split">
@@ -250,6 +234,22 @@ export function RuleSteps({
                 <small className="muted">Everyone</small>
               )
             )}
+            {step.kind === RuleKind.Recoupment &&
+              rules.advance &&
+              layout === RuleStepsLayout.List && (
+                <div className="ag-rule-live">
+                  <ThinProgress
+                    value={recouped}
+                    max={rules.advance.amountCents}
+                    label="Advance recouped"
+                  />
+                  <small className="muted numeric">
+                    {money(recouped)} of {money(rules.advance.amountCents)}{" "}
+                    recouped
+                    {!rules.advance.verified && " · unverified advance"}
+                  </small>
+                </div>
+              )}
           </div>
         </li>
       ))}
