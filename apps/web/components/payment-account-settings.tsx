@@ -71,6 +71,10 @@ export function PaymentAccountsSettings({
     [confirm, setConfirm] = useState(false);
   const pending = useRef(false),
     path = `workspaces/${encodeURIComponent(workspace)}/payment-accounts?version=2`;
+  const payoutLabel =
+    !changing && data?.own?.type === PayoutRecipientType.PAYPAL_ID
+      ? "PayPal account"
+      : "PayPal email";
   async function load() {
     setData(await api(path));
   }
@@ -99,7 +103,7 @@ export function PaymentAccountsSettings({
       await api(PAYOUT_ACCOUNT_PATH, "DELETE");
       await load();
       setConfirm(false);
-      setMessage("PayPal email removed.");
+      setMessage(`${payoutLabel} removed.`);
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Couldn’t remove it.");
     } finally {
@@ -154,7 +158,9 @@ export function PaymentAccountsSettings({
               <TestModeChip />
             </div>
             <p className="muted">
-              Your share from every agreement goes to this PayPal email.
+              {!changing && data.own?.type === PayoutRecipientType.PAYPAL_ID
+                ? "Your share from every agreement goes to this PayPal account."
+                : "Your share from every agreement goes to this PayPal email."}
             </p>
             {data.own && !changing ? (
               <div className="settings-payout-saved">
@@ -225,7 +231,7 @@ export function PaymentAccountsSettings({
             {confirm && (
               <div role="alert" className="settings-confirm">
                 <p>
-                  Remove your PayPal email? We can’t send you new payouts until
+                  Remove your {payoutLabel}? We can’t send you new payouts until
                   you add one.
                 </p>
                 <Button disabled={busy} onClick={() => void remove()}>
