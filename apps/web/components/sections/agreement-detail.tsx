@@ -398,9 +398,19 @@ export function AgreementDetail({
                     label: "Upload amended agreement",
                     note: "Owner only. Starts a new version and everyone approves again.",
                     onSelect: () => {
+                      if (!mayLeaveDraft()) return;
                       setPreview(null);
+                      // An amendment needs its own immutable source. Keep the
+                      // approved version and its document intact while the
+                      // organizer starts a fresh local draft.
+                      setSource("");
+                      setDocumentId("");
+                      setExtraction(null);
+                      setDraftDirty(false);
+                      rulesDirty.current = false;
                       setEditing(true);
-                      changeAgreementTab(AgreementTab.Terms);
+                      setTab(AgreementTab.Terms);
+                      setBreakdown(null);
                     },
                   },
                 ]
