@@ -35,5 +35,5 @@ test("approval count includes only current members", () => {
 });
 test("approved inactive rules are not described as active or historical", () => {
   const result = versionSummary(agreement, { ...v2, status: "APPROVED" });
-  assert.match(result.description, /Not switched on yet/);
+  assert.match(result.description, /Not in use yet/);
 });

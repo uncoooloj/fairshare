@@ -1,5 +1,26 @@
 import type { Agreement, Version } from "./model";
 
+/** Plain name for a set of terms: the first ones sent, then each update. */
+export function termsLabel(versionId: number) {
+  return versionId <= 1 ? "Original terms" : `Update ${versionId - 1}`;
+}
+
+/** Plain status for a set of terms. */
+export function termsStatusLabel(status: Version["status"]) {
+  switch (status) {
+    case "ACTIVE":
+      return "In use";
+    case "AWAITING_APPROVAL":
+      return "Waiting for approvals";
+    case "DRAFT":
+      return "Not sent";
+    case "SUPERSEDED":
+      return "Replaced";
+    default:
+      return "Earlier terms";
+  }
+}
+
 function versionDescription(active: boolean, status: Version["status"]) {
   if (active) return "In use for new payments.";
 
@@ -7,11 +28,11 @@ function versionDescription(active: boolean, status: Version["status"]) {
     case "AWAITING_APPROVAL":
       return "Waiting for everyone to approve.";
     case "APPROVED":
-      return "Everyone approved. Not switched on yet.";
+      return "Everyone approved. Not in use yet.";
     case "DRAFT":
-      return "Draft. Not in use.";
+      return "Not sent yet. Not in use.";
     default:
-      return "Older version.";
+      return "Earlier terms. Past payments keep the split they had.";
   }
 }
 

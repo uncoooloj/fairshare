@@ -4,6 +4,7 @@ import { api, type Agreement } from "../lib/model";
 import { recoverSourceDocument } from "../lib/source-recovery";
 import { DocumentCitationView } from "./document-citation-view";
 import { Button, Empty } from "./ui";
+import { termsLabel } from "../lib/version-summary";
 interface DocumentRecord {
   hasOriginal?: boolean;
   documentId: string;
@@ -81,19 +82,19 @@ export function AgreementDocument({
           <p className="muted">The text the split comes from.</p>
         </div>
         <div className="actions document-actions">
-          {agreement.value.versions.length > 0 && (
+          {agreement.value.versions.length > 1 && (
             <label className="document-version">
-              Version
+              Document for
               <select
-                aria-label="Document version"
+                aria-label="Document for which terms"
                 value={versionId ?? ""}
                 onChange={(event) => setVersionId(Number(event.target.value))}
               >
                 {agreement.value.versions.map((item) => (
                   <option key={item.id} value={item.id}>
-                    Version {item.id}
+                    {termsLabel(item.id)}
                     {item.id === agreement.value.activeVersionId
-                      ? " · Active"
+                      ? " · in use"
                       : ""}
                   </option>
                 ))}
@@ -119,6 +120,7 @@ export function AgreementDocument({
       </div>
       <p className="document-disclaimer">
         This is the text we read from your file. Check it against the original.
+        Each update keeps the document it was made from.
       </p>
       {loading ? (
         <div className="panel" role="status">
@@ -167,7 +169,7 @@ export function AgreementDocument({
             <h3>File details</h3>
             <dl>
               <dt>Used by</dt>
-              <dd>{version ? `Version ${version.id}` : "Latest draft"}</dd>
+              <dd>{version ? termsLabel(version.id) : "Latest draft"}</dd>
               <dt>Document ID</dt>
               <dd>
                 <code>{document.documentId}</code>
