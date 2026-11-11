@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { api } from "../lib/model";
 import { toneForId } from "../lib/person";
 import { publicWebOrigin } from "../lib/public-web-origin";
@@ -10,13 +10,13 @@ import {
   PayoutEmailStep,
   PayoutReadiness,
   PayoutRecipientType,
+  PayoutStepPlace,
   PayoutStepResult,
   PAYOUT_ACCOUNT_PATH,
   payoutReadinessLabel,
   type PayoutDestination,
 } from "./payout-email-step";
 import {
-  PayPalConnectButton,
   PayPalConnected,
   paypalFlagMessage,
   takePayPalConnectFlag,
@@ -40,9 +40,20 @@ function WalletIcon() {
     </span>
   );
 }
+/** Small muted chip; the hint shows on hover, focus or tap. */
+function TestModeChip() {
+  const tip = useId();
+  return (
+    <span className="settings-test-chip" tabIndex={0} aria-describedby={tip}>
+      Test mode
+      <span role="tooltip" id={tip} className="settings-tooltip">
+        Use a PayPal sandbox email
+      </span>
+    </span>
+  );
+}
 type Accounts = {
   providerConfigured: boolean;
-  paypalConnect: boolean;
   own: PayoutDestination | null;
   members: { id: string; name: string; status: PayoutReadiness }[];
 };
@@ -137,16 +148,17 @@ export function PaymentAccountsSettings({
               </span>
             </div>
           </section>
-          <section className="settings-card">
-            <h3>Getting paid</h3>
+          <section className="settings-card settings-getting-paid">
+            <div className="settings-card-head">
+              <h3>Getting paid</h3>
+              <TestModeChip />
+            </div>
             <p className="muted">
-              Your share from every agreement is sent to this PayPal email.
+              Your share from every agreement goes to this PayPal email.
             </p>
-            <div className="settings-provider">
-              <WalletIcon />
-              <div>
-                <strong>Your PayPal email</strong>
-                {data.own?.verified ? (
+            {data.own && !changing ? (
+              <div className="settings-payout-saved">
+                {data.own.verified ? (
                   <PayPalConnected
                     email={data.own.value}
                     canEdit={canEdit}
@@ -158,36 +170,42 @@ export function PaymentAccountsSettings({
                     }}
                   />
                 ) : (
-                  <span className="muted">
-                    {data.own?.type === PayoutRecipientType.EMAIL
+                  <strong className="settings-payout-email">
+                    {data.own.type === PayoutRecipientType.EMAIL
                       ? data.own.value
-                      : data.own
-                        ? "No email yet. Payouts go to the PayPal account you saved earlier until you add one."
-                        : "Not set"}
+                      : `PayPal account ending ${data.own.value.slice(-4)}`}
+                  </strong>
+                )}
+                {canEdit && (
+                  <span className="settings-payout-links">
+                    <Button
+                      type="button"
+                      variant="quiet"
+                      disabled={busy}
+                      onClick={() => {
+                        setMessage("");
+                        setConfirm(false);
+                        setChanging(true);
+                      }}
+                    >
+                      Change
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="quiet"
+                      disabled={busy}
+                      onClick={() => setConfirm(true)}
+                    >
+                      Remove
+                    </Button>
                   </span>
                 )}
               </div>
-              {canEdit && !changing && (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  disabled={busy}
-                  onClick={() => {
-                    setMessage("");
-                    setChanging(true);
-                  }}
-                >
-                  Change
-                </Button>
-              )}
-            </div>
-            {data.paypalConnect &&
-              canEdit &&
-              !changing &&
-              !data.own?.verified && <PayPalConnectButton disabled={busy} />}
-            {changing && (
+            ) : canEdit ? (
               <PayoutEmailStep
                 autoFocus={false}
+                place={PayoutStepPlace.SETTINGS}
+                onCancel={data.own ? () => setChanging(false) : undefined}
                 onDone={(result) => {
                   setChanging(false);
                   if (result === PayoutStepResult.SAVED) {
@@ -196,22 +214,14 @@ export function PaymentAccountsSettings({
                   }
                 }}
               />
+            ) : (
+              <p className="muted settings-footnote">Not set yet.</p>
             )}
-            {data.own && canEdit && !changing && (
-              <Button
-                type="button"
-                variant="quiet"
-                disabled={busy}
-                onClick={() => setConfirm(true)}
-              >
-                Remove
-              </Button>
+            {!canEdit && (
+              <p className="muted settings-footnote">
+                Viewers can’t change payout details here.
+              </p>
             )}
-            <p className="muted settings-footnote">
-              {canEdit
-                ? "Payments already on their way keep the address they were sent to. Test mode: use a PayPal sandbox email."
-                : "Viewers can’t change payout details here."}
-            </p>
             {confirm && (
               <div role="alert" className="settings-confirm">
                 <p>

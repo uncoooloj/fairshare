@@ -378,6 +378,11 @@
   margin: 0 0 var(--space-2);
 }
 
+.collab-payout-form > .payout-field-hint {
+  margin: calc(-1 * var(--space-1)) 0 0;
+  font-size: var(--text-xs);
+}
+
 @media (max-width: 640px) {
   .collab-review {
     padding: var(--space-4);
