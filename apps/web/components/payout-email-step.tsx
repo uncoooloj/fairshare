@@ -2,6 +2,12 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { api } from "../lib/model";
 import { Button, Notice } from "./ui";
+import {
+  PayPalConnectChoice,
+  paypalFlagMessage,
+  takePayPalConnectFlag,
+  type PayPalConnectFlag,
+} from "./paypal-connect";
 
 /** Self-only route. One PayPal email per person, used for all their agreements. */
 export const PAYOUT_ACCOUNT_PATH = "auth/payout-account";
@@ -24,10 +30,15 @@ export type PayoutDestination = {
   type: PayoutRecipientType;
   value: string;
   updatedAt: number | null;
+  /** True only when PayPal returned this email via "Connect with PayPal". */
+  verified: boolean;
+  verifiedAt: number | null;
 };
 export type PayoutAccount = {
   destination: PayoutDestination | null;
   suggestedEmail: string | null;
+  /** Whether "Connect with PayPal" is configured on the server. */
+  paypalConnect: boolean;
 };
 
 export function payoutReadinessLabel(status: string | undefined) {
@@ -73,11 +84,15 @@ export function PayoutEmailStep({
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [paypalConnect, setPayPalConnect] = useState(false);
+  const [verifiedEmail, setVerifiedEmail] = useState<string | null>(null);
+  const [flag, setFlag] = useState<PayPalConnectFlag | null>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const fieldId = useId();
   const hintId = useId();
   useEffect(() => {
     if (autoFocus) heading.current?.focus();
+    setFlag(takePayPalConnectFlag());
     let live = true;
     loadPayoutAccount()
       .then((account) => {
@@ -87,6 +102,10 @@ export function PayoutEmailStep({
             ? account.destination.value
             : null;
         setEmail(current ?? account.suggestedEmail ?? "");
+        setPayPalConnect(account.paypalConnect === true);
+        setVerifiedEmail(
+          account.destination?.verified ? account.destination.value : null,
+        );
       })
       .catch(() => {})
       .finally(() => {
@@ -135,6 +154,17 @@ export function PayoutEmailStep({
         Enter the email you use for PayPal. If you don’t have PayPal yet,
         they’ll email you a link to claim it.
       </p>
+      {flag && (
+        <div role="status">
+          <Notice>{paypalFlagMessage(flag)}</Notice>
+        </div>
+      )}
+      <PayPalConnectChoice
+        available={paypalConnect}
+        verifiedEmail={verifiedEmail}
+        disabled={saving}
+        onDisconnected={() => setVerifiedEmail(null)}
+      />
       <label htmlFor={fieldId}>PayPal email</label>
       <input
         id={fieldId}

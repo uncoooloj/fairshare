@@ -36,7 +36,7 @@ export function ReviewDiscussion(props: DiscussionProps) {
   if (!version) return null;
   return (
     <div>
-      <Field label="Discussion version">
+      <Field label="Showing comments for">
         <select
           disabled={posting}
           value={version.id}
@@ -56,18 +56,14 @@ export function ReviewDiscussion(props: DiscussionProps) {
           {[...props.agreement.value.versions].reverse().map((item) => (
             <option key={item.id} value={item.id}>
               Version {item.id}
-              {item.id === props.version.id
-                ? " · latest"
-                : " · read-only history"}
+              {item.id === props.version.id ? " · latest" : " (older)"}
             </option>
           ))}
         </select>
       </Field>
       {version.id !== props.version.id && (
         <Notice>
-          Historical discussion is read-only. These comments belong to version{" "}
-          {version.id}, not the latest terms. Switch to the latest version to
-          continue the conversation.
+          These are comments on an older version. Switch to the latest to reply.
         </Notice>
       )}
       <VersionDiscussion
@@ -190,8 +186,8 @@ function VersionDiscussion({
     >
       <h3>Discussion · version {version.id}</h3>
       <p className="muted">
-        Visible to everyone in this agreement. Comments do not change terms or
-        approvals. Use Request changes to formally reopen the review.
+        Everyone on the agreement can see comments. To change the split, use
+        Request a change.
       </p>
       <Field label="Filter discussion by topic">
         <select
@@ -260,14 +256,14 @@ function VersionDiscussion({
               if (!alive.current) return;
               setBody("");
               setParent(undefined);
-              setNotice("Comment saved. Terms and approvals are unchanged.");
+              setNotice("Comment posted.");
               await load();
             } catch (e) {
               if (alive.current)
                 setError(
                   e instanceof Error
                     ? e.message
-                    : "Comment status could not be confirmed. Refresh comments before trying again to avoid duplicates.",
+                    : "We’re not sure that posted. Refresh before trying again.",
                 );
             } finally {
               lock.current = false;
@@ -360,9 +356,7 @@ export function ReviewReminder({
           try {
             await navigator.clipboard.writeText(message);
             setFallback("");
-            setNotice(
-              "Review reminder copied. Share it directly with this participant. No email was sent.",
-            );
+            setNotice("Reminder copied. Send it to them yourself.");
           } catch {
             setFallback(message);
             setNotice("Copy the reminder below and share it directly.");

@@ -19,8 +19,8 @@ Verified via routes/tests and code inspection:
 - Source reads/list use both tenant and agreement predicates; workspace members outside an agreement cannot inspect it.
 - Missing authentication, foreign tenants, foreign agreement IDs and guessed document IDs do not return confidential text.
 - List bounded to 100 metadata records; cursor is validated and cannot replace the scoped predicates.
-- Cloudflare processing still requires explicit consent. Source hash/document/revision bind returned results to the immutable upload.
+- AI processing still requires explicit consent, which discloses Cloudflare as the primary provider and the configured optional Anthropic fallback. Source hash/document/revision bind returned results to the immutable upload.
 - Extraction treats document text as untrusted data, no tool execution or arbitrary URL fetching. Config constrains provider URL; redirects disabled. Provider JSON has byte/schema limits and exact quoted-source validation. Output cannot activate agreement terms or issue payments.
-- PDF and DOCX parsers run bounded child processes without provider secrets. OCR has no remote provider but is a separate, explicit local opt-in with host tools and its own limits; see LOCAL-OCR.md. Strong OS-level isolation remains a production hardening item.
+- PDF and DOCX parsers run bounded child processes without provider secrets. OCR has no remote provider; when host-enabled, textless PDFs automatically fall back once to local OCR with its own limits; see LOCAL-OCR.md. Strong OS-level isolation remains a production hardening item.
 
 Residual: citation correctness is not semantic correctness. Malicious or contradictory clauses may still produce misleading source-grounded observations; all proposed rules need human review and unanimous version approval. Rate limits are per process; distributed abuse protection is not implemented. This patch does not add antivirus, encryption-at-rest, retention deletion, or legal signature semantics.

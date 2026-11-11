@@ -12,13 +12,13 @@ export function agreementEmptyState(workspaceRole?: string) {
     return {
       title: "No agreements shared with you yet",
       description:
-        "You have read-only access. Ask the person who invited you if you need to participate in an agreement.",
+        "You can view but not approve. Ask whoever invited you if you need more.",
     };
   }
 
   return {
     title: "No agreements shared with you yet",
     description:
-      "Your invitation is accepted. Ask the organizer to add you to the agreement, then choose Refresh to see it here. You do not need to upload another copy.",
+      "Ask the organizer to add you to their agreement, then refresh.",
   };
 }

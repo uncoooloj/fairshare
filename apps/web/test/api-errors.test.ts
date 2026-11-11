@@ -32,7 +32,10 @@ test("mutation recovery fetches current state and requires fresh user decision",
   const source = appSource();
   assert.match(source, /cause.code === "REVISION_CONFLICT"/);
   assert.match(source, /const current = await api<Agreement>\(base\)/);
-  assert.match(source, /Latest version loaded; review before trying again/);
+  assert.match(
+    source,
+    /Someone else just changed this\. Here’s the latest; try again\./,
+  );
   assert.match(
     source,
     /setSource\(sampleAgreement\);\s*setDocumentId\(""\);\s*setExtraction\(null\)/,

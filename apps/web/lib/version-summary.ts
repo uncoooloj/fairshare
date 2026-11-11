@@ -1,17 +1,17 @@
 import type { Agreement, Version } from "./model";
 
 function versionDescription(active: boolean, status: Version["status"]) {
-  if (active) return "Active rules for incoming payments.";
+  if (active) return "In use for new payments.";
 
   switch (status) {
     case "AWAITING_APPROVAL":
-      return "Everyone reviews this version before the organizer can activate it.";
+      return "Waiting for everyone to approve.";
     case "APPROVED":
-      return "Approved by everyone. Not active until the organizer activates it.";
+      return "Everyone approved. Not switched on yet.";
     case "DRAFT":
-      return "Draft only. Not used to split payments.";
+      return "Draft. Not in use.";
     default:
-      return "Historical version. Past allocations keep their original rules.";
+      return "Older version.";
   }
 }
 

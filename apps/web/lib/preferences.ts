@@ -1,18 +1,15 @@
 export const notificationLabels = {
   approvalRequests: [
     "Approval requests",
-    "When someone asks you to approve a version.",
+    "When someone asks you to approve a split.",
   ],
-  versionChanges: [
-    "Version changes",
-    "When a new version of an agreement is sent.",
-  ],
+  versionChanges: ["Split changes", "When someone proposes a new split."],
   payoutCompleted: [
     "Payout completed",
     "When PayPal confirms your payout succeeded.",
   ],
   payoutFailed: ["Payout failed", "When a payout fails or is returned."],
-  exceptions: ["Exceptions", "When a payment is put on hold."],
+  exceptions: ["Paused payments", "When a payment is put on hold."],
 } as const;
 export type NotificationKind = keyof typeof notificationLabels;
 export interface Preferences {

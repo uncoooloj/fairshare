@@ -179,7 +179,7 @@ test("account-level email wins over legacy ID, is frozen as EMAIL, and UNCLAIMED
     return { batchId: `batch-${sent.length}` };
   });
   f.db.exec(
-    "INSERT INTO fairshare_payout_accounts VALUES('one','EMAIL','one@example.test',1),('two','EMAIL','two@example.test',1)",
+    "INSERT INTO fairshare_payout_accounts(user_id,recipient_type,receiver,updated_at) VALUES('one','EMAIL','one@example.test',1),('two','EMAIL','two@example.test',1)",
   );
   await f.run();
   assert.deepEqual(sent.map((s) => [s.recipientType, s.recipientId]).sort(), [

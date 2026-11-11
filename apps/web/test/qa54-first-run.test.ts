@@ -32,7 +32,7 @@ test("first-run payouts is an empty state, not the agreement creation form", () 
     ),
   );
   assert.match(payoutsBranch, /No payouts yet/);
-  assert.match(payoutsBranch, /allocated and payout dispatch is recorded/);
+  assert.match(payoutsBranch, /When people get paid, it shows up here\./);
   assert.match(payoutsBranch, /navigate\(Section.Agreements\)/);
   assert.match(payoutsBranch, /\) : \(/);
   assert.doesNotMatch(
@@ -50,7 +50,7 @@ test("login does not promise simulated MFA and settings wait for account capabil
   assert.match(settings, /status && !status.simulated/);
   assert.match(settings, /Set up simulated step/);
   assert.match(settings, /Disable simulated step and sign out/);
-  assert.match(settings, /It does not add account protection/);
+  assert.match(settings, /doesn’t protect your account/);
   assert.match(
     settings,
     /pattern=\{status.simulated \? undefined : "\[0-9\]\{6\}"\}/,

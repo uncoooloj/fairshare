@@ -28,9 +28,8 @@ export function errorCopy(
     PDF_NO_EXTRACTABLE_TEXT:
       "We couldn’t read this document. Try a clearer copy, or paste the agreement text.",
     REVISION_CONFLICT:
-      "This agreement changed while you were working. Review the latest version before trying again.",
-    STALE_VERSION:
-      "There’s a newer version of this agreement. Open it before continuing.",
+      "Someone else just changed this. Check the latest, then try again.",
+    STALE_VERSION: "There’s a newer version. Open it first.",
     PARSER_NOT_CONFIGURED:
       "We can’t read agreements automatically right now. Please try again later, or enter the terms yourself.",
     PARSER_UNAVAILABLE:
@@ -46,19 +45,18 @@ export function errorCopy(
       "This file couldn’t be opened as a PDF. Please upload a new copy.",
     PAYPAL_NOT_CONFIGURED:
       "Payments aren’t ready yet. Please try again once PayPal is connected.",
-    PAYOUT_NOT_CONFIGURED:
-      "Payouts aren’t ready yet. Please finish the PayPal setup first.",
+    PAYOUT_NOT_CONFIGURED: "Payouts aren’t set up yet. Connect PayPal first.",
     UNAUTHORIZED: "Please sign in to continue.",
     FORBIDDEN:
       "You don’t have access to this action. Ask the agreement organizer for help.",
   };
   if (code && messages[code]) return messages[code];
   if (status >= 500)
-    return "We couldn’t complete that request. Refresh to check what was saved before trying again.";
+    return "Something went wrong. Refresh to see what saved, then try again.";
   if (status === 429)
-    return "A few too many requests arrived at once. Wait a moment, then try again.";
+    return "Too many tries at once. Wait a moment, then try again.";
   if (message && /workspace/i.test(message))
-    return "We couldn’t complete that action. Check your access with the person who invited you, then try again.";
+    return "You don’t have access to that. Ask whoever invited you.";
   if (message && !/^[A-Z][A-Z_\d]+$/.test(message)) return message;
   return "That didn’t go through. Check your details and try again.";
 }
