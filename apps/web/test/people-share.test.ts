@@ -339,3 +339,48 @@ test("a known token gives Copy and Share; it is dropped once the person joins", 
   forgetStaleInviteTokens(joined);
   assert.equal(knownPersonLink(a, riley, "http://x"), undefined, "token gone");
 });
+
+test("reissue and advance confirmation recover a revision conflict without retrying", () => {
+  const people = readFileSync(
+    new URL("../components/agreement-people.tsx", import.meta.url),
+    "utf8",
+  );
+  const personShare = readFileSync(
+    new URL("../components/person-share.tsx", import.meta.url),
+    "utf8",
+  );
+  const header = readFileSync(
+    new URL("../components/agreement-workspace.tsx", import.meta.url),
+    "utf8",
+  );
+  for (const source of [people, personShare, header]) {
+    assert.match(
+      source,
+      /cause instanceof ApiError && cause.code === "REVISION_CONFLICT"/,
+    );
+    assert.match(
+      source,
+      /Someone else just changed this\. Here’s the latest; try again\./,
+    );
+    assert.match(source, /api<Agreement>\(/);
+  }
+  const reissue = people
+    .split("async function makeNewLink(")[1]
+    .split("finally")[0];
+  assert.equal((reissue.match(/issueInviteLink\(/g) || []).length, 1);
+  const personReissue = personShare
+    .split("async function getNewLink(")[1]
+    .split("finally")[0];
+  assert.equal((personReissue.match(/issueInviteLink\(/g) || []).length, 1);
+});
+
+test("the agreement header prunes invite tokens after a fresh agreement revision", () => {
+  const source = readFileSync(
+    new URL("../components/agreement-workspace.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    source,
+    /useEffect\(\(\) => \{\s*forgetStaleInviteTokens\(agreement\);\s*\}, \[agreement\.workspaceId, agreement\.id, agreement\.revision\]\)/,
+  );
+});

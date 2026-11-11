@@ -1,6 +1,13 @@
 "use client";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { money, type Agreement, type Rules, type Version } from "../lib/model";
+import {
+  ApiError,
+  api,
+  money,
+  type Agreement,
+  type Rules,
+  type Version,
+} from "../lib/model";
 import { formatDay, formatExact } from "../lib/dates";
 import { toneInRoster } from "../lib/person";
 import { RECEIVED_DEFINITION, receivedTotals } from "../lib/received";
@@ -15,6 +22,7 @@ import { Button } from "./ui";
 import { NudgeDrawer } from "./person-share";
 import { unconfirmedAdvance } from "../lib/advance-status";
 import { confirmAdvancePaid } from "../lib/agreement-api";
+import { forgetStaleInviteTokens } from "../lib/share-link";
 
 export enum RuleKind {
   NetRevenue = "Fees first",
@@ -365,6 +373,9 @@ export function AgreementHeader({
   const [confirmError, setConfirmError] = useState("");
   const status = agreementStatus(agreement, userId);
   const advance = unconfirmedAdvance(agreement);
+  useEffect(() => {
+    forgetStaleInviteTokens(agreement);
+  }, [agreement.workspaceId, agreement.id, agreement.revision]);
   const statusAction = (action: StageAction) => {
     if (action === StageAction.Nudge) setNudging(true);
     else if (action === StageAction.ConfirmAdvance) {
@@ -386,11 +397,25 @@ export function AgreementHeader({
       onAgreementChange?.(next);
       setConfirming(false);
     } catch (cause) {
-      setConfirmError(
-        cause instanceof Error
-          ? cause.message
-          : "Couldn’t confirm it. Try again.",
-      );
+      if (cause instanceof ApiError && cause.code === "REVISION_CONFLICT") {
+        try {
+          const current = await api<Agreement>(
+            `workspaces/${encodeURIComponent(agreement.workspaceId)}/collaborations/${encodeURIComponent(agreement.id)}`,
+          );
+          onAgreementChange?.(current);
+        } catch {
+          // Keep the retry message when the refresh itself is unavailable.
+        }
+        setConfirmError(
+          "Someone else just changed this. Here’s the latest; try again.",
+        );
+      } else {
+        setConfirmError(
+          cause instanceof Error
+            ? cause.message
+            : "Couldn’t confirm it. Try again.",
+        );
+      }
     } finally {
       setConfirmBusy(false);
     }

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api, type Agreement, type Version } from "../lib/model";
+import { ApiError, api, type Agreement, type Version } from "../lib/model";
 import { isPendingMember, type AgreementMember } from "../lib/agreement-api";
 import { approvalLabel, payoutReadinessLabel } from "../lib/people-readiness";
 import { forgetStaleInviteTokens, issueInviteLink } from "../lib/share-link";
@@ -142,9 +142,22 @@ export function AgreementPeople({
       );
     } catch (cause) {
       if (agreementIdentityRef.current !== requestIdentity) return;
-      setInviteNotice(
-        cause instanceof Error ? cause.message : "Couldn’t make a new link.",
-      );
+      if (cause instanceof ApiError && cause.code === "REVISION_CONFLICT") {
+        try {
+          const current = await api<Agreement>(base);
+          if (agreementIdentityRef.current === requestIdentity) adopt(current);
+        } catch {
+          // Keep the retry message when the refresh itself is unavailable.
+        }
+        if (agreementIdentityRef.current !== requestIdentity) return;
+        setInviteNotice(
+          "Someone else just changed this. Here’s the latest; try again.",
+        );
+      } else {
+        setInviteNotice(
+          cause instanceof Error ? cause.message : "Couldn’t make a new link.",
+        );
+      }
     } finally {
       if (agreementIdentityRef.current === requestIdentity) setReissuing("");
     }

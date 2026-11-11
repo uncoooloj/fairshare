@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { isPendingMember, type AgreementMember } from "../lib/agreement-api";
-import type { Agreement } from "../lib/model";
+import { ApiError, api, type Agreement } from "../lib/model";
 import {
   copyText,
   issueInviteLink,
@@ -81,11 +81,26 @@ export function PersonShare({
       setNotice("New link ready");
       onAgreementChange?.(result.agreement);
     } catch (cause) {
-      setNotice(
-        cause instanceof Error && cause.message
-          ? cause.message
-          : "Couldn’t get a link. Try again.",
-      );
+      if (cause instanceof ApiError && cause.code === "REVISION_CONFLICT") {
+        try {
+          const current = await api<Agreement>(
+            `workspaces/${encodeURIComponent(agreement.workspaceId)}/collaborations/${encodeURIComponent(agreement.id)}`,
+          );
+          setIssued("");
+          onAgreementChange?.(current);
+        } catch {
+          // Keep the retry message when the refresh itself is unavailable.
+        }
+        setNotice(
+          "Someone else just changed this. Here’s the latest; try again.",
+        );
+      } else {
+        setNotice(
+          cause instanceof Error && cause.message
+            ? cause.message
+            : "Couldn’t get a link. Try again.",
+        );
+      }
     } finally {
       setBusy(false);
     }
