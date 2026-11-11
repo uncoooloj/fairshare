@@ -749,6 +749,56 @@ test("Cloudflare output that fails validation falls back to Claude", async () =>
   assert.equal(r.sections[ExtractionSection.SPLIT].status, SectionStatus.READ);
 });
 
+test("Cloudflare explicitly incomplete chat output falls back to Claude", async () => {
+  for (const finish_reason of ["length", "content_filter"]) {
+    const r = await extractContract(full, {
+      ...config,
+      fetch: async () =>
+        new Response(
+          JSON.stringify({
+            success: true,
+            result: {
+              choices: [
+                {
+                  finish_reason,
+                  message: { content: JSON.stringify(fullDraft) },
+                },
+              ],
+            },
+          }),
+        ),
+      anthropic: {
+        apiKey: anthropicKey,
+        fetch: async () => claudeMessage(fullDraft),
+      },
+    });
+    assert.equal(r.provider, ExtractionProvider.ANTHROPIC);
+    assert.equal(r.fallbackFrom, ExtractionProvider.CLOUDFLARE);
+  }
+});
+
+test("Cloudflare complete chat output remains accepted", async () => {
+  const r = await extractContract(full, {
+    ...config,
+    fetch: async () =>
+      new Response(
+        JSON.stringify({
+          success: true,
+          result: {
+            choices: [
+              {
+                finish_reason: "stop",
+                message: { content: JSON.stringify(fullDraft) },
+              },
+            ],
+          },
+        }),
+      ),
+  });
+  assert.equal(r.provider, ExtractionProvider.CLOUDFLARE);
+  assert.equal(r.status, ExtractionStatus.REVIEW_REQUIRED);
+});
+
 test("Claude alone is used when Cloudflare is not configured", async () => {
   const r = await extractContract(full, {
     anthropic: {

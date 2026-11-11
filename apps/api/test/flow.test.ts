@@ -340,6 +340,137 @@ test("AI is consent gated, source bound and cannot activate rules", async () => 
     await app.close();
   }
 });
+
+test("Anthropic fallback is sent only with explicit per-request consent", async () => {
+  const calls: string[] = [];
+  const draft = {
+    suggestedTitle: null,
+    facts: [
+      {
+        kind: "SHARE",
+        subject: "Maya",
+        rawValue: "100%",
+        quote: "Maya receives 100%.",
+        recoupedBeforeSplit: null,
+        feePolicy: null,
+        refundStep: null,
+        termBoundary: null,
+      },
+    ],
+    issues: [],
+  };
+  const app = await buildApp({
+    dbPath: ":memory:",
+    ai: {
+      accountId: "a".repeat(32),
+      apiToken: "test-cloudflare-token",
+      fetch: async (url) => {
+        const target = String(url);
+        calls.push(target);
+        if (target.includes("api.cloudflare.com"))
+          return new Response("unavailable", { status: 500 });
+        return new Response(
+          JSON.stringify({
+            id: "msg_test",
+            type: "message",
+            role: "assistant",
+            model: "claude-sonnet-5-5",
+            stop_reason: "end_turn",
+            stop_sequence: null,
+            usage: { input_tokens: 1, output_tokens: 1 },
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(draft),
+              },
+            ],
+          }),
+          { headers: { "content-type": "application/json" } },
+        );
+      },
+      anthropic: {
+        apiKey: "test-anthropic-key",
+        fetch: async (url) => {
+          calls.push(String(url));
+          return new Response(
+            JSON.stringify({
+              id: "msg_test",
+              type: "message",
+              role: "assistant",
+              model: "claude-sonnet-5-5",
+              stop_reason: "end_turn",
+              stop_sequence: null,
+              usage: { input_tokens: 1, output_tokens: 1 },
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify(draft),
+                },
+              ],
+            }),
+            { headers: { "content-type": "application/json" } },
+          );
+        },
+      },
+    },
+  });
+  try {
+    const user = app.store.register({
+      name: "Maya",
+      email: "fallback@example.test",
+      password,
+    });
+    const workspace = app.store.createWorkspace(user.user.id, "Team");
+    const base = `/api/workspaces/${workspace.id}/collaborations`;
+    const collaboration = (
+      await app.inject({
+        method: "POST",
+        url: base,
+        headers: auth(user.token),
+        payload: { name: "Campaign" },
+      })
+    ).json();
+    const path = `${base}/${collaboration.id}`;
+    const document = (
+      await app.inject({
+        method: "POST",
+        url: `${path}/documents`,
+        headers: auth(user.token),
+        payload: { text: "Maya receives 100%." },
+      })
+    ).json();
+    const extractUrl = `${path}/documents/${document.documentId}/extract`;
+
+    const cloudflareOnly = await app.inject({
+      method: "POST",
+      url: extractUrl,
+      headers: auth(user.token),
+      payload: { consentToCloudflare: true },
+    });
+    assert.equal(cloudflareOnly.statusCode, 200, cloudflareOnly.body);
+    assert.equal(calls.length, 1);
+    assert.match(calls[0], /api\.cloudflare\.com/);
+
+    calls.length = 0;
+    const withFallback = await app.inject({
+      method: "POST",
+      url: extractUrl,
+      headers: auth(user.token),
+      payload: { consentToCloudflare: true, consentToAnthropic: true },
+    });
+    assert.equal(withFallback.statusCode, 200, withFallback.body);
+    assert.equal(
+      withFallback.json().provider,
+      ExtractionProvider.ANTHROPIC,
+      withFallback.body,
+    );
+    assert.equal(calls.length, 2);
+    assert.match(calls[0], /api\.cloudflare\.com/);
+    assert.match(calls[1], /api\.anthropic\.com/);
+  } finally {
+    await app.close();
+  }
+});
 test("concurrent same-revision updates commit one proposal only", async () => {
   const { app, owner, base, c } = await setup();
   try {

@@ -1194,7 +1194,16 @@ export function parseCloudflareResult(raw: unknown): unknown {
       ? jsonFromText(result.response)
       : result.response;
   if (Array.isArray(result.choices)) {
-    const message = object(object(result.choices[0]).message);
+    const choice = object(result.choices[0]);
+    // A JSON-looking prefix is still incomplete when Workers AI says generation
+    // stopped for length or a content filter. Let the next configured provider
+    // try rather than accepting a partial extraction.
+    if (
+      choice.finish_reason === "length" ||
+      choice.finish_reason === "content_filter"
+    )
+      throw new Error("incomplete choice");
+    const message = object(choice.message);
     if (message.parsed && typeof message.parsed === "object")
       return message.parsed;
     return jsonFromText(partsText(message.content));

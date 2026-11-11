@@ -574,7 +574,7 @@ export function AIReview({
 }: {
   busy: boolean;
   extraction: any;
-  onExtract: () => void;
+  onExtract: (consentToAnthropic: boolean) => void;
 }) {
   const [consent, setConsent] = useState(false);
   return (
@@ -590,13 +590,13 @@ export function AIReview({
           checked={consent}
           onChange={(e) => setConsent(e.target.checked)}
         />
-        I authorize Fairshare to send this agreement to Cloudflare AI to suggest
-        terms.
+        I authorize Fairshare to send this agreement to Cloudflare AI and, if
+        Cloudflare cannot complete the request, Anthropic to suggest terms.
       </label>
       <Button
         variant="secondary"
         disabled={busy || !consent}
-        onClick={onExtract}
+        onClick={() => onExtract(true)}
       >
         Suggest terms
       </Button>

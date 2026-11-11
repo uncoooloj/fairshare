@@ -60,6 +60,7 @@ These checks provide source-level and build evidence. They do not prove browser 
 
 - DEMO uses synthetic identities, approvals, and an already-recorded advance. They are fixtures, not evidence of real approvals or funds.
 - AI observations require human review and cannot activate rules or move money.
+- Agreement extraction sends source text to Cloudflare AI only after `consentToCloudflare: true`. `consentToAnthropic: true` is optional, request-only consent for a configured Anthropic fallback after Cloudflare cannot complete the request; neither receipt is stored. Cloudflare AI and Anthropic are third-party processors for the corresponding request.
 - The payment adapter is sandbox-only. Provider acceptance, capture, webhook delivery, refunds, and recipient payout outcomes each need their own evidence.
 - The reconciliation worker exists but is disabled by default and performs reads/reconciliation only; it does not issue money-moving retries.
 - New PDF and DOCX uploads retain an authenticated original alongside extracted text. That private SQLite data is not encrypted at rest by this application.

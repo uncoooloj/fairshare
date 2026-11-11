@@ -442,13 +442,13 @@ export function AgreementTermsTab({
                   key={documentId}
                   busy={busy}
                   extraction={extraction}
-                  onExtract={() =>
+                  onExtract={(consentToAnthropic) =>
                     run(async () =>
                       setExtraction(
                         await api(
                           `${base}/documents/${documentId}/extract`,
                           "POST",
-                          { consentToCloudflare: true },
+                          { consentToCloudflare: true, consentToAnthropic },
                         ),
                       ),
                     )

@@ -145,6 +145,15 @@ export interface ExtractionDraftView {
 }
 
 const normalize = (value: string) => value.replace(/\s+/g, " ").trim();
+/** Keep the browser's evidence checks aligned with the server: source ranges
+ * remain exact, while model casing and straight/curly quote substitutions do
+ * not discard an otherwise source-backed observation. */
+const normalizedEvidence = (value: string) =>
+  normalize(value)
+    .replace(/[“”„‟\"'‘’‚‛`´]/g, '"')
+    .toLowerCase();
+const containsEvidence = (quote: string, value: string) =>
+  normalizedEvidence(quote).includes(normalizedEvidence(value));
 const tokens = (value: string) =>
   normalize(value)
     .toLocaleLowerCase()
@@ -218,8 +227,8 @@ function checkedFact(f: any, source: string | null): RawFact | null {
     c.start < 0 ||
     c.end <= c.start ||
     (source !== null && source.slice(c.start, c.end) !== c.quote) ||
-    !normalize(c.quote).includes(normalize(f.subject)) ||
-    !normalize(c.quote).includes(normalize(f.rawValue))
+    !containsEvidence(c.quote, f.subject) ||
+    !containsEvidence(c.quote, f.rawValue)
   )
     return null;
   return { ...f, quote: c.quote };

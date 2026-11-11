@@ -664,9 +664,15 @@ export function registerFairshareRoutes(
         .get(p.workspaceId, p.collaborationId, p.documentId) as any;
       if (!row) throw new DomainError("NOT_FOUND", "Document not found");
       const document = JSON.parse(row.source) as SourceDocument;
+      // Anthropic is optional fallback processing. Do not pass its credentials
+      // or provider configuration unless this request explicitly authorizes it.
+      const ai =
+        b.consentToAnthropic === true
+          ? options.ai
+          : { ...options.ai, anthropic: undefined };
       const result: ExtractionResult = await (
         options.extract ?? extractContract
-      )(document, options.ai);
+      )(document, ai);
       // Revalidate session and membership after provider I/O before returning or persisting confidential output.
       access(req);
       // Source docs immutable; conditional write still protects source binding and asynchronous races.

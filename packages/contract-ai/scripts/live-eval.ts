@@ -17,6 +17,7 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
+  rmdirSync,
   statSync,
   writeFileSync,
 } from "node:fs";
@@ -28,6 +29,7 @@ import {
   locateQuote,
   parseCloudflareResult,
   validateDraft,
+  DEFAULT_ANTHROPIC_MODEL,
   DEFAULT_CLOUDFLARE_MODEL,
   ExtractionProvider,
   ExtractionStatus,
@@ -127,12 +129,32 @@ function redactedError(status: number, body: string): string {
 
 function readCalls(outDir: string): number {
   const path = join(outDir, "calls.json");
-  return existsSync(path)
-    ? (JSON.parse(readFileSync(path, "utf8")) as { calls: number }).calls
-    : 0;
+  if (!existsSync(path)) return 0;
+  const calls = (JSON.parse(readFileSync(path, "utf8")) as { calls: unknown })
+    .calls;
+  if (typeof calls !== "number" || !Number.isSafeInteger(calls) || calls < 0)
+    fail(`Refusing to run: invalid call counter in ${path}.`);
+  return calls;
 }
 
-const labelFor = (model: string) => model.split("/").pop() ?? model;
+/** A readable model label plus a short identity suffix prevents two providers or
+ * similarly named models from writing the same fixture files. */
+const labelFor = (provider: ExtractionProvider, model: string) => {
+  const readable = model
+    .replace(/[^A-Za-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  const identity = Buffer.from(model).toString("hex");
+  return `${provider}.${readable || "model"}.${identity}`;
+};
+
+function safeNonNegativeInteger(value: string, name: string): number {
+  if (!/^\d+$/.test(value))
+    fail(`${name} must be a finite non-negative safe integer.`);
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 0)
+    fail(`${name} must be a finite non-negative safe integer.`);
+  return parsed;
+}
 
 /** Parses a saved Cloudflare body with the current adapter. */
 function parseRaw(rawBody: string): {
@@ -249,77 +271,105 @@ async function runLive(
     );
   }
 
-  mkdirSync(outDir, { recursive: true });
-  const used = readCalls(outDir);
-  if (used + fixtures.length > budget)
-    fail(
-      `Refusing to run: ${used} calls already used, ${fixtures.length} planned, budget ${budget}.`,
-    );
   const model =
     provider === ExtractionProvider.CLOUDFLARE
       ? modelFlag || process.env.CLOUDFLARE_AI_MODEL || DEFAULT_CLOUDFLARE_MODEL
-      : modelFlag || process.env.ANTHROPIC_MODEL || "default";
-  const label =
-    provider === ExtractionProvider.CLOUDFLARE ? labelFor(model) : provider;
-  console.log(
-    `Running ${fixtures.length} fixture(s) on ${provider} ${model}; calls used so far ${used}/${budget}.`,
-  );
-
-  let calls = used;
-  const records: RunRecord[] = [];
-  for (const fixture of fixtures) {
-    let rawBody = "";
-    // Keeps only a successful response body. Request headers (which carry the key) are never stored,
-    // and error bodies are reduced to the status and provider error codes.
-    const capture: typeof fetch = async (input, init) => {
-      calls += 1;
-      writeFileSync(join(outDir, "calls.json"), JSON.stringify({ calls }));
-      const response = await fetch(input, init);
-      const body = await response.clone().text();
-      rawBody = response.ok ? body : redactedError(response.status, body);
-      return response;
-    };
-    const diagnostics: ExtractionDiagnostic[] = [];
-    const config: CloudflareConfig =
-      provider === ExtractionProvider.CLOUDFLARE
-        ? {
-            accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
-            apiToken: process.env.CLOUDFLARE_API_TOKEN,
-            model,
-            timeoutMs,
-            fetch: capture,
-            onFailure: (d) => diagnostics.push(d),
-          }
-        : {
-            anthropic: {
-              apiKey: process.env.ANTHROPIC_API_KEY,
-              model: process.env.ANTHROPIC_MODEL,
-              timeoutMs,
-              fetch: capture,
-            },
-            onFailure: (d) => diagnostics.push(d),
-          };
-    const started = Date.now();
-    const result = await extractContract(
-      { documentId: fixture.id, revision: 1, text: fixture.text },
-      config,
+      : modelFlag || process.env.ANTHROPIC_MODEL || DEFAULT_ANTHROPIC_MODEL;
+  if (
+    provider === ExtractionProvider.ANTHROPIC &&
+    !/^claude-[a-z0-9.-]+$/.test(model)
+  )
+    fail(
+      `Refusing to run Anthropic: --model must name an Anthropic Claude model (got ${model}).`,
     );
-    const latencyMs = Date.now() - started;
-    const stem = join(outDir, `${fixture.id}.${label}`);
-    writeFileSync(`${stem}.raw.txt`, rawBody);
-    writeFileSync(`${stem}.result.json`, JSON.stringify(result, null, 2));
-    const run = record(fixture, model, result, rawBody, latencyMs, diagnostics);
-    records.push(run);
-    writeFileSync(`${stem}.run.json`, JSON.stringify(run, null, 2));
-    console.log(
-      `${fixture.id}: ${run.passed}/${run.total} in ${latencyMs} ms` +
-        (diagnostics.length
-          ? ` diagnostics ${JSON.stringify(diagnostics)}`
-          : ""),
+  const label = labelFor(provider, model);
+  const lockPath = join(outDir, ".live-eval.lock");
+  mkdirSync(outDir, { recursive: true });
+  try {
+    mkdirSync(lockPath);
+  } catch {
+    fail(
+      `Refusing to run: ${outDir} is already reserved by another live eval.`,
     );
   }
-  console.log(formatScores(records.map(asScore)));
-  console.log(`Calls used: ${calls}/${budget}. Results in ${outDir}`);
+  try {
+    const used = readCalls(outDir);
+    if (used + fixtures.length > budget) {
+      console.error(
+        `Refusing to run: ${used} calls already used, ${fixtures.length} planned, budget ${budget}.`,
+      );
+      process.exitCode = 2;
+      return;
+    }
+    console.log(
+      `Running ${fixtures.length} fixture(s) on ${provider} ${model}; calls used so far ${used}/${budget}.`,
+    );
+
+    let calls = used;
+    const records: RunRecord[] = [];
+    for (const fixture of fixtures) {
+      let rawBody = "";
+      // Keeps only a successful response body. Request headers (which carry the key) are never stored,
+      // and error bodies are reduced to the status and provider error codes.
+      const capture: typeof fetch = async (input, init) => {
+        calls += 1;
+        writeFileSync(join(outDir, "calls.json"), JSON.stringify({ calls }));
+        const response = await fetch(input, init);
+        const body = await response.clone().text();
+        rawBody = response.ok ? body : redactedError(response.status, body);
+        return response;
+      };
+      const diagnostics: ExtractionDiagnostic[] = [];
+      const config: CloudflareConfig =
+        provider === ExtractionProvider.CLOUDFLARE
+          ? {
+              accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
+              apiToken: process.env.CLOUDFLARE_API_TOKEN,
+              model,
+              timeoutMs,
+              fetch: capture,
+              onFailure: (d) => diagnostics.push(d),
+            }
+          : {
+              anthropic: {
+                apiKey: process.env.ANTHROPIC_API_KEY,
+                model,
+                timeoutMs,
+                fetch: capture,
+              },
+              onFailure: (d) => diagnostics.push(d),
+            };
+      const started = Date.now();
+      const result = await extractContract(
+        { documentId: fixture.id, revision: 1, text: fixture.text },
+        config,
+      );
+      const latencyMs = Date.now() - started;
+      const stem = join(outDir, `${fixture.id}.${label}`);
+      writeFileSync(`${stem}.raw.txt`, rawBody);
+      writeFileSync(`${stem}.result.json`, JSON.stringify(result, null, 2));
+      const run = record(
+        fixture,
+        model,
+        result,
+        rawBody,
+        latencyMs,
+        diagnostics,
+      );
+      records.push(run);
+      writeFileSync(`${stem}.run.json`, JSON.stringify(run, null, 2));
+      console.log(
+        `${fixture.id}: ${run.passed}/${run.total} in ${latencyMs} ms` +
+          (diagnostics.length
+            ? ` diagnostics ${JSON.stringify(diagnostics)}`
+            : ""),
+      );
+    }
+    console.log(formatScores(records.map(asScore)));
+    console.log(`Calls used: ${calls}/${budget}. Results in ${outDir}`);
+  } finally {
+    rmdirSync(lockPath);
+  }
 }
 
 const asScore = (r: RunRecord): FixtureScore => ({
@@ -480,9 +530,9 @@ if (values.score) {
     provider,
     resolve(values.out),
     selected,
-    Number(values.budget),
+    safeNonNegativeInteger(values.budget, "--budget"),
     resolve(values["vars-file"]),
-    Number(values.timeout),
+    safeNonNegativeInteger(values.timeout, "--timeout"),
     values.model,
   );
 }
