@@ -167,7 +167,7 @@ export function registerPreferences(app: FairshareApp) {
         )
           continue;
         events.push({
-          id: `${row.workspace_id}:${c.id}:${event.sequence}`,
+          id: `${c.id}:${event.sequence}`,
           kind,
           workspaceId: row.workspace_id,
           agreementId: c.id,

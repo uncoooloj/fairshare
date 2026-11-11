@@ -141,7 +141,7 @@ export function NotificationPanel({
           ) : (
             <ul className="notification-events">
               {events.map((event) => (
-                <li key={event.id}>
+                <li key={`${event.workspaceId}:${event.id}`}>
                   <small>
                     {notificationLabels[event.kind]?.[0] ?? "Agreement update"}
                   </small>

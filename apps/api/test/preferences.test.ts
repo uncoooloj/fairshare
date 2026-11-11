@@ -204,7 +204,9 @@ test("in-app notifications respect channels, workspace and agreement membership,
       new Set([agreement.name, duplicateAgreement.name]),
     );
     assert.equal(
-      new Set(duplicateEvents.map((event: any) => event.id)).size,
+      new Set(
+        duplicateEvents.map((event: any) => `${event.workspaceId}:${event.id}`),
+      ).size,
       duplicateEvents.length,
     );
     const preferences = defaultPreferences();
