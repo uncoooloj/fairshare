@@ -36,6 +36,16 @@ export function publicAppOrigin(value: string) {
     );
   return url.origin;
 }
+export function emailDeliveryOrigin(value: string | undefined) {
+  if (!value)
+    throw new Error("Enabled email requires explicit PUBLIC_APP_ORIGIN.");
+  const origin = publicAppOrigin(value);
+  if (!origin.startsWith("https://"))
+    throw new Error(
+      "Enabled email requires a trusted HTTPS PUBLIC_APP_ORIGIN.",
+    );
+  return origin;
+}
 export function emailLink(origin: string, kind: MailKind, token: string) {
   return `${publicAppOrigin(origin)}/${kind === MailKind.CHANGE_EMAIL ? "change-email" : kind === MailKind.RESET_PASSWORD ? "reset-password" : kind === MailKind.VERIFY_EMAIL ? "verify-email" : "invitation"}#token=${encodeURIComponent(token)}`;
 }
@@ -114,9 +124,7 @@ export function configuredMailTransport(
   env: NodeJS.ProcessEnv = process.env,
 ): MailTransport | undefined {
   if (env.EMAIL_DELIVERY_ENABLED !== "true") return undefined;
-  if (!env.PUBLIC_APP_ORIGIN)
-    throw new Error("Enabled email requires explicit PUBLIC_APP_ORIGIN.");
-  publicAppOrigin(env.PUBLIC_APP_ORIGIN);
+  emailDeliveryOrigin(env.PUBLIC_APP_ORIGIN);
   if (env.EMAIL_PROVIDER !== "resend")
     throw new Error("Enabled email requires EMAIL_PROVIDER=resend.");
   return createResendTransport({

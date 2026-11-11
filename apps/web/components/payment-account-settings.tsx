@@ -208,7 +208,7 @@ export function PaymentAccountsSettings({
                             onClick={async () => {
                               try {
                                 await navigator.clipboard.writeText(
-                                  `Hi ${m.name}, please open Fairshare, select our workspace, and add your sandbox merchant ID under Settings → Payment accounts so your agreed share can be paid. ${location.origin}`,
+                                  `Hi ${m.name}, please open Fairshare, select our workspace, and add your sandbox merchant ID under Settings → Payment accounts so your agreed share can be paid. ${location.origin}/app`,
                                 );
                                 setMessage(
                                   "Reminder copied. Share it directly with this collaborator. No email was sent.",
