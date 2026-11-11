@@ -53,6 +53,19 @@
   margin: 0 auto;
 }
 
+/* Check presents the source document beside the extracted rules. Give that
+   composed stage room without changing the other wizard stages. */
+@media (min-width: 900px) {
+  .wiz-scroll:has(.wc-reader) {
+    padding-left: clamp(var(--space-4), 4vw, var(--space-10));
+    padding-right: clamp(var(--space-4), 4vw, var(--space-10));
+  }
+  .wiz-scroll:has(.wc-reader) > .wiz-stepper,
+  .wiz-scroll:has(.wc-reader) > .wiz-main {
+    max-width: 1280px;
+  }
+}
+
 /* Stepper */
 .wiz-stepper {
   max-width: 560px;
