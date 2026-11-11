@@ -868,6 +868,7 @@ export function resumedAnswers(
     // when the stored answers still equal the choice's effect; otherwise surface it
     // again for an explicit current decision.
     const applied = choice.apply(restored);
+    if (applied === restored) continue;
     const stillMatches =
       JSON.stringify(applied.people) === JSON.stringify(restored.people) &&
       JSON.stringify(applied.advance) === JSON.stringify(restored.advance) &&

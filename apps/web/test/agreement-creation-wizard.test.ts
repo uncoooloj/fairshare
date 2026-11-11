@@ -443,6 +443,24 @@ test("resuming never overwrites a later manual edit with a saved reading choice"
         ?.answeredChoiceId,
       undefined,
     );
+    const noRecipient = {
+      ...manuallyEdited,
+      advance: undefined,
+      people: {
+        ...manuallyEdited.people,
+        value: manuallyEdited.people.value.map((person) =>
+          person.key === "owner" ? { ...person, name: "Renamed" } : person,
+        ),
+      },
+    };
+    saveDraftAnswers("w-manual", "a-manual", noRecipient);
+    const reopenedNoRecipient = resumedAnswers(resume, self).answers;
+    assert.equal(reopenedNoRecipient.advance, undefined);
+    assert.equal(
+      reopenedNoRecipient.questions.find((item) => item.id === "advance")
+        ?.answeredChoiceId,
+      undefined,
+    );
   } finally {
     delete (globalThis as any).localStorage;
   }
