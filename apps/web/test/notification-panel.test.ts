@@ -15,7 +15,17 @@ test("notification panel uses the authenticated feed and distinguishes loading, 
   assert.match(panel, /active = false/);
   assert.match(panel, /role="alert"/);
   assert.match(panel, /Nothing yet\. Approvals and payouts show up here\./);
-  assert.doesNotMatch(panel, /mark.*read|unreadCount|"POST"/i);
+  assert.doesNotMatch(panel, /unreadCount|"POST"/i);
+});
+test("notification panel groups the live feed locally and does not invent read state", () => {
+  assert.match(panel, /date\.getFullYear\(\).*now\.getFullYear\(\)/s);
+  assert.match(panel, /\["today", "earlier"\]/);
+  assert.match(panel, /<h3>\{group === "today" \? "Today" : "Earlier"\}<\/h3>/);
+  assert.match(panel, /<NotificationIcon kind=\{event\.kind\}/);
+  assert.match(panel, /className="notification-headline"/);
+  assert.match(panel, /className="notification-detail"/);
+  assert.match(panel, /does not persist read receipts/i);
+  assert.doesNotMatch(panel, /Mark all read|unreadCount|"POST"/i);
 });
 test("panel has keyboard dismissal, focus restoration and refreshes on open", () => {
   assert.match(panel, /aria-expanded=\{open\}/);
