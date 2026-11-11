@@ -110,14 +110,14 @@ export function overviewSummary(
       const review = contractReviewState(agreement, latest, userId);
       if (latest.status === "DRAFT" && member && review.blockers.length)
         attention.push({
-          key: `${agreement.id}:review-blockers`,
+          key: `${identity(agreement)}:review-blockers`,
           agreement,
           title: "Clarify rules before review",
           detail: review.blockers.join(" "),
         });
       else if (review.canSend)
         attention.push({
-          key: `${agreement.id}:send-review`,
+          key: `${identity(agreement)}:send-review`,
           agreement,
           title: `Send version ${latest.id} for review`,
           detail:
@@ -125,7 +125,7 @@ export function overviewSummary(
         });
       if (review.canActivate)
         attention.push({
-          key: `${agreement.id}:activate`,
+          key: `${identity(agreement)}:activate`,
           agreement,
           title: `Activate version ${latest.id}`,
           detail:
@@ -157,7 +157,7 @@ export function overviewSummary(
         member?.role !== "ORGANIZER"
       )
         waiting.push({
-          key: `${agreement.id}:waiting-activation`,
+          key: `${identity(agreement)}:waiting-activation`,
           agreement,
           title: `Waiting for organizer to activate version ${latest.id}`,
           detail:

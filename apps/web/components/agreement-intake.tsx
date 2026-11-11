@@ -30,7 +30,6 @@ export function AgreementIntake({
   const [text, setText] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState("");
-  const [ocr, setOcr] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const locked = useRef(false);
   // Retain the key across retry after an uncertain response, but not changed input.
@@ -71,7 +70,6 @@ export function AgreementIntake({
               );
             reader.readAsDataURL(file);
           });
-          input.useLocalOcr = ocr && input.mimeType === "application/pdf";
         }
       } else input.text = text;
       if (
@@ -146,7 +144,7 @@ export function AgreementIntake({
         <div hidden={method !== "upload"}>
           <Field
             label="Upload agreement"
-            hint="PDF, DOCX or TXT · up to 5 MB. Use only documents you’re authorized to upload."
+            hint="PDF, DOCX or TXT · up to 5 MB. We’ll read your document when you continue."
           >
             <input
               type="file"
@@ -162,22 +160,6 @@ export function AgreementIntake({
             <p className="muted">
               Selected: {file.name}. Your document is ready to read.
             </p>
-          )}
-          {file && /\.pdf$/i.test(file.name) && (
-            <label className="check">
-              <input
-                type="checkbox"
-                checked={ocr}
-                disabled={disabled}
-                onChange={(event) => {
-                  changed();
-                  setOcr(event.target.checked);
-                }}
-              />
-              Use OCR for a scanned PDF (English, up to 5 pages). Processed on
-              Fairshare’s servers (Cloudflare when hosted); review all extracted
-              names and amounts.
-            </label>
           )}
         </div>
         <div hidden={method !== "paste"}>
@@ -197,8 +179,8 @@ export function AgreementIntake({
         </div>
         <p className="muted">
           {first
-            ? "We’ll create your workspace automatically. No setup form needed. "
-            : "Saved in the selected workspace. "}
+            ? "Upload first. We’ll take care of the setup. "
+            : "Saved privately with your agreement. "}
           Documents stay private on this server. AI interpretation requires your
           confirmation on the next screen.
         </p>
