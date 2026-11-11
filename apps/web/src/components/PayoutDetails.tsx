@@ -1,5 +1,6 @@
 "use client";
 import { AllocationCalculation } from "../../components/allocation-calculation";
+import { formatDay, formatExact } from "../../lib/dates";
 import { useEffect, useId, useRef } from "react";
 import {
   formatPaymentAmount,
@@ -69,9 +70,9 @@ export function PayoutDetails({
         <div>
           <dt>Created</dt>
           <dd>
-            {row.createdAt
-              ? new Date(row.createdAt).toLocaleString()
-              : "Not recorded"}
+            <span title={formatExact(row.createdAt)}>
+              {formatDay(row.createdAt)}
+            </span>
           </dd>
         </div>
         <div>
@@ -84,7 +85,7 @@ export function PayoutDetails({
       <section className={styles.drawerNote}>
         <h3>How was this share calculated?</h3>
         {row.trace ? (
-          <AllocationCalculation trace={row.trace} />
+          <AllocationCalculation trace={row.trace} name={row.recipientName} />
         ) : (
           <p>
             The source payment, historical rules or matching allocation could

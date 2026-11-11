@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import styles from "./landing.module.css";
+import { LogoMark } from "../components/logo-mark";
 
 export const metadata: Metadata = {
   title: "Fairshare · The money follows the agreement",
@@ -15,7 +16,7 @@ export default function Home() {
       </a>
       <header className={styles.header}>
         <a className={styles.brand} href="/" aria-label="Fairshare home">
-          <span aria-hidden="true">▥</span> Fairshare
+          <LogoMark size={28} /> Fairshare
         </a>
         <nav aria-label="Public navigation">
           <a href="#how-it-works">How it works</a>

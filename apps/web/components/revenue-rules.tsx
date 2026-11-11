@@ -10,7 +10,7 @@ export function RevenueRules({ children }: { children: ReactNode }) {
       onToggle={(event) => setExpanded(event.currentTarget.open)}
     >
       <summary>Revenue rules</summary>
-      <p className="muted">The active rules for this agreement.</p>
+      <p className="muted">Every payment runs through these steps, in order.</p>
       {children}
     </details>
   );

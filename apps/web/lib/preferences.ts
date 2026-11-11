@@ -34,6 +34,19 @@ export function formatMoney(cents: number, preferences: Display = display) {
     currency: "USD",
   }).format(cents / 100);
 }
+/** Headline figures: whole amounts drop ".00"; any real cents are always shown. */
+export function formatMoneyHeadline(
+  cents: number,
+  preferences: Display = display,
+) {
+  const whole = cents % 100 === 0;
+  return new Intl.NumberFormat(preferences.numberFormat, {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: whole ? 0 : 2,
+    maximumFractionDigits: 2,
+  }).format(cents / 100);
+}
 export function formatDate(
   value: string | number,
   preferences: Display = display,

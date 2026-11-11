@@ -1,6 +1,7 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { api } from "../lib/model";
+import { formatExact, formatWhen } from "../lib/dates";
 import {
   formatDate,
   formatMoney,
@@ -9,6 +10,43 @@ import {
   type Preferences,
   type NotificationKind,
 } from "../lib/preferences";
+
+/** Settings pane title + one-line description, as in the reference frames. */
+export function SettingsPaneHeader({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <header className="settings-pane-head">
+      <h2>{title}</h2>
+      <p className="muted">{description}</p>
+    </header>
+  );
+}
+
+/** Label-left / control-right settings row separated by a hairline. */
+export function SettingsRow({
+  label,
+  hint,
+  children,
+}: {
+  label: ReactNode;
+  hint?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div className="settings-row">
+      <div className="settings-row-label">
+        <span className="settings-row-title">{label}</span>
+        {hint && <span className="settings-row-hint">{hint}</span>}
+      </div>
+      <div className="settings-row-control">{children}</div>
+    </div>
+  );
+}
 
 export function useDisplayPreferences(userId?: string) {
   const [, refresh] = useState(0);
@@ -111,12 +149,14 @@ export function NotificationsSettings() {
     };
   }, [state.notice]);
   return (
-    <section className="panel">
-      <h2>Notifications</h2>
-      <p className="muted">Choose how Fairshare tells you about things.</p>
+    <section className="settings-pane">
+      <SettingsPaneHeader
+        title="Notifications"
+        description="Choose how Fairshare tells you about things."
+      />
       <Feedback error={state.error} notice={state.notice} />
       {!preferences ? (
-        <p>Loading preferences…</p>
+        <p role="status">Loading preferences…</p>
       ) : (
         <form
           onSubmit={(event) => {
@@ -124,11 +164,13 @@ export function NotificationsSettings() {
             void state.save();
           }}
         >
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%" }}>
+          <div className="settings-table-scroll">
+            <table className="settings-toggle-table">
               <thead>
                 <tr>
-                  <th scope="col">Notification</th>
+                  <th scope="col">
+                    <span className="visually-hidden">Notification</span>
+                  </th>
                   <th scope="col">In-app</th>
                 </tr>
               </thead>
@@ -136,23 +178,20 @@ export function NotificationsSettings() {
                 {(Object.keys(notificationLabels) as NotificationKind[]).map(
                   (kind) => (
                     <tr key={kind}>
-                      <th
-                        scope="row"
-                        style={{
-                          textAlign: "left",
-                          padding: "16px 0",
-                          fontWeight: 500,
-                        }}
-                      >
-                        {notificationLabels[kind][0]}
-                        <p className="muted" style={{ fontWeight: 400 }}>
+                      <th scope="row">
+                        <span className="settings-row-title">
+                          {notificationLabels[kind][0]}
+                        </span>
+                        <span className="settings-row-hint">
                           {notificationLabels[kind][1]}
-                        </p>
+                        </span>
                       </th>
                       {(["inApp"] as const).map((channel) => (
-                        <td key={channel} style={{ textAlign: "center" }}>
+                        <td key={channel}>
                           <input
                             type="checkbox"
+                            role="switch"
+                            className="settings-switch"
                             aria-label={notificationLabels[kind][0] + " in-app"}
                             disabled={saving}
                             checked={preferences.notifications[kind][channel]}
@@ -177,31 +216,36 @@ export function NotificationsSettings() {
               </tbody>
             </table>
           </div>
-          <p className="muted">
-            Updates appear here in Fairshare. Share invitation links and copy
-            review reminders to notify collaborators directly; no email is sent.
-          </p>
-          <button type="submit" disabled={saving}>
-            {saving ? "Saving…" : "Save preferences"}
-          </button>
+          <div className="settings-actions">
+            <p className="muted">
+              In-app only. No email is sent; share links and reminders directly.
+            </p>
+            <button type="submit" className="button primary" disabled={saving}>
+              {saving ? "Saving…" : "Save preferences"}
+            </button>
+          </div>
         </form>
       )}
-      <h3 style={{ marginTop: 32 }}>Recent notifications</h3>
+      <h3 className="settings-subhead">Recent notifications</h3>
       {feedError ? (
         <p role="alert">{feedError}</p>
       ) : !events.length ? (
         <p className="muted">
-          No matching notifications yet. Agreement reviews and confirmed payout
-          updates will appear here.
+          Nothing yet. Agreement reviews and confirmed payout updates appear
+          here.
         </p>
       ) : (
-        <ul>
+        <ul className="settings-feed">
           {events.map((event) => (
-            <li key={event.id} style={{ padding: "10px 0" }}>
-              <strong>{event.agreementName}</strong>
-              <p>{event.message}</p>
+            <li key={event.id}>
+              <div>
+                <strong>{event.agreementName}</strong>
+                <p>{event.message}</p>
+              </div>
               {event.at && (
-                <time dateTime={event.at}>{formatDate(event.at)}</time>
+                <time dateTime={event.at} title={formatExact(event.at)}>
+                  {formatWhen(event.at)}
+                </time>
               )}
             </li>
           ))}
@@ -214,37 +258,44 @@ export function CurrencyDisplaySettings() {
   const state = usePreferences();
   const { preferences, setPreferences, saving } = state;
   return (
-    <section className="panel">
-      <h2>Currency &amp; display</h2>
-      <p className="muted">How amounts and dates look across Fairshare.</p>
+    <section className="settings-pane">
+      <SettingsPaneHeader
+        title="Currency & display"
+        description="How amounts and dates look across Fairshare."
+      />
       <Feedback error={state.error} notice={state.notice} />
       {!preferences ? (
-        <p>Loading preferences…</p>
+        <p role="status">Loading preferences…</p>
       ) : (
         <form
           onSubmit={(event) => {
             event.preventDefault();
             void state.save();
           }}
-          style={{ display: "grid", gap: 24, maxWidth: 560 }}
         >
-          <label>
-            Default currency
+          <SettingsRow
+            label={<label htmlFor="settings-currency">Default currency</label>}
+            hint={
+              <span id="currency-help">
+                USD only for now. This never converts money.
+              </span>
+            }
+          >
             <select
+              id="settings-currency"
               value={preferences.defaultCurrency}
               disabled
               aria-describedby="currency-help"
             >
               <option value="USD">USD – US dollar</option>
             </select>
-            <p id="currency-help" className="muted">
-              Agreements and payments currently support USD only. This setting
-              never converts money.
-            </p>
-          </label>
-          <label>
-            Number format
+          </SettingsRow>
+          <SettingsRow
+            label={<label htmlFor="settings-number">Number format</label>}
+            hint={`Preview: ${formatMoney(123456, preferences)}. Amount fields still use a decimal point.`}
+          >
             <select
+              id="settings-number"
               disabled={saving}
               value={preferences.numberFormat}
               onChange={(event) =>
@@ -259,14 +310,13 @@ export function CurrencyDisplaySettings() {
               <option value="de-DE">1.234,56</option>
               <option value="fr-FR">1 234,56</option>
             </select>
-            <p className="muted">
-              Preview: {formatMoney(123456, preferences)}. Amount-entry fields
-              still use a decimal point.
-            </p>
-          </label>
-          <label>
-            Date format
+          </SettingsRow>
+          <SettingsRow
+            label={<label htmlFor="settings-date">Date format</label>}
+            hint={`Preview: ${formatDate("2026-11-10T12:00:00Z", preferences)}. Dates use UTC.`}
+          >
             <select
+              id="settings-date"
               disabled={saving}
               value={preferences.dateFormat}
               onChange={(event) =>
@@ -280,14 +330,13 @@ export function CurrencyDisplaySettings() {
               <option value="day-first">10/11/2026</option>
               <option value="iso">2026-11-10</option>
             </select>
-            <p className="muted">
-              Preview: {formatDate("2026-11-10T12:00:00Z", preferences)}. Dates
-              use UTC.
-            </p>
-          </label>
-          <button type="submit" disabled={saving}>
-            {saving ? "Saving…" : "Save preferences"}
-          </button>
+          </SettingsRow>
+          <div className="settings-actions">
+            <span />
+            <button type="submit" className="button primary" disabled={saving}>
+              {saving ? "Saving…" : "Save preferences"}
+            </button>
+          </div>
         </form>
       )}
     </section>

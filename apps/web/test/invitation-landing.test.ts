@@ -29,7 +29,7 @@ test("invitation confirmation suppresses competing application forms; creation r
   assert.match(source, /!creating\s*&&\s*canCreateAgreement/);
   assert.match(source, /creating\s*&&\s*canCreateAgreement\s*\?\s*\(/);
   assert.match(source, /setWorkspace\(fresh.workspaceId\)/);
-  assert.equal(source.match(/workspaceRole=\{workspaceRole\}/g)?.length, 2);
+  assert.equal(source.match(/workspaceRole=\{workspaceRole\}/g)?.length, 1);
 });
 
 test("expired or unwanted invitations can be dismissed without consuming them", () => {

@@ -8,7 +8,10 @@ import {
 import { PostApprovalPayout } from "./post-approval-payout";
 
 import { OverviewDashboard } from "./overview-dashboard";
+import { PlusIcon } from "./icons";
 import { AgreementAllocations } from "./agreement-allocations";
+import { Avatar } from "./person";
+import { toneForId } from "../lib/person";
 import { allocationTrace } from "../lib/allocation-trace";
 import { NotificationPanel } from "./notification-panel";
 import { useEmailDelivery } from "../lib/email-capability";
@@ -16,14 +19,23 @@ import {
   useDisplayPreferences,
   NotificationsSettings,
   CurrencyDisplaySettings,
+  SettingsPaneHeader,
+  SettingsRow,
 } from "./settings-preferences";
 import { ProfileContact } from "./profile-contact";
 import { PaymentAccountsSettings } from "./payment-account-settings";
 import { ActivityLogSettings } from "./activity-log-settings";
 import { formatDate } from "../lib/preferences";
-import { AgreementInvoices } from "./agreement-invoices";
 import { ReviewDiscussion } from "./review-discussion";
+import { AgreementInvoices } from "./agreement-invoices";
 import { RevenueRules } from "./revenue-rules";
+import {
+  AgreementHeader,
+  MoneyCard,
+  RecoupmentCard,
+  RuleSteps,
+  RuleStepsLayout,
+} from "./agreement-workspace";
 import {
   Logo,
   Heading,
@@ -35,7 +47,6 @@ import {
   RevenueTable,
   AllocationTable,
   PreviewForm,
-  PasswordForm,
   AIReview,
   RulesEditor,
   safePayPalUrl,
@@ -67,12 +78,12 @@ import {
 import { AgreementName } from "./agreement-name";
 import { AgreementCreationWizard } from "./agreement-creation-wizard";
 import { AgreementIntake, type AgreementIntakeInput } from "./agreement-intake";
-import { AgreementSetup } from "./agreement-setup";
 import { AccessPrompt } from "./designer-auth";
 import { PaymentRecovery } from "./payment-recovery";
 import { MfaSettings } from "./mfa-settings";
-import { ProfileForm } from "./profile-form";
+import { PasswordRow, ProfileForm } from "./profile-form";
 import { recoverSourceDocument } from "../lib/source-recovery";
+import { AgreementSetup } from "./agreement-setup";
 import dynamic from "next/dynamic";
 const PaymentGrid = dynamic(
   () => import("../src/components/PaymentGrid").then((m) => m.PaymentGrid),
@@ -476,16 +487,19 @@ export default function FairshareApp() {
           ))}
         </nav>
         <div className="sidebar-bottom">
-          <span className="environment">{mode} · no live money</span>
+          <span className="environment">
+            <span className="environment-dot" aria-hidden="true" />
+            {title(mode)} · no live money
+          </span>
           <div className="identity">
-            <span className="avatar">{user.name.slice(0, 1)}</span>
+            <Avatar name={user.name} tone={toneForId(user.id)} />
             <div>
               <strong>{user.name}</strong>
               <small title={user.email}>{user.email}</small>
             </div>
           </div>
           <button
-            className="text-button"
+            className="text-button sign-out"
             onClick={() => {
               if (!mayLeaveDraft()) return;
               return run(async () => {
@@ -545,9 +559,28 @@ export default function FairshareApp() {
               return true;
             }}
           />
-          <Button variant="quiet" disabled={busy} onClick={() => run(refresh)}>
-            ↻ Refresh
-          </Button>
+          <button
+            type="button"
+            className={`icon-button${busy ? " is-spinning" : ""}`}
+            disabled={busy}
+            onClick={() => run(refresh)}
+            aria-label="Refresh"
+            title="Refresh"
+          >
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M21 12a9 9 0 1 1-2.64-6.36M21 4v5h-5" />
+            </svg>
+          </button>
         </div>
         {error && (
           <div className="message error" role="alert">
@@ -627,7 +660,7 @@ export default function FairshareApp() {
               <>
                 <Heading
                   title={`Good ${new Date().getHours() < 12 ? "morning" : "afternoon"}, ${user.name.split(" ")[0]}`}
-                  description="Your agreements, and what needs your attention."
+                  description={`Here's what needs you across ${agreements.length} agreement${agreements.length === 1 ? "" : "s"}.`}
                   action={
                     canCreateAgreement && (
                       <Button
@@ -636,7 +669,8 @@ export default function FairshareApp() {
                           setCreating(true);
                         }}
                       >
-                        + New agreement
+                        <PlusIcon />
+                        New agreement
                       </Button>
                     )
                   }
@@ -647,11 +681,14 @@ export default function FairshareApp() {
                   userId={user.id}
                   onOpen={(a) => run(() => openAgreement(a))}
                 />
-                <AgreementList
-                  agreements={agreements}
-                  workspaceRole={workspaceRole}
-                  onOpen={(a) => run(() => openAgreement(a))}
-                />
+                <p className="ov-footer-link">
+                  <button
+                    className="text-button"
+                    onClick={() => setSection(Section.Agreements)}
+                  >
+                    View all agreements
+                  </button>
+                </p>
               </>
             )}
             {section === Section.Agreements && !selected && (
@@ -661,13 +698,14 @@ export default function FairshareApp() {
                   description={
                     creating
                       ? "Bring the people, terms and money into one place."
-                      : "Every agreement has a clear money trail."
+                      : undefined
                   }
                   action={
                     !creating &&
                     canCreateAgreement && (
                       <Button onClick={() => setCreating(true)}>
-                        + New agreement
+                        <PlusIcon />
+                        New agreement
                       </Button>
                     )
                   }
@@ -731,43 +769,33 @@ export default function FairshareApp() {
                   />
                 ) : (
                   <>
-                    <button
-                      className="breadcrumb text-button"
-                      onClick={() => navigate(Section.Agreements)}
-                    >
-                      Agreements <span>/</span> {selected.value.name}
-                    </button>
-                    <Heading
-                      title={selected.value.name}
-                      badge={
-                        <Badge
-                          value={
-                            selected.value.reviewHold
-                              ? "REVIEW_REQUIRED"
-                              : active
-                                ? "ACTIVE"
-                                : latest?.status || "DRAFT"
-                          }
-                        />
-                      }
-                      action={
-                        <Button
-                          variant="secondary"
-                          onClick={() => navigate(Section.Payouts)}
-                        >
-                          View payouts
-                        </Button>
+                    <AgreementHeader
+                      key={JSON.stringify([selected.workspaceId, selected.id])}
+                      agreement={selected}
+                      onBack={() => navigate(Section.Agreements)}
+                      onViewPayouts={() => navigate(Section.Payouts)}
+                      renameSuggested={!!extraction?.suggestedTitle}
+                      rename={
+                        organizer
+                          ? (open, close) => (
+                              <AgreementName
+                                key={`${selected.id}:${selected.value.name}:${extraction?.suggestedTitle || ""}`}
+                                name={selected.value.name}
+                                suggestion={extraction?.suggestedTitle}
+                                busy={busy}
+                                defaultOpen={open}
+                                onClose={close}
+                                onSave={(name) =>
+                                  run(async () => {
+                                    await mutate("/name", { name });
+                                    close();
+                                  })
+                                }
+                              />
+                            )
+                          : undefined
                       }
                     />
-                    {organizer && (
-                      <AgreementName
-                        key={`${selected.id}:${selected.value.name}:${extraction?.suggestedTitle || ""}`}
-                        name={selected.value.name}
-                        suggestion={extraction?.suggestedTitle}
-                        busy={busy}
-                        onSave={(name) => run(() => mutate("/name", { name }))}
-                      />
-                    )}
                     <AgreementSetup
                       agreement={selected}
                       tab={tab}
@@ -794,67 +822,51 @@ export default function FairshareApp() {
                       )}
                       {tab === AgreementTab.Overview && (
                         <>
-                          <div className="detail-columns">
-                            <section className="panel">
-                              {!active && (
-                                <>
-                                  <h2>Revenue rules</h2>
-                                  <p className="muted">
-                                    No active rules yet. Review and approve a
-                                    version to begin.
-                                  </p>
-                                </>
-                              )}
-                              {active ? (
-                                <RevenueRules
-                                  key={`${selected.id}:${active.id}`}
-                                >
-                                  <SplitTable
-                                    agreement={selected}
-                                    rules={active.rules}
-                                  />
-                                </RevenueRules>
-                              ) : (
-                                <Empty
-                                  title="Agree on the rules first"
-                                  action={
-                                    <Button
-                                      onClick={() =>
-                                        changeAgreementTab(AgreementTab.Terms)
-                                      }
-                                    >
-                                      Set up terms
-                                    </Button>
-                                  }
-                                >
-                                  Add your people, upload the agreement and
-                                  review a proposed split together.
-                                </Empty>
-                              )}
+                          <div className="detail-columns ag-overview">
+                            <div className="ag-stack">
+                              <section className="panel ag-card">
+                                {!active && (
+                                  <>
+                                    <h2>Revenue rules</h2>
+                                    <p className="muted">
+                                      No active rules yet. Review and approve a
+                                      version to begin.
+                                    </p>
+                                  </>
+                                )}
+                                {active ? (
+                                  <RevenueRules
+                                    key={`${selected.id}:${active.id}`}
+                                  >
+                                    <RuleSteps
+                                      agreement={selected}
+                                      rules={active.rules}
+                                    />
+                                  </RevenueRules>
+                                ) : (
+                                  <Empty
+                                    title="Agree on the rules first"
+                                    action={
+                                      <Button
+                                        onClick={() =>
+                                          changeAgreementTab(AgreementTab.Terms)
+                                        }
+                                      >
+                                        Set up terms
+                                      </Button>
+                                    }
+                                  >
+                                    Add your people, upload the agreement and
+                                    review a proposed split together.
+                                  </Empty>
+                                )}
+                              </section>
                               {active?.rules.advance && (
-                                <section className="section">
-                                  <h2>Recoupment</h2>
-                                  <p>
-                                    {money(active.rules.advance.amountCents)}{" "}
-                                    advance to{" "}
-                                    {
-                                      selected.value.members.find(
-                                        (m) =>
-                                          m.userId ===
-                                          active.rules.advance!.recipientId,
-                                      )?.displayName
-                                    }
-                                    .
-                                  </p>
-                                  <progress
-                                    max={active.rules.advance.amountCents || 1}
-                                    value={
-                                      selected.value.recoupedByAdvance[
-                                        active.rules.advance.id
-                                      ] || 0
-                                    }
-                                  />
-                                  <p className="muted">
+                                <RecoupmentCard
+                                  agreement={selected}
+                                  rules={active.rules}
+                                >
+                                  <p className="muted ag-fine">
                                     {money(
                                       selected.value.recoupedByAdvance[
                                         active.rules.advance.id
@@ -863,52 +875,68 @@ export default function FairshareApp() {
                                     allocated toward recoupment. This is not
                                     proof of a completed payout.
                                   </p>
-                                </section>
+                                </RecoupmentCard>
                               )}
-                            </section>
-                            <aside className="panel">
-                              <h2>Payout status</h2>
-                              <p className="muted">
-                                An allocation records who is owed what. A payout
-                                records money sent to a recipient.
-                              </p>
-                              <p>
-                                {
-                                  payouts.filter(
-                                    (p) => p.agreement.id === selected.id,
-                                  ).length
-                                }{" "}
-                                payout items recorded
-                              </p>
-                              <Button
-                                variant="secondary"
-                                onClick={() => navigate(Section.Payouts)}
-                              >
-                                Open payouts
-                              </Button>
-                            </aside>
-                          </div>
-                          <section className="section">
-                            <h2>Incoming payments</h2>
-                            <RevenueTable
+                              <section className="panel ag-card ag-payments-card">
+                                <div className="ag-card-head">
+                                  <h2>Recent payments</h2>
+                                  <button
+                                    type="button"
+                                    className="text-button"
+                                    onClick={() =>
+                                      changeAgreementTab(AgreementTab.Payments)
+                                    }
+                                  >
+                                    View all payments →
+                                  </button>
+                                </div>
+                                <RevenueTable
+                                  agreement={selected}
+                                  onOpen={setBreakdown}
+                                />
+                              </section>
+                              <section className="panel ag-card">
+                                <h2 className="ag-card-title">Activity</h2>
+                                <ul className="activity">
+                                  {selected.value.audit
+                                    .slice(-6)
+                                    .reverse()
+                                    .map((e) => (
+                                      <li key={e.sequence}>
+                                        <span>{title(e.type)}</span>
+                                        <time>{formatDate(e.at)}</time>
+                                      </li>
+                                    ))}
+                                </ul>
+                              </section>
+                            </div>
+                            <MoneyCard
+                              userId={user.id}
                               agreement={selected}
-                              onOpen={setBreakdown}
+                              payouts={payouts.filter(
+                                (p) =>
+                                  p.agreement.id === selected.id &&
+                                  p.agreement.workspaceId ===
+                                    selected.workspaceId,
+                              )}
+                              footer={
+                                <div className="ag-tip">
+                                  <p>
+                                    An <strong>allocation</strong> records who
+                                    is owed what. A <strong>payout</strong>{" "}
+                                    records money sent to a recipient.
+                                  </p>
+                                  <button
+                                    type="button"
+                                    className="text-button"
+                                    onClick={() => navigate(Section.Payouts)}
+                                  >
+                                    Open payouts →
+                                  </button>
+                                </div>
+                              }
                             />
-                          </section>
-                          <section className="section">
-                            <h2>Activity</h2>
-                            <ul className="activity">
-                              {selected.value.audit
-                                .slice(-6)
-                                .reverse()
-                                .map((e) => (
-                                  <li key={e.sequence}>
-                                    <span>{title(e.type)}</span>
-                                    <time>{formatDate(e.at)}</time>
-                                  </li>
-                                ))}
-                            </ul>
-                          </section>
+                          </div>
                         </>
                       )}
                       {tab === AgreementTab.People && (
@@ -992,122 +1020,158 @@ export default function FairshareApp() {
                       )}
                       {tab === AgreementTab.Terms && (
                         <>
-                          <Heading
-                            small
-                            title="Terms everyone can understand"
-                            description="AI suggests an interpretation. People agree on the rules. The engine calculates the money."
-                          />
+                          {(editing || !latest) && (
+                            <Heading
+                              small
+                              title="Terms everyone can understand"
+                              description="AI suggests an interpretation. People agree on the rules. The engine calculates the money."
+                            />
+                          )}
                           {!editing && latest ? (
-                            <>
-                              <div className="row">
-                                <h3
-                                  id="agreement-proposal-review"
-                                  tabIndex={-1}
-                                >
-                                  Version {latest.id}
-                                </h3>
-                                <Badge value={latest.status} />
-                                <Button
-                                  variant="secondary"
-                                  disabled={busy}
-                                  onClick={() => {
-                                    setPreview(null);
-                                    setEditing(true);
-                                  }}
-                                >
-                                  Propose revised terms
-                                </Button>
-                              </div>
-                              <SplitTable
-                                agreement={selected}
-                                rules={latest.rules}
-                              />
-                              <Notice>
-                                Fee policy:{" "}
-                                {latest.rules.feePolicy === "BEFORE_SPLIT"
-                                  ? "Fees deducted before the split"
-                                  : "Organizer covers fees from their share"}
-                                .{" "}
-                                {latest.rules.source.origin === "HUMAN_PROPOSAL"
-                                  ? "These terms include a human proposal."
-                                  : "These terms cite a source clause."}
-                              </Notice>
-                              <blockquote>
-                                {latest.rules.source.excerpt}
-                                <footer>{latest.rules.source.clause}</footer>
-                              </blockquote>
-                              <ContractReviewPanel
-                                key={latest.id}
-                                agreement={selected}
-                                version={latest}
-                                userId={user.id}
-                                busy={busy}
-                                onAction={async (action, payload) => {
-                                  setBusy(true);
-                                  setError("");
-                                  setNotice("");
-                                  try {
-                                    await mutate(
-                                      `/versions/${latest.id}/${action}`,
-                                      payload,
-                                    );
-                                    if (action === "approve")
-                                      setApprovedForPayout(selected.id);
-                                  } finally {
-                                    setBusy(false);
-                                  }
-                                }}
-                              />
-                              {approvedForPayout === selected.id && (
-                                <PostApprovalPayout
-                                  base={base}
-                                  onDismiss={() => setApprovedForPayout("")}
-                                  onSetup={() => {
-                                    setApprovedForPayout("");
-                                    changeAgreementTab(AgreementTab.People);
-                                  }}
+                            <div className="ag-terms">
+                              <div className="ag-terms-main">
+                                <div className="ag-section-head">
+                                  <div>
+                                    <div className="ag-title">
+                                      <h2
+                                        id="agreement-proposal-review"
+                                        tabIndex={-1}
+                                      >
+                                        Rules in v{latest.id}
+                                      </h2>
+                                      <span
+                                        className={`status-chip ${
+                                          latest.id ===
+                                            selected.value.activeVersionId ||
+                                          latest.status === "APPROVED"
+                                            ? "good"
+                                            : ""
+                                        }`}
+                                      >
+                                        {latest.id ===
+                                        selected.value.activeVersionId
+                                          ? "Active"
+                                          : title(latest.status)}
+                                      </span>
+                                    </div>
+                                    <p className="muted">
+                                      People agree on the rules; the engine
+                                      calculates the money.
+                                    </p>
+                                  </div>
+                                  <Button
+                                    variant="secondary"
+                                    disabled={busy}
+                                    onClick={() => {
+                                      setPreview(null);
+                                      setEditing(true);
+                                    }}
+                                  >
+                                    Propose revised terms
+                                  </Button>
+                                </div>
+                                <RuleSteps
+                                  agreement={selected}
+                                  rules={latest.rules}
+                                  layout={RuleStepsLayout.Cards}
                                 />
-                              )}
-                              <ReviewDiscussion
-                                key={`${selected.id}:${latest.id}`}
-                                base={base}
-                                agreement={selected}
-                                version={latest}
-                                canWrite={
-                                  workspaces.find((w) => w.id === workspace)
-                                    ?.role !== "VIEWER"
-                                }
-                                onDirtyChange={setDraftDirty}
-                              />
-                              <AgreementVersions agreement={selected} />
-                              <section className="section">
-                                <h3>Preview an incoming payment</h3>
-                                <p className="muted">
-                                  Illustrative only. No payment or payout is
-                                  created.
-                                </p>
-                                <PreviewForm
+                                {latest.rules.source.excerpt && (
+                                  <figure className="ag-source">
+                                    <figcaption>
+                                      {latest.rules.source.origin ===
+                                      "HUMAN_PROPOSAL"
+                                        ? "Human proposal"
+                                        : "Source wording"}
+                                      {latest.rules.source.clause && (
+                                        <span className="clause-chip">
+                                          §{" "}
+                                          {latest.rules.source.clause.replace(
+                                            /^(clause|section)\s+/i,
+                                            "",
+                                          )}
+                                        </span>
+                                      )}
+                                    </figcaption>
+                                    <blockquote>
+                                      {latest.rules.source.excerpt}
+                                    </blockquote>
+                                  </figure>
+                                )}
+                                <ContractReviewPanel
+                                  key={latest.id}
+                                  agreement={selected}
+                                  version={latest}
+                                  userId={user.id}
                                   busy={busy}
-                                  onSubmit={(grossCents, feeCents) =>
-                                    run(async () =>
-                                      setPreview(
-                                        await api(
-                                          `${base}/versions/${latest.id}/preview`,
-                                          "POST",
-                                          { grossCents, feeCents },
-                                        ),
-                                      ),
-                                    )
-                                  }
+                                  onAction={async (action, payload) => {
+                                    setBusy(true);
+                                    setError("");
+                                    setNotice("");
+                                    try {
+                                      await mutate(
+                                        `/versions/${latest.id}/${action}`,
+                                        payload,
+                                      );
+                                      if (action === "approve")
+                                        setApprovedForPayout(selected.id);
+                                    } finally {
+                                      setBusy(false);
+                                    }
+                                  }}
                                 />
-                                {preview && (
-                                  <AllocationTable
-                                    allocations={preview.allocations}
-                                    agreement={selected}
+                                {approvedForPayout === selected.id && (
+                                  <PostApprovalPayout
+                                    base={base}
+                                    onDismiss={() => setApprovedForPayout("")}
+                                    onSetup={() => {
+                                      setApprovedForPayout("");
+                                      changeAgreementTab(AgreementTab.People);
+                                    }}
                                   />
                                 )}
-                              </section>
-                            </>
+                                <ReviewDiscussion
+                                  key={`${selected.id}:${latest.id}`}
+                                  base={base}
+                                  agreement={selected}
+                                  version={latest}
+                                  canWrite={
+                                    workspaces.find((w) => w.id === workspace)
+                                      ?.role !== "VIEWER"
+                                  }
+                                  onDirtyChange={setDraftDirty}
+                                />
+                                <section className="section">
+                                  <h3>Preview an incoming payment</h3>
+                                  <p className="muted">
+                                    Illustrative only. No payment or payout is
+                                    created.
+                                  </p>
+                                  <PreviewForm
+                                    busy={busy}
+                                    onSubmit={(grossCents, feeCents) =>
+                                      run(async () =>
+                                        setPreview(
+                                          await api(
+                                            `${base}/versions/${latest.id}/preview`,
+                                            "POST",
+                                            { grossCents, feeCents },
+                                          ),
+                                        ),
+                                      )
+                                    }
+                                  />
+                                  {preview && (
+                                    <AllocationTable
+                                      allocations={preview.allocations}
+                                      agreement={selected}
+                                    />
+                                  )}
+                                </section>
+                              </div>
+                              <aside className="ag-terms-rail">
+                                <AgreementVersions agreement={selected} />
+                              </aside>
+                            </div>
                           ) : (
                             <>
                               {editing && (
@@ -1571,8 +1635,15 @@ export default function FairshareApp() {
                   }
                   loading={busy}
                   rows={payouts.map((p) => ({
-                    id: p.id,
-                    agreementId: p.agreement.id,
+                    id: JSON.stringify([
+                      p.agreement.workspaceId,
+                      p.agreement.id,
+                      p.id,
+                    ]),
+                    agreementId: JSON.stringify([
+                      p.agreement.workspaceId,
+                      p.agreement.id,
+                    ]),
                     agreementName: p.agreement.value.name,
                     recipientName:
                       p.agreement.value.members.find(
@@ -1590,7 +1661,9 @@ export default function FairshareApp() {
                     ),
                   }))}
                   onOpenAgreement={(id) => {
-                    const a = agreements.find((a) => a.id === id);
+                    const a = agreements.find(
+                      (a) => JSON.stringify([a.workspaceId, a.id]) === id,
+                    );
                     if (a) run(() => openAgreement(a));
                   }}
                 />
@@ -1627,169 +1700,188 @@ export default function FairshareApp() {
                   title="Settings"
                   description="Your account and test environment."
                 />
-                <nav className="settings-tabs" aria-label="Settings sections">
-                  {[
-                    "Profile",
-                    "Payment accounts",
-                    "Notifications",
-                    "Currency & display",
-                    "Activity log",
-                  ].map((tab) => (
-                    <Button
-                      key={tab}
-                      variant={settingsTab === tab ? "primary" : "secondary"}
-                      aria-pressed={settingsTab === tab}
-                      onClick={() => setSettingsTab(tab)}
-                    >
-                      {tab}
-                    </Button>
-                  ))}
-                </nav>
-                {settingsTab === "Payment accounts" &&
-                  (workspace ? (
-                    <>
-                      <p className="muted">
-                        These payout details apply to{" "}
-                        {agreements
-                          .filter((item) => item.workspaceId === workspace)
-                          .map((item) => item.value.name)
-                          .join(", ") || "agreements shared with this team"}
-                        . To manage another agreement, open it using the
-                        agreement picker above, then return here.
-                      </p>
-                      <PaymentAccountsSettings
-                        key={workspace}
+                <div className="settings-layout">
+                  <nav
+                    className="settings-subnav"
+                    aria-label="Settings sections"
+                  >
+                    {[
+                      "Profile",
+                      "Notifications",
+                      "Payment accounts",
+                      "Currency & display",
+                      "Activity log",
+                    ].map((tab) => (
+                      <button
+                        key={tab}
+                        type="button"
+                        className="settings-subnav-item"
+                        aria-current={settingsTab === tab ? "page" : undefined}
+                        onClick={() => setSettingsTab(tab)}
+                      >
+                        {tab}
+                      </button>
+                    ))}
+                  </nav>
+                  <div className="settings-content">
+                    {settingsTab === "Payment accounts" &&
+                      (workspace ? (
+                        <>
+                          <p className="muted">
+                            These payout details apply to{" "}
+                            {agreements
+                              .filter((item) => item.workspaceId === workspace)
+                              .map((item) => item.value.name)
+                              .join(", ") || "agreements shared with this team"}
+                            . To manage another agreement, open it using the
+                            agreement picker above, then return here.
+                          </p>
+                          <PaymentAccountsSettings
+                            key={workspace}
+                            workspace={workspace}
+                            canEdit={
+                              workspaces.find((w) => w.id === workspace)
+                                ?.role !== "VIEWER"
+                            }
+                          />
+                        </>
+                      ) : (
+                        <Empty title="Start an agreement first">
+                          Upload your first agreement to set up a payout
+                          destination.
+                        </Empty>
+                      ))}
+                    {settingsTab === "Notifications" && (
+                      <NotificationsSettings key={user.id} />
+                    )}
+                    {settingsTab === "Currency & display" && (
+                      <CurrencyDisplaySettings key={user.id} />
+                    )}
+                    {settingsTab === "Activity log" && (
+                      <ActivityLogSettings
+                        key={`${user.id}:${workspace}`}
                         workspace={workspace}
-                        canEdit={
-                          workspaces.find((w) => w.id === workspace)?.role !==
-                          "VIEWER"
-                        }
                       />
-                    </>
-                  ) : (
-                    <Empty title="Start an agreement first">
-                      Upload your first agreement to set up a payout
-                      destination.
-                    </Empty>
-                  ))}
-                {settingsTab === "Notifications" && (
-                  <NotificationsSettings key={user.id} />
-                )}
-                {settingsTab === "Currency & display" && (
-                  <CurrencyDisplaySettings key={user.id} />
-                )}
-                {settingsTab === "Activity log" && (
-                  <ActivityLogSettings
-                    key={`${user.id}:${workspace}`}
-                    workspace={workspace}
-                  />
-                )}
-                {settingsTab === "Profile" && (
-                  <div className="settings-grid">
-                    <section className="panel settings-profile">
-                      <span className="eyebrow">PROFILE</span>
-                      <ProfileContact
-                        key={user.id}
-                        name={user.name}
-                        email={user.email}
-                      />
-                      <ProfileForm
-                        key={user.id}
-                        name={user.name}
-                        busy={busy}
-                        onSave={async (name) => {
-                          const result = await api("auth/profile", "POST", {
-                            name,
-                          });
-                          setUser(result.user);
-                          setNotice(
-                            "Display name saved. Existing agreement names are unchanged.",
-                          );
-                        }}
-                      />
-                      <p className="muted">
-                        Current environment: {mode}. Live money is disabled.
-                      </p>
-                      {emailDelivery && (
-                        <Button
-                          variant="secondary"
-                          disabled={busy}
-                          onClick={() =>
-                            run(async () => {
-                              const r = await api(
-                                "auth/verification/request",
-                                "POST",
-                                {},
-                              );
-                              setNotice(
-                                r.notice ||
-                                  "Verification email requested. Check your inbox.",
-                              );
-                              if (r.demoVerificationLink)
-                                setInviteLink(r.demoVerificationLink);
-                            })
-                          }
-                        >
-                          Verify email
-                        </Button>
-                      )}
-                      {inviteLink && (
-                        <a className="block-link" href={inviteLink}>
-                          Open demo verification/invitation link
-                        </a>
-                      )}
-                    </section>
-                    <section className="panel">
-                      <h2>Security</h2>
-                      <p className="muted">
-                        Changing your password signs you out so you can
-                        reconnect securely.
-                      </p>
-                      <PasswordForm
-                        busy={busy}
-                        onSubmit={(currentPassword, newPassword) =>
-                          run(async () => {
-                            await api("auth/password", "POST", {
-                              currentPassword,
-                              newPassword,
-                            });
+                    )}
+                    {settingsTab === "Profile" && (
+                      <>
+                        <section className="settings-pane">
+                          <SettingsPaneHeader
+                            title="Profile"
+                            description="How you appear to the people on your agreements."
+                          />
+                          <ProfileContact
+                            key={`contact:${user.id}`}
+                            userId={user.id}
+                            name={user.name}
+                            email={user.email}
+                            emailVerified={
+                              "emailVerified" in user &&
+                              user.emailVerified === true
+                            }
+                            emailAction={
+                              !(
+                                "emailVerified" in user &&
+                                user.emailVerified === true
+                              ) &&
+                              emailDelivery && (
+                                <Button
+                                  type="button"
+                                  variant="secondary"
+                                  disabled={busy}
+                                  onClick={() =>
+                                    run(async () => {
+                                      const r = await api(
+                                        "auth/verification/request",
+                                        "POST",
+                                        {},
+                                      );
+                                      setNotice(
+                                        r.notice ||
+                                          "Verification email requested. Check your inbox.",
+                                      );
+                                      if (r.demoVerificationLink)
+                                        setInviteLink(r.demoVerificationLink);
+                                    })
+                                  }
+                                >
+                                  Verify email
+                                </Button>
+                              )
+                            }
+                          >
+                            <ProfileForm
+                              key={`name:${user.id}`}
+                              name={user.name}
+                              busy={busy}
+                              onSave={async (name) => {
+                                const result = await api(
+                                  "auth/profile",
+                                  "POST",
+                                  { name },
+                                );
+                                setUser(result.user);
+                                setNotice(
+                                  "Display name saved. Existing agreement names are unchanged.",
+                                );
+                              }}
+                            />
+                          </ProfileContact>
+                          <PasswordRow
+                            busy={busy}
+                            onSubmit={(currentPassword, newPassword) =>
+                              run(async () => {
+                                await api("auth/password", "POST", {
+                                  currentPassword,
+                                  newPassword,
+                                });
+                                setUser(null);
+                                setWorkspace("");
+                              })
+                            }
+                          />
+                          <SettingsRow
+                            label="Environment"
+                            hint="Live money is disabled."
+                          >
+                            <span className="status-chip warning">{mode}</span>
+                          </SettingsRow>
+                          {inviteLink && (
+                            <a className="block-link" href={inviteLink}>
+                              Open demo verification/invitation link
+                            </a>
+                          )}
+                        </section>
+                        <MfaSettings
+                          onSignOut={() => {
                             setUser(null);
                             setWorkspace("");
-                          })
-                        }
-                      />
-                    </section>
-                    <MfaSettings
-                      onSignOut={() => {
-                        setUser(null);
-                        setWorkspace("");
-                      }}
-                    />
-                    <section className="panel">
-                      <h2>Other invitations</h2>
-                      {workspaces.find((w) => w.id === workspace)?.role ===
-                        "OWNER" && (
-                        <PrivateInvitation
-                          key={workspace}
-                          workspace={workspace}
+                          }}
                         />
-                      )}
-                      <p className="muted">
-                        Accept a private invitation shared with your account.
-                      </p>
-                      <SimpleForm
-                        label="Invitation token (if shared manually)"
-                        button="Accept invitation"
-                        busy={busy}
-                        onSubmit={(token) =>
-                          run(async () => {
-                            await acceptInvitation(token);
-                          })
-                        }
-                      />
-                    </section>
+                        <section className="panel">
+                          <h2>Other invitations</h2>
+                          {workspaces.find((w) => w.id === workspace)?.role ===
+                            "OWNER" && (
+                            <PrivateInvitation
+                              key={workspace}
+                              workspace={workspace}
+                            />
+                          )}
+                          <SimpleForm
+                            label="Invitation token (if shared manually)"
+                            button="Accept invitation"
+                            busy={busy}
+                            onSubmit={(token) =>
+                              run(async () => {
+                                await acceptInvitation(token);
+                              })
+                            }
+                          />
+                        </section>
+                      </>
+                    )}
                   </div>
-                )}
+                </div>
               </>
             )}
           </>
