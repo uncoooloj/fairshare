@@ -471,7 +471,7 @@ export default function FairshareApp() {
           )}
           <span className="spacer" />
           <NotificationPanel
-            key={user.id}
+            key={`${user.id}:${workspace}`}
             agreementIds={agreements.map((agreement) => agreement.id)}
             onOpenAgreement={(id) => {
               const agreement = agreements.find((item) => item.id === id);
