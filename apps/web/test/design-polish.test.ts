@@ -104,7 +104,8 @@ test("polish preserves personal finance and tenant-qualified identities", () => 
   assert.match(app, /payoutId: p\.id/);
   assert.match(app, /agreementId: p\.agreement\.id/);
   assert.match(app, /agreementKey: agreementIdentityKey\(p\.agreement\)/);
-  assert.match(app, /These payout details apply to/);
+  // The account-level email covers every agreement; no per-agreement list.
+  assert.doesNotMatch(app, /These payout details apply to/);
   assert.doesNotMatch(
     app,
     /label="Workspace name"|Payment accounts are scoped to a workspace/,

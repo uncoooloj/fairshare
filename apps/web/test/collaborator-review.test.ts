@@ -225,8 +225,9 @@ test("review shows the decision bar only while this person must decide", () => {
       justApproved: true,
     }),
   );
-  assert.match(paid, /Where should we send your share\?/);
+  assert.match(paid, /Where should we send your money\?/);
   assert.match(paid, /Do this later/);
+  assert.doesNotMatch(paid, /Your approval is already saved/);
 });
 
 test("something's not right: choices map to the existing change topics; note required", () => {
