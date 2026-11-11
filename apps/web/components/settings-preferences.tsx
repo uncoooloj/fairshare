@@ -238,8 +238,8 @@ export function CurrencyDisplaySettings() {
               <option value="USD">USD – US dollar</option>
             </select>
             <p id="currency-help" className="muted">
-              Agreements and PayPal sandbox payments currently support USD only.
-              This setting never converts money.
+              Agreements and payments currently support USD only. This setting
+              never converts money.
             </p>
           </label>
           <label>

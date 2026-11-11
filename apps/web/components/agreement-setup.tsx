@@ -77,7 +77,7 @@ export function NewAgreement({
             </p>
           </li>
         </ol>
-        <small>Sandbox only. Creating an agreement does not move money.</small>
+        <small>Creating an agreement does not move money.</small>
       </aside>
     </div>
   );

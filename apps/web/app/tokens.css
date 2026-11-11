@@ -34,6 +34,10 @@
   --space-10: 40px;
   --space-12: 48px;
   --space-16: 64px;
+  --control-min-height: 44px;
+  --control-line-height: 22px;
+  --control-padding-y: 10px;
+  --control-padding-x: 12px;
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 12px;

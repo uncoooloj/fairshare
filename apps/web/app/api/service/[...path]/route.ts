@@ -1,3 +1,4 @@
+import { acceptsRequestOrigin } from "../../../../lib/request-origin";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { NextRequest, NextResponse } from "next/server";
 export const runtime = "nodejs";
@@ -34,15 +35,10 @@ async function handler(
   if (!["GET", "HEAD"].includes(req.method)) {
     const origin = req.headers.get("origin");
     const requestHost = req.headers.get("host") || new URL(req.url).host;
-    let sameOrigin = false;
-    try {
-      const parsed = new URL(origin || "");
-      sameOrigin =
-        ["http:", "https:"].includes(parsed.protocol) &&
-        parsed.host === requestHost &&
-        (!process.env.FAIRSHARE_WEB_ORIGIN ||
-          parsed.origin === process.env.FAIRSHARE_WEB_ORIGIN);
-    } catch {}
+    const sameOrigin = acceptsRequestOrigin(origin, requestHost, [
+      process.env.FAIRSHARE_WEB_ORIGIN || "",
+      ...(process.env.FAIRSHARE_WEB_ALTERNATE_ORIGINS || "").split(","),
+    ]);
     if (!sameOrigin)
       return NextResponse.json(
         { error: { message: "Request origin rejected" } },

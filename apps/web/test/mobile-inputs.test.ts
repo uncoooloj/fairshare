@@ -22,3 +22,19 @@ test("mobile focus fix does not prevent users from zooming", () => {
   const css = source("../app/globals.css");
   assert.doesNotMatch(css, /touch-action\s*:\s*none/);
 });
+
+test("selects and text inputs share a 44px minimum control size", () => {
+  const css = source("../app/globals.css");
+  const tokens = source("../app/tokens.css");
+  assert.match(tokens, /--control-min-height: 44px/);
+  assert.match(
+    css,
+    /input:not\(\[type="checkbox"\]\).*\nselect \{\s*min-height: var\(--control-min-height\);\s*line-height: var\(--control-line-height\)/,
+  );
+  assert.match(
+    css,
+    /select:not\(\[multiple\]\):not\(\[size\]\) \{\s*appearance: none;\s*-webkit-appearance: none;/,
+  );
+  assert.match(css, /background-position: right 12px center/);
+  assert.doesNotMatch(css, /min-height: 34px/);
+});

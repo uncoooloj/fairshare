@@ -1,3 +1,9 @@
+import {
+  invoiceBody,
+  invoiceId,
+  parseInvoice,
+  type CreateInvoice,
+} from "./invoices.js";
 /** PayPal SANDBOX adapter. Captured payments are not escrow or guaranteed prizes. */
 export class PayPalError extends Error {
   constructor(
@@ -149,6 +155,52 @@ export class PayPalSandbox {
     } catch {
       throw new PayPalError("PAYPAL_OUTCOME_UNKNOWN");
     }
+  }
+  async createInvoice(input: CreateInvoice) {
+    const body = invoiceBody(input);
+    requestKey(input.requestId);
+    const result = await this.call(
+      "/v2/invoicing/invoices",
+      body,
+      input.requestId,
+    );
+    // Some PayPal deployments return only a self link even with return=representation.
+    if (result.id) return this.getInvoice(invoiceId(result.id));
+    const href =
+      result.href ??
+      result.links?.find((link: Json) => link.rel === "self")?.href;
+    let url: URL;
+    try {
+      url = new URL(href);
+    } catch {
+      throw new PayPalError("PAYPAL_OUTCOME_UNKNOWN");
+    }
+    if (
+      url.origin !== BASE ||
+      !/^\/v2\/invoicing\/invoices\/INV2-[A-Z0-9-]+$/.test(url.pathname)
+    )
+      throw new PayPalError("PAYPAL_OUTCOME_UNKNOWN");
+    return this.getInvoice(invoiceId(url.pathname.split("/").at(-1)!));
+  }
+  async getInvoice(id: string) {
+    invoiceId(id);
+    return parseInvoice(
+      await this.call(`/v2/invoicing/invoices/${id}`, undefined),
+      id,
+    );
+  }
+  /** Publishes a payable link without notifying customer or merchant by email. */
+  async publishInvoice(id: string, requestId: string) {
+    invoiceId(id);
+    await this.call(
+      `/v2/invoicing/invoices/${id}/send`,
+      {
+        send_to_recipient: false,
+        send_to_invoicer: false,
+      },
+      requestKey(requestId),
+    );
+    return this.getInvoice(id);
   }
   async createOrder(input: CreateOrder) {
     if (!input.reference || input.reference.length > 127)

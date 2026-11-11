@@ -11,6 +11,7 @@ import { PaymentAccountsSettings } from "./payment-account-settings";
 import { ActivityLogSettings } from "./activity-log-settings";
 import { formatDate } from "../lib/preferences";
 import { LocalOcrChoice } from "./local-ocr-choice";
+import { AgreementInvoices } from "./agreement-invoices";
 import { SandboxCheckoutForm } from "./sandbox-checkout-form";
 import { ReviewDiscussion, ReviewReminder } from "./review-discussion";
 import { RevenueRules } from "./revenue-rules";
@@ -103,10 +104,10 @@ export default function FairshareApp() {
     [flowToken, setFlowToken] = useState(""),
     [flowKind, setFlowKind] = useState("");
   const [draftDirty, setDraftDirty] = useState(false);
-  const rulesDirty = useRef(false);
   const workspaceRequest = useRef(0);
   const currentWorkspace = useRef("");
   const openRequest = useRef(0);
+  const rulesDirty = useRef(false);
   function commitWorkspace(id: string) {
     workspaceRequest.current++;
     openRequest.current++;
@@ -127,6 +128,11 @@ export default function FairshareApp() {
     setInviteLink("");
     setDraftDirty(false);
     rulesDirty.current = false;
+  }
+  function clearSession() {
+    commitWorkspace("");
+    setWorkspaces([]);
+    setUser(null);
   }
   function mayLeaveDraft() {
     if (busy) return false;
@@ -202,8 +208,8 @@ export default function FairshareApp() {
   }
   async function acceptInvitation(token: string) {
     const result = await api("invitations/accept", "POST", { token });
-    setSelected(null);
-    setAgreements([]);
+    // Adopt the committed membership immediately. Do not make a consumed
+    // one-use invitation look unsuccessful if a later workspace fetch fails.
     setWorkspaces((current) => [
       ...current.filter((item) => item.id !== result.workspace.id),
       result.workspace,
@@ -305,7 +311,6 @@ export default function FairshareApp() {
         result.agreement,
         ...current.filter((item) => item.id !== result.agreement.id),
       ]);
-      openRequest.current++;
       setSelected(result.agreement);
       setCreating(false);
       setSection(Section.Agreements);
@@ -493,10 +498,7 @@ export default function FairshareApp() {
               if (!mayLeaveDraft()) return;
               return run(async () => {
                 await api("auth/logout", "POST", {});
-                setUser(null);
-                commitWorkspace("");
-                setSelected(null);
-                setAgreements([]);
+                clearSession();
               });
             }}
           >
@@ -513,8 +515,6 @@ export default function FairshareApp() {
               value={workspace}
               onChange={(e) => {
                 if (!mayLeaveDraft()) return;
-                openRequest.current++;
-                setSelected(null);
                 commitWorkspace(e.target.value);
               }}
             >
@@ -1344,6 +1344,13 @@ export default function FairshareApp() {
                         title="Incoming payments"
                         description="Confirmed provider data is used to calculate each allocation. Browser returns are not proof of payment."
                       />
+                      <AgreementInvoices
+                        key={selected.id}
+                        base={base}
+                        agreementName={selected.value.name}
+                        userId={user.id}
+                        canCreate={organizer && !!active}
+                      />
                       {organizer && active && (
                         <SandboxCheckoutForm
                           key={selected.id}
@@ -1719,8 +1726,7 @@ export default function FairshareApp() {
                               currentPassword,
                               newPassword,
                             });
-                            setUser(null);
-                            commitWorkspace("");
+                            clearSession();
                           })
                         }
                       />
@@ -1762,8 +1768,7 @@ export default function FairshareApp() {
                     )}
                     <MfaSettings
                       onSignOut={() => {
-                        setUser(null);
-                        commitWorkspace("");
+                        clearSession();
                       }}
                     />
                     <section className="panel">

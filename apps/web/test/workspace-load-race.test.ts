@@ -21,6 +21,7 @@ test("workspace changes fence in-flight reads and clear workspace-scoped state",
     "setPayments([])",
     "setPayouts([])",
     'setInviteLink("")',
+    "setDraftDirty(false)",
   ])
     assert.ok(
       commit.includes(state),
@@ -99,6 +100,23 @@ test("workspace changes fence in-flight reads and clear workspace-scoped state",
     (mutate.match(/workspaceRequestId !== workspaceRequest\.current/g) || [])
       .length >= 3,
   );
+
+  const intake = source
+    .split("async function createFromAgreement")[1]
+    .split("async function refresh")[0];
+  assert.match(intake, /commitWorkspace\(result\.workspace\.id\)/);
+  assert.ok(
+    intake.indexOf("commitWorkspace(result.workspace.id)") <
+      intake.indexOf("setSelected(result.agreement)"),
+  );
+
+  const session = source
+    .split("function clearSession() {")[1]
+    .split("function mayLeaveDraft")[0];
+  assert.match(session, /commitWorkspace\(""\)/);
+  assert.match(session, /setWorkspaces\(\[\]\)/);
+  assert.match(session, /setUser\(null\)/);
+  assert.equal((source.match(/clearSession\(\)/g) || []).length, 4);
 });
 
 test("an old-render refresh cannot adopt the newly selected workspace", () => {
