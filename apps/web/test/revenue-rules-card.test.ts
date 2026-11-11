@@ -83,18 +83,16 @@ test("active rules render as one card of plain numbered steps", () => {
   assert.match(html, /Revenue rules/);
   assert.match(html, /Every payment runs through these steps, in order\./);
   assert.match(html, /In use/);
-  for (const label of [
-    "PayPal fee",
-    "Advance paid back first",
-    "Split",
-    "Term",
-  ])
+  for (const label of ["PayPal fee", "Advance paid back first", "Split"])
     assert.match(html, new RegExp(`>${label}<`));
   assert.match(html, /Maya gets their \$2,000 advance back before any split\./);
   assert.match(html, /The rest is split 50 \/ 30 \/ 20\./);
   assert.match(html, /Maya 50%/);
   assert.match(html, /Riley 20%/);
-  assert.match(html, /Applies to payments from Oct 1, 2026 to Sep 30, 2027\./);
+  assert.match(html, /<h3>Current agreement dates<\/h3>/);
+  assert.match(html, /<dt>Start<\/dt><dd>Oct 1, 2026<\/dd>/);
+  assert.match(html, /<dt>End<\/dt><dd>Sep 30, 2027<\/dd>/);
+  assert.doesNotMatch(html, /payments from/);
   // Clause chips show the bare clause number and open the document.
   assert.match(html, /aria-label="Clause 4\.1: show it in the document"/);
   assert.match(html, /<\/svg>4\.2<\/button>/);
@@ -120,7 +118,7 @@ test("one person at 100% gets a sentence and a chip, no split bar", () => {
   const v = version(1, "ACTIVE", rules);
   const html = render(agreement([v], 1), v);
   assert.match(html, /Maya gets 100%\./);
-  assert.match(html, /Added by you/);
+  assert.match(html, /Added by the team/);
   assert.doesNotMatch(
     html,
     /split-bar|Revenue sharing proposal|Proposed split clarification/,
@@ -135,18 +133,62 @@ test("a version sent for approval uses the same card with its own badge", () => 
   assert.doesNotMatch(html, /In use/);
 });
 
-test("advance paid back card uses plain words", () => {
+test("advance allocation card uses truthful ledger language", () => {
   const html = renderToStaticMarkup(
     createElement(RecoupmentCard, {
       agreement: agreement([], 1, 200000),
       rules: shared,
     }),
   );
-  assert.match(html, /Advance paid back/);
-  assert.match(html, /\$2,000 of \$2,000 paid back/);
-  assert.match(html, /Complete/);
+  assert.match(html, /Advance allocation/);
+  assert.match(html, /\$2,000 of \$2,000 allocated toward the advance/);
+  assert.match(html, /Fully allocated/);
   assert.match(html, /Every payment now splits 50 \/ 30 \/ 20\./);
-  assert.doesNotMatch(html.replace(/<[^>]*>/g, " "), /recoup|allocat/i);
+  assert.doesNotMatch(html, /paid back|has their advance back/);
+});
+
+test("current agreement dates preserve end-only, missing-end and no-end states", () => {
+  const v = version(1, "ACTIVE", { ...shared, advance: undefined });
+  const withDetails = (details: {
+    effectiveFrom?: string;
+    effectiveTo?: string | null;
+  }) => {
+    const a = agreement([v], 1);
+    a.value.details = {
+      currency: "USD",
+      ...details,
+    } as Agreement["value"]["details"];
+    return render(a, v);
+  };
+  assert.match(
+    withDetails({ effectiveTo: "2027-09-30" }),
+    /<dt>Start<\/dt><dd>Not recorded<\/dd>[\s\S]*<dt>End<\/dt><dd>Sep 30, 2027<\/dd>/,
+  );
+  assert.match(
+    withDetails({ effectiveFrom: "2026-10-01", effectiveTo: undefined }),
+    /<dt>Start<\/dt><dd>Oct 1, 2026<\/dd>[\s\S]*<dt>End<\/dt><dd>Not recorded<\/dd>/,
+  );
+  assert.match(
+    withDetails({ effectiveFrom: "2026-10-01", effectiveTo: null }),
+    /<dt>Start<\/dt><dd>Oct 1, 2026<\/dd>[\s\S]*<dt>End<\/dt><dd>No end date<\/dd>/,
+  );
+  assert.doesNotMatch(withDetails({}), /ag-current-details/);
+});
+
+test("clause requests include the producing version and document identity", () => {
+  const workspace = readFileSync(
+    new URL("../components/agreement-workspace.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(workspace, /versionId,\s*documentId/);
+  assert.match(workspace, /id: source\.citation/);
+  const documentView = readFileSync(
+    new URL("../components/document-citation-view.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(documentView, /pendingCitation/);
+  assert.match(documentView, /matchesCitationTarget/);
+  assert.match(documentView, /typeof detail !== "string"/);
 });
 
 test("the Agreement tab drops the old source and active-rules blocks", () => {
