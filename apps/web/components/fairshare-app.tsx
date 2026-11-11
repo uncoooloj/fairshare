@@ -1162,15 +1162,12 @@ export default function FairshareApp() {
           )}
           {section === Section.Payouts && !selected && (
             <PayoutsSection
-              user={user}
               agreements={agreements}
               payouts={payouts}
-              workspace={workspace}
               busy={busy}
               run={run}
               navigate={navigate}
               openAgreement={openAgreement}
-              loadWorkspace={loadWorkspace}
             />
           )}
           {section === Section.Settings && !selected && (

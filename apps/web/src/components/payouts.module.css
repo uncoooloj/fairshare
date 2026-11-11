@@ -90,12 +90,6 @@
   visibility: visible;
   opacity: 1;
 }
-.totalsNote {
-  margin: 0 0 24px;
-  color: var(--color-muted, #66736d);
-  font-size: 12px;
-  line-height: 1.5;
-}
 .toolbar {
   display: flex;
   flex-wrap: wrap;

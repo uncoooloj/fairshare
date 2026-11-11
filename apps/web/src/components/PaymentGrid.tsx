@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type MouseEvent,
   type ReactNode,
 } from "react";
 import { AgGridReact } from "ag-grid-react";
@@ -47,6 +48,18 @@ const theme = themeQuartz.withParams({
 /** Above this many rows the grid pages; at or below it, no pagination shows at all. */
 export const PAYOUT_PAGE_SIZE = 20;
 const NO_DATE_HINT = "No date was recorded for this payout.";
+
+function isInteractiveGridTarget(target: EventTarget | null) {
+  return (
+    target instanceof Element &&
+    Boolean(
+      target.closest(
+        "button, a, input, select, textarea, [role='button'], [contenteditable='true']",
+      ),
+    )
+  );
+}
+
 export interface PaymentGridProps {
   rows: readonly PaymentGridRow[];
   loading?: boolean;
@@ -107,6 +120,26 @@ export function PaymentGrid({
   const selected = !loading
     ? data.rows.find((row) => row.id === selectedId)
     : undefined;
+  const openPayoutDetails = (row?: PaymentGridRow) => {
+    if (row) setSelectedId(row.id);
+  };
+  const preventRowOpen = (event: MouseEvent<HTMLButtonElement>) =>
+    event.stopPropagation();
+  const openPayoutFromKeyboard = (
+    event: Event | null | undefined,
+    row?: PaymentGridRow,
+  ) => {
+    if (
+      !row ||
+      !event ||
+      !(event instanceof KeyboardEvent) ||
+      isInteractiveGridTarget(event.target) ||
+      (event.key !== "Enter" && event.key !== " ")
+    )
+      return;
+    event.preventDefault();
+    openPayoutDetails(row);
+  };
   function exportCsv() {
     const url = URL.createObjectURL(
       new Blob([payoutCsv(filteredRows)], { type: "text/csv;charset=utf-8" }),
@@ -129,7 +162,10 @@ export function PaymentGrid({
           row && onOpenAgreement ? (
             <button
               type="button"
-              onClick={() => onOpenAgreement(row.agreementKey)}
+              onClick={(event) => {
+                preventRowOpen(event);
+                onOpenAgreement(row.agreementKey);
+              }}
               style={{
                 border: 0,
                 padding: 0,
@@ -212,7 +248,10 @@ export function PaymentGrid({
               type="button"
               className={`${styles.control} ${styles.cellButton}`}
               aria-label={`View payout to ${row.recipientName}`}
-              onClick={() => setSelectedId(row.id)}
+              onClick={(event) => {
+                preventRowOpen(event);
+                openPayoutDetails(row);
+              }}
             >
               View
             </button>
@@ -285,7 +324,6 @@ export function PaymentGrid({
           </div>
         ))}
       </div>
-      <p className={styles.totalsNote}>Totals are for all time.</p>
       {(loading || data.rows.length > 0) && (
         <div className={styles.toolbar}>
           <label className={styles.field} htmlFor={searchId}>
@@ -395,6 +433,13 @@ export function PaymentGrid({
             overlayNoRowsTemplate="<span>No payouts match. Try clearing your filters.</span>"
             suppressCellFocus={false}
             ensureDomOrder
+            onCellClicked={(event) => {
+              if (!isInteractiveGridTarget(event.event?.target ?? null))
+                openPayoutDetails(event.data);
+            }}
+            onCellKeyDown={(event) =>
+              openPayoutFromKeyboard(event.event, event.data)
+            }
             onGridReady={(event) => {
               gridApiRef.current = event.api;
               event.api.setGridAriaProperty(
