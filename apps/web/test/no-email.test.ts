@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { appSource } from "./app-source";
 const source = (file: string) =>
   readFileSync(new URL("../" + file, import.meta.url), "utf8");
 test("email controls require confirmed server capability, failing closed", () => {
@@ -18,10 +19,7 @@ test("email controls require confirmed server capability, failing closed", () =>
     source("components/password-recovery.tsx"),
     /reset\s*\|\|\s*emailDelivery/,
   );
-  assert.match(
-    source("components/fairshare-app.tsx"),
-    /emailDelivery\s*&&\s*\(?\s*<Button/,
-  );
+  assert.match(appSource(), /emailDelivery\s*&&\s*\(?\s*<Button/);
 });
 test("review reminders copy locally and notification preferences are in-app only", () => {
   const reminder = source("components/review-discussion.tsx").split(

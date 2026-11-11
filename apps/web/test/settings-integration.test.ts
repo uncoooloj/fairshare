@@ -3,11 +3,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { NextRequest } from "next/server";
 import { GET, PUT, POST } from "../app/api/service/[...path]/route";
+import { appSource } from "./app-source";
 test("five settings sections mount real components and protect workspace-less account setup", () => {
-  const source = readFileSync(
-    new URL("../components/fairshare-app.tsx", import.meta.url),
-    "utf8",
-  );
+  const source = appSource();
   for (const label of [
     "Profile",
     "Payment accounts",

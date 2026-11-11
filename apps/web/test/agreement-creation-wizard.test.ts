@@ -9,6 +9,7 @@ import {
   creationSteps,
 } from "../components/agreement-creation-wizard";
 import type { Agreement } from "../lib/model";
+import { appSource } from "./app-source";
 
 test("v2 creation has one ordered upload-first stepper, not agreement tabs", () => {
   assert.deepEqual(creationSteps, ["Document", "Details", "People", "Review"]);
@@ -64,10 +65,7 @@ test("creation saves actual participant and name changes, keeps consent boundary
 });
 
 test("saved drafts resume creation and finishing routes to actual terms review", () => {
-  const app = readFileSync(
-    new URL("../components/fairshare-app.tsx", import.meta.url),
-    "utf8",
-  );
+  const app = appSource();
   assert.match(app, /sessionStorage.setItem\(\s*`fairshare:creation:/);
   assert.match(app, /sessionStorage.getItem\(`fairshare:creation:/);
   assert.match(app, /sessionStorage.removeItem\(\s*`fairshare:creation:/);

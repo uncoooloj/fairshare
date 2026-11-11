@@ -1,10 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { appSource } from "./app-source";
 const read = (name: string) =>
   readFileSync(new URL(`../components/${name}`, import.meta.url), "utf8");
 test("scoped invitation uses fragment token and separate scoped accept; original workspace links remain", () => {
-  const app = read("fairshare-app.tsx"),
+  const app = appSource(),
     invitation = read("agreement-invitation.tsx");
   assert.match(invitation, /\/invitation#token=/);
   assert.match(
@@ -28,7 +29,7 @@ test("invitation context comes from server, shows signed-in account and explicit
   assert.match(source, /Accept and open agreement/);
 });
 test("approval success triggers payout status prompt; later neither undoes approval nor auto-saves", () => {
-  const app = read("fairshare-app.tsx"),
+  const app = appSource(),
     prompt = read("post-approval-payout.tsx");
   assert.match(app, /if \(action === "approve"\)/);
   assert.match(app, /setApprovedForPayout\(selected.id\)/);

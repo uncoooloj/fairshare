@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { allocationRows, allocationTrace } from "../lib/allocation-trace";
 import type { Agreement } from "../lib/model";
 import { readFileSync } from "node:fs";
+import { appSource } from "./app-source";
 
 function agreement(): Agreement {
   const source = {
@@ -124,10 +125,7 @@ test("ledger order newest first, does not invent adjustment rows or former membe
   assert.equal(rows[1].name, "Former participant");
 });
 test("payout mapping joins the actual capture and recipient, no invented timestamp", () => {
-  const app = readFileSync(
-    new URL("../components/fairshare-app.tsx", import.meta.url),
-    "utf8",
-  );
+  const app = appSource();
   assert.match(
     app,
     /allocationTrace\(\s*p.agreement,\s*p.capture_id,\s*p.user_id,\s*p.amount/,

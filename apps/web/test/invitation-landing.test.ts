@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { agreementEmptyState } from "../lib/agreement-empty-state";
+import { appSource } from "./app-source";
 
 test("joined members wait for an agreement rather than re-uploading the source", () => {
   const state = agreementEmptyState("MEMBER");
@@ -19,10 +20,7 @@ test("owners retain creation guidance and viewers get role-appropriate access gu
   );
 });
 test("invitation confirmation suppresses competing application forms; creation respects membership", () => {
-  const source = readFileSync(
-    new URL("../components/fairshare-app.tsx", import.meta.url),
-    "utf8",
-  );
+  const source = appSource();
   assert.match(source, /flowToken\s*&&\s*flowKind\s*===\s*"\/invitation"/);
   assert.match(source, /isInvitationFlow\s*\?\s*null\s*:\s*needsWorkspace/);
   assert.match(source, /item.role === "OWNER" \|\| item.role === "MEMBER"/);
@@ -39,10 +37,7 @@ test("expired or unwanted invitations can be dismissed without consuming them", 
   );
   assert.match(prompt, /isInvitation\s*&&\s*onCancel/);
   assert.match(prompt, /onClick=\{onCancel\}\s*>\s*Not now/);
-  const source = readFileSync(
-    new URL("../components/fairshare-app.tsx", import.meta.url),
-    "utf8",
-  );
+  const source = appSource();
   assert.match(
     source,
     /onCancel=\{isInvitationFlow\s*\?\s*dismissAccessFlow\s*:\s*undefined\}/,

@@ -1,11 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { appSource } from "./app-source";
 test("private invitation actions reject same-tick duplicate creation and release lock after errors", () => {
-  const source = readFileSync(
-    new URL("../components/fairshare-app.tsx", import.meta.url),
-    "utf8",
-  ).split("function PrivateInvitation(")[1];
+  const source = appSource().split("function PrivateInvitation(")[1];
   assert.match(source, /const pending = useRef\(false\)/);
   assert.match(
     source,
@@ -20,10 +18,7 @@ test("private invitation actions reject same-tick duplicate creation and release
 });
 
 test("acceptance adopts the returned workspace and consumes the link before background loading", () => {
-  const source = readFileSync(
-    new URL("../components/fairshare-app.tsx", import.meta.url),
-    "utf8",
-  );
+  const source = appSource();
   const accept = source
     .split("async function acceptInvitation(token: string) {")[1]
     .split("async function loadWorkspace")[0];
@@ -37,10 +32,7 @@ test("acceptance adopts the returned workspace and consumes the link before back
 });
 
 test("refresh during sign-in retains the invitation fragment until acceptance", () => {
-  const source = readFileSync(
-    new URL("../components/fairshare-app.tsx", import.meta.url),
-    "utf8",
-  );
+  const source = appSource();
   const capture = source
     .split("const token = location.hash")[1]
     .split("Promise.all")[0];

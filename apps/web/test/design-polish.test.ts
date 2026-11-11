@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { formatDay, formatExact, formatWhen } from "../lib/dates";
 import { initials, toneForId, toneInRoster, PERSON_TONES } from "../lib/person";
+import { appSource } from "./app-source";
 
 const now = Date.parse("2026-11-11T12:00:00Z");
 
@@ -93,7 +94,7 @@ test("polish preserves personal finance and tenant-qualified identities", () => 
   assert.match(card, /roster\.filter\(\(m\) => m\.userId === userId\)/);
   assert.match(card, /display\(summary\.paid\)/);
   assert.doesNotMatch(card, /payoutStatus\(p\.status\)/);
-  const app = read("fairshare-app");
+  const app = appSource();
   assert.match(app, /p\.agreement\.workspaceId\s*===\s*selected\.workspaceId/);
   assert.match(app, /agreementId: JSON\.stringify\(\[/);
   assert.match(app, /These payout details apply to/);

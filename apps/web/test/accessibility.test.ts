@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { tabDestination } from "../lib/tab-navigation";
+import { appSource } from "./app-source";
 const source = (path: string) =>
   readFileSync(new URL(path, import.meta.url), "utf8");
 
@@ -20,7 +21,7 @@ test("tab exploration does not consume native activation or vertical scrolling",
 });
 test("tab markup and panel have connected names, roving tab stop and manual activation", () => {
   const tabs = source("../components/agreement-tabs.tsx");
-  const app = source("../components/fairshare-app.tsx");
+  const app = appSource();
   assert.match(tabs, /role="tablist"\s*aria-label="Agreement sections"/);
   assert.match(tabs, /tabIndex=\{value === tab \? 0 : -1\}/);
   assert.match(
@@ -34,7 +35,7 @@ test("tab markup and panel have connected names, roving tab stop and manual acti
   assert.match(tabs, /buttons.current\[next\]\?\.focus\(\)/);
 });
 test("keyboard skip target and shared notice announcements are present", () => {
-  const app = source("../components/fairshare-app.tsx");
+  const app = appSource();
   assert.match(app, /href="#main-content"/);
   assert.match(app, /id="main-content"\s*tabIndex=\{-1\}/);
   assert.match(

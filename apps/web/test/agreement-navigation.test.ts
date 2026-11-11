@@ -2,11 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { errorCopy } from "../lib/error-copy";
+import { appSource } from "./app-source";
 
-const app = readFileSync(
-  new URL("../components/fairshare-app.tsx", import.meta.url),
-  "utf8",
-);
+const app = appSource();
 
 test("agreement navigation discovers all authorized groups without conflating group and agreement IDs", () => {
   assert.match(app, /api\("workspaces"\)/);

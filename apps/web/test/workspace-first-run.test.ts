@@ -1,10 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-const app = readFileSync(
-  new URL("../components/fairshare-app.tsx", import.meta.url),
-  "utf8",
-);
+import { appSource } from "./app-source";
+const app = appSource();
 const onboarding = readFileSync(
   new URL("../components/designer-auth.tsx", import.meta.url),
   "utf8",
