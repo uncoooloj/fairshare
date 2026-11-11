@@ -229,6 +229,7 @@ export function AgreementTermsTab({
   const canWrite =
     workspaces.find((w) => w.id === workspace)?.role !== "VIEWER";
   const changeAgreement = () => {
+    if (!mayLeaveDraft()) return;
     setPreview(null);
     if (onRevise) onRevise(requests.at(-1));
     else setEditing(true);
@@ -318,7 +319,7 @@ export function AgreementTermsTab({
                   <blockquote>{requests.at(-1)!.note}</blockquote>
                 </figure>
                 <div className="gr-request-actions">
-                  <Button onClick={() => onRevise(requests.at(-1))}>
+                  <Button onClick={changeAgreement}>
                     Fix it
                   </Button>
                   {onSeeRequest && (

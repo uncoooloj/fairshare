@@ -40,6 +40,8 @@ export enum MenuEvent {
 export interface MenuItem {
   id: string;
   label: string;
+  /** Visible supporting text that must be understood before selecting the action. */
+  description?: string;
   onSelect: () => void;
   tone?: MenuTone;
   disabled?: boolean;
@@ -337,7 +339,12 @@ export function ActionMenu({
                   aria-disabled={item.disabled || undefined}
                   onClick={() => select(item)}
                 >
-                  {item.label}
+                  <span>{item.label}</span>
+                  {item.description && (
+                    <span className="action-menu-description">
+                      {item.description}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>

@@ -513,6 +513,7 @@ export function AgreementHeader({
     ...menuItems.map((item, index) => ({
       id: `extra-${index}-${item.label}`,
       label: item.label,
+      description: item.note,
       onSelect: () => {
         if (item.href) window.location.assign(item.href);
         else item.onSelect?.();
