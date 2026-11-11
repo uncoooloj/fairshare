@@ -15,6 +15,7 @@ import {
 } from "../lib/share-link";
 import { Drawer } from "./allocation-drawer";
 import { Button } from "./ui";
+import { Toast, useToast } from "./toast";
 
 export enum ShareMode {
   /** Copy or share the person's link. */
@@ -51,6 +52,7 @@ function PersonShareContent({
   organizer,
   mode = ShareMode.Link,
   onAgreementChange,
+  onCopied,
 }: {
   agreement: Agreement;
   member: AgreementMember;
@@ -58,6 +60,7 @@ function PersonShareContent({
   organizer: boolean;
   mode?: ShareMode;
   onAgreementChange?: (agreement: Agreement) => void;
+  onCopied: (message: string) => void;
 }) {
   const [issued, setIssued] = useState<IssuedLink>();
   const [busy, setBusy] = useState(false);
@@ -145,7 +148,7 @@ function PersonShareContent({
         setManual(text);
         setNotice("Copy it from the box below.");
       } else if (outcome === ShareOutcome.Copied)
-        setNotice(mode === ShareMode.Nudge ? "Message copied" : "Link copied");
+        onCopied(mode === ShareMode.Nudge ? "Message copied" : "Link copied");
       else if (outcome === ShareOutcome.Shared) setNotice("Shared");
     } catch (cause) {
       setNotice(
@@ -299,6 +302,7 @@ export function NudgeDrawer({
   onAgreementChange?: (agreement: Agreement) => void;
 }) {
   const people = peopleToNudge(agreement, userId);
+  const { toast, showToast } = useToast();
   return (
     <Drawer label="Nudge" onClose={onClose}>
       <p className="muted">
@@ -328,6 +332,7 @@ export function NudgeDrawer({
                   organizer
                   mode={ShareMode.Nudge}
                   onAgreementChange={onAgreementChange}
+                  onCopied={showToast}
                 />
               </li>
             );
@@ -336,6 +341,7 @@ export function NudgeDrawer({
       ) : (
         <p>Everyone has approved.</p>
       )}
+      <Toast toast={toast} />
     </Drawer>
   );
 }

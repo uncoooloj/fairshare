@@ -9,6 +9,7 @@ import { PayoutEmailStep } from "./payout-email-step";
 import { Avatar } from "./person";
 import { toneInRoster } from "../lib/person";
 import { oldLinkWarning, PersonShare, ShareMode } from "./person-share";
+import { Toast, useToast } from "./toast";
 
 export { personInviteLink } from "../lib/share-link";
 
@@ -58,6 +59,7 @@ export function AgreementPeople({
   const [reissuing, setReissuing] = useState("");
   const [inviteNotice, setInviteNotice] = useState("");
   const [confirmNewLink, setConfirmNewLink] = useState("");
+  const { toast, showToast } = useToast();
   useEffect(() => {
     setCurrentAgreement((current) =>
       agreement.revision >= current.revision ? agreement : current,
@@ -277,6 +279,7 @@ export function AgreementPeople({
                         organizer={organizer}
                         mode={needsReminder ? ShareMode.Nudge : ShareMode.Link}
                         onAgreementChange={adopt}
+                        onCopied={showToast}
                       />
                       {((organizer && isPendingMember(member)) ||
                         member.userId === userId ||
@@ -375,6 +378,7 @@ export function AgreementPeople({
           />
         </Drawer>
       )}
+      <Toast toast={toast} />
     </section>
   );
 }
