@@ -7,8 +7,7 @@ const app = readFileSync(
 );
 
 test("navigation selects actual agreements, never hidden tenant groups", () => {
-  assert.match(app, /aria-label="Open agreement"/);
-  assert.match(app, /agreements.map\(\(agreement\)/);
+  assert.match(app, /<GlobalSearch\s+agreements=\{agreements\}/);
   assert.match(app, /openAgreement\(agreement\)/);
   assert.doesNotMatch(app, /aria-label="Workspace"|No workspace yet/);
 });
