@@ -36,6 +36,7 @@ test("input survives errors and retries retain idempotency key until input chang
   assert.match(source, /finally\s*\{\s*locked\.current\s*=\s*false/);
   assert.match(source, /const changed = \(\) => \{\s*requestId\.current = ""/);
   assert.doesNotMatch(source, /setFile\(null\)|setText\(""\)/);
+  assert.match(source, /<Notice warning announcement="assertive">/);
 });
 test("a deferred local read locks its controls and the parent navigation guard", () => {
   assert.match(

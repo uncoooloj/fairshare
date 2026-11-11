@@ -35,5 +35,6 @@ test("checkout retains its amount-only uncertain request key", () => {
     /const storageKey = `fairshare-checkout:\$\{user.id\}:\$\{selected.id\}:\$\{amountCents\}`/,
   );
   assert.match(source, /p.source_name \|\| "PayPal"/);
-  assert.match(source, /amountCents:\s*cents,\s*source,/);
+  assert.match(source, /createSandboxCheckout\(\{/);
+  assert.match(source, /source: paymentSource/);
 });

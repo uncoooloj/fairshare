@@ -5,10 +5,6 @@ const app = readFileSync(
   new URL("../components/fairshare-app.tsx", import.meta.url),
   "utf8",
 );
-const onboarding = readFileSync(
-  new URL("../components/designer-auth.tsx", import.meta.url),
-  "utf8",
-);
 
 test("workspace selector only offers switching when there is a choice", () => {
   assert.match(app, /workspaces\.length\s*>\s*1\s*\?\s*\(\s*<select/);

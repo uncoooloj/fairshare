@@ -36,7 +36,7 @@ test("tab markup and panel have connected names, roving tab stop and manual acti
   );
   assert.match(
     app,
-    /role="tabpanel"\s*id="agreement-panel"\s*aria-labelledby=\{\x60agreement-tab-\$\{tab\}\x60\}/,
+    /role="tabpanel"\s*id="agreement-panel"\s*aria-labelledby=\{`agreement-tab-\$\{tab\}`\}/,
   );
   assert.match(tabs, /buttons.current\[next\]\?\.focus\(\)/);
 });

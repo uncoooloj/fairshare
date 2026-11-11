@@ -8,8 +8,8 @@ async function setup() {
   const messages: MailMessage[] = [];
   const app = await buildApp({
     dbPath: ":memory:",
+    publicAppOrigin: "https://app.example.test",
     clock: () => now,
-    publicAppOrigin: "https://fairshare.example",
     mailTransport: {
       async send(m) {
         messages.push(m);
@@ -269,7 +269,7 @@ test("delivery failure invalidates token and leaves current email intact", async
   let link = "";
   const app = await buildApp({
     dbPath: ":memory:",
-    publicAppOrigin: "https://fairshare.example",
+    publicAppOrigin: "https://app.example.test",
     mailTransport: {
       async send(m) {
         link = m.link;
