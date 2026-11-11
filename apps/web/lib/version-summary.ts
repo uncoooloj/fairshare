@@ -1,17 +1,38 @@
 import type { Agreement, Version } from "./model";
 
+/** Plain name for a set of terms: the first ones sent, then each update. */
+export function termsLabel(versionId: number) {
+  return versionId <= 1 ? "Original terms" : `Update ${versionId - 1}`;
+}
+
+/** Plain status for a set of terms. */
+export function termsStatusLabel(status: Version["status"]) {
+  switch (status) {
+    case "ACTIVE":
+      return "In use";
+    case "AWAITING_APPROVAL":
+      return "Waiting for approvals";
+    case "DRAFT":
+      return "Not sent";
+    case "SUPERSEDED":
+      return "Replaced";
+    default:
+      return "Earlier terms";
+  }
+}
+
 function versionDescription(active: boolean, status: Version["status"]) {
-  if (active) return "Active rules for incoming payments.";
+  if (active) return "In use. New payments split this way.";
 
   switch (status) {
     case "AWAITING_APPROVAL":
-      return "Everyone reviews this version before the organizer can activate it.";
+      return "Waiting for everyone to approve. Nothing is paid this way until then.";
     case "APPROVED":
-      return "Approved by everyone. Not active until the organizer activates it.";
+      return "Everyone approved. Not in use yet.";
     case "DRAFT":
-      return "Draft only. Not used to split payments.";
+      return "Not sent yet. Not used to split payments.";
     default:
-      return "Historical version. Past allocations keep their original rules.";
+      return "Earlier terms. Past payments keep the split they were paid under.";
   }
 }
 

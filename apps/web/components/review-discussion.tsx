@@ -11,6 +11,7 @@ import {
   type Topic,
 } from "../lib/review-discussion";
 import { Button, Field, Notice } from "./ui";
+import { termsLabel } from "../lib/version-summary";
 import { formatExact, formatWhen } from "../lib/dates";
 import { publicWebOrigin } from "../lib/public-web-origin";
 
@@ -36,38 +37,38 @@ export function ReviewDiscussion(props: DiscussionProps) {
   if (!version) return null;
   return (
     <div>
-      <Field label="Discussion version">
-        <select
-          disabled={posting}
-          value={version.id}
-          onChange={(event) => {
-            if (
-              dirty.current &&
-              !window.confirm(
-                "Discard your unsaved comment and view another version?",
+      {props.agreement.value.versions.length > 1 && (
+        <Field label="Discussion for">
+          <select
+            disabled={posting}
+            value={version.id}
+            onChange={(event) => {
+              if (
+                dirty.current &&
+                !window.confirm(
+                  "Discard your unsaved comment and view other terms?",
+                )
               )
-            )
-              return;
-            dirty.current = false;
-            props.onDirtyChange(false);
-            setVersionId(Number(event.target.value));
-          }}
-        >
-          {[...props.agreement.value.versions].reverse().map((item) => (
-            <option key={item.id} value={item.id}>
-              Version {item.id}
-              {item.id === props.version.id
-                ? " · latest"
-                : " · read-only history"}
-            </option>
-          ))}
-        </select>
-      </Field>
+                return;
+              dirty.current = false;
+              props.onDirtyChange(false);
+              setVersionId(Number(event.target.value));
+            }}
+          >
+            {[...props.agreement.value.versions].reverse().map((item) => (
+              <option key={item.id} value={item.id}>
+                {termsLabel(item.id)}
+                {item.id === props.version.id ? " · latest" : " · read-only"}
+              </option>
+            ))}
+          </select>
+        </Field>
+      )}
       {version.id !== props.version.id && (
         <Notice>
-          Historical discussion is read-only. These comments belong to version{" "}
-          {version.id}, not the latest terms. Switch to the latest version to
-          continue the conversation.
+          This discussion is read-only. These comments belong to{" "}
+          {termsLabel(version.id).toLowerCase()}, not the latest terms. Switch
+          to the latest terms to continue the conversation.
         </Notice>
       )}
       <VersionDiscussion
@@ -186,9 +187,9 @@ function VersionDiscussion({
   return (
     <section
       className="section"
-      aria-label={`Discussion for version ${version.id}`}
+      aria-label={`Discussion for ${termsLabel(version.id).toLowerCase()}`}
     >
-      <h3>Discussion · version {version.id}</h3>
+      <h3>Discussion</h3>
       <p className="muted">
         Visible to everyone in this agreement. Comments do not change terms or
         approvals. Use Request changes to formally reopen the review.

@@ -32,7 +32,7 @@ test("document content is rendered as plain text and download accurately labelle
   assert.match(source, /URL.revokeObjectURL/);
   assert.match(
     source,
-    /Each\s+version\s+keeps\s+the\s+document\s+it\s+was\s+created\s+from/,
+    /Each\s+update\s+keeps\s+the\s+document\s+it\s+was\s+made\s+from/,
   );
   assert.match(source, /not a signature verification/);
   assert.match(source, /Source details/);

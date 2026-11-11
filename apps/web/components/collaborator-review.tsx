@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, type Agreement, type Version } from "../lib/model";
 import { formatDate, formatMoneyHeadline } from "../lib/preferences";
 import { toneInRoster } from "../lib/person";
@@ -264,6 +264,14 @@ export function CollaboratorTerms({
   const [error, setError] = useState("");
   const [approving, setApproving] = useState(false);
   const stage = collaboratorStage(agreement, version, userId);
+  // Back from the get-paid step, focus lands on the new status, not the page top.
+  const title = useRef<HTMLHeadingElement>(null);
+  const wasJustApproved = useRef(justApproved);
+  useEffect(() => {
+    if (wasJustApproved.current && !justApproved)
+      title.current?.focus({ preventScroll: true });
+    wasJustApproved.current = justApproved;
+  }, [justApproved]);
   const member = agreement.value.members.some((m) => m.userId === userId);
   const organizer = firstName(
     agreement.value.members.find((m) => m.role === "ORGANIZER")?.displayName ??
@@ -301,7 +309,8 @@ export function CollaboratorTerms({
       className={`collab-review ${reviewing ? "has-footer" : ""}`}
       aria-labelledby="collab-title"
     >
-      <h2 id="collab-title" className="collab-title" tabIndex={-1}>
+      {reviewing && <p className="collab-eyebrow">{agreement.value.name}</p>}
+      <h2 ref={title} id="collab-title" className="collab-title" tabIndex={-1}>
         {reviewing ? "What you get" : status}
       </h2>
       {reviewing && <p className="muted">{status}</p>}

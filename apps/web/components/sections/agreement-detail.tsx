@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useState,
   type Dispatch,
   type MutableRefObject,
   type SetStateAction,
@@ -23,9 +24,16 @@ import { Notice } from "../ui";
 import type { Mutate, Run } from "./types";
 import { AgreementOverviewTab } from "./agreement-tabs/overview-tab";
 import { AgreementPeopleTab } from "./agreement-tabs/people-tab";
-import { AgreementTermsTab } from "./agreement-tabs/terms-tab";
+import {
+  AgreementTermsTab,
+  CollaboratorReviewCard,
+} from "./agreement-tabs/terms-tab";
+import { CollaboratorStage, collaboratorStage } from "../collaborator-review";
 import { AgreementPaymentsTab } from "./agreement-tabs/payments-tab";
 import { PaymentBreakdown } from "./agreement-tabs/payment-breakdown";
+
+/** History state for a collaborator's full-agreement view, so browser Back returns to the review. */
+const FULL_AGREEMENT_VIEW = "full-agreement";
 
 export interface AgreementDetailProps {
   selected: Agreement;
@@ -128,7 +136,47 @@ export function AgreementDetail({
 }: AgreementDetailProps) {
   // Splits live in Payments and the document in Agreement: old links land there.
   const shown = visibleTab(tab);
+  // A collaborator's "See the full agreement" is its own view with a way back.
+  const fullAgreement = !organizer && tab === AgreementTab.Document;
+  // A collaborator deciding on the terms sees what they get before any page
+  // chrome. It stays first through approving and the get-paid step.
+  const pending =
+    !organizer &&
+    collaboratorStage(selected, latest, user.id) === CollaboratorStage.REVIEW;
+  const [reviewPinned, setReviewPinned] = useState("");
+  const reviewAbove =
+    !organizer &&
+    tab === AgreementTab.Terms &&
+    (pending ||
+      approvedForPayout === selected.id ||
+      reviewPinned === selected.id);
   useEffect(() => {
+    if (tab !== AgreementTab.Terms) setReviewPinned("");
+    else if (pending) setReviewPinned(selected.id);
+  }, [tab, pending, selected.id]);
+  useEffect(() => {
+    if (reviewAbove) window.scrollTo({ top: 0 });
+  }, [reviewAbove]);
+  useEffect(() => {
+    if (!fullAgreement) return;
+    if (window.history.state?.fairshareView !== FULL_AGREEMENT_VIEW)
+      // Keep the router's own state so it treats Back as a same-page step.
+      window.history.pushState(
+        { ...window.history.state, fairshareView: FULL_AGREEMENT_VIEW },
+        "",
+      );
+    window.scrollTo({ top: 0 });
+    const onPop = () => setTab(AgreementTab.Terms);
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [fullAgreement, setTab]);
+  const leaveFullAgreement = () => {
+    if (window.history.state?.fairshareView === FULL_AGREEMENT_VIEW)
+      window.history.back();
+    else setTab(AgreementTab.Terms);
+  };
+  useEffect(() => {
+    if (fullAgreement) return;
     const target =
       tab === AgreementTab.Document
         ? "agreement-document"
@@ -139,7 +187,7 @@ export function AgreementDetail({
       document
         .getElementById(target)
         ?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, [tab]);
+  }, [tab, fullAgreement]);
   const onStatusAction = (action: StageAction) => {
     if (action === StageAction.GetPaid) {
       changeAgreementTab(AgreementTab.Payments);
@@ -151,12 +199,46 @@ export function AgreementDetail({
     } else if (
       action === StageAction.Approve ||
       action === StageAction.SeeRequest
-    )
+    ) {
+      if (reviewAbove) window.scrollTo({ top: 0, behavior: "smooth" });
       changeAgreementTab(AgreementTab.Terms);
+    }
   };
+  if (fullAgreement)
+    return (
+      <section className="collab-full" aria-labelledby="collab-full-title">
+        <button
+          type="button"
+          className="collab-back"
+          onClick={leaveFullAgreement}
+        >
+          <span aria-hidden="true">←</span> Back to what you get
+        </button>
+        <p className="collab-eyebrow">{selected.value.name}</p>
+        <h2 id="collab-full-title" className="collab-full-title">
+          The full agreement
+        </h2>
+        <AgreementDocument agreement={selected} base={base} />
+      </section>
+    );
   return (
     <>
       <>
+        {reviewAbove && (
+          <div className="collab-terms collab-first">
+            <CollaboratorReviewCard
+              selected={selected}
+              latest={latest}
+              user={user}
+              base={base}
+              busy={busy}
+              approvedForPayout={approvedForPayout}
+              mutate={mutate}
+              changeAgreementTab={changeAgreementTab}
+              setApprovedForPayout={setApprovedForPayout}
+            />
+          </div>
+        )}
         <AgreementHeader
           key={JSON.stringify([selected.workspaceId, selected.id])}
           agreement={selected}
@@ -255,6 +337,7 @@ export function AgreementDetail({
                 documentId={documentId}
                 extraction={extraction}
                 rulesLanding={rulesLanding}
+                reviewAbove={reviewAbove}
                 draftDirty={draftDirty}
                 rulesDirty={rulesDirty}
                 run={run}

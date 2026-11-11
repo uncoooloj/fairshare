@@ -4,8 +4,12 @@ import {
   type ComparisonField,
 } from "../lib/version-comparison";
 import type { Agreement, Version } from "../lib/model";
-import { money, title } from "../lib/model";
-import { versionSummary } from "../lib/version-summary";
+import { money } from "../lib/model";
+import {
+  termsLabel,
+  termsStatusLabel,
+  versionSummary,
+} from "../lib/version-summary";
 import styles from "./agreement-versions.module.css";
 function RuleSummary({
   agreement,
@@ -82,12 +86,12 @@ export function AgreementVersions({ agreement }: { agreement: Agreement }) {
   return (
     <section
       className={`section ${styles.timeline}`}
-      aria-label="Agreement versions"
+      aria-label="Every set of terms"
     >
       <div className={styles.heading}>
-        <h3>Versions</h3>
+        <h3>Every set of terms</h3>
         <span className="muted">
-          {versions.length} {versions.length === 1 ? "version" : "versions"}
+          {versions.length} {versions.length === 1 ? "set" : "sets"}
         </span>
       </div>
       {[...versions].reverse().map((version) => {
@@ -98,18 +102,22 @@ export function AgreementVersions({ agreement }: { agreement: Agreement }) {
           <article key={version.id} className={styles.version}>
             <div className={styles.heading}>
               <strong>
-                Version {version.id}
+                {termsLabel(version.id)}
                 {state.latest ? " · latest" : ""}
               </strong>
-              <span>{state.active ? "Active" : title(version.status)}</span>
+              <span>
+                {state.active ? "In use" : termsStatusLabel(version.status)}
+              </span>
             </div>
             <p className="muted">{state.description}</p>
             <small>
-              {state.approved} of {state.total} people approved this version
+              {state.approved} of {state.total} people approved these terms
             </small>
             {!state.latest && (
               <details className={styles.compare}>
-                <summary>Compare with v{latest.id}</summary>
+                <summary>
+                  Compare with {termsLabel(latest.id).toLowerCase()}
+                </summary>
                 <p className={styles.changeSummary}>
                   {changed.length
                     ? `${changed.length} ${changed.length === 1 ? "section changed" : "sections changed"}`
@@ -139,7 +147,7 @@ export function AgreementVersions({ agreement }: { agreement: Agreement }) {
                 )}
                 <div className={styles.columns}>
                   <div>
-                    <h4>Version {version.id}</h4>
+                    <h4>{termsLabel(version.id)}</h4>
                     <RuleSummary
                       agreement={agreement}
                       version={version}
@@ -147,7 +155,7 @@ export function AgreementVersions({ agreement }: { agreement: Agreement }) {
                     />
                   </div>
                   <div>
-                    <h4>Version {latest.id} · latest</h4>
+                    <h4>{termsLabel(latest.id)} · latest</h4>
                     <RuleSummary
                       agreement={agreement}
                       version={latest}
@@ -157,8 +165,8 @@ export function AgreementVersions({ agreement }: { agreement: Agreement }) {
                 </div>
                 <p className="muted">
                   {latest.status === "ACTIVE"
-                    ? `Version ${latest.id} is active. Incoming payments use it; earlier payments keep their original rules.`
-                    : "These changes apply only after everyone approves the new version. Earlier payments keep their original rules."}
+                    ? `${termsLabel(latest.id)} is in use. New payments split this way; earlier payments keep their original split.`
+                    : "These changes apply only after everyone approves the new terms. Earlier payments keep their original split."}
                 </p>
               </details>
             )}

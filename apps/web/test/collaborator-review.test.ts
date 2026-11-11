@@ -242,11 +242,46 @@ test("terms tab hides organizer controls from collaborators", () => {
     tab.indexOf("if (!isOrganizer)"),
     tab.indexOf("Terms everyone can understand"),
   );
-  assert.match(collaborator, /<CollaboratorTerms/);
-  assert.match(collaborator, /\/versions\/\$\{latest\.id\}\/approve/);
-  assert.match(collaborator, /\/versions\/\$\{latest\.id\}\/request-change/);
+  assert.match(collaborator, /<CollaboratorReviewCard/);
   assert.doesNotMatch(
     collaborator,
     /Propose revised terms|ContractReviewPanel|setEditing/,
   );
+  const card = tab.slice(
+    tab.indexOf("export function CollaboratorReviewCard"),
+    tab.indexOf("export function AgreementTermsTab"),
+  );
+  assert.match(card, /<CollaboratorTerms/);
+  assert.match(card, /\/versions\/\$\{latest\.id\}\/approve/);
+  assert.match(card, /\/versions\/\$\{latest\.id\}\/request-change/);
+});
+
+test("a pending review comes first; the full agreement has a way back", () => {
+  const detail = readFileSync(
+    new URL("../components/sections/agreement-detail.tsx", import.meta.url),
+    "utf8",
+  );
+  // The review renders before the agreement header while it is pending.
+  assert.ok(
+    detail.indexOf("<CollaboratorReviewCard") <
+      detail.indexOf("<AgreementHeader"),
+  );
+  assert.match(detail, /CollaboratorStage\.REVIEW/);
+  // Browser Back closes the full agreement instead of leaving the app, and
+  // the router's own history state is kept.
+  assert.match(detail, /pushState\(\s*\{ \.\.\.window\.history\.state/);
+  assert.match(detail, /addEventListener\("popstate"/);
+  assert.match(detail, /window\.history\.back\(\)/);
+  assert.match(detail, /Back to what you get/);
+});
+
+test("on phones the decision bar is pinned above the safe area", () => {
+  const css = readFileSync(
+    new URL("../app/collaborator.css", import.meta.url),
+    "utf8",
+  );
+  const phone = css.slice(css.indexOf("@media (max-width: 640px)"));
+  assert.match(phone, /\.collab-footer \{[^}]*position: fixed/);
+  assert.match(phone, /env\(safe-area-inset-bottom/);
+  assert.match(phone, /body:has\(\.collab-footer\) \{[^}]*padding-bottom/);
 });

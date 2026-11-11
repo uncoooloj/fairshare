@@ -4,6 +4,7 @@ import { api, type Agreement } from "../lib/model";
 import { recoverSourceDocument } from "../lib/source-recovery";
 import { DocumentCitationView } from "./document-citation-view";
 import { Button, Empty } from "./ui";
+import { termsLabel } from "../lib/version-summary";
 interface DocumentRecord {
   hasOriginal?: boolean;
   documentId: string;
@@ -78,19 +79,19 @@ export function AgreementDocument({
           </p>
         </div>
         <div className="actions document-actions">
-          {agreement.value.versions.length > 0 && (
+          {agreement.value.versions.length > 1 && (
             <label className="document-version">
-              Source for version
+              Document for
               <select
-                aria-label="Document version"
+                aria-label="Document for which terms"
                 value={versionId ?? ""}
                 onChange={(event) => setVersionId(Number(event.target.value))}
               >
                 {agreement.value.versions.map((item) => (
                   <option key={item.id} value={item.id}>
-                    Version {item.id}
+                    {termsLabel(item.id)}
                     {item.id === agreement.value.activeVersionId
-                      ? " · Active"
+                      ? " · in use"
                       : ""}
                   </option>
                 ))}
@@ -116,8 +117,8 @@ export function AgreementDocument({
       </div>
       <p className="document-disclaimer">
         This view shows extracted text, not a signature verification. Original
-        downloads are available for new PDF and DOCX uploads. Each version keeps
-        the document it was created from.
+        downloads are available for new PDF and DOCX uploads. Each update keeps
+        the document it was made from.
       </p>
       {loading ? (
         <div className="panel" role="status">
@@ -168,9 +169,7 @@ export function AgreementDocument({
             <dl>
               <dt>Used by</dt>
               <dd>
-                {version
-                  ? `Version ${version.id}`
-                  : "Latest saved draft source"}
+                {version ? termsLabel(version.id) : "Latest saved draft source"}
               </dd>
               <dt>Document ID</dt>
               <dd>

@@ -44,6 +44,8 @@ export interface AgreementTermsTabProps {
   extraction: any;
   /** Just created by the wizard with a reading result: open on Proposed rules. */
   rulesLanding?: boolean;
+  /** A collaborator's pending review already shows above the agreement header. */
+  reviewAbove?: boolean;
   draftDirty: boolean;
   rulesDirty: MutableRefObject<boolean>;
   run: Run;
@@ -62,6 +64,54 @@ export interface AgreementTermsTabProps {
   setExtraction: Dispatch<SetStateAction<any>>;
 }
 
+export type CollaboratorReviewCardProps = Pick<
+  AgreementTermsTabProps,
+  | "selected"
+  | "latest"
+  | "user"
+  | "base"
+  | "busy"
+  | "approvedForPayout"
+  | "mutate"
+  | "changeAgreementTab"
+  | "setApprovedForPayout"
+>;
+
+/** A collaborator's What you get card, wired to approve and flag a problem. */
+export function CollaboratorReviewCard({
+  selected,
+  latest,
+  user,
+  base,
+  busy,
+  approvedForPayout,
+  mutate,
+  changeAgreementTab,
+  setApprovedForPayout,
+}: CollaboratorReviewCardProps) {
+  return (
+    <CollaboratorTerms
+      agreement={selected}
+      version={latest}
+      userId={user.id}
+      base={base}
+      busy={busy}
+      justApproved={approvedForPayout === selected.id}
+      onApprove={async () => {
+        if (!latest) return;
+        await mutate(`/versions/${latest.id}/approve`);
+        setApprovedForPayout(selected.id);
+      }}
+      onRequestChange={async (reason) => {
+        if (!latest) return;
+        await mutate(`/versions/${latest.id}/request-change`, { reason });
+      }}
+      onOpenDocument={() => changeAgreementTab(AgreementTab.Document)}
+      onPayoutDone={() => setApprovedForPayout("")}
+    />
+  );
+}
+
 /** Terms: the latest proposal and its review, or the source and rules draft. */
 export function AgreementTermsTab({
   selected,
@@ -78,6 +128,7 @@ export function AgreementTermsTab({
   documentId,
   extraction,
   rulesLanding = false,
+  reviewAbove = false,
   draftDirty,
   rulesDirty,
   run,
@@ -103,25 +154,19 @@ export function AgreementTermsTab({
   if (!isOrganizer)
     return (
       <div className="collab-terms">
-        <CollaboratorTerms
-          agreement={selected}
-          version={latest}
-          userId={user.id}
-          base={base}
-          busy={busy}
-          justApproved={approvedForPayout === selected.id}
-          onApprove={async () => {
-            if (!latest) return;
-            await mutate(`/versions/${latest.id}/approve`);
-            setApprovedForPayout(selected.id);
-          }}
-          onRequestChange={async (reason) => {
-            if (!latest) return;
-            await mutate(`/versions/${latest.id}/request-change`, { reason });
-          }}
-          onOpenDocument={() => changeAgreementTab(AgreementTab.Document)}
-          onPayoutDone={() => setApprovedForPayout("")}
-        />
+        {!reviewAbove && (
+          <CollaboratorReviewCard
+            selected={selected}
+            latest={latest}
+            user={user}
+            base={base}
+            busy={busy}
+            approvedForPayout={approvedForPayout}
+            mutate={mutate}
+            changeAgreementTab={changeAgreementTab}
+            setApprovedForPayout={setApprovedForPayout}
+          />
+        )}
         {latest && (
           <ReviewDiscussion
             key={`${selected.id}:${latest.id}`}
