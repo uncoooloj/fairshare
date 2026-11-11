@@ -51,9 +51,12 @@
 /* ---------- Overview: attention + activity grid ---------- */
 .ov-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.85fr) minmax(280px, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 24px;
   align-items: start;
+}
+.ov-attention {
+  grid-column: span 2;
 }
 .ov-section-title {
   display: flex;
@@ -185,8 +188,8 @@
   padding: 18px 0 14px;
 }
 .ov-system-avatar {
-  width: 24px;
-  height: 24px;
+  width: 32px;
+  height: 32px;
   display: grid;
   place-items: center;
   border-radius: 50%;
@@ -240,8 +243,8 @@
 .ov-timeline::before {
   content: "";
   position: absolute;
-  left: 11px;
-  top: 12px;
+  left: 15px;
+  top: 16px;
   bottom: 24px;
   width: 1px;
   background: var(--color-line);
@@ -249,7 +252,7 @@
 .ov-timeline li {
   position: relative;
   display: grid;
-  grid-template-columns: 24px minmax(0, 1fr) auto;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
   gap: 10px;
   align-items: start;
   padding-bottom: 16px;
@@ -293,6 +296,9 @@
 @media (max-width: 960px) {
   .ov-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+  .ov-attention {
+    grid-column: auto;
   }
 }
 @media (max-width: 720px) {

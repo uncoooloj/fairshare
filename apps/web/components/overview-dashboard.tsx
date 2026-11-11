@@ -354,7 +354,7 @@ export function OverviewDashboard({
                       <Avatar
                         name={actor.name}
                         tone={actor.tone}
-                        size={AvatarSize.SMALL}
+                        size={AvatarSize.MEDIUM}
                       />
                     )}
                     <p>
