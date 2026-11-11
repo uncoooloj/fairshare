@@ -38,6 +38,7 @@ export function AllocationCalculation({
   tone,
   advanceTo,
   payout,
+  compact = false,
 }: {
   trace: AllocationTrace;
   /** The payout for this share, from the same records the Payouts page reads. */
@@ -45,6 +46,8 @@ export function AllocationCalculation({
   name?: string;
   tone?: number;
   advanceTo?: string;
+  /** Payout details keeps the summary and visual, without the full payment audit. */
+  compact?: boolean;
 }) {
   const a = trace.allocation;
   const percent = trace.shareBasisPoints / 100;
@@ -156,103 +159,107 @@ export function AllocationCalculation({
         )}
       </div>
 
-      <h3 className="calculation-label">From payment</h3>
-      <p title={formatExact(trace.recordedAt)}>
-        {money(trace.grossCents)} · PayPal · {formatDay(trace.recordedAt)}
-        <span className="muted">
-          {" "}
-          ·{" "}
-          {trace.providerFeeCents
-            ? `${money(trace.providerFeeCents)} PayPal fee`
-            : "No fee"}
-        </span>
-      </p>
+      {!compact && (
+        <>
+          <h3 className="calculation-label">From payment</h3>
+          <p title={formatExact(trace.recordedAt)}>
+            {money(trace.grossCents)} · PayPal · {formatDay(trace.recordedAt)}
+            <span className="muted">
+              {" "}
+              ·{" "}
+              {trace.providerFeeCents
+                ? `${money(trace.providerFeeCents)} PayPal fee`
+                : "No fee"}
+            </span>
+          </p>
 
-      <h3 className="calculation-label">Rules used</h3>
-      <p title={`Version ${trace.versionId}`}>
-        Split in use on {formatDay(trace.recordedAt)}
-      </p>
+          <h3 className="calculation-label">Rules used</h3>
+          <p title={`Version ${trace.versionId}`}>
+            Split in use on {formatDay(trace.recordedAt)}
+          </p>
 
-      <h3 className="calculation-label">Calculation</h3>
-      <table className="calculation-steps">
-        <thead>
-          <tr>
-            <th scope="col">Step</th>
-            <th scope="col">Description</th>
-            <th scope="col" className="numeric">
-              Amount
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {trace.advanceSource && (
-            <tr>
-              <td>{step++}</td>
-              <td>
-                <span className="calculation-step-title">
-                  Pay back advance
-                  <SourceChip source={trace.advanceSource} />
-                </span>
-                <small>
-                  {`Paid back to ${advanceHolder || "the advance holder"} first`}
-                </small>
-              </td>
-              <td className="numeric">
-                {a.recoupmentCents > 0 ? (
-                  money(a.recoupmentCents)
-                ) : (
-                  <span className="muted">
-                    {money(trace.recoupedCents)} to {advanceTo || "advance"}
-                  </span>
-                )}
-              </td>
-            </tr>
-          )}
-          {trace.poolCents > 0 ? (
-            <tr>
-              <td>{step++}</td>
-              <td>
-                <span className="calculation-step-title">
-                  Split {percent}% of {money(trace.poolCents)}
-                  <SourceChip source={trace.source} />
-                </span>
-              </td>
-              <td className="numeric">{money(a.shareCents)}</td>
-            </tr>
-          ) : trace.netCents > 0 ? (
-            <tr className="calculation-skipped">
-              <td />
-              <td colSpan={2}>Nothing left to split after the advance</td>
-            </tr>
-          ) : null}
-          {a.feeCents > 0 && (
-            <tr>
-              <td>{step++}</td>
-              <td>Recipient fee</td>
-              <td className="numeric">−{money(a.feeCents)}</td>
-            </tr>
-          )}
-          {a.offsetCents ? (
-            <tr>
-              <td>{step++}</td>
-              <td>Kept back for an earlier refund</td>
-              <td className="numeric">−{money(a.offsetCents)}</td>
-            </tr>
-          ) : null}
-          {a.creditCents ? (
-            <tr>
-              <td>{step++}</td>
-              <td>Returned payout credit</td>
-              <td className="numeric">+{money(a.creditCents)}</td>
-            </tr>
-          ) : null}
-          <tr className="calculation-total">
-            <td />
-            <td>Owed to {name}</td>
-            <td className="numeric">{money(a.totalCents)}</td>
-          </tr>
-        </tbody>
-      </table>
+          <h3 className="calculation-label">Calculation</h3>
+          <table className="calculation-steps">
+            <thead>
+              <tr>
+                <th scope="col">Step</th>
+                <th scope="col">Description</th>
+                <th scope="col" className="numeric">
+                  Amount
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {trace.advanceSource && (
+                <tr>
+                  <td>{step++}</td>
+                  <td>
+                    <span className="calculation-step-title">
+                      Pay back advance
+                      <SourceChip source={trace.advanceSource} />
+                    </span>
+                    <small>
+                      {`Paid back to ${advanceHolder || "the advance holder"} first`}
+                    </small>
+                  </td>
+                  <td className="numeric">
+                    {a.recoupmentCents > 0 ? (
+                      money(a.recoupmentCents)
+                    ) : (
+                      <span className="muted">
+                        {money(trace.recoupedCents)} to {advanceTo || "advance"}
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              )}
+              {trace.poolCents > 0 ? (
+                <tr>
+                  <td>{step++}</td>
+                  <td>
+                    <span className="calculation-step-title">
+                      Split {percent}% of {money(trace.poolCents)}
+                      <SourceChip source={trace.source} />
+                    </span>
+                  </td>
+                  <td className="numeric">{money(a.shareCents)}</td>
+                </tr>
+              ) : trace.netCents > 0 ? (
+                <tr className="calculation-skipped">
+                  <td />
+                  <td colSpan={2}>Nothing left to split after the advance</td>
+                </tr>
+              ) : null}
+              {a.feeCents > 0 && (
+                <tr>
+                  <td>{step++}</td>
+                  <td>Recipient fee</td>
+                  <td className="numeric">−{money(a.feeCents)}</td>
+                </tr>
+              )}
+              {a.offsetCents ? (
+                <tr>
+                  <td>{step++}</td>
+                  <td>Kept back for an earlier refund</td>
+                  <td className="numeric">−{money(a.offsetCents)}</td>
+                </tr>
+              ) : null}
+              {a.creditCents ? (
+                <tr>
+                  <td>{step++}</td>
+                  <td>Returned payout credit</td>
+                  <td className="numeric">+{money(a.creditCents)}</td>
+                </tr>
+              ) : null}
+              <tr className="calculation-total">
+                <td />
+                <td>Owed to {name}</td>
+                <td className="numeric">{money(a.totalCents)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </>
+      )}
 
       {(showAdvanceClause || showSplitClause) && (
         <h3 className="calculation-label">

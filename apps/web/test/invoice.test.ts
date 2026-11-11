@@ -279,6 +279,21 @@ test("split drawer shows the payout state and only quotes real document clauses"
   );
   assert.doesNotMatch(team, /Source clause/);
   assert.match(team, /<summary>Show working<\/summary>/);
+  const compact = render({ compact: true });
+  assert.match(compact, /\$3\.58 to Betty/);
+  assert.match(compact, /waterfall/);
+  assert.doesNotMatch(
+    compact,
+    /<h3[^>]*>(From payment|Rules used|Calculation)<\/h3>/,
+  );
+  const compactOffset = render({
+    compact: true,
+    trace: {
+      ...trace,
+      allocation: { ...trace.allocation, offsetCents: 25, totalCents: 333 },
+    },
+  });
+  assert.match(compactOffset, /kept back to settle an earlier refund/);
   assert.match(
     render({ payout: PaymentGridStatus.Processing }),
     />On the way</,
