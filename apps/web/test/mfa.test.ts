@@ -11,6 +11,14 @@ test("MFA UI uses a setup-intent switch without treating it as enabled", () => {
   assert.match(source, /role="switch"/);
   assert.match(source, /Finish setup to turn on/);
   assert.match(source, /status\.enabled && disableConfirmation/);
+  assert.match(
+    source,
+    /aria-expanded=\{status\.enabled \? disableConfirmation/,
+  );
+  assert.match(source, /aria-controls=\{/);
+  assert.match(source, /id="mfa-disable-confirmation"/);
+  assert.match(source, /function closeDisableConfirmation\(\)/);
+  assert.match(source, /onClick=\{closeDisableConfirmation\}/);
   assert.match(source, /pending.current\s*=\s*true/);
   assert.match(source, /auth\/mfa/);
   assert.match(source, /auth\/mfa\/cancel/);

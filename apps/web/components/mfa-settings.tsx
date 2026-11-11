@@ -58,6 +58,10 @@ export function MfaSettings({ onSignOut }: { onSignOut: () => void }) {
       setBusy(false);
     }
   }
+  function closeDisableConfirmation() {
+    setDisableConfirmation(false);
+    setError("");
+  }
   async function submit(
     form: HTMLFormElement,
     action: "setup" | "activate" | "disable",
@@ -134,6 +138,10 @@ export function MfaSettings({ onSignOut }: { onSignOut: () => void }) {
             className="settings-switch"
             aria-label={switchLabel}
             aria-describedby="mfa-toggle-status"
+            aria-expanded={status.enabled ? disableConfirmation : undefined}
+            aria-controls={
+              status.enabled ? "mfa-disable-confirmation" : undefined
+            }
             checked={switchChecked}
             disabled={busy}
             onChange={(event) => {
@@ -248,6 +256,7 @@ export function MfaSettings({ onSignOut }: { onSignOut: () => void }) {
         </form>
       ) : status.enabled && disableConfirmation ? (
         <form
+          id="mfa-disable-confirmation"
           onSubmit={(event) => {
             event.preventDefault();
             void submit(event.currentTarget, "disable");
@@ -295,6 +304,14 @@ export function MfaSettings({ onSignOut }: { onSignOut: () => void }) {
               : status.simulated
                 ? "Disable simulated step and sign out"
                 : "Turn off"}
+          </Button>
+          <Button
+            type="button"
+            variant="quiet"
+            disabled={busy}
+            onClick={closeDisableConfirmation}
+          >
+            Cancel
           </Button>
         </form>
       ) : setupIntent ? (
