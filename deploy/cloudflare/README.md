@@ -1,6 +1,6 @@
 # Deploy on merge to main
 
-`.github/workflows/deploy.yml` starts automatically on every push to `main`, including a merged PR. It also checks the release path on pull requests without deploying. Manual retries are available on `main`; other branches cannot publish. Releases run serially and skip a commit superseded while checks ran.
+`.github/workflows/deploy.yml` starts automatically on every push to `main`, including a merged PR. It also checks Cloudflare-specific safeguards and build artifacts on pull requests without deploying; the normal CI workflow owns the duplicate format, full-test, type and ordinary-build checks. Manual retries are available on `main`; other branches cannot publish. Superseded PR release checks are cancelled, while main and manual releases run serially and skip a commit superseded while checks ran.
 
 Publication is **fail-closed** until both a current hosted persistence acceptance receipt and a dedicated Cloudflare token are configured. Merging this workflow alone is not evidence of persistence acceptance and does not bypass the gate. This extends the manual-only release safeguards merged in PR #64 with automatic triggering and scope-bound acceptance.
 
@@ -48,7 +48,7 @@ Preserving a flag is not evidence that its capability has passed provider accept
 
 ## Release checks and recovery
 
-All hosted guard tests run before dependency installation, including negative/stale-receipt tests. Formatting, workspace tests, types, builds, Worker runtime smoke and the OpenNext build then run on PRs and releases. The checked API bundle is hashed after its smoke test and rechecked immediately before upload. The hosted manifest disables custom rebuilding and internal bundling so deployment uploads that checked bundle. The existing parser image is pinned by digest; parser image changes need separate validation rather than an implicit Docker rebuild. Durable Object names, bindings and migrations are retained.
+All hosted guard tests run before dependency installation, including negative/stale-receipt tests. PRs then install dependencies, run the Worker runtime smoke and OpenNext build, while the normal CI workflow supplies the duplicate format, workspace-test, type and ordinary-build checks. Main and manual releases run the complete validation set before publication. The checked API bundle is hashed after its smoke test and rechecked immediately before upload. The hosted manifest disables custom rebuilding and internal bundling so deployment uploads that checked bundle. The existing parser image is pinned by digest; parser image changes need separate validation rather than an implicit Docker rebuild. Durable Object names, bindings and migrations are retained.
 
 API deploys first, then web. Public-route and cross-origin checks run after publishing; they do not log in, call a payment provider or move money. They do not establish private-account, provider or persistence acceptance, nor exact live artifact parity.
 
