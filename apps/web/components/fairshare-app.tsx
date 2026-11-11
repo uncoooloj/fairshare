@@ -522,7 +522,13 @@ export default function FairshareApp() {
       )
         return;
       setSelected(a);
-      await loadWorkspace(currentWorkspace.current);
+      try {
+        await loadWorkspace(currentWorkspace.current);
+      } catch {
+        setNotice(
+          "Agreement updated. Refresh to reload the rest of your workspace.",
+        );
+      }
     } catch (cause) {
       if (
         workspaceRequestId !== workspaceRequest.current ||

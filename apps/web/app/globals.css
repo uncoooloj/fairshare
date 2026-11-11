@@ -1739,3 +1739,47 @@ td:last-child {
   font-size: 12px;
   line-height: 1.5;
 }
+
+.send-review-dialog {
+  width: min(520px, calc(100vw - 32px));
+  max-height: calc(100dvh - 48px);
+  overflow: auto;
+  border: 1px solid var(--color-line);
+  border-radius: 12px;
+  padding: 28px;
+  box-shadow: 0 24px 80px #17171726;
+  color: var(--color-ink);
+}
+.send-review-dialog::backdrop {
+  background: #17171755;
+}
+.send-review-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 12px;
+}
+.send-review-header h2 {
+  font-size: 20px;
+  line-height: 28px;
+}
+.send-review-people {
+  list-style: none;
+  margin: 20px 0;
+  padding: 0;
+  border-top: 1px solid var(--color-line);
+}
+.send-review-people li {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--color-line);
+}
+.send-review-people strong {
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 600px) {
+  .send-review-dialog {
+    padding: 20px;
+  }
+}
