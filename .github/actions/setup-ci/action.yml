@@ -33,12 +33,10 @@ runs:
                 printf '%s\0' absent
               fi
             done
-            find apps packages -type f -name package.json -print |
-              LC_ALL=C sort |
-              while IFS= read -r file; do
-                printf '%s\0' "$file"
-                cat "$file"
-              done
+            for file in apps/*/package.json packages/*/package.json; do
+              printf '%s\0' "$file"
+              cat "$file"
+            done
           } | sha256sum | cut -d ' ' -f1
         )"
         echo "key=fairshare-node-modules-v1-${image_os}-${runner_os}-${architecture}-${node_version}-${npm_version}-${manifest_hash}" >> "$GITHUB_OUTPUT"
@@ -61,7 +59,7 @@ runs:
       shell: bash
       run: npm ls --all
 
-    - if: ${{ inputs.save-cache == 'true' && steps.modules-cache.outputs.cache-hit != 'true' }}
+    - if: ${{ inputs.save-cache == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.modules-cache.outputs.cache-hit != 'true' }}
       uses: actions/cache/save@v4
       with:
         path: |
