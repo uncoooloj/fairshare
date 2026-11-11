@@ -76,6 +76,10 @@ import { MfaSettings } from "./mfa-settings";
 import { ProfileForm } from "./profile-form";
 import { recoverSourceDocument } from "../lib/source-recovery";
 import { createSandboxCheckout } from "../lib/checkout-retry";
+import {
+  agreementIdentityKey,
+  findAgreementByIdentity,
+} from "../lib/agreement-identity";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 const PaymentGrid = dynamic(
@@ -85,9 +89,6 @@ const PaymentGrid = dynamic(
 import { PaymentGridStatus } from "../src/components/paymentGridModel";
 import { Badge, Button, Empty, Field, Icon, Notice } from "./ui";
 const workspaceBase = (id: string) => `workspaces/${id}`;
-const agreementPickerValue = (
-  agreement: Pick<Agreement, "workspaceId" | "id">,
-) => JSON.stringify([agreement.workspaceId, agreement.id]);
 export default function FairshareApp() {
   const router = useRouter();
   const emailDelivery = useEmailDelivery();
@@ -638,11 +639,12 @@ export default function FairshareApp() {
           {agreements.length ? (
             <select
               aria-label="Open agreement"
-              value={selected?.id ?? ""}
+              value={selected ? agreementIdentityKey(selected) : ""}
               disabled={busy}
               onChange={(e) => {
-                const agreement = agreements.find(
-                  (item) => agreementPickerValue(item) === e.target.value,
+                const agreement = findAgreementByIdentity(
+                  agreements,
+                  e.target.value,
                 );
                 if (!agreement || !mayLeaveDraft()) return;
                 void run(() => openAgreement(agreement));
@@ -653,8 +655,8 @@ export default function FairshareApp() {
               </option>
               {agreements.map((agreement) => (
                 <option
-                  key={agreementPickerValue(agreement)}
-                  value={agreementPickerValue(agreement)}
+                  key={agreementIdentityKey(agreement)}
+                  value={agreementIdentityKey(agreement)}
                 >
                   {agreement.value.name}
                 </option>
@@ -666,9 +668,14 @@ export default function FairshareApp() {
           <span className="spacer" />
           <NotificationPanel
             key={`${user.id}:${workspace}`}
-            agreementIds={agreements.map((agreement) => agreement.id)}
-            onOpenAgreement={(id) => {
-              const agreement = agreements.find((item) => item.id === id);
+            agreements={agreements.map(({ workspaceId, id }) => ({
+              workspaceId,
+              id,
+            }))}
+            onOpenAgreement={(workspaceId, id) => {
+              const agreement = agreements.find(
+                (item) => item.workspaceId === workspaceId && item.id === id,
+              );
               if (!agreement || !mayLeaveDraft()) return false;
               void run(() => openAgreement(agreement));
               return true;
@@ -1016,7 +1023,10 @@ export default function FairshareApp() {
                               <p>
                                 {
                                   payouts.filter(
-                                    (p) => p.agreement.id === selected.id,
+                                    (p) =>
+                                      p.agreement.workspaceId ===
+                                        selected.workspaceId &&
+                                      p.agreement.id === selected.id,
                                   ).length
                                 }{" "}
                                 payout items recorded
@@ -1749,6 +1759,7 @@ export default function FairshareApp() {
                   rows={payouts.map((p) => ({
                     id: p.id,
                     agreementId: p.agreement.id,
+                    agreementKey: agreementIdentityKey(p.agreement),
                     agreementName: p.agreement.value.name,
                     recipientName:
                       p.agreement.value.members.find(
@@ -1765,8 +1776,8 @@ export default function FairshareApp() {
                       p.amount,
                     ),
                   }))}
-                  onOpenAgreement={(id) => {
-                    const a = agreements.find((a) => a.id === id);
+                  onOpenAgreement={(key) => {
+                    const a = findAgreementByIdentity(agreements, key);
                     if (a) run(() => openAgreement(a));
                   }}
                 />
