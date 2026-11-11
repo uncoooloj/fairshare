@@ -22,9 +22,11 @@ Onest is the preferred font stack. The application bundles local Onest font asse
 
 Account/register/login/logout, capability-gated password-reset and verification request controls with confirmation routes retained, upload-first agreement setup and agreement selection, private-link invite acceptance,
 upload-first agreement intake (which creates a first workspace when needed), people/invitations, text/PDF/DOCX upload and extracted-text review, authenticated original
-downloads, review discussion, opt-in local OCR, opt-in Cloudflare suggestions, conditional authenticator MFA, manual source-bound proposal editing, neutral fee policy choices, exact version approval,
-preview, activation, incoming-payment status and traceable allocation breakdown, sandbox checkout,
+downloads, review discussion, bounded automatic PDF OCR fallback when enabled, consent-gated Cloudflare suggestions, conditional authenticator MFA, manual source-bound proposal editing, neutral fee policy choices, exact version approval,
+preview, activation, incoming-payment status and traceable allocation breakdown, sandbox invoice creation and status,
 fixed allocation dispatch and item reconciliation, copied review reminders, read-only Community payout grid and account settings.
+
+Checkout endpoints remain available to API clients; the web app uses invoices. Buyer-paid invoices remain pending settlement verification and do not automatically create allocations; see [Invoices](INVOICES.md).
 
 Settings includes display preferences, a filtered read-only activity log, profile safeguards and sandbox payout destinations shared by agreements in the selected team. A saved destination is masked to collaborators and remains unverified; server payment credentials are managed by the deployment owner, not through the screen.
 
