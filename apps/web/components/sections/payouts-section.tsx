@@ -45,12 +45,13 @@ export function PayoutsSection({
         title="Payouts"
         description="Track money going to people, across all your agreements."
         emptyActions={
-          <Button
-            variant="secondary"
+          <button
+            type="button"
+            className="text-button"
             onClick={() => navigate(Section.Agreements)}
           >
-            View agreements
-          </Button>
+            Go to Agreements
+          </button>
         }
         loading={busy}
         rows={payouts.map((p) => ({
@@ -81,6 +82,7 @@ export function PayoutsSection({
       {payouts.length > 0 && (
         <Button
           variant="secondary"
+          style={{ marginTop: 16 }}
           disabled={busy}
           onClick={() =>
             run(async () => {

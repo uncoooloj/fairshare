@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { summarizePayouts } from "../src/components/payoutSummary";
+import {
+  PayoutCardKind,
+  payoutCards,
+  payoutCount,
+  summarizePayouts,
+} from "../src/components/payoutSummary";
 import {
   PaymentGridStatus as S,
   type PaymentGridRow,
@@ -41,4 +46,28 @@ test("invalid records and unsafe aggregate fail closed", () => {
       { ...row(S.Paid), id: "second" },
     ]),
   );
+});
+test("cards show a short, pluralised count and keep the detail for the tooltip", () => {
+  const cards = payoutCards(
+    summarizePayouts([row(S.Paid), row(S.Failed), { ...row(S.Held), id: "h" }]),
+  );
+  assert.deepEqual(
+    cards.map((c) => [c.kind, c.caption]),
+    [
+      [PayoutCardKind.Paid, "1 payout paid"],
+      [PayoutCardKind.OnTheWay, "0 payouts on the way"],
+      [PayoutCardKind.Attention, "2 need attention"],
+    ],
+  );
+  assert.equal(
+    payoutCards(summarizePayouts([row(S.Failed)]))[2].caption,
+    "1 needs attention",
+  );
+  for (const c of cards) {
+    assert.ok(c.caption.length <= 24, c.caption);
+    assert.ok(c.explanation.length > c.caption.length);
+    assert.doesNotMatch(c.explanation, /PayPal/);
+  }
+  assert.equal(payoutCount(1), "1 payout");
+  assert.equal(payoutCount(0), "0 payouts");
 });
