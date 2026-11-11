@@ -18,7 +18,6 @@ export const appSourceFiles = [
   "sections/agreement-tabs/payment-breakdown.tsx",
   "sections/payouts-section.tsx",
   "sections/settings-section.tsx",
-  "private-invitation.tsx",
 ];
 
 export const readComponent = (name: string) =>

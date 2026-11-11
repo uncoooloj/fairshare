@@ -1090,7 +1090,7 @@ export default function FairshareApp() {
         ) : (
           <Heading
             title="No agreements yet"
-            description="Upload a signed agreement or try the sample. Nothing moves money. Already invited? Open your invite link, or accept it in Settings."
+            description="Upload a signed agreement or try the sample. Nothing moves money. Already invited? Open your invite link."
             action={<Button onClick={startNewAgreement}>New agreement</Button>}
           />
         )
@@ -1196,7 +1196,6 @@ export default function FairshareApp() {
               workspaces={workspaces}
               inviteLink={inviteLink}
               run={run}
-              acceptInvitation={acceptInvitation}
               setNotice={setNotice}
               setInviteLink={setInviteLink}
               setUser={setUser}
