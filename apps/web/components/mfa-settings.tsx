@@ -94,7 +94,7 @@ export function MfaSettings({ onSignOut }: { onSignOut: () => void }) {
           are needed. Your password is still required.
         </p>
       )}
-      {!status?.simulated && (
+      {status && !status.simulated && (
         <p className="muted">
           Require a six-digit authenticator code when you sign in. Recovery
           codes are single-use; store them somewhere private.
@@ -215,7 +215,13 @@ export function MfaSettings({ onSignOut }: { onSignOut: () => void }) {
               disabled={busy}
             />
           </Field>
-          <Field label="Authenticator or recovery code">
+          <Field
+            label={
+              status.simulated
+                ? "Any value (simulation)"
+                : "Authenticator or recovery code"
+            }
+          >
             <input
               name="code"
               autoComplete="one-time-code"
@@ -225,7 +231,11 @@ export function MfaSettings({ onSignOut }: { onSignOut: () => void }) {
             />
           </Field>
           <Button variant="secondary" disabled={busy}>
-            {busy ? "Disabling…" : "Disable authenticator and sign out"}
+            {busy
+              ? "Disabling…"
+              : status.simulated
+                ? "Disable simulated step and sign out"
+                : "Disable authenticator and sign out"}
           </Button>
         </form>
       ) : (
@@ -236,8 +246,9 @@ export function MfaSettings({ onSignOut }: { onSignOut: () => void }) {
           }}
         >
           <p>
-            Not enabled. Setup will not change sign-in until you verify an
-            authenticator code.
+            {status.simulated
+              ? "Not enabled. Set up a simulated sign-in step for this test account. It does not add account protection."
+              : "Not enabled. Setup will not change sign-in until you verify an authenticator code."}
           </p>
           <Field label="Confirm current password">
             <input
@@ -250,7 +261,11 @@ export function MfaSettings({ onSignOut }: { onSignOut: () => void }) {
             />
           </Field>
           <Button disabled={busy}>
-            {busy ? "Preparing…" : "Set up authenticator"}
+            {busy
+              ? "Preparing…"
+              : status.simulated
+                ? "Set up simulated step"
+                : "Set up authenticator"}
           </Button>
         </form>
       )}
