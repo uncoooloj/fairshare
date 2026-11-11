@@ -345,26 +345,71 @@ export function restoreQuestions(
 }
 
 /**
- * Invite links made for a draft, by invitation id: `{ [invitationId]: token }`, the raw token.
- * The server keeps only a hash, so this device is the one place a link can be shown again
- * (the Sent screen, then the agreement's People tab, which reads the same key). Kept after
+ * Invite links made for a draft, by invitation id. The server keeps only a hash, so this
+ * device is the one place a link can be shown again. A cached token must retain the expiry
+ * returned when it was issued; legacy token-only values are deliberately unusable. Kept after
  * sending; writes merge so a link is never made twice for one invitation.
  */
 export const inviteLinksKey = (workspaceId: string, agreementId: string) =>
   `fairshare:invite-links:v1:${workspaceId}:${agreementId}`;
+
+export interface StoredInviteToken {
+  token: string;
+  expiresAt: number;
+}
+
+/** Drops malformed and expired bearer tokens without treating legacy token-only values as live. */
+export function forgetStaleInviteTokens(
+  links: Record<string, StoredInviteToken>,
+  now = Date.now(),
+): Record<string, StoredInviteToken> {
+  return Object.fromEntries(
+    Object.entries(links).filter(
+      (entry): entry is [string, StoredInviteToken] =>
+        typeof entry[1]?.token === "string" &&
+        Number.isFinite(entry[1]?.expiresAt) &&
+        entry[1].expiresAt > now,
+    ),
+  );
+}
+
+function storedInviteTokens(value: unknown): Record<string, StoredInviteToken> {
+  if (!isRecord(value)) return {};
+  return forgetStaleInviteTokens(
+    Object.fromEntries(
+      Object.entries(value).flatMap(([id, entry]) =>
+        isRecord(entry) &&
+        typeof entry.token === "string" &&
+        typeof entry.expiresAt === "number"
+          ? [[id, { token: entry.token, expiresAt: entry.expiresAt }]]
+          : [],
+      ),
+    ),
+  );
+}
 
 export function loadInviteLinks(
   workspaceId: string,
   agreementId: string,
 ): Record<string, string> {
   try {
-    const parsed = JSON.parse(
-      localStorage.getItem(inviteLinksKey(workspaceId, agreementId)) ?? "{}",
-    );
-    if (!isRecord(parsed)) return {};
+    const parsed = loadStoredInviteTokens(workspaceId, agreementId);
     return Object.fromEntries(
-      Object.entries(parsed).filter(
-        (entry): entry is [string, string] => typeof entry[1] === "string",
+      Object.entries(parsed).map(([id, entry]) => [id, entry.token]),
+    );
+  } catch {
+    return {};
+  }
+}
+
+export function loadStoredInviteTokens(
+  workspaceId: string,
+  agreementId: string,
+): Record<string, StoredInviteToken> {
+  try {
+    return storedInviteTokens(
+      JSON.parse(
+        localStorage.getItem(inviteLinksKey(workspaceId, agreementId)) ?? "{}",
       ),
     );
   } catch {
@@ -375,14 +420,19 @@ export function loadInviteLinks(
 export function saveInviteLinks(
   workspaceId: string,
   agreementId: string,
-  links: Record<string, string>,
+  links: Record<string, StoredInviteToken>,
 ) {
   try {
+    const existing = storedInviteTokens(
+      JSON.parse(
+        localStorage.getItem(inviteLinksKey(workspaceId, agreementId)) ?? "{}",
+      ),
+    );
     localStorage.setItem(
       inviteLinksKey(workspaceId, agreementId),
       JSON.stringify({
-        ...loadInviteLinks(workspaceId, agreementId),
-        ...links,
+        ...existing,
+        ...forgetStaleInviteTokens(links),
       }),
     );
   } catch {

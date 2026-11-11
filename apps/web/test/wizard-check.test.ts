@@ -16,6 +16,7 @@ import {
   dateRange,
   exampleLine,
   feeLine,
+  feesNeedSave,
   splitSummary,
   REFUND_LINE,
 } from "../components/wizard-check-step";
@@ -151,6 +152,24 @@ test("fees are always a line: before the split unless someone covers them", () =
   );
 });
 
+test("an explicit current-organizer fee choice can replace a kept former bearer", () => {
+  const handedOver = midnight({
+    fees: { value: FeeChoice.ORGANIZER_SHARE, source: AnswerSource.PERSON },
+    feeBearerId: "former-organizer",
+    feeBearerChoice: "KEEP",
+  });
+  assert.equal(
+    feesNeedSave(handedOver, FeeChoice.ORGANIZER_SHARE, false),
+    false,
+  );
+  assert.equal(feesNeedSave(handedOver, FeeChoice.ORGANIZER_SHARE, true), true);
+  assert.equal(feesNeedSave(midnight(), FeeChoice.BEFORE_SPLIT, false), false);
+  assert.equal(
+    feesNeedSave(midnight(), FeeChoice.ORGANIZER_SHARE, false),
+    true,
+  );
+});
+
 test("Check states fees with a Change link and the true refund line, no refund question", () => {
   const html = render(midnight());
   assert.match(html, /PayPal fees come off the top, before the split\./);
@@ -224,6 +243,16 @@ test("not an agreement: a plain headline, two ways on, nothing guessed", () => {
   assert.match(html, /Upload a different file/);
   assert.match(html, /Set it up myself/);
   assert.doesNotMatch(html, /Who gets what|wc-card/);
+  const busy = renderToStaticMarkup(
+    createElement(WizardCheckStep, {
+      answers: alone,
+      onChange: () => {},
+      mode: CheckMode.NOT_AGREEMENT,
+      onUploadAgain: () => {},
+      busy: true,
+    }),
+  );
+  assert.equal((busy.match(/disabled=""/g) || []).length, 2);
   // People already added (back from a later step): it's a manual setup now.
   const manual = renderToStaticMarkup(
     createElement(WizardCheckStep, {

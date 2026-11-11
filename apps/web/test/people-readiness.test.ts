@@ -76,6 +76,12 @@ test("organizers can recover a sent pending person's link without putting its to
   assert.equal(isCurrentReissue(7, 8), false, "late responses stay ignored");
   assert.match(source, /onAgreementChange\?\.\(result\.agreement\)/);
   assert.match(source, /agreementIdentityRef\.current !== requestIdentity/);
+  assert.match(
+    source,
+    /loadStoredInviteTokens\(agreement\.workspaceId, agreement\.id\)/,
+  );
+  assert.match(source, /Show saved invite link/);
+  assert.match(source, /expiresAt: result\.invitation\.expiresAt/);
 });
 
 test("reissued agreements propagate to the app state by composite identity", () => {

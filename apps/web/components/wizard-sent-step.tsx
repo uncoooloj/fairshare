@@ -8,6 +8,19 @@ export interface SentInvite {
   name: string;
   email: string;
   token?: string;
+  expiresAt?: number;
+}
+
+export function inviteIsLive(
+  token: string | undefined,
+  expiresAt: number | undefined,
+  now = Date.now(),
+) {
+  return (
+    typeof token === "string" &&
+    Number.isFinite(expiresAt) &&
+    (expiresAt as number) > now
+  );
 }
 
 export function inviteLink(token: string) {
@@ -46,7 +59,9 @@ enum RowState {
 
 function InviteRow({ invite }: { invite: SentInvite }) {
   const [state, setState] = useState(RowState.IDLE);
-  const link = invite.token ? inviteLink(invite.token) : "";
+  const link = inviteIsLive(invite.token, invite.expiresAt)
+    ? inviteLink(invite.token!)
+    : "";
 
   async function copy() {
     try {

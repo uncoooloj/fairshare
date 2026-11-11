@@ -13,7 +13,7 @@ import {
   answersFromDraft,
   type ExtractedAnswers,
 } from "../lib/answers-from-extraction";
-import { api, type Agreement } from "../lib/model";
+import { ApiError, api, type Agreement } from "../lib/model";
 import { readAgreement, ReadingOutcome } from "../lib/reading";
 import {
   blockingReasons,
@@ -28,10 +28,11 @@ import { workspaceBase } from "../lib/workspace-base";
 import {
   clearDraftAnswers,
   loadDraftAnswers,
-  loadInviteLinks,
+  loadStoredInviteTokens,
   restoreQuestions,
   saveDraftAnswers,
   saveInviteLinks,
+  type StoredInviteToken,
   type StoredPlace,
 } from "../lib/wizard-persistence";
 import {
@@ -183,6 +184,47 @@ export function clearPersonInvitation(
   };
 }
 
+type DraftDelete = (
+  workspaceId: string,
+  agreementId: string,
+  expectedRevision: number,
+) => Promise<void>;
+type DraftRead = (
+  workspaceId: string,
+  agreementId: string,
+) => Promise<Agreement>;
+
+/** A lost DELETE response is safe to recover only when a fresh read proves the draft is gone. */
+export async function deleteDraftForReplacement(
+  workspaceId: string,
+  agreementId: string,
+  expectedRevision: number,
+  deps: { deleteDraft?: DraftDelete; readDraft?: DraftRead } = {},
+): Promise<void> {
+  const remove = deps.deleteDraft ?? deleteDraft;
+  const read =
+    deps.readDraft ??
+    ((workspace: string, agreement: string) =>
+      api<Agreement>(
+        `${workspaceBase(workspace)}/collaborations/${agreement}`,
+      ));
+  try {
+    await remove(workspaceId, agreementId, expectedRevision);
+  } catch (cause) {
+    try {
+      await read(workspaceId, agreementId);
+    } catch (readCause) {
+      if (
+        readCause instanceof ApiError &&
+        readCause.status === 404 &&
+        readCause.code === "NOT_FOUND"
+      )
+        return;
+    }
+    throw cause;
+  }
+}
+
 /** The server calls People needs; swappable so tests can count them. */
 export interface PeopleApi {
   addPerson: typeof addPerson;
@@ -215,10 +257,10 @@ export async function syncPendingPeople({
   agreement: Agreement;
   answers: AgreementAnswers;
   /** Tokens already made, by invitation id. */
-  links: Record<string, string>;
+  links: Record<string, string | StoredInviteToken>;
   onAgreement?: (agreement: Agreement) => void;
   onAnswers?: (answers: AgreementAnswers) => void;
-  onLink?: (invitationId: string, token: string) => void;
+  onLink?: (invitationId: string, token: string, expiresAt: number) => void;
   calls?: PeopleApi;
 }): Promise<{
   agreement: Agreement;
@@ -227,17 +269,34 @@ export async function syncPendingPeople({
 }> {
   let current = agreement;
   let next = answers;
-  const issued = { ...links };
+  const issued = Object.fromEntries(
+    Object.entries(links).flatMap(([id, link]) =>
+      !!link &&
+      typeof link === "object" &&
+      typeof link.token === "string" &&
+      Number.isFinite(link.expiresAt) &&
+      link.expiresAt > Date.now()
+        ? [[id, link.token]]
+        : [],
+    ),
+  ) as Record<string, string>;
   const keep = new Set<string>();
   const committed = (
-    result: { agreement: Agreement; invitation: { id: string; token: string } },
+    result: {
+      agreement: Agreement;
+      invitation: { id: string; token: string; expiresAt: number };
+    },
     personKey: string,
     patch: Partial<PersonAnswer> = {},
   ) => {
     current = result.agreement;
     onAgreement(current);
     issued[result.invitation.id] = result.invitation.token;
-    onLink(result.invitation.id, result.invitation.token);
+    onLink(
+      result.invitation.id,
+      result.invitation.token,
+      result.invitation.expiresAt,
+    );
     keep.add(result.invitation.id);
     next = withInvitation(next, personKey, result.invitation.id, patch);
     onAnswers(next);
@@ -393,9 +452,12 @@ export function AgreementCreationWizard({
   );
   const [questionIndex, setQuestionIndex] = useState(place.questionIndex);
   // Invite tokens by invitation id. Each is made once, at Send, and kept on this device.
-  const [links, setLinks] = useState<Record<string, string>>(() =>
+  const [links, setLinks] = useState<Record<string, StoredInviteToken>>(() =>
     resume
-      ? loadInviteLinks(resume.created.workspaceId, resume.created.agreementId)
+      ? loadStoredInviteTokens(
+          resume.created.workspaceId,
+          resume.created.agreementId,
+        )
       : {},
   );
   const [busy, setBusyState] = useState(false);
@@ -565,9 +627,14 @@ export function AgreementCreationWizard({
       links,
       onAgreement: setAgreement,
       onAnswers: setAnswers,
-      onLink: (invitationId, token) => {
-        saveInviteLinks(workspaceId, agreementId, { [invitationId]: token });
-        setLinks((current) => ({ ...current, [invitationId]: token }));
+      onLink: (invitationId, token, expiresAt) => {
+        saveInviteLinks(workspaceId, agreementId, {
+          [invitationId]: { token, expiresAt },
+        });
+        setLinks((current) => ({
+          ...current,
+          [invitationId]: { token, expiresAt },
+        }));
       },
     });
   }
@@ -645,7 +712,11 @@ export function AgreementCreationWizard({
     }
     const { workspaceId, agreementId } = created;
     await guarded(async () => {
-      await deleteDraft(workspaceId, agreementId, agreement.revision);
+      await deleteDraftForReplacement(
+        workspaceId,
+        agreementId,
+        agreement.revision,
+      );
       clearDraftAnswers(workspaceId, agreementId);
       readingGeneration.current++;
       requestId.current = "";
@@ -833,6 +904,7 @@ export function AgreementCreationWizard({
           }}
           mode={checkMode}
           equalSplitGuessed={equalSplitGuessed}
+          busy={busy}
           onUploadAgain={() => void uploadAgain()}
           onSetUpMyself={() => setCheckMode(CheckMode.MANUAL)}
         />
@@ -963,7 +1035,10 @@ export function AgreementCreationWizard({
             key: p.key,
             name: p.name,
             email: p.email ?? "",
-            token: p.invitationId ? links[p.invitationId] : undefined,
+            token: p.invitationId ? links[p.invitationId]?.token : undefined,
+            expiresAt: p.invitationId
+              ? links[p.invitationId]?.expiresAt
+              : undefined,
           }))}
       />,
       "Close and open the agreement",

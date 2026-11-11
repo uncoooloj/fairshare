@@ -7,6 +7,7 @@ import {
   AgreementCreationWizard,
   checkProblem,
   clearPersonInvitation,
+  deleteDraftForReplacement,
   detailsPatch,
   mergeQuestions,
   resumedAnswers,
@@ -29,7 +30,7 @@ import {
 import { CheckMode } from "../components/wizard-check-step";
 import { emptyAnswers, FeeChoice, AnswerSource } from "../lib/rules-answers";
 import { StandardQuestionId, feeQuestion } from "../lib/standard-questions";
-import type { Agreement } from "../lib/model";
+import { ApiError, type Agreement } from "../lib/model";
 import {
   inviteLinksKey,
   loadDraftAnswers,
@@ -37,7 +38,11 @@ import {
   saveDraftAnswers,
   saveInviteLinks,
 } from "../lib/wizard-persistence";
-import { shareMethod, ShareMethod } from "../components/wizard-sent-step";
+import {
+  inviteIsLive,
+  shareMethod,
+  ShareMethod,
+} from "../components/wizard-sent-step";
 import { appSource } from "./app-source";
 import {
   MIDNIGHT,
@@ -254,6 +259,57 @@ test("the draft is saved on Read my agreement; people and one submit on Send", (
     /^\s*disabled=\{busy\}\s*selfEmail/m,
   );
   assert.doesNotMatch(wizard, /consentToCloudflare|fetch\(/);
+});
+
+test("replacement confirms a lost delete response before local cleanup", async () => {
+  const original = globalThis.fetch;
+  const calls: Array<{ method: string; url: string }> = [];
+  globalThis.fetch = (async (input: string, init?: RequestInit) => {
+    calls.push({ method: init?.method ?? "GET", url: input });
+    if (init?.method === "DELETE")
+      return new Response(JSON.stringify({ error: { code: "TEMPORARY" } }), {
+        status: 503,
+      });
+    return new Response(JSON.stringify({ error: { code: "NOT_FOUND" } }), {
+      status: 404,
+    });
+  }) as typeof fetch;
+  try {
+    await deleteDraftForReplacement("w", "a", 7);
+  } finally {
+    globalThis.fetch = original;
+  }
+  assert.deepEqual(calls, [
+    {
+      method: "DELETE",
+      url: "/api/service/workspaces/w/collaborations/a?expectedRevision=7",
+    },
+    { method: "GET", url: "/api/service/workspaces/w/collaborations/a" },
+  ]);
+});
+
+test("replacement retains the original error unless a read proves deletion", async () => {
+  const original = new ApiError("Try again", 503, "TEMPORARY");
+  await assert.rejects(
+    deleteDraftForReplacement("w", "a", 7, {
+      deleteDraft: async () => {
+        throw original;
+      },
+      readDraft: async () => ({ id: "a" }) as Agreement,
+    }),
+    (cause: unknown) => cause === original,
+  );
+  await assert.rejects(
+    deleteDraftForReplacement("w", "a", 7, {
+      deleteDraft: async () => {
+        throw original;
+      },
+      readDraft: async () => {
+        throw new ApiError("No access", 403, "FORBIDDEN");
+      },
+    }),
+    (cause: unknown) => cause === original,
+  );
 });
 
 test("a lost submit reply is recovered only for this attempt's newly sent rules", () => {
@@ -620,7 +676,11 @@ function fakePeopleServer(initial: Agreement) {
       ];
       return {
         agreement: bump(),
-        invitation: { id, token: `token-${id}`, expiresAt: 0 },
+        invitation: {
+          id,
+          token: `token-${id}`,
+          expiresAt: Date.now() + 48 * 3600000,
+        },
       } as any;
     },
     removePerson: async (_w, _a, revision, userId) => {
@@ -646,7 +706,11 @@ function fakePeopleServer(initial: Agreement) {
       );
       return {
         agreement: bump(),
-        invitation: { id, token: `token-${id}`, expiresAt: 0 },
+        invitation: {
+          id,
+          token: `token-${id}`,
+          expiresAt: Date.now() + 48 * 3600000,
+        },
       } as any;
     },
   };
@@ -698,18 +762,20 @@ test("links are made once per person at Send; a second Send or retry makes none"
       isSelf: false,
     },
   ]);
-  const saved: Record<string, string> = {};
+  const saved: Record<string, { token: string; expiresAt: number }> = {};
   const first = await syncPendingPeople({
     workspaceId: "w",
     agreementId: "a",
     agreement: server.current(),
     answers,
     links: {},
-    onLink: (id, token) => (saved[id] = token),
+    onLink: (id, token, expiresAt) => (saved[id] = { token, expiresAt }),
     calls: server.calls,
   });
   assert.deepEqual(server.count, { add: 2, remove: 0, replace: 0 });
-  assert.deepEqual(saved, { inv1: "token-inv1", inv2: "token-inv2" });
+  assert.deepEqual(Object.keys(saved), ["inv1", "inv2"]);
+  assert.equal(saved.inv1.token, "token-inv1");
+  assert.equal(saved.inv2.token, "token-inv2");
   assert.deepEqual(
     first.answers.people.value.map((p) => [p.name, p.invitationId]),
     [
@@ -725,7 +791,7 @@ test("links are made once per person at Send; a second Send or retry makes none"
       agreementId: "a",
       agreement: server.current(),
       answers: first.answers,
-      links: first.links,
+      links: saved,
       calls: server.calls,
     });
   assert.deepEqual(server.count, { add: 2, remove: 0, replace: 0 });
@@ -758,12 +824,14 @@ test("a person saved by an older build gets one link, once; edits and removals r
       isSelf: false,
     },
   ]);
+  const saved: Record<string, { token: string; expiresAt: number }> = {};
   const once = await syncPendingPeople({
     workspaceId: "w",
     agreementId: "a",
     agreement: server.current(),
     answers,
     links: {},
+    onLink: (id, token, expiresAt) => (saved[id] = { token, expiresAt }),
     calls: server.calls,
   });
   assert.deepEqual(server.count, { add: 0, remove: 1, replace: 1 });
@@ -772,7 +840,7 @@ test("a person saved by an older build gets one link, once; edits and removals r
     agreementId: "a",
     agreement: server.current(),
     answers: once.answers,
-    links: once.links,
+    links: saved,
     calls: server.calls,
   });
   assert.deepEqual(server.count, { add: 0, remove: 1, replace: 1 });
@@ -791,7 +859,7 @@ test("a person saved by an older build gets one link, once; edits and removals r
     agreementId: "a",
     agreement: server.current(),
     answers: edited,
-    links: once.links,
+    links: saved,
     calls: server.calls,
   });
   assert.deepEqual(server.count, { add: 1, remove: 2, replace: 1 });
@@ -867,8 +935,9 @@ test("the place and invite links are stored per draft, merged, and read back", (
       stage: WizardStage.QUESTIONS,
       questionIndex: 1,
     });
-    saveInviteLinks("w", "a", { i1: "t1" });
-    saveInviteLinks("w", "a", { i2: "t2" });
+    const expiresAt = Date.now() + 48 * 3600000;
+    saveInviteLinks("w", "a", { i1: { token: "t1", expiresAt } });
+    saveInviteLinks("w", "a", { i2: { token: "t2", expiresAt } });
     assert.equal(inviteLinksKey("w", "a"), "fairshare:invite-links:v1:w:a");
     assert.deepEqual(loadInviteLinks("w", "a"), { i1: "t1", i2: "t2" });
     store.set(inviteLinksKey("w", "a"), "not json");
@@ -901,6 +970,9 @@ test("the stepper says which question you're on; Share falls back to copy", () =
     shareMethod({ share: async () => {} } as any, data),
     ShareMethod.SHEET,
   );
+  assert.equal(inviteIsLive("token", 1001, 1000), true);
+  assert.equal(inviteIsLive("token", 1000, 1000), false);
+  assert.equal(inviteIsLive("token", undefined, 1000), false);
 });
 
 test("not an agreement: no footer Continue, and uploading again discards the first draft", () => {
@@ -954,7 +1026,7 @@ test("not an agreement: no footer Continue, and uploading again discards the fir
     wizard.indexOf("async function uploadAgain()"),
     wizard.indexOf("async function discard()"),
   );
-  assert.match(again, /await deleteDraft\(/);
+  assert.match(again, /await deleteDraftForReplacement\(/);
   assert.match(again, /clearDraftAnswers\(/);
   assert.match(again, /setCreated\(null\)/);
   assert.match(again, /setStage\(WizardStage\.UPLOAD\)/);

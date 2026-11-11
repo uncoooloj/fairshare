@@ -15,6 +15,11 @@ import { Avatar } from "./person";
 import { toneInRoster } from "../lib/person";
 import { publicWebOrigin } from "../lib/public-web-origin";
 import { AGREEMENT_INVITE_PREFIX } from "./agreement-invitation";
+import {
+  loadStoredInviteTokens,
+  saveInviteLinks,
+  type StoredInviteToken,
+} from "../lib/wizard-persistence";
 
 function chipTone(label: string) {
   if (label === "Approved") return "good";
@@ -73,6 +78,9 @@ export function AgreementPeople({
     name: string;
     link: string;
   } | null>(null);
+  const [cachedInviteTokens, setCachedInviteTokens] = useState<
+    Record<string, StoredInviteToken>
+  >(() => loadStoredInviteTokens(agreement.workspaceId, agreement.id));
   useEffect(() => {
     setCurrentAgreement((current) =>
       agreement.revision >= current.revision ? agreement : current,
@@ -83,6 +91,9 @@ export function AgreementPeople({
     setIssuedInvite(null);
     setInviteError("");
     setReissuing("");
+    setCachedInviteTokens(
+      loadStoredInviteTokens(agreement.workspaceId, agreement.id),
+    );
   }, [agreementIdentity]);
   useEffect(() => {
     let active = true;
@@ -146,6 +157,19 @@ export function AgreementPeople({
         name: member.displayName,
         link: personInviteLink(result.invitation.token, location.origin),
       });
+      saveInviteLinks(currentAgreement.workspaceId, currentAgreement.id, {
+        [result.invitation.id]: {
+          token: result.invitation.token,
+          expiresAt: result.invitation.expiresAt,
+        },
+      });
+      setCachedInviteTokens((current) => ({
+        ...current,
+        [result.invitation.id]: {
+          token: result.invitation.token,
+          expiresAt: result.invitation.expiresAt,
+        },
+      }));
     } catch (cause) {
       if (
         agreementIdentityRef.current !== requestIdentity ||
@@ -224,6 +248,9 @@ export function AgreementPeople({
               const readiness = loading
                 ? "Loading…"
                 : payoutReadinessLabel(destination?.status);
+              const cachedToken = member.pending
+                ? cachedInviteTokens[member.pending.invitationId]
+                : undefined;
               return (
                 <tr key={member.userId}>
                   <th scope="row">
@@ -288,16 +315,36 @@ export function AgreementPeople({
                             />
                           )}
                         {organizer && sent && isPendingMember(member) && (
-                          <Button
-                            type="button"
-                            variant="quiet"
-                            disabled={Boolean(reissuing)}
-                            onClick={() => void reissue(member)}
-                          >
-                            {reissuing === member.userId
-                              ? "Creating invite link…"
-                              : "Create new invite link"}
-                          </Button>
+                          <>
+                            {cachedToken &&
+                              cachedToken.expiresAt > Date.now() && (
+                                <Button
+                                  type="button"
+                                  variant="quiet"
+                                  onClick={() =>
+                                    setIssuedInvite({
+                                      name: member.displayName,
+                                      link: personInviteLink(
+                                        cachedToken.token,
+                                        location.origin,
+                                      ),
+                                    })
+                                  }
+                                >
+                                  Show saved invite link
+                                </Button>
+                              )}
+                            <Button
+                              type="button"
+                              variant="quiet"
+                              disabled={Boolean(reissuing)}
+                              onClick={() => void reissue(member)}
+                            >
+                              {reissuing === member.userId
+                                ? "Creating invite link…"
+                                : "Create new invite link"}
+                            </Button>
+                          </>
                         )}
                         {member.userId === userId && (
                           <Button
