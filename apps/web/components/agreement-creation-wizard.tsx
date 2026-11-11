@@ -946,7 +946,7 @@ export function AgreementCreationWizard({
             mode === DocumentMode.UPLOAD && file ? file.name : "Pasted agreement"
           }
           sourceDocumentIds={
-            created
+            created && !resume
               ? { agreement: created.documentId, advance: created.documentId }
               : undefined
           }

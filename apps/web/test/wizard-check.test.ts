@@ -137,7 +137,7 @@ test("Check reader only maps unique exact document quotes to highlights", () => 
     documentId: "draft-source",
     text,
     provenance: { pages: [{ page: 1, start: 0, end: text.length }] },
-  });
+  }, { agreement: "draft-source", advance: "draft-source" });
   assert.deepEqual(citations.map((citation) => citation.id), [
     "wizard-agreement",
     "wizard-split",
@@ -148,6 +148,22 @@ test("Check reader only maps unique exact document quotes to highlights", () => 
     wizardCitations(
       { ...answers, people: { ...answers.people, quote: "Maya 50%" } },
       { documentId: "draft-source", text: `${text}\nMaya 50%` },
+      { agreement: "draft-source", advance: "draft-source" },
+    ).map((citation) => citation.id),
+    ["wizard-agreement"],
+  );
+  assert.deepEqual(
+    wizardCitations(
+      {
+        ...answers,
+        fees: {
+          value: FeeChoice.BEFORE_SPLIT,
+          source: AnswerSource.DOCUMENT,
+          quote: answers.people.quote,
+        },
+      },
+      { documentId: "draft-source", text },
+      { agreement: "draft-source", advance: "draft-source" },
     ).map((citation) => citation.id),
     ["wizard-agreement"],
   );

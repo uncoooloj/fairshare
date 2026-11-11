@@ -233,6 +233,9 @@ export function wizardCitations(
   document: Pick<DocumentRecord, "documentId" | "text" | "provenance">,
   sourceDocumentIds?: { agreement?: string; advance?: string },
 ): DocumentCitation[] {
+  // Draft persistence stores answers but not their producing document ID.
+  // Without that identity, a matching phrase in a newer file is not evidence.
+  if (!sourceDocumentIds) return [];
   const candidates: Array<{
     id: string;
     label: string;
@@ -246,12 +249,22 @@ export function wizardCitations(
     { id: "wizard-fees", label: "PayPal fees", summary: feeLine(answers), cited: answers.fees, documentId: sourceDocumentIds?.agreement },
     { id: "wizard-advance", label: "Paid back first", summary: advanceSentence(answers) ?? "Advance", cited: answers.advance, documentId: sourceDocumentIds?.advance },
   ];
-  return candidates.flatMap(({ id, label, summary, cited, documentId }) => {
+  const exact = candidates.filter(({ cited, documentId }) => {
+    const quote = cited?.source === AnswerSource.DOCUMENT ? cited.quote?.trim() : undefined;
+    return !!quote && documentId === document.documentId &&
+      document.text.indexOf(quote) >= 0 &&
+      document.text.indexOf(quote, document.text.indexOf(quote) + 1) === -1;
+  });
+  return exact.flatMap(({ id, label, summary, cited, documentId }) => {
     if (documentId !== undefined && documentId !== document.documentId) return [];
     const quote = cited?.source === AnswerSource.DOCUMENT ? cited.quote?.trim() : undefined;
     if (!quote) return [];
     const start = document.text.indexOf(quote);
     if (start < 0 || document.text.indexOf(quote, start + 1) !== -1) return [];
+    // A single source span cannot tell which of two rule chips was selected.
+    // Leave both uncited instead of making one rule masquerade as the other.
+    if (exact.filter((candidate) => candidate.cited?.quote?.trim() === quote).length !== 1)
+      return [];
     const end = start + quote.length;
     const pages = document.provenance?.pages;
     const matches = Array.isArray(pages)
@@ -392,11 +405,8 @@ export function WizardCheckStep({
   const citations = document
     ? wizardCitations(answers, document, sourceDocumentIds)
     : [];
-  const citationId = (cited?: Cited<unknown>) =>
-    citations.find((citation) => citation.reference.excerpt === cited?.quote)?.id;
-  const openCitation = (cited: Cited<unknown>) => {
-    const id = citationId(cited);
-    if (!id) return;
+  const openCitation = (id?: string) => {
+    if (!id || !citations.some((citation) => citation.id === id)) return;
     window.dispatchEvent(new CustomEvent("fairshare:open-citation", { detail: id }));
   };
   const focusRule = (id: string) => {
@@ -484,7 +494,7 @@ export function WizardCheckStep({
         <CardHead
           title="The agreement"
           cited={answers.name.value ? answers.name : answers.effectiveFrom}
-          onOpenCitation={openCitation}
+          onOpenCitation={() => openCitation(answers.name.value ? "wizard-agreement" : "wizard-dates")}
           onChange={() => setDrawer(OpenDrawer.AGREEMENT)}
           changeLabel="Change the agreement name and dates"
         />
@@ -505,7 +515,7 @@ export function WizardCheckStep({
         <CardHead
           title="Who gets what"
           cited={answers.people}
-          onOpenCitation={openCitation}
+          onOpenCitation={() => openCitation("wizard-split")}
           onChange={() => setDrawer(OpenDrawer.SPLIT)}
           changeLabel="Change who gets what"
         />
@@ -548,7 +558,7 @@ export function WizardCheckStep({
         ) : null}
         <p className="wc-fees">
           <span>{fees}</span>
-          <ClauseChip cited={answers.fees} onOpen={openCitation} />
+          <ClauseChip cited={answers.fees} onOpen={() => openCitation("wizard-fees")} />
           {feesAsked(answers) ? null : (
             <button
               type="button"
@@ -569,7 +579,7 @@ export function WizardCheckStep({
           <CardHead
             title="Paid back first"
             cited={advance}
-            onOpenCitation={openCitation}
+            onOpenCitation={() => openCitation("wizard-advance")}
             onChange={() => setDrawer(OpenDrawer.ADVANCE)}
             changeLabel="Change who paid upfront and how much"
           />
