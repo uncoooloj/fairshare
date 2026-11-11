@@ -262,6 +262,13 @@
 .wiz-send {
   gap: var(--space-5);
 }
+.wiz-main:has(.wiz-send),
+.wiz-scroll:has(.wiz-send) .wiz-stepper {
+  max-width: 886px;
+}
+.wiz-send > h1 {
+  font-size: var(--text-title);
+}
 .wiz-review-card {
   margin: var(--space-3) 0 0;
   padding: var(--space-2) var(--space-5);
