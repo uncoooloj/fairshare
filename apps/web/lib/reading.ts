@@ -19,10 +19,10 @@ export enum ReadingStepStatus {
 }
 
 export const READING_STEPS = [
-  "Reading document",
-  "Finding revenue clauses",
-  "Building rules",
-  "Checking for ambiguities",
+  "Reading the document",
+  "Finding who gets paid",
+  "Working out the split",
+  "Checking for anything unclear",
 ] as const;
 
 /** Timer-driven progress may reach the last step but never complete it. */
@@ -48,7 +48,7 @@ export function readingAnnouncement(
 ): string {
   if (phase === ReadingPhase.DONE) return "Finished reading your agreement.";
   if (phase === ReadingPhase.FALLBACK)
-    return "We couldn't read every term. You can add them yourself.";
+    return "We couldn't read the split. Let's set it up together.";
   return `${READING_STEPS[active]}, step ${active + 1} of ${READING_STEPS.length}.`;
 }
 

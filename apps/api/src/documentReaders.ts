@@ -1,4 +1,5 @@
-import { extractPdf } from "./pdf.js";
+import { DomainError } from "@fairshare/domain";
+import { extractPdf, SCANNED_PDF_MESSAGE, ScanErrorCode } from "./pdf.js";
 import { extractDocx } from "./docx.js";
 import { extractPdfOcr } from "./ocr.js";
 
@@ -28,13 +29,18 @@ export async function readUploadedPdf(
     return await readers.pdf(bytes);
   } catch (error) {
     if (
-      options.ocrEnabled &&
       error !== null &&
       typeof error === "object" &&
       "code" in error &&
       error.code === "PDF_NO_EXTRACTABLE_TEXT"
     ) {
-      return readers.ocr(bytes);
+      // A textless PDF is a scan: read it automatically when OCR is enabled,
+      // otherwise say so plainly instead of suggesting a clearer copy.
+      if (options.ocrEnabled) return readers.ocr(bytes);
+      throw new DomainError(
+        ScanErrorCode.SCANNED_PDF_UNSUPPORTED,
+        SCANNED_PDF_MESSAGE,
+      );
     }
     // Passwords, limits, timeouts and parser failures are not scans. Preserve
     // these errors instead of silently retrying a different processing path.

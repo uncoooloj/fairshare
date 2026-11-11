@@ -1,25 +1,26 @@
 "use client";
 import type { ReactNode } from "react";
 
+/** The four progress dots. Reading counts as Upload; Questions count as Check. */
 export enum WizardStep {
-  DETAILS = 0,
-  DOCUMENT = 1,
+  UPLOAD = 0,
+  CHECK = 1,
   PEOPLE = 2,
-  REVIEW = 3,
+  SEND = 3,
 }
 
 export const WIZARD_STEP_LABELS: Record<WizardStep, string> = {
-  [WizardStep.DETAILS]: "Details",
-  [WizardStep.DOCUMENT]: "Document",
+  [WizardStep.UPLOAD]: "Upload",
+  [WizardStep.CHECK]: "Check",
   [WizardStep.PEOPLE]: "People",
-  [WizardStep.REVIEW]: "Review",
+  [WizardStep.SEND]: "Send",
 };
 
 export const WIZARD_STEPS = [
-  WizardStep.DETAILS,
-  WizardStep.DOCUMENT,
+  WizardStep.UPLOAD,
+  WizardStep.CHECK,
   WizardStep.PEOPLE,
-  WizardStep.REVIEW,
+  WizardStep.SEND,
 ];
 
 function CheckIcon() {
@@ -49,7 +50,7 @@ export function CloseIcon() {
   );
 }
 
-/** Filled checks for finished steps, connector lines between steps. Not clickable: Review has Edit links. */
+/** Filled checks for finished steps, connector lines between steps. Not clickable. */
 export function WizardStepper({ step }: { step: WizardStep }) {
   return (
     <nav className="wiz-stepper" aria-label="New agreement progress">

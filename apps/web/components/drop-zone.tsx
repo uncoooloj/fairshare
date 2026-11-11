@@ -10,7 +10,7 @@ export function DropZone({
   disabled = false,
   file,
   hint,
-  prompt = "Drop your signed agreement here or",
+  prompt = "Drop the signed agreement here or",
   status = "Ready to read",
   error,
   validate,
@@ -99,13 +99,10 @@ export function DropZone({
             {failure.name && <strong>{failure.name}</strong>}
             <span className="file-card-error">
               {failure.unreadable
-                ? "We couldn’t read this file."
-                : "This file can’t be used."}{" "}
-              {failure.message}
+                ? "We couldn’t open this file"
+                : `This file can’t be used. ${failure.message}`}
             </span>
-            {failure.unreadable && (
-              <small>It may be password-protected or a low-quality scan.</small>
-            )}
+            {failure.unreadable && <small>{failure.message}</small>}
           </span>
           <button
             type="button"

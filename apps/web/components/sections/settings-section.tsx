@@ -104,7 +104,7 @@ export function SettingsSection({
               </>
             ) : (
               <Empty title="Start an agreement first">
-                Upload your first agreement to set up a payout destination.
+                Upload your first agreement to add a payout email.
               </Empty>
             ))}
           {settingsTab === "Notifications" && (

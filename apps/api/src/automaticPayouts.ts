@@ -1,9 +1,13 @@
 import { createHash } from "node:crypto";
 import { AllocationStatus, DomainError } from "@fairshare/domain";
-import { PayPalError } from "@fairshare/payments";
+import { PayPalError, RecipientType } from "@fairshare/payments";
 import type { AggregateStore } from "./fairshare.js";
 import type { FairshareApp } from "./app.js";
 import type { PaymentProvider } from "./paymentRoutes.js";
+import {
+  ensurePayoutAccountSchema,
+  readPayoutDestination,
+} from "./payoutAccounts.js";
 
 /** Only verified, persisted capture allocations enter this queue. A reservation is
  * committed before network I/O; uncertain writes are never automatically retried. */
@@ -13,6 +17,7 @@ export function automaticPayouts(
   provider: PaymentProvider,
 ) {
   const db = app.store.db;
+  ensurePayoutAccountSchema(db);
   function captures() {
     return db.prepare("SELECT * FROM fairshare_captures").all() as any[];
   }
@@ -71,11 +76,7 @@ export function automaticPayouts(
         .get(captureId, userId) as any;
       if (prior && !["WAITING_RECIPIENT", "AUTO_HELD"].includes(prior.status))
         return;
-      const recipient = db
-        .prepare(
-          "SELECT paypal_id FROM fairshare_recipients WHERE workspace_id=? AND user_id=?",
-        )
-        .get(capture.workspace_id, userId) as any;
+      const recipient = readPayoutDestination(db, userId, capture.workspace_id);
       const version = agreement.versions.find(
         (v) => v.id === revenue!.versionId,
       );
@@ -110,9 +111,7 @@ export function automaticPayouts(
         !agreement.members.every((m) =>
           Object.hasOwn(version.approvals, m.userId),
         );
-      const ready =
-        typeof recipient?.paypal_id === "string" &&
-        /^[A-Z0-9]{13}$/.test(recipient.paypal_id);
+      const ready = recipient !== null;
       const status = held
         ? "AUTO_HELD"
         : ready
@@ -123,14 +122,15 @@ export function automaticPayouts(
         .digest("hex")
         .slice(0, 30);
       db.prepare(
-        "INSERT INTO fairshare_payout_ops(id,workspace_id,collaboration_id,capture_id,user_id,recipient_id,amount,status) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(capture_id,user_id) DO UPDATE SET recipient_id=excluded.recipient_id,status=excluded.status",
+        "INSERT INTO fairshare_payout_ops(id,workspace_id,collaboration_id,capture_id,user_id,recipient_type,recipient_id,amount,status) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(capture_id,user_id) DO UPDATE SET recipient_type=excluded.recipient_type,recipient_id=excluded.recipient_id,status=excluded.status",
       ).run(
         id,
         capture.workspace_id,
         capture.collaboration_id,
         captureId,
         userId,
-        ready ? recipient.paypal_id : "",
+        recipient?.type ?? RecipientType.PAYPAL_ID,
+        recipient?.value ?? "",
         allocation.totalCents,
         status,
       );
@@ -151,6 +151,7 @@ export function automaticPayouts(
     try {
       result = await provider.createPayout({
         requestId: op.id,
+        recipientType: op.recipient_type,
         recipientId: op.recipient_id,
         amountCents: op.amount,
         currency: "USD",

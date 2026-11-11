@@ -1,0 +1,367 @@
+/* Collaborator side: invite landing, What you get, Something's not right, Get paid.
+   components/agreement-invitation.tsx, collaborator-review.tsx,
+   something-wrong-drawer.tsx, post-approval-payout.tsx. */
+
+/* Invite landing: a standalone page over the app shell. */
+.collab-invite-page {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  overflow-y: auto;
+  padding: var(--space-6) var(--space-4);
+  background:
+    radial-gradient(ellipse at top, var(--color-brand-soft), transparent 60%),
+    var(--color-canvas);
+}
+
+.collab-invite-brand {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+  color: var(--color-ink);
+}
+
+.collab-invite-card {
+  box-sizing: border-box;
+  display: grid;
+  gap: var(--space-3);
+  align-self: center;
+  justify-self: center;
+  width: 100%;
+  max-width: 440px;
+  margin: var(--space-8) 0;
+  padding: var(--space-8) var(--space-6) var(--space-6);
+  text-align: center;
+  background: var(--color-canvas);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-panel);
+}
+
+.collab-invite-card h1 {
+  margin: 0;
+  font-size: var(--text-xl);
+  line-height: 1.25;
+  font-weight: var(--weight-bold);
+  outline: none;
+}
+
+.collab-invite-lede {
+  margin: 0 0 var(--space-3);
+  color: var(--color-muted);
+  font-size: 16px;
+}
+
+.collab-invite-card .collab-invite-primary {
+  width: 100%;
+  min-height: var(--control-min-height);
+}
+
+.collab-invite-safe {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-ink);
+}
+
+.collab-invite-meta {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.collab-invite-card .collab-invite-later {
+  justify-self: center;
+}
+
+/* Signed-out: context strip above the sign-in form. */
+.collab-signin-context {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
+  text-align: center;
+  background: var(--color-brand-soft);
+  border-bottom: 1px solid var(--color-line);
+  color: var(--color-ink);
+  font-size: var(--text-sm);
+}
+
+/* What you get. */
+.collab-terms {
+  display: grid;
+  gap: var(--space-6);
+  max-width: 720px;
+}
+
+.collab-review {
+  position: relative;
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-6);
+  background: var(--color-canvas);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-lg);
+}
+
+.collab-eyebrow {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}
+
+.collab-title {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+  outline: none;
+}
+
+.collab-review > .muted {
+  margin: 0;
+}
+
+.collab-headline {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-title);
+  line-height: 1.2;
+  font-weight: var(--weight-bold);
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+
+.collab-example {
+  margin: 0;
+  font-size: var(--text-lg);
+}
+
+.collab-split .split-bar {
+  display: flex;
+  width: 100%;
+}
+
+.collab-sentences {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+.collab-link {
+  justify-self: start;
+  padding: var(--space-1) 0;
+  border: 0;
+  background: none;
+  color: var(--color-brand);
+  font: inherit;
+  font-weight: var(--weight-medium);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.collab-link:hover {
+  color: var(--color-brand-hover);
+}
+
+.collab-note {
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface);
+  border-radius: var(--radius-sm);
+}
+
+.collab-note p {
+  margin: var(--space-1) 0 0;
+  white-space: pre-wrap;
+}
+
+/* Sticky decision bar: stays in view while the summary scrolls. */
+.collab-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  gap: var(--space-3);
+  justify-content: flex-end;
+  margin: var(--space-3) calc(var(--space-6) * -1) calc(var(--space-6) * -1);
+  padding: var(--space-4) var(--space-6);
+  background: var(--color-canvas);
+  border-top: 1px solid var(--color-line);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+
+.collab-footer .button {
+  min-height: var(--control-min-height);
+}
+
+/* Something's not right. */
+.collab-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  justify-content: flex-end;
+  background: #17171740;
+}
+
+.collab-drawer {
+  box-sizing: border-box;
+  width: min(440px, 100%);
+  height: 100%;
+  overflow-y: auto;
+  padding: var(--space-6);
+  background: var(--color-canvas);
+  box-shadow: var(--shadow-panel);
+}
+
+.collab-drawer form,
+.collab-drawer-done {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.collab-drawer h2 {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+  outline: none;
+}
+
+.collab-parts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-2);
+  padding: 0;
+  border: 0;
+}
+
+.collab-part {
+  position: relative;
+  display: inline-flex;
+}
+
+.collab-part input {
+  position: absolute;
+  opacity: 0;
+  inset: 0;
+  margin: 0;
+  cursor: pointer;
+}
+
+.collab-part span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-pill);
+  font-weight: var(--weight-medium);
+}
+
+.collab-part input:checked + span {
+  border-color: var(--color-brand);
+  background: var(--color-brand-soft);
+  color: var(--color-brand);
+}
+
+.collab-part input:focus-visible + span {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+}
+
+.collab-note-label {
+  font-weight: var(--weight-medium);
+}
+
+.collab-drawer textarea,
+.collab-payout-form input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: var(--control-padding-y) var(--control-padding-x);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  font: inherit;
+}
+
+.collab-hint {
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+.collab-drawer-actions,
+.collab-payout-actions {
+  display: flex;
+  gap: var(--space-3);
+  justify-content: flex-end;
+  margin-top: var(--space-2);
+}
+
+.collab-check {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--color-success-bg);
+  color: var(--color-success);
+  font-size: 22px;
+  font-weight: var(--weight-bold);
+}
+
+/* Get paid. */
+.collab-payout {
+  max-width: 520px;
+}
+
+.collab-payout-form {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.collab-payout-form label {
+  font-weight: var(--weight-medium);
+}
+
+.collab-payout-form > p {
+  margin: 0 0 var(--space-2);
+}
+
+@media (max-width: 640px) {
+  .collab-review {
+    padding: var(--space-4);
+  }
+
+  .collab-headline {
+    font-size: var(--text-xl);
+  }
+
+  .collab-footer {
+    margin: var(--space-3) calc(var(--space-4) * -1) calc(var(--space-4) * -1);
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .collab-footer .button {
+    flex: 1;
+  }
+
+  .collab-drawer-backdrop {
+    align-items: flex-end;
+  }
+
+  .collab-drawer {
+    height: auto;
+    max-height: 90vh;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  }
+
+  .collab-invite-card {
+    padding: var(--space-6) var(--space-4) var(--space-4);
+  }
+}

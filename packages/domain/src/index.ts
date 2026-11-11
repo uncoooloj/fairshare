@@ -40,12 +40,28 @@ export enum AuditType {
   ACTIVATED = "ACTIVATED",
   REVENUE_ALLOCATED = "REVENUE_ALLOCATED",
   PAYMENT_HELD = "PAYMENT_HELD",
+  PERSON_ADDED = "PERSON_ADDED",
+  PERSON_REMOVED = "PERSON_REMOVED",
+  PERSON_JOINED = "PERSON_JOINED",
+  INVITE_REISSUED = "INVITE_REISSUED",
+}
+/** A person named in the agreement who has not accepted their invitation yet. */
+export interface PendingInvite {
+  invitationId: string;
+  email: string;
 }
 export interface Member {
+  /** `pending:<invitationId>` while `pending` is set; the real user ID after joining. */
   userId: string;
   displayName: string;
   role: MemberRole;
+  pending?: PendingInvite;
 }
+export const PENDING_USER_PREFIX = "pending:";
+/** Placeholder user ID that rules use for a person who has not joined yet. */
+export const pendingUserId = (invitationId: string) =>
+  PENDING_USER_PREFIX + invitationId;
+export const isPendingMember = (m: Member) => !!m.pending;
 export interface SourceReference {
   origin: RuleOrigin;
   documentId: string;
@@ -161,9 +177,23 @@ const timestamp = (at: string) => {
 const member = (c: Collaboration, id: string) =>
   c.members.find((m) => m.userId === id) ??
   fail("FORBIDDEN", "Not a collaboration member");
+/** Someone acting on the agreement: a member who has joined (never a pending placeholder). */
+const actor = (c: Collaboration, id: string) => {
+  const m = member(c, id);
+  if (m.pending || id.startsWith(PENDING_USER_PREFIX))
+    fail("PENDING_MEMBER", "Join the agreement before acting on it");
+  return m;
+};
 const organizer = (c: Collaboration, id: string) => {
-  if (member(c, id).role !== MemberRole.ORGANIZER)
+  if (actor(c, id).role !== MemberRole.ORGANIZER)
     fail("FORBIDDEN", "Organizer required");
+};
+const noPendingMembers = (c: Collaboration) => {
+  if (c.members.some((m) => m.pending))
+    fail(
+      "PENDING_MEMBERS",
+      "Everyone named in the agreement must join before it can take effect",
+    );
 };
 const copy = <T>(value: T): T => structuredClone(value);
 function audit(
@@ -237,6 +267,54 @@ export function validateRules(c: Collaboration, r: Rules): void {
         );
     }
   }
+  replacedAdvance(c, r);
+}
+/** What the advance in force has already recouped (0 when nothing is in force). */
+function recoupedInForce(c: Collaboration): {
+  advance?: Advance;
+  cents: number;
+} {
+  const advance = c.versions.find((v) => v.id === c.activeVersionId)?.rules
+    .advance;
+  if (!advance || !Object.hasOwn(c.recoupedByAdvance, advance.id))
+    return { advance, cents: 0 };
+  return { advance, cents: c.recoupedByAdvance[advance.id] };
+}
+/** A revision replacing the advance in force (new ID) must not reset or undercut what was
+ * already repaid. Returns the amount to carry to the new ID; throws when a human must decide. */
+function replacedAdvance(c: Collaboration, r: Rules): number {
+  const { advance: old, cents: recouped } = recoupedInForce(c);
+  if (!old || !r.advance || r.advance.id === old.id || recouped === 0) return 0;
+  if (r.advance.recipientId !== old.recipientId)
+    fail(
+      "ADVANCE_RECIPIENT_CHANGED",
+      "Part of the advance was already paid back to someone else. Changing who it belongs to needs to be settled outside Fairshare first.",
+    );
+  if (r.advance.amountCents < recouped)
+    fail(
+      "ADVANCE_BELOW_RECOUPED",
+      `The advance can't be less than the ${recouped} cents already paid back.`,
+    );
+  if (
+    Object.hasOwn(c.recoupedByAdvance, r.advance.id) &&
+    c.recoupedByAdvance[r.advance.id] !== recouped
+  )
+    fail(
+      "ADVANCE_CHANGED",
+      "This advance ID was already used with different repayments; use a new ID",
+    );
+  return recouped;
+}
+/** Moves the repaid amount onto a replacement advance ID before its rules take effect. */
+function carryRecoupment(out: Collaboration, next: Rules) {
+  const carried = replacedAdvance(out, next);
+  if (carried && next.advance)
+    Object.defineProperty(out.recoupedByAdvance, next.advance.id, {
+      value: carried,
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    });
 }
 const CALENDAR_DATE = /^\d{4}-\d{2}-\d{2}$/;
 function sameCalendarDate(value: string): boolean {
@@ -307,6 +385,25 @@ export function updateAgreementDetails(
   });
   return next;
 }
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+/** A placeholder ID always pairs with its invitation, and only collaborators can be pending. */
+function pendingShape(m: Member) {
+  const placeholder = m.userId.startsWith(PENDING_USER_PREFIX);
+  if (!m.pending) {
+    if (placeholder)
+      fail("INVALID_MEMBERS", "Placeholder IDs are only for invited people");
+    return;
+  }
+  nonempty(m.pending.invitationId, "Invitation");
+  if (
+    typeof m.pending.email !== "string" ||
+    m.pending.email.length > 254 ||
+    !EMAIL.test(m.pending.email) ||
+    m.userId !== pendingUserId(m.pending.invitationId) ||
+    m.role !== MemberRole.COLLABORATOR
+  )
+    fail("INVALID_MEMBERS", "Invited people need a valid invitation and email");
+}
 export function createCollaboration(
   input: {
     id: string;
@@ -336,6 +433,7 @@ export function createCollaboration(
     nonempty(m.displayName, "Name");
     if (ids.has(m.userId) || !Object.values(MemberRole).includes(m.role))
       fail("INVALID_MEMBERS", "Unique valid members required");
+    pendingShape(m);
     ids.add(m.userId);
   }
   if (input.members.filter((m) => m.role === MemberRole.ORGANIZER).length !== 1)
@@ -353,13 +451,203 @@ export function createCollaboration(
   audit(c, AuditType.CREATED, actorId, at, {});
   return c;
 }
+/** True once any rules were sent for approval (or switched on); the people list is then fixed. */
+export function rulesEverSent(c: Collaboration): boolean {
+  return (
+    c.activeVersionId !== undefined ||
+    c.versions.some((v) =>
+      [VersionStatus.AWAITING_APPROVAL, VersionStatus.ACTIVE].includes(
+        v.status,
+      ),
+    ) ||
+    c.audit.some((e) => e.type === AuditType.SENT_FOR_REVIEW)
+  );
+}
+function membersOpen(c: Collaboration) {
+  if (rulesEverSent(c))
+    fail("MEMBERS_LOCKED", "People can only change before the rules are sent");
+}
+/** Organizer may still change who is in the agreement (rules never sent). */
+export function assertMembersEditable(c: Collaboration, actorId: string): void {
+  organizer(c, actorId);
+  membersOpen(c);
+}
+/** Organizer adds a person who already belongs to the workspace. Idempotent. */
+export function addMember(
+  c: Collaboration,
+  person: { userId: string; displayName: string },
+  actorId: string,
+  at: string,
+): Collaboration {
+  organizer(c, actorId);
+  membersOpen(c);
+  if (c.members.some((m) => m.userId === person.userId)) return copy(c);
+  const next = copy(c);
+  const added: Member = {
+    userId: person.userId,
+    displayName: person.displayName,
+    role: MemberRole.COLLABORATOR,
+  };
+  memberShape(next, added);
+  next.members.push(added);
+  audit(next, AuditType.PERSON_ADDED, actorId, at, { userId: person.userId });
+  return next;
+}
+function memberShape(c: Collaboration, m: Member) {
+  nonempty(m.userId, "User ID");
+  nonempty(m.displayName, "Name");
+  if (m.displayName.length > 200)
+    fail("INVALID_INPUT", "Name is required and bounded");
+  pendingShape(m);
+  if (c.members.length >= 100)
+    fail("INVALID_MEMBERS", "1–100 members required");
+}
+/** Organizer names someone who has not joined yet. Rules may give them a share straight away. */
+export function addPendingMember(
+  c: Collaboration,
+  person: { invitationId: string; name: string; email: string },
+  actorId: string,
+  at: string,
+): Collaboration {
+  organizer(c, actorId);
+  membersOpen(c);
+  if (typeof person.email !== "string")
+    fail("INVALID_MEMBERS", "Invited people need a valid invitation and email");
+  const email = person.email.trim().toLowerCase();
+  if (c.members.some((m) => m.pending?.email === email))
+    fail("DUPLICATE_PERSON", "This email is already in the agreement");
+  const next = copy(c);
+  const added: Member = {
+    userId: pendingUserId(person.invitationId),
+    displayName: person.name?.trim(),
+    role: MemberRole.COLLABORATOR,
+    pending: { invitationId: person.invitationId, email },
+  };
+  memberShape(next, added);
+  if (next.members.some((m) => m.userId === added.userId))
+    fail("DUPLICATE_PERSON", "This invitation is already in the agreement");
+  next.members.push(added);
+  audit(next, AuditType.PERSON_ADDED, actorId, at, {
+    invitationId: person.invitationId,
+  });
+  return next;
+}
+/** Organizer removes a collaborator (joined or pending) before the rules are sent. */
+export function removeMember(
+  c: Collaboration,
+  userId: string,
+  actorId: string,
+  at: string,
+): Collaboration {
+  organizer(c, actorId);
+  membersOpen(c);
+  const target = member(c, userId);
+  if (target.role === MemberRole.ORGANIZER)
+    fail("FORBIDDEN", "The organizer cannot be removed");
+  const next = copy(c);
+  next.members = next.members.filter((m) => m.userId !== userId);
+  audit(
+    next,
+    AuditType.PERSON_REMOVED,
+    actorId,
+    at,
+    target.pending ? { invitationId: target.pending.invitationId } : { userId },
+  );
+  return next;
+}
+/** Every place an aggregate stores a user ID. Pure; used when an invited person joins. */
+export function replaceUserId(
+  c: Collaboration,
+  from: string,
+  to: string,
+): Collaboration {
+  nonempty(from, "User ID");
+  nonempty(to, "User ID");
+  const next = copy(c);
+  const swap = (id: string) => (id === from ? to : id);
+  for (const m of next.members) m.userId = swap(m.userId);
+  for (const v of next.versions) {
+    for (const s of v.rules.shares) s.userId = swap(s.userId);
+    if (v.rules.feeBearerId !== undefined)
+      v.rules.feeBearerId = swap(v.rules.feeBearerId);
+    if (v.rules.advance)
+      v.rules.advance.recipientId = swap(v.rules.advance.recipientId);
+    const approvals: Record<string, string> = {};
+    for (const [id, when] of Object.entries(v.approvals))
+      Object.defineProperty(approvals, swap(id), {
+        value: when,
+        enumerable: true,
+        writable: true,
+        configurable: true,
+      });
+    v.approvals = approvals;
+    for (const r of v.changeRequests) r.userId = swap(r.userId);
+  }
+  for (const r of next.revenue)
+    for (const a of r.allocations) a.userId = swap(a.userId);
+  for (const e of next.audit) {
+    e.actorId = swap(e.actorId);
+    if (typeof e.details.userId === "string")
+      e.details.userId = swap(e.details.userId);
+  }
+  return next;
+}
+/** Organizer replaces an invited person's link (lost or expired). Allowed after sending too,
+ * because it does not change who is in the agreement; the placeholder follows the new invitation. */
+export function reissuePendingInvite(
+  c: Collaboration,
+  userId: string,
+  invitationId: string,
+  actorId: string,
+  at: string,
+): Collaboration {
+  organizer(c, actorId);
+  const seat = member(c, userId);
+  if (!seat.pending)
+    fail("NOT_PENDING", "This person has already joined the agreement");
+  nonempty(invitationId, "Invitation");
+  const nextId = pendingUserId(invitationId);
+  if (c.members.some((m) => m.userId === nextId))
+    fail("DUPLICATE_PERSON", "This invitation is already in the agreement");
+  const next = replaceUserId(c, userId, nextId);
+  next.members.find((m) => m.userId === nextId)!.pending!.invitationId =
+    invitationId;
+  audit(next, AuditType.INVITE_REISSUED, actorId, at, {
+    invitationId,
+    replacesInvitationId: seat.pending.invitationId,
+  });
+  return next;
+}
+/** The invited person joined: their placeholder becomes their real user ID everywhere. */
+export function bindPendingMember(
+  c: Collaboration,
+  invitationId: string,
+  user: { id: string; displayName: string },
+  at: string,
+): Collaboration {
+  const seat =
+    c.members.find((m) => m.pending?.invitationId === invitationId) ??
+    fail("NOT_FOUND", "This person is no longer in the agreement");
+  nonempty(user.id, "User ID");
+  nonempty(user.displayName, "Name");
+  if (user.id.startsWith(PENDING_USER_PREFIX))
+    fail("INVALID_INPUT", "A real user is required");
+  if (c.members.some((m) => m.userId === user.id))
+    fail("ALREADY_MEMBER", "You are already in this agreement");
+  const next = replaceUserId(c, seat.userId, user.id);
+  const joined = next.members.find((m) => m.userId === user.id)!;
+  delete joined.pending;
+  joined.displayName = user.displayName;
+  audit(next, AuditType.PERSON_JOINED, user.id, at, { invitationId });
+  return next;
+}
 export function proposeVersion(
   c: Collaboration,
   rules: Rules,
   actorId: string,
   at: string,
 ): Collaboration {
-  member(c, actorId);
+  actor(c, actorId);
   validateRules(c, rules);
   const out = copy(c);
   const latest = out.versions.at(-1);
@@ -394,10 +682,12 @@ export function sendForReview(
   actorId: string,
   at: string,
 ): Collaboration {
-  member(c, actorId);
+  actor(c, actorId);
   const out = copy(c);
   const v = latestVersion(out, versionId);
   if (v.status !== VersionStatus.DRAFT) fail("INVALID_STATE", "Draft required");
+  // The people list may have changed since this draft was written.
+  validateRules(c, v.rules);
   if (
     v.rules.unresolvedQuestions.length ||
     (v.rules.advance && !v.rules.advance.verified)
@@ -416,7 +706,7 @@ export function approveVersion(
   actorId: string,
   at: string,
 ): Collaboration {
-  member(c, actorId);
+  actor(c, actorId);
   const out = copy(c);
   const v = latestVersion(out, versionId);
   if (v.status !== VersionStatus.AWAITING_APPROVAL)
@@ -431,6 +721,57 @@ export function approveVersion(
   audit(out, AuditType.APPROVED, actorId, at, { versionId });
   return out;
 }
+const everyoneApproved = (c: Collaboration, v: AgreementVersion) =>
+  v.status === VersionStatus.AWAITING_APPROVAL &&
+  !c.members.some((m) => m.pending) &&
+  c.members.every((m) => Object.hasOwn(v.approvals, m.userId));
+function switchOn(
+  out: Collaboration,
+  v: AgreementVersion,
+  actorId: string,
+  at: string,
+  automatic: boolean,
+) {
+  // Re-checked here: payments may have arrived since the revision was proposed.
+  carryRecoupment(out, v.rules);
+  if (out.activeVersionId)
+    out.versions.find((old) => old.id === out.activeVersionId)!.status =
+      VersionStatus.SUPERSEDED;
+  v.status = VersionStatus.ACTIVE;
+  out.activeVersionId = v.id;
+  audit(
+    out,
+    AuditType.ACTIVATED,
+    actorId,
+    at,
+    automatic ? { versionId: v.id, automatic: true } : { versionId: v.id },
+  );
+}
+/** Approve; when this was the last approval needed, the rules switch on in the same transition. */
+export function approveAndSwitchOn(
+  c: Collaboration,
+  versionId: number,
+  actorId: string,
+  at: string,
+): Collaboration {
+  const out = approveVersion(c, versionId, actorId, at);
+  const v = latestVersion(out, versionId);
+  if (everyoneApproved(out, v)) switchOn(out, v, actorId, at, true);
+  return out;
+}
+/** Organizer's one-shot send: propose, approve as the sender, send, and switch on if nobody else must approve. */
+export function submitForApproval(
+  c: Collaboration,
+  rules: Rules,
+  actorId: string,
+  at: string,
+): Collaboration {
+  organizer(c, actorId);
+  let out = proposeVersion(c, rules, actorId, at);
+  const id = out.versions.at(-1)!.id;
+  out = sendForReview(out, id, actorId, at);
+  return approveAndSwitchOn(out, id, actorId, at);
+}
 export function requestChange(
   c: Collaboration,
   versionId: number,
@@ -438,7 +779,7 @@ export function requestChange(
   actorId: string,
   at: string,
 ): Collaboration {
-  member(c, actorId);
+  actor(c, actorId);
   nonempty(reason, "Reason");
   const out = copy(c);
   const v = latestVersion(out, versionId);
@@ -450,6 +791,7 @@ export function requestChange(
   audit(out, AuditType.CHANGE_REQUESTED, actorId, at, { versionId, reason });
   return out;
 }
+/** Manual switch-on. Optional now that the last approval switches rules on; repeating it is a no-op. */
 export function activateVersion(
   c: Collaboration,
   versionId: number,
@@ -459,21 +801,24 @@ export function activateVersion(
   organizer(c, actorId);
   const out = copy(c);
   const v = latestVersion(out, versionId);
-  if (
-    v.status !== VersionStatus.AWAITING_APPROVAL ||
-    !out.members.every((m) => Object.hasOwn(v.approvals, m.userId))
-  )
+  if (v.status === VersionStatus.ACTIVE && out.activeVersionId === v.id)
+    return out;
+  noPendingMembers(out);
+  if (!everyoneApproved(out, v))
     fail(
       "APPROVALS_REQUIRED",
       "Every participant must approve this exact version",
     );
-  if (out.activeVersionId)
-    out.versions.find((old) => old.id === out.activeVersionId)!.status =
-      VersionStatus.SUPERSEDED;
-  v.status = VersionStatus.ACTIVE;
-  out.activeVersionId = v.id;
-  audit(out, AuditType.ACTIVATED, actorId, at, { versionId });
+  switchOn(out, v, actorId, at, false);
   return out;
+}
+/** A private draft can be thrown away only by its organizer, before anything was sent or paid. */
+export function assertDraftDeletable(c: Collaboration, actorId: string): void {
+  organizer(c, actorId);
+  if (rulesEverSent(c))
+    fail("NOT_A_DRAFT", "Agreements that were sent for approval are kept");
+  if (c.revenue.length)
+    fail("NOT_A_DRAFT", "Agreements with payments are kept");
 }
 /** Largest remainder with stable user-ID tie break. Integer arithmetic, no float money. */
 export function splitCents(
@@ -519,8 +864,58 @@ export interface ConfirmedRevenueInput {
   grossCents: number;
   feeCents: number;
 }
+/** The money maths for one payment under one set of rules. Pure: no collaboration,
+ * no persistence. `recoupedCents` is what the advance has already recouped. */
+export function computeAllocations(
+  r: Rules,
+  input: { grossCents: number; feeCents: number },
+  recoupedCents = 0,
+): { allocations: Allocation[]; recoupmentCents: number; netCents: number } {
+  cents(input.grossCents, "Gross");
+  cents(input.feeCents, "Fee");
+  cents(recoupedCents, "Recouped");
+  if (!input.grossCents || input.feeCents > input.grossCents)
+    fail("INVALID_MONEY", "Valid positive USD capture and fee required");
+  const net = input.grossCents - input.feeCents;
+  const base = r.feePolicy === FeePolicy.BEFORE_SPLIT ? net : input.grossCents;
+  const recoupment = r.advance
+    ? Math.min(base, Math.max(0, r.advance.amountCents - recoupedCents))
+    : 0;
+  const splits = splitCents(base - recoupment, r.shares);
+  const allocations: Allocation[] = r.shares.map((s) => {
+    const recoup = r.advance?.recipientId === s.userId ? recoupment : 0;
+    const fee =
+      r.feePolicy === FeePolicy.ORGANIZER_SHARE && r.feeBearerId === s.userId
+        ? input.feeCents
+        : 0;
+    return {
+      userId: s.userId,
+      recoupmentCents: recoup,
+      shareCents: splits[s.userId],
+      feeCents: fee,
+      totalCents: recoup + splits[s.userId] - fee,
+      status: AllocationStatus.ALLOCATED,
+    };
+  });
+  if (allocations.some((a) => a.totalCents < 0))
+    fail(
+      "FEE_EXCEEDS_SHARE",
+      "Fee bearer cannot cover fee under agreed rules; explicit resolution required",
+    );
+  if (allocations.reduce((s, a) => s + a.totalCents, 0) !== net)
+    fail("CONSERVATION_ERROR", "Allocation must equal actual net received");
+  return { allocations, recoupmentCents: recoupment, netCents: net };
+}
 /** Call only after server-side provider verification, never directly from browser claims. */
 export function allocateConfirmedRevenue(
+  c: Collaboration,
+  input: ConfirmedRevenueInput,
+  at: string,
+): Collaboration {
+  noPendingMembers(c);
+  return allocate(c, input, at);
+}
+function allocate(
   c: Collaboration,
   input: ConfirmedRevenueInput,
   at: string,
@@ -559,48 +954,25 @@ export function allocateConfirmedRevenue(
     fail("NO_ACTIVE_RULES", "An approved active agreement is required");
   const out = copy(c);
   const r = v.rules;
-  const net = input.grossCents - input.feeCents;
-  const base = r.feePolicy === FeePolicy.BEFORE_SPLIT ? net : input.grossCents;
   const paid =
     r.advance && Object.hasOwn(out.recoupedByAdvance, r.advance.id)
       ? out.recoupedByAdvance[r.advance.id]
       : 0;
-  const recoupment = r.advance
-    ? Math.min(base, Math.max(0, r.advance.amountCents - paid))
-    : 0;
-  const splits = splitCents(base - recoupment, r.shares);
-  const allocations: Allocation[] = r.shares.map((s) => {
-    const recoup = r.advance?.recipientId === s.userId ? recoupment : 0;
-    const fee =
-      r.feePolicy === FeePolicy.ORGANIZER_SHARE && r.feeBearerId === s.userId
-        ? input.feeCents
-        : 0;
-    return {
-      userId: s.userId,
-      recoupmentCents: recoup,
-      shareCents: splits[s.userId],
-      feeCents: fee,
-      totalCents: recoup + splits[s.userId] - fee,
-      status: AllocationStatus.ALLOCATED,
-    };
-  });
-  if (allocations.some((a) => a.totalCents < 0))
-    fail(
-      "FEE_EXCEEDS_SHARE",
-      "Fee bearer cannot cover fee under agreed rules; explicit resolution required",
-    );
-  if (allocations.reduce((s, a) => s + a.totalCents, 0) !== net)
-    fail("CONSERVATION_ERROR", "Allocation must equal actual net received");
+  const { allocations, recoupmentCents, netCents } = computeAllocations(
+    r,
+    input,
+    paid,
+  );
   if (r.advance)
     Object.defineProperty(out.recoupedByAdvance, r.advance.id, {
-      value: paid + recoupment,
+      value: paid + recoupmentCents,
       enumerable: true,
       writable: true,
       configurable: true,
     });
   out.revenue.push({
     ...copy(input),
-    netCents: net,
+    netCents,
     versionId: v.id,
     allocations,
     status: RevenueStatus.CONFIRMED,
@@ -651,16 +1023,18 @@ export function previewVersion(
   input: { grossCents: number; feeCents: number },
   actorId: string,
 ): AllocationPreview {
-  member(c, actorId);
+  actor(c, actorId);
   const scratch = copy(c);
   const v =
     scratch.versions.find((v) => v.id === versionId) ??
     fail("UNKNOWN_VERSION", "Version not found");
+  if (scratch.activeVersionId !== versionId) carryRecoupment(scratch, v.rules);
   scratch.activeVersionId = versionId;
   v.status = VersionStatus.ACTIVE;
   scratch.reviewHold = false;
   scratch.revenue = [];
-  const preview = allocateConfirmedRevenue(
+  // Illustrative only, so it also works while invited people have not joined yet.
+  const preview = allocate(
     scratch,
     {
       ...input,

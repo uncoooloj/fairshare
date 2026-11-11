@@ -40,8 +40,9 @@ test("reading screen renders the file, four steps, polite status and copy", () =
   assert.match(html, /Revenue Share Agreement\.pdf/);
   for (const step of READING_STEPS) assert.ok(html.includes(step), step);
   assert.match(html, /role="status" aria-live="polite"/);
-  assert.match(html, /Reading document, step 1 of 4\./);
-  assert.match(html, /Usually under a minute\. Keep this tab open\./);
+  assert.match(html, /Reading the document, step 1 of 4\./);
+  assert.match(html, /Usually under a minute\./);
+  assert.doesNotMatch(html, /Keep this tab open/);
   assert.doesNotMatch(html, /Continue to rules/);
 });
 
@@ -67,7 +68,7 @@ test("timer never completes the last step; only a real result does", () => {
   );
   assert.match(
     readingAnnouncement(2, ReadingPhase.FALLBACK),
-    /couldn't read every term/,
+    /Let's set it up together/,
   );
 });
 
@@ -135,14 +136,18 @@ test("readAgreement requires consent and posts the existing extract call", async
   }
 });
 
-test("component runs once under StrictMode, surfaces errors and avoids motion when reduced", () => {
+test("component runs once under StrictMode, hands failures straight to Check and avoids motion when reduced", () => {
   const source = readFileSync(
     new URL("../components/reading-document.tsx", import.meta.url),
     "utf8",
   );
   assert.match(source, /if \(!request\.current\)/);
-  assert.match(source, /setError\(/);
-  assert.match(source, /onDone\(ReadingOutcome\.MANUAL\)/);
+  // A failed or empty read is not an error screen: it goes on as MANUAL.
+  assert.match(
+    source,
+    /request\.current\.then\(settle, \(\) => settle\(ReadingOutcome\.MANUAL\)\)/,
+  );
+  assert.doesNotMatch(source, /Continue to rules|Add the terms yourself/);
   assert.doesNotMatch(source, /\/versions|activate/i);
   const css = readFileSync(
     new URL("../app/reading-document.css", import.meta.url),

@@ -58,7 +58,7 @@ test("workspace changes fence in-flight reads and clear workspace-scoped state",
 
   const agreement = source
     .split("async function openAgreement(a: Agreement) {")[1]
-    .split("async function refresh")[0];
+    .split(/async function (?:resumeDraft|refresh)/)[0];
   assert.match(
     agreement,
     /if \(a\.workspaceId !== currentWorkspace\.current\)\s*commitWorkspace\(a\.workspaceId\)/,
@@ -107,29 +107,13 @@ test("workspace changes fence in-flight reads and clear workspace-scoped state",
   const intake = source
     .split("async function createFromAgreement")[1]
     .split("async function refresh")[0];
-  assert.match(intake, /commitWorkspace\(result\.workspace\.id\)/);
-  assert.ok(
-    intake.indexOf("commitWorkspace(result.workspace.id)") <
-      intake.indexOf("setSelected(result.agreement)"),
-  );
+  // The wizard keeps the draft until it is sent; intake adopts the workspace but selects nothing.
   assert.match(
     intake,
-    /const intakeWorkspaceRequest = workspaceRequest\.current/,
+    /if \(currentWorkspace\.current !== result\.workspace\.id\)\s*commitWorkspace\(result\.workspace\.id\)/,
   );
-  assert.equal(
-    (
-      intake.match(/intakeWorkspaceRequest !== workspaceRequest\.current/g) ||
-      []
-    ).length,
-    2,
-    "a deferred intake member refresh cannot update members after a workspace switch",
-  );
-  assert.equal(
-    (intake.match(/currentWorkspace\.current !== intakeWorkspaceId/g) || [])
-      .length,
-    2,
-    "both successful and failed deferred member refreshes stay with the intake workspace",
-  );
+  assert.doesNotMatch(intake, /setSelected\(result\.agreement\)/);
+  assert.match(intake, /void loadWorkspace\(intakeWorkspaceId\)\.catch/);
 
   const session = source
     .split("function clearSession() {")[1]

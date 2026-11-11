@@ -50,37 +50,78 @@ try {
   try {
     if (doc.numPages < 1 || doc.numPages > MAX_PAGES)
       throw new Error("PDF_PAGE_LIMIT");
-    let text = "";
-    const pages: Array<{ page: number; start: number; end: number }> = [];
+    // Lines keep their geometry so the parent can rebuild paragraphs and offsets.
+    type Line = {
+      text: string;
+      x: number;
+      y: number;
+      right: number;
+      size: number;
+    };
+    const round = (value: number) => Math.round(value * 10) / 10;
+    let characters = 0;
+    const pages: Array<{ lines: Line[] }> = [];
     for (let pageNo = 1; pageNo <= doc.numPages; pageNo++) {
       const page = await doc.getPage(pageNo);
       const content = await page.getTextContent({
         disableNormalization: false,
       });
-      const start = text.length;
+      const lines: Line[] = [];
+      let current: Line | undefined;
+      let endOfLine = false;
       for (const item of content.items) {
         if (!("str" in item)) continue;
         const str = item.str.replace(
           /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g,
           "",
         );
-        if (text.length + str.length + 1 > MAX_CHARS)
+        if (characters + str.length + 1 > MAX_CHARS)
           throw new Error("PDF_TEXT_LIMIT");
-        text += str;
-        text += item.hasEOL ? "\n" : " ";
+        characters += str.length + 1;
+        const [, , c = 0, d = 0, x = 0, y = 0] = item.transform as number[];
+        const size = Math.hypot(c, d) || item.height || 1;
+        const width = Number.isFinite(item.width) ? item.width : 0;
+        if (str) {
+          // Same baseline and no backwards jump: one visual line. Glyph runs split
+          // at ligatures ("fi" + "fty") touch, so only a real gap becomes a space.
+          if (
+            current &&
+            !endOfLine &&
+            Math.abs(y - current.y) <= Math.max(size, current.size) * 0.5 &&
+            x >= current.right - size * 0.5
+          ) {
+            const spaced =
+              x - current.right > size * 0.15 &&
+              !/\s$/.test(current.text) &&
+              !/^\s/.test(str);
+            current.text += (spaced ? " " : "") + str;
+            current.right = Math.max(current.right, x + width);
+            current.size = Math.max(current.size, size);
+          } else {
+            if (current) lines.push(current);
+            current = { text: str, x, y, right: x + width, size };
+          }
+        }
+        endOfLine = item.hasEOL || (endOfLine && !str);
       }
-      // Offsets index the exact persisted UTF-16 text, not raw PDF bytes or screenshot geometry.
-      pages.push({ page: pageNo, start, end: text.length });
-      if (pageNo < doc.numPages) {
-        if (text.length + 2 > MAX_CHARS) throw new Error("PDF_TEXT_LIMIT");
-        text += "\n\n";
-      }
+      if (current) lines.push(current);
+      pages.push({
+        lines: lines.map((line) => ({
+          text: line.text,
+          x: round(line.x),
+          y: round(line.y),
+          right: round(line.right),
+          size: round(line.size),
+        })),
+      });
       page.cleanup();
     }
+    const text = pages
+      .flatMap((page) => page.lines.map((line) => line.text))
+      .join("");
     if (!text.trim()) throw new Error("PDF_NO_EXTRACTABLE_TEXT");
     respond({
       ok: true,
-      text,
       pages,
       sourceFileSha256: createHash("sha256").update(bytes).digest("hex"),
       extraction: {

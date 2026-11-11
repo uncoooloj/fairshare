@@ -53,15 +53,16 @@ async function handler(
     base,
   );
   url.search = new URL(req.url).search;
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
+  const headers: Record<string, string> = {};
   const token = req.cookies.get(COOKIE)?.value;
   if (token) headers.Authorization = `Bearer ${token}`;
   try {
     const body = ["GET", "HEAD"].includes(req.method)
       ? undefined
       : await req.text();
+    // A bodiless request (DELETE …?expectedRevision=) must not claim a JSON body:
+    // Fastify rejects an empty body sent as application/json.
+    if (body) headers["Content-Type"] = "application/json";
     if (
       body &&
       body.length >

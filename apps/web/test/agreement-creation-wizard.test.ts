@@ -5,18 +5,25 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { readFileSync } from "node:fs";
 import {
   AgreementCreationWizard,
-  creationSteps,
+  checkProblem,
+  detailsPatch,
+  mergeQuestions,
+  resumedAnswers,
+  STAGE_STEP,
+  WizardStage,
 } from "../components/agreement-creation-wizard";
 import { WizardStep, WizardStepper } from "../components/wizard-chrome";
+import { WizardSendStep } from "../components/wizard-send-step";
+import { joinNames } from "../components/wizard-sent-step";
 import {
-  detailsPayload,
-  emptyDetails,
-  formatDateRange,
-  validateDetails,
-} from "../components/wizard-details-step";
-import { ReviewStep } from "../components/wizard-review-step";
-import { DocumentMode } from "../components/document-step";
-import { InviteeRole } from "../lib/agreement-invitations";
+  answersFromDraft,
+  answersFromExtraction,
+} from "../lib/answers-from-extraction";
+import { CheckMode } from "../components/wizard-check-step";
+import { emptyAnswers, FeeChoice, AnswerSource } from "../lib/rules-answers";
+import { StandardQuestionId } from "../lib/standard-questions";
+import type { Agreement } from "../lib/model";
+import { saveDraftAnswers } from "../lib/wizard-draft-store";
 import { appSource } from "./app-source";
 
 const wizard = readFileSync(
@@ -24,157 +31,336 @@ const wizard = readFileSync(
   "utf8",
 );
 const owner = { id: "owner", name: "Maya Okafor", email: "maya@example.test" };
+const self = { name: owner.name, userId: owner.id };
 const noop = () => {};
 
-test("creation runs Details → Document → People → Review with one stepper", () => {
-  assert.deepEqual(creationSteps, ["Details", "Document", "People", "Review"]);
+const doc =
+  "Revenue is split 50% to Maya, 30% to Jordan and 20% to Riley. Maya paid a $2,000 advance.";
+const cite = (quote: string) => {
+  const start = doc.indexOf(quote);
+  return { start, end: start + quote.length, quote };
+};
+const extraction = {
+  status: "REVIEW_REQUIRED",
+  documentId: "d",
+  requiresHumanReview: true,
+  executable: false,
+  suggestedTitle: "Midnight Sessions",
+  facts: [
+    {
+      kind: "SHARE",
+      subject: "Maya",
+      rawValue: "50%",
+      citation: cite("50% to Maya"),
+    },
+    {
+      kind: "SHARE",
+      subject: "Jordan",
+      rawValue: "30%",
+      citation: cite("30% to Jordan"),
+    },
+    {
+      kind: "SHARE",
+      subject: "Riley",
+      rawValue: "20%",
+      citation: cite("20% to Riley"),
+    },
+    {
+      kind: "ADVANCE",
+      subject: "Maya",
+      rawValue: "$2,000",
+      citation: cite("Maya paid a $2,000 advance"),
+    },
+  ],
+  issues: [],
+};
+
+test("four progress dots: Upload · Check · People · Send", () => {
   const html = renderToStaticMarkup(
     createElement(WizardStepper, { step: WizardStep.PEOPLE }),
   );
+  for (const label of ["Upload", "Check", "People", "Send"])
+    assert.match(html, new RegExp(`>${label}<`));
   assert.equal((html.match(/aria-current="step"/g) || []).length, 1);
-  assert.match(html, /New agreement progress/);
-  assert.equal((html.match(/\(done\)/g) || []).length, 2);
-  assert.doesNotMatch(html, /role="tab"|<button/);
+  assert.equal(STAGE_STEP[WizardStage.READING], WizardStep.UPLOAD);
+  assert.equal(STAGE_STEP[WizardStage.QUESTIONS], WizardStep.CHECK);
+  assert.equal(STAGE_STEP[WizardStage.SENT], undefined);
 });
 
-test("the wizard is full-screen and starts on Details with a fixed USD currency", () => {
+test("the wizard opens on Upload with the spec's copy and one privacy line", () => {
   const html = renderToStaticMarkup(
     createElement(AgreementCreationWizard, {
       owner,
-      onCreate: async () => ({
-        workspaceId: "w",
-        agreementId: "a",
-        documentId: "d",
-      }),
+      onCreate: async () => {
+        throw new Error("not called");
+      },
       onFinish: noop,
+      onKeepDraft: noop,
       onClose: noop,
       onBusyChange: noop,
     }),
   );
-  assert.match(html, /class="wiz"/);
-  assert.match(html, /aria-label="Close new agreement"/);
-  assert.match(html, /<h1 id="wiz-step-title" tabindex="-1">Details<\/h1>/);
-  assert.match(html, /Agreement name/);
-  assert.match(html, /USD · US dollar/);
-  assert.match(html, /Payments and payouts are in US dollars/);
-  assert.doesNotMatch(html, /<select|Coming soon|type="file"/);
-  assert.match(html, /type="date"/);
-  assert.match(html, /No end date/);
-  // Continue stays disabled until the name is filled in; Back is absent on the first step.
-  assert.match(
-    html,
-    /type="submit" form="wiz-form" class="button primary" disabled="">Continue/,
+  assert.match(html, /Upload your agreement/);
+  assert.match(html, /We’ll read it and set up the split for you\./);
+  assert.match(html, /Drop the signed agreement here or/);
+  assert.match(html, /PDF, Word or text, up to 5 MB/);
+  assert.match(html, /Paste the text instead/);
+  assert.match(html, /Read my agreement/);
+  assert.match(html, /Set it up myself/);
+  assert.equal(
+    (html.match(/Your document is read by AI to suggest the split/g) || [])
+      .length,
+    1,
   );
-  assert.doesNotMatch(html, />Back</);
+  assert.doesNotMatch(html, /sandbox|Agreement name|Details/i);
 });
 
-test("details mirror the API rules and send null for no end date", () => {
-  const details = { ...emptyDetails(), name: " Midnight Sessions " };
-  assert.equal(validateDetails(details), undefined);
-  assert.match(validateDetails(emptyDetails()) ?? "", /name/);
-  assert.match(
-    validateDetails({
-      ...details,
-      effectiveFrom: "2026-10-01",
-      effectiveTo: "2026-09-30",
-    }) ?? "",
-    /before the start/,
+test("today's extraction maps to answers, honestly: full split → FOUND_ALL", () => {
+  const read = answersFromExtraction(extraction, doc, self);
+  assert.equal(read.mode, CheckMode.FOUND_ALL);
+  assert.equal(read.answers.name.value, "Midnight Sessions");
+  const people = read.answers.people.value;
+  assert.deepEqual(
+    people.map((p) => [p.name, p.basisPoints, p.isSelf]),
+    [
+      ["Maya", 5000, true],
+      ["Jordan", 3000, false],
+      ["Riley", 2000, false],
+    ],
   );
-  assert.match(
-    validateDetails({ ...details, effectiveFrom: "2026-02-30" }) ?? "",
-    /valid start/,
+  assert.equal(people[0].userId, "owner");
+  assert.equal(read.answers.advance?.value.amountCents, 200000);
+  assert.equal(read.answers.advance?.value.recipientKey, "owner");
+  assert.equal(read.answers.advance?.source, AnswerSource.DOCUMENT);
+  // The document is silent on fees and refunds: both become questions.
+  assert.deepEqual(
+    read.answers.questions.map((q) => q.id),
+    [StandardQuestionId.FEES, StandardQuestionId.REFUNDS],
   );
-  const open = { ...details, effectiveFrom: "2026-10-01", noEndDate: true };
-  assert.deepEqual(detailsPayload(open), {
-    name: "Midnight Sessions",
-    effectiveFrom: "2026-10-01",
-    effectiveTo: null,
-  });
-  assert.deepEqual(detailsPayload(details), { name: "Midnight Sessions" });
-  assert.equal(formatDateRange(open), "Oct 1, 2026 – no end date");
-  assert.equal(formatDateRange(details), "Not set");
 });
 
-test("review lists every row with Edit links and the consent checkbox", () => {
-  const html = renderToStaticMarkup(
-    createElement(ReviewStep, {
-      details: {
-        ...emptyDetails(),
-        name: "Midnight Sessions",
-        effectiveFrom: "2026-10-01",
-        noEndDate: true,
-      },
-      mode: DocumentMode.PASTE,
-      file: null,
-      text: "x".repeat(1204),
-      owner,
-      people: [
+test("names without percentages start equal; nothing read is MANUAL", () => {
+  const names = answersFromExtraction(
+    {
+      ...extraction,
+      facts: extraction.facts.map((f) =>
+        f.kind === "SHARE"
+          ? { ...f, kind: "RECIPIENT", rawValue: f.subject }
+          : f,
+      ),
+    },
+    doc,
+    self,
+  );
+  assert.equal(names.mode, CheckMode.FOUND_SOME);
+  assert.ok(names.equalSplitGuessed);
+  assert.deepEqual(
+    names.answers.people.value.map((p) => p.basisPoints),
+    [3334, 3333, 3333],
+  );
+  for (const nothing of [
+    null,
+    { status: "MANUAL_REQUIRED", reason: "NOT_CONFIGURED", facts: [] },
+    // A quote that isn't in the document is ignored.
+    {
+      ...extraction,
+      facts: [
         {
-          key: "j",
-          name: "Jordan Reyes",
-          email: "jordan@example.test",
-          role: InviteeRole.COLLABORATOR,
+          ...extraction.facts[0],
+          citation: { start: 0, end: 3, quote: "50%" },
         },
       ],
-      consent: false,
-      onConsent: noop,
-      onEdit: noop,
+    },
+  ]) {
+    const read = answersFromExtraction(nothing, doc, self);
+    assert.equal(read.mode, CheckMode.MANUAL);
+    assert.equal(read.answers.people.value.length, 1);
+    assert.ok(read.answers.people.value[0].isSelf);
+  }
+});
+
+test("a resumed draft keeps its dates and pending people", () => {
+  const agreement = {
+    workspaceId: "w",
+    id: "a",
+    revision: 3,
+    value: {
+      name: "Midnight Sessions",
+      details: {
+        currency: "USD",
+        effectiveFrom: "2026-10-01",
+        effectiveTo: null,
+      },
+      members: [
+        { userId: "owner", displayName: "Maya Okafor", role: "ORGANIZER" },
+        {
+          userId: "pending:i1",
+          displayName: "Jordan",
+          role: "COLLABORATOR",
+          pending: { invitationId: "i1", email: "jordan@example.test" },
+        },
+      ],
+      versions: [],
+    },
+  } as unknown as Agreement;
+  const read = answersFromDraft(agreement, extraction, doc, self);
+  assert.equal(read.answers.effectiveFrom?.value, "2026-10-01");
+  assert.equal(read.answers.effectiveTo?.value, null);
+  const jordan = read.answers.people.value.find((p) => p.name === "Jordan");
+  assert.equal(jordan?.invitationId, "i1");
+  assert.equal(jordan?.email, "jordan@example.test");
+  assert.equal(detailsPatch(agreement, read.answers), undefined);
+  assert.deepEqual(
+    detailsPatch(agreement, {
+      ...read.answers,
+      name: { value: "Night Sessions", source: AnswerSource.PERSON },
     }),
+    { name: "Night Sessions" },
   );
-  for (const label of ["Name", "Currency", "Dates", "Document", "People"])
-    assert.match(html, new RegExp(`<dt>${label}</dt>`));
-  assert.match(html, /Oct 1, 2026 – no end date/);
-  assert.match(html, /Pasted text · 1,204 characters/);
-  assert.match(html, /Maya Okafor<\/span><small>Owner/);
-  assert.match(html, /Jordan Reyes<\/span><small>Collaborator/);
-  assert.equal((html.match(/>Edit</g) || []).length, 4);
-  assert.match(html, /Let Fairshare read this agreement to suggest rules/);
-  assert.match(html, /moves no money/);
 });
 
-test("nothing is created before Review; intake, invites, then reading", () => {
-  assert.match(
-    wizard,
-    /if \(step === WizardStep.REVIEW\) void create\(\);\s*else go\(step \+ 1\);/,
+test("Check needs two people at 100%; questions keep answers and skip when settled", () => {
+  const solo = emptyAnswers(self);
+  assert.match(checkProblem(solo) ?? "", /Add the people/);
+  const read = answersFromExtraction(extraction, doc, self).answers;
+  assert.equal(checkProblem(read), undefined);
+  const answered = mergeQuestions({
+    ...read,
+    fees: { value: FeeChoice.BEFORE_SPLIT, source: AnswerSource.PERSON },
+    questions: [{ ...read.questions[0], answeredChoiceId: "BEFORE_SPLIT" }],
+  });
+  assert.deepEqual(
+    answered.questions.map((q) => [q.id, q.answeredChoiceId]),
+    [
+      [StandardQuestionId.FEES, "BEFORE_SPLIT"],
+      [StandardQuestionId.REFUNDS, undefined],
+    ],
   );
-  const create = wizard.slice(wizard.indexOf("async function create()"));
-  const intake = create.indexOf("await onCreate(input)");
-  const invites = create.indexOf("await createInvites(");
-  const reading = create.indexOf("afterInvites(made, results)");
-  assert.ok(intake > 0 && invites > intake && reading > invites);
-  assert.match(
-    wizard,
-    /consent\s*\?\s*"Create & read document"\s*:\s*"Create agreement"/,
-  );
-  assert.match(wizard, /readAgreement\(\{/);
-  assert.doesNotMatch(wizard, /consentToCloudflare: true|fetch\(/);
 });
 
-test("retries keep one idempotency key per attempt and unreadable files go back to Document", () => {
+test("Send shows the summary, what blocks it, and the one safety line", () => {
+  const read = answersFromExtraction(extraction, doc, self).answers;
+  const html = renderToStaticMarkup(
+    createElement(WizardSendStep, { answers: read }),
+  );
+  assert.match(html, /Ready to send/);
+  assert.match(html, /Midnight Sessions/);
+  assert.match(html, /Answer the refunds question|Answer the fees question/);
+  assert.match(
+    html,
+    /Nothing is paid until everyone approves\. You can still change things if someone asks\./,
+  );
+  assert.equal(joinNames(["Jordan", "Riley"]), "Jordan and Riley");
+  assert.equal(joinNames(["A", "B", "C"]), "A, B and C");
+});
+
+test("the draft is saved on Read my agreement; people on People; one submit on Send", () => {
   assert.match(wizard, /requestId\.current \|\|= crypto\.randomUUID\(\)/);
-  assert.match(wizard, /function changed\(\) \{\s*requestId\.current = "";/);
-  assert.match(wizard, /if \(locked\.current \|\| created\) return;/);
-  assert.match(
-    wizard,
-    /isUnreadableDocument\(cause\)\) \{\s*requestId\.current = "";\s*setDocumentError\(message\);\s*setStep\(WizardStep\.DOCUMENT\);/,
-  );
-  assert.match(wizard, /role="alert"/);
-  assert.match(wizard, /heading\.current\?\.focus\(\)/);
-  assert.match(wizard, /Nothing has been created yet/);
+  assert.match(wizard, /isUnreadableDocument\(cause\)/);
+  assert.match(wizard, /await addPerson\(/);
+  assert.match(wizard, /await removePerson\(/);
+  assert.match(wizard, /await deleteDraft\(/);
+  const send = wizard.slice(wizard.indexOf("async function send()"));
+  const rules = send.indexOf("toRules(answers");
+  const submit = send.indexOf("await submitForApproval(");
+  assert.ok(rules > 0 && submit > rules);
+  assert.doesNotMatch(wizard, /consentToCloudflare|fetch\(/);
 });
 
-test("finishing creation lands in Terms, opening Proposed rules only after reading", () => {
+test("finishing lands on the agreement Overview; drafts reopen the wizard", () => {
   const app = appSource();
-  assert.doesNotMatch(
-    app,
-    /AgreementCreationWizard|creationMarker|sessionStorage/,
-  );
-  assert.match(app, /function finishCreation\(/);
-  assert.match(app, /setTab\(AgreementTab\.Terms\)/);
+  assert.match(app, /function finishCreation\(agreement: Agreement\)/);
   assert.match(
     app,
-    /rulesLanding=\{rulesLanding === agreementIdentityKey\(selected\)\}/,
+    /isDraftAgreement\(a, user\.id\)\) return resumeDraft\(a\)/,
   );
+  const finish = app.slice(
+    app.indexOf("function finishCreation("),
+    app.indexOf("async function refresh()"),
+  );
+  assert.match(finish, /openAgreement\(agreement\)/);
+  assert.doesNotMatch(finish, /AgreementTab\.Terms/);
   assert.match(app, /onBusyChange=\{setBusy\}/);
-  assert.match(app, /function mayLeaveDraft\(\) \{\s*if \(busy\) return false/);
+});
+
+test("Keep as draft keeps this device's split; resuming reconciles pending people", () => {
+  const store = new Map<string, string>();
+  (globalThis as any).localStorage = {
+    getItem: (k: string) => store.get(k) ?? null,
+    setItem: (k: string, v: string) => store.set(k, v),
+    removeItem: (k: string) => store.delete(k),
+  };
+  try {
+    const agreement = {
+      workspaceId: "w",
+      id: "a",
+      revision: 2,
+      value: {
+        name: "Untitled agreement",
+        members: [
+          { userId: "owner", displayName: "Maya Okafor", role: "ORGANIZER" },
+          {
+            userId: "pending:i2",
+            displayName: "Kemi",
+            role: "COLLABORATOR",
+            pending: { invitationId: "i2", email: "kemi@example.test" },
+          },
+        ],
+        versions: [],
+      },
+    } as unknown as Agreement;
+    const resume = {
+      created: {
+        workspaceId: "w",
+        agreementId: "a",
+        documentId: "d",
+        documentText: doc,
+        agreement,
+      },
+      extraction: null,
+    };
+    // Nothing stored: the document's answers, titled with the draft's name.
+    const fresh = resumedAnswers(resume, self);
+    assert.equal(fresh.answers.name.value, "Untitled agreement");
+    const set = {
+      ...emptyAnswers(self),
+      name: { value: "Night", source: AnswerSource.PERSON },
+      people: {
+        value: [
+          { ...emptyAnswers(self).people.value[0], basisPoints: 6000 },
+          {
+            key: "k",
+            name: "Kemi",
+            email: "kemi@example.test",
+            invitationId: "i2",
+            basisPoints: 4000,
+            isSelf: false,
+          },
+          {
+            key: "t",
+            name: "Tomi",
+            email: "t@example.test",
+            invitationId: "gone",
+            basisPoints: 0,
+            isSelf: false,
+          },
+        ],
+        source: AnswerSource.PERSON,
+      },
+    };
+    saveDraftAnswers("w", "a", set);
+    const resumed = resumedAnswers(resume, self).answers;
+    assert.equal(resumed.name.value, "Night");
+    assert.deepEqual(
+      resumed.people.value.map((p) => [p.name, p.basisPoints, p.invitationId]),
+      [
+        ["Maya Okafor", 6000, undefined],
+        ["Kemi", 4000, "i2"],
+        // Its link no longer exists on the server: it is issued again at People.
+        ["Tomi", 0, undefined],
+      ],
+    );
+  } finally {
+    delete (globalThis as any).localStorage;
+  }
 });

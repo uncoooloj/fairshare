@@ -172,3 +172,31 @@ test("expired lease after provider write leaves reserved unknown outcome without
   );
   f.db.close();
 });
+test("account-level email wins over legacy ID, is frozen as EMAIL, and UNCLAIMED is never re-sent", async () => {
+  const sent: any[] = [];
+  const f = fixture(async (input: any) => {
+    sent.push(input);
+    return { batchId: `batch-${sent.length}` };
+  });
+  f.db.exec(
+    "INSERT INTO fairshare_payout_accounts VALUES('one','EMAIL','one@example.test',1),('two','EMAIL','two@example.test',1)",
+  );
+  await f.run();
+  assert.deepEqual(sent.map((s) => [s.recipientType, s.recipientId]).sort(), [
+    ["EMAIL", "one@example.test"],
+    ["EMAIL", "two@example.test"],
+  ]);
+  assert.deepEqual(
+    f.db
+      .prepare(
+        "SELECT DISTINCT recipient_type AS type FROM fairshare_payout_ops",
+      )
+      .all()
+      .map((r: any) => r.type),
+    ["EMAIL"],
+  );
+  f.db.exec("UPDATE fairshare_payout_ops SET status='UNCLAIMED'");
+  await f.run();
+  assert.equal(sent.length, 2);
+  f.db.close();
+});

@@ -13,7 +13,7 @@ export const MAX_DOCUMENT_BYTES = 5 * 1024 * 1024;
 export const MAX_DOCUMENT_TEXT_LENGTH = 40000;
 export const DOCUMENT_ACCEPT =
   ".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain";
-export const DOCUMENT_HINT = "PDF, DOCX or TXT · up to 5 MB";
+export const DOCUMENT_HINT = "PDF, Word or text, up to 5 MB";
 
 const ACCEPTED_TYPES = new Set([
   "application/pdf",
@@ -25,7 +25,7 @@ const ACCEPTED_TYPES = new Set([
 export function validateDocumentFile(file: File): string | undefined {
   const extension = /\.(pdf|docx|txt)$/i.test(file.name);
   if (!extension && !ACCEPTED_TYPES.has(file.type))
-    return "Choose a PDF, DOCX or TXT document.";
+    return "Choose a PDF, Word or text file.";
   if (file.size === 0) return "This file is empty. Choose another document.";
   if (file.size > MAX_DOCUMENT_BYTES)
     return "Choose a document no larger than 5 MB.";
@@ -103,7 +103,7 @@ export function DocumentStep({
           disabled={disabled}
           onClick={() => onMode(DocumentMode.PASTE)}
         >
-          Paste text instead
+          Paste the text instead
         </button>
       </div>
     </div>

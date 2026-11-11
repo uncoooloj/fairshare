@@ -79,12 +79,21 @@ test("agreement link grants only the named draft roster, atomically and once; pr
         app.store.db.prepare("SELECT * FROM audit").all(),
       ).includes(invite.token),
     );
-    const unauth = await app.inject({
+    // Signed out: the token alone opens a minimal preview.
+    const signedOut = await app.inject({
       method: "POST",
       url: "/api/agreement-invitations/preview",
       payload: { token: invite.token },
     });
-    assert.equal(unauth.statusCode, 401);
+    assert.equal(signedOut.statusCode, 200, signedOut.body);
+    assert.equal(signedOut.headers["cache-control"], "no-store");
+    assert.deepEqual(Object.keys(signedOut.json()).sort(), [
+      "agreementName",
+      "expiresAt",
+      "inviterName",
+    ]);
+    assert.equal(signedOut.json().agreementName, "Private agreement");
+    assert.equal(signedOut.json().inviterName, "owner");
     const preview = await app.inject({
       method: "POST",
       url: "/api/agreement-invitations/preview",
@@ -92,8 +101,18 @@ test("agreement link grants only the named draft roster, atomically and once; pr
       payload: { token: invite.token },
     });
     assert.equal(preview.statusCode, 200);
-    assert.equal(preview.json().agreementName, "Private agreement");
-    assert.equal(preview.json().rules, undefined);
+    assert.deepEqual(preview.json(), signedOut.json());
+    // Accepting still needs a session.
+    assert.equal(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/api/agreement-invitations/accept",
+          payload: { token: invite.token },
+        })
+      ).statusCode,
+      401,
+    );
     const accepted = await f.accept(invite.token);
     assert.equal(accepted.statusCode, 200, accepted.body);
     assert.equal(accepted.json().workspace.role, "MEMBER");
@@ -128,6 +147,26 @@ test("agreement link grants only the named draft roster, atomically and once; pr
       headers: f.headers(f.guest),
     });
     assert.deepEqual(status.json(), { configured: false });
+    const saved = await app.inject({
+      method: "PUT",
+      url: "/api/auth/payout-account",
+      headers: f.headers(f.guest),
+      payload: { email: "guest@example.com" },
+    });
+    assert.equal(saved.statusCode, 200);
+    assert.deepEqual(
+      (
+        await app.inject({
+          url: `${f.url}/recipient-status`,
+          headers: f.headers(f.guest),
+        })
+      ).json(),
+      { configured: true },
+    );
+    // A legacy per-workspace PayPal ID still counts until an email is added.
+    app.store.db
+      .prepare("DELETE FROM fairshare_payout_accounts WHERE user_id=?")
+      .run(f.guest.user.id);
     app.store.db
       .prepare("INSERT INTO fairshare_recipients VALUES(?,?,?)")
       .run(f.workspace.id, f.guest.user.id, "ABCDEFGHIJKLM");
@@ -149,7 +188,8 @@ test("draft lock after issue does not consume token or partially join workspace"
   try {
     const invite = (await f.create()).json().invitation;
     const value = f.a.value;
-    value.versions = [{ id: 1 }];
+    // The lock now starts when rules are sent, not when a draft exists.
+    value.versions = [{ id: 1, status: "AWAITING_APPROVAL" }];
     f.app.store.db
       .prepare("UPDATE fairshare_collaborations SET value=? WHERE id=?")
       .run(JSON.stringify(value), f.a.id);
@@ -172,6 +212,45 @@ test("draft lock after issue does not consume token or partially join workspace"
       null,
     );
     assert.equal((await f.create()).statusCode, 409);
+  } finally {
+    await f.app.close();
+  }
+});
+test("signed-out preview rejects used, revoked and expired links and is rate limited per IP", async () => {
+  const f = await setup();
+  const preview = (token: unknown, remoteAddress = "203.0.113.1") =>
+    f.app.inject({
+      method: "POST",
+      url: "/api/agreement-invitations/preview",
+      remoteAddress,
+      payload: { token },
+    });
+  try {
+    const used = (await f.create()).json().invitation;
+    assert.equal((await f.accept(used.token)).statusCode, 200);
+    assert.equal((await preview(used.token)).statusCode, 400);
+    const revoked = (await f.create()).json().invitation;
+    await f.app.inject({
+      method: "DELETE",
+      url: `${f.url}/invitation-links/${revoked.id}`,
+      headers: f.headers(),
+    });
+    assert.equal((await preview(revoked.token)).statusCode, 400);
+    const expired = (await f.create()).json().invitation;
+    f.advance();
+    const expiredPreview = await preview(expired.token);
+    assert.equal(expiredPreview.statusCode, 400);
+    assert.equal(expiredPreview.headers["cache-control"], "no-store");
+    assert.equal((await preview("not-a-token")).statusCode, 400);
+    const live = (await f.create()).json().invitation;
+    for (let i = 0; i < 60; i++)
+      assert.notEqual(
+        (await preview(live.token, "203.0.113.9")).statusCode,
+        429,
+      );
+    assert.equal((await preview(live.token, "203.0.113.9")).statusCode, 429);
+    // Another address keeps its own budget.
+    assert.equal((await preview(live.token, "203.0.113.10")).statusCode, 200);
   } finally {
     await f.app.close();
   }

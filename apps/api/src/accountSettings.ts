@@ -1,11 +1,12 @@
 import type { FairshareApp } from "./app.js";
-import { ApiError, Role } from "./identity.js";
+import { ApiError } from "./identity.js";
+import {
+  payoutReadiness,
+  readPayoutDestination,
+  registerPayoutAccountRoutes,
+} from "./payoutAccounts.js";
 
-type PaymentAccountMember = {
-  id: string;
-  name: string;
-  paypalId: string | null;
-};
+type PaymentAccountMember = { id: string; name: string };
 type ActivityEvent = {
   id: string;
   actorId: string;
@@ -18,74 +19,34 @@ type ActivityAuditRow = ActivityEvent & { detail: string };
 type CollaborationRow = { value: string };
 type UserNameRow = { id: string; name: string };
 
-/** Workspace-scoped payout destinations, never OAuth credentials or verified accounts. */
+/** Payout readiness per workspace member. Destinations are account-level and
+ * only their owner ever sees the address; everyone else sees readiness. */
 export function registerAccountSettings(
   app: FairshareApp,
   providerConfigured: boolean,
 ) {
   const db = app.store.db;
+  registerPayoutAccountRoutes(app);
   const base = "/api/workspaces/:workspaceId/payment-accounts";
-  app.get<{ Params: { workspaceId: string } }>(base, async (req) => {
+  app.get<{ Params: { workspaceId: string } }>(base, async (req, reply) => {
+    reply.header("Cache-Control", "no-store");
     const { user } = app.requireWorkspace(req, req.params.workspaceId);
     const members = db
       .prepare(
-        `SELECT u.id, u.name, r.paypal_id AS paypalId FROM memberships m
-      JOIN users u ON u.id=m.user_id LEFT JOIN fairshare_recipients r
-      ON r.workspace_id=m.workspace_id AND r.user_id=m.user_id WHERE m.workspace_id=?`,
+        "SELECT u.id, u.name FROM memberships m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=?",
       )
       .all(req.params.workspaceId) as PaymentAccountMember[];
     return {
       providerConfigured,
       mode: app.store.mode,
-      ownPaypalId: members.find((m) => m.id === user.id)?.paypalId ?? null,
+      own: readPayoutDestination(db, user.id, req.params.workspaceId),
       members: members.map((m) => ({
         id: m.id,
         name: m.name,
-        status: m.paypalId ? "SAVED_UNVERIFIED" : "MISSING",
-        accountHint: m.paypalId ? `•••• ${m.paypalId.slice(-4)}` : null,
+        status: payoutReadiness(db, m.id, req.params.workspaceId),
       })),
     };
   });
-  app.put<{ Params: { workspaceId: string } }>(`${base}/mine`, async (req) => {
-    const { user } = app.requireWorkspace(req, req.params.workspaceId, [
-      Role.OWNER,
-      Role.MEMBER,
-    ]);
-    const id = (req.body as any)?.paypalId;
-    if (typeof id !== "string" || !/^[A-Z0-9]{13}$/.test(id))
-      throw new ApiError(
-        400,
-        "INVALID_RECIPIENT",
-        "Enter your 13-character sandbox PayPal merchant ID.",
-      );
-    app.store.tx(() => {
-      db.prepare(
-        "INSERT INTO fairshare_recipients VALUES(?,?,?) ON CONFLICT(workspace_id,user_id) DO UPDATE SET paypal_id=excluded.paypal_id",
-      ).run(req.params.workspaceId, user.id, id);
-      app.store.audit(user.id, req.params.workspaceId, "PAYOUT_ACCOUNT_SAVED");
-    });
-    return { status: "SAVED_UNVERIFIED" };
-  });
-  app.delete<{ Params: { workspaceId: string } }>(
-    `${base}/mine`,
-    async (req) => {
-      const { user } = app.requireWorkspace(req, req.params.workspaceId, [
-        Role.OWNER,
-        Role.MEMBER,
-      ]);
-      app.store.tx(() => {
-        db.prepare(
-          "DELETE FROM fairshare_recipients WHERE workspace_id=? AND user_id=?",
-        ).run(req.params.workspaceId, user.id);
-        app.store.audit(
-          user.id,
-          req.params.workspaceId,
-          "PAYOUT_ACCOUNT_REMOVED",
-        );
-      });
-      return { removed: true };
-    },
-  );
   app.get<{
     Querystring: {
       workspaceId?: string;

@@ -39,7 +39,7 @@ const OPTIONS = [
   {
     value: FirstAgreementChoice.UPLOAD,
     title: "Upload an agreement",
-    body: "PDF or Word. We’ll read it and propose the rules.",
+    body: "PDF or Word. We’ll read it and set up the split.",
     icon: <UploadIcon />,
   },
   {

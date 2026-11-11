@@ -9,6 +9,11 @@ import {
   MAX_DOCUMENT_BYTES,
   validateDocumentFile,
 } from "../components/document-step";
+import {
+  UNREADABLE_DETAIL,
+  unreadableDetail,
+} from "../components/wizard-intake";
+import { ApiError } from "../lib/model";
 
 const dropZoneSource = readFileSync(
   new URL("../components/drop-zone.tsx", import.meta.url),
@@ -32,13 +37,13 @@ const sized = (name: string, bytes: number, type = "") =>
 
 test("empty state is a drop zone with the server's real types and limit", () => {
   const html = render();
-  assert.match(html, /Drop your signed agreement here or/);
+  assert.match(html, /Drop the signed agreement here or/);
   assert.match(html, /browse/);
-  assert.match(html, /PDF, DOCX or TXT · up to 5 MB/);
+  assert.match(html, /PDF, Word or text, up to 5 MB/);
   assert.doesNotMatch(html, /25 MB/);
   assert.match(html, /type="file"/);
   assert.match(html, /accept="\.pdf,\.docx,\.txt/);
-  assert.match(html, />Paste text instead</);
+  assert.match(html, />Paste the text instead</);
   assert.equal(MAX_DOCUMENT_BYTES, 5 * 1024 * 1024);
 });
 
@@ -63,14 +68,30 @@ test("selected state shows a file card with icon, size, status, Replace and Remo
 test("unreadable state replaces the file card with an error card", () => {
   const html = render({
     file: sized("Midnight-Sessions-scan.pdf", 1024),
-    error: "No readable text was found.",
+    // The wizard passes the card's line: the default, or the server's scan message.
+    error: UNREADABLE_DETAIL,
   });
   assert.match(html, /role="alert"/);
   assert.match(html, /Midnight-Sessions-scan\.pdf/);
-  assert.match(html, /We couldn’t read this file\./);
-  assert.match(html, /No readable text was found\./);
-  assert.match(html, /password-protected or a low-quality scan/);
+  assert.match(html, /We couldn’t open this file/);
+  assert.match(
+    html,
+    /It might be password-protected or a scan we can’t read\./,
+  );
   assert.match(html, />Try another file</);
+  const scan = render({
+    file: sized("scan.pdf", 1024),
+    error: unreadableDetail(
+      new ApiError(
+        "This looks like a scanned document. We can't read scans yet. Upload the original PDF or Word file.",
+        400,
+        "SCANNED_PDF_UNSUPPORTED",
+      ),
+    ),
+  });
+  assert.match(scan, /We couldn’t open this file/);
+  assert.match(scan, /We can&#x27;t read scans yet/);
+  assert.equal(unreadableDetail(new Error("network")), UNREADABLE_DETAIL);
   assert.doesNotMatch(html, /aria-label="Remove file"/);
   assert.match(html, /type="file"/);
 });
@@ -111,11 +132,11 @@ test("validateDocumentFile rejects wrong types, empty and oversize files", () =>
   );
   assert.match(
     validateDocumentFile(sized("photo.png", 10, "image/png")) ?? "",
-    /PDF, DOCX or TXT/,
+    /PDF, Word or text/,
   );
   assert.match(
     validateDocumentFile(sized("old.doc", 10)) ?? "",
-    /PDF, DOCX or TXT/,
+    /PDF, Word or text/,
   );
   assert.match(
     validateDocumentFile(sized("big.pdf", MAX_DOCUMENT_BYTES + 1)) ?? "",

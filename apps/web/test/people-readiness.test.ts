@@ -31,14 +31,11 @@ test("review state does not invent pending approval before proposal or send", ()
     "Changes requested",
   );
 });
-test("saved destination is never represented as connected or verified", () => {
-  assert.equal(
-    payoutReadinessLabel("SAVED_UNVERIFIED"),
-    "Destination saved · not verified",
-  );
-  assert.equal(payoutReadinessLabel("MISSING"), "Needs payout destination");
+test("organizers see readiness only, never a destination", () => {
+  assert.equal(payoutReadinessLabel("READY"), "Ready to be paid");
+  assert.equal(payoutReadinessLabel("NEEDS_EMAIL"), "Needs a payout email");
+  assert.equal(payoutReadinessLabel("SAVED_UNVERIFIED"), "Status unavailable");
   assert.equal(payoutReadinessLabel(undefined), "Status unavailable");
-  assert.equal(payoutReadinessLabel("future-status"), "Status unavailable");
 });
 test("row actions do not mutate membership, other people's destinations, or resend email", () => {
   const source = readFileSync(
@@ -51,6 +48,7 @@ test("row actions do not mutate membership, other people's destinations, or rese
     /canRemind\(\s*agreement,\s*version,\s*userId,\s*member.userId,?\s*\)/,
   );
   assert.match(source, /member.userId === userId/);
-  assert.match(source, /accountHint/);
+  assert.doesNotMatch(source, /accountHint|PayPal ID|recipient ID|merchant/i);
+  assert.match(source, /<PayoutEmailStep/);
   assert.match(source, /if \(active\)/);
 });

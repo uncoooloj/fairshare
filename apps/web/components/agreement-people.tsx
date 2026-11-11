@@ -4,16 +4,20 @@ import { approvalLabel, payoutReadinessLabel } from "../lib/people-readiness";
 import { canRemind } from "../lib/review-discussion";
 import { ReviewReminder } from "./review-discussion";
 import { Button } from "./ui";
+import { Drawer } from "./allocation-drawer";
+import { PayoutEmailStep } from "./payout-email-step";
 import { Avatar } from "./person";
 import { toneInRoster } from "../lib/person";
 
 function chipTone(label: string) {
   if (label === "Approved") return "good";
-  if (/Awaiting|Changes|Needs|not verified/.test(label)) return "warning";
+  if (label === "Ready to be paid") return "good";
+  if (/Awaiting|Changes|Needs/.test(label)) return "warning";
   return "neutral";
 }
 
-type Destination = { id: string; status: string; accountHint: string | null };
+/** Readiness only: the API never returns anyone's payout email here. */
+type Readiness = { id: string; status: string };
 export function AgreementPeople({
   agreement,
   version,
@@ -25,15 +29,16 @@ export function AgreementPeople({
   userId: string;
   base: string;
 }) {
-  const [destinations, setDestinations] = useState<Destination[] | null>(null);
+  const [destinations, setDestinations] = useState<Readiness[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [refresh, setRefresh] = useState(0);
+  const [editingOwn, setEditingOwn] = useState(false);
   useEffect(() => {
     let active = true;
     setLoading(true);
     setError("");
-    api<{ members: Destination[] }>(
+    api<{ members: Readiness[] }>(
       `workspaces/${encodeURIComponent(agreement.workspaceId)}/payment-accounts`,
     )
       .then((result) => {
@@ -81,8 +86,8 @@ export function AgreementPeople({
       )}
       <div className="row ag-people-toolbar">
         <p className="muted">
-          Payout destinations are private to each person. A saved ID is not
-          proof of account ownership or payout eligibility.
+          Payout emails are private. Everyone else only sees whether a person is
+          ready to be paid.
         </p>
         <Button
           type="button"
@@ -103,7 +108,7 @@ export function AgreementPeople({
               <th scope="col">
                 {version ? `v${version.id} approval` : "Approval"}
               </th>
-              <th scope="col">Payout account</th>
+              <th scope="col">Payout</th>
               <th scope="col">
                 <span className="visually-hidden">Actions</span>
               </th>
@@ -147,11 +152,6 @@ export function AgreementPeople({
                     <span className={`status-chip ${chipTone(readiness)}`}>
                       {readiness}
                     </span>
-                    {!loading && destination?.accountHint && (
-                      <small className="muted ag-hint">
-                        {destination.accountHint}
-                      </small>
-                    )}
                   </td>
                   <td className="ag-row-actions">
                     <details className="people-actions ag-menu">
@@ -190,20 +190,9 @@ export function AgreementPeople({
                           <Button
                             type="button"
                             variant="quiet"
-                            onClick={() => {
-                              const form = document.getElementById(
-                                "agreement-payout-destination",
-                              );
-                              form?.scrollIntoView({
-                                behavior: "smooth",
-                                block: "center",
-                              });
-                              form
-                                ?.querySelector<HTMLInputElement>("input")
-                                ?.focus({ preventScroll: true });
-                            }}
+                            onClick={() => setEditingOwn(true)}
                           >
-                            Manage my payout destination
+                            Add or change my payout email
                           </Button>
                         )}
                         <p className="muted">
@@ -224,6 +213,17 @@ export function AgreementPeople({
           </tbody>
         </table>
       </div>
+      {editingOwn && (
+        <Drawer label="Payout email" onClose={() => setEditingOwn(false)}>
+          <PayoutEmailStep
+            autoFocus={false}
+            onDone={() => {
+              setEditingOwn(false);
+              setRefresh((value) => value + 1);
+            }}
+          />
+        </Drawer>
+      )}
     </section>
   );
 }

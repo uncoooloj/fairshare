@@ -1,47 +1,59 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { InviteeRole } from "../lib/agreement-invitations";
-import { toneForId } from "../lib/person";
-import { PlusIcon } from "./icons";
+import { useState } from "react";
+import { toneInRoster } from "../lib/person";
+import type { AgreementAnswers, PersonAnswer } from "../lib/rules-answers";
 import { Avatar, AvatarSize } from "./person";
-
-export interface PersonDraft {
-  key: string;
-  name: string;
-  email: string;
-  role: InviteeRole;
-}
 
 export interface PersonErrors {
   name?: string;
   email?: string;
+  notInSplit?: string;
 }
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const ROLE_LABELS: Record<InviteeRole, string> = {
-  [InviteeRole.COLLABORATOR]: "Collaborator",
-};
 
-const normalizeEmail = (email: string) => email.trim().toLowerCase();
+const normalizeEmail = (email: string | undefined) =>
+  (email ?? "").trim().toLowerCase();
 
-/** Per-row errors, keyed by draft key. Later duplicates are flagged, not the first. */
-export function peopleErrors(
-  people: PersonDraft[],
-  ownerEmail?: string,
+const rosterId = (person: PersonAnswer) => person.userId ?? person.key;
+
+/** Share as a whole-number-ish percent: 5000 → "50%", 3333 → "33.33%". */
+export function sharePercent(basisPoints: number) {
+  return `${Number((basisPoints / 100).toFixed(2))}%`;
+}
+
+const displayName = (person: PersonAnswer) =>
+  person.name.trim() || "This person";
+
+/**
+ * Per-row errors, keyed by person key. The organizer (isSelf) is never checked: their
+ * email comes from the account. Later duplicates are flagged, not the first.
+ */
+export function peopleEmailErrors(
+  answers: AgreementAnswers,
+  selfEmail?: string,
 ): Record<string, PersonErrors> {
-  const owner = ownerEmail ? normalizeEmail(ownerEmail) : "";
+  const people = answers.people.value;
+  const self = people.find((p) => p.isSelf);
+  const owner = normalizeEmail(selfEmail ?? self?.email);
   const seen = new Set<string>();
   const errors: Record<string, PersonErrors> = {};
   for (const person of people) {
+    if (person.isSelf) continue;
     const rowErrors: PersonErrors = {};
+    if (person.basisPoints <= 0) {
+      rowErrors.notInSplit = `Remove ${displayName(person)}. They're not in the split.`;
+      errors[person.key] = rowErrors;
+      continue;
+    }
     if (!person.name.trim()) rowErrors.name = "Enter a name.";
     const email = normalizeEmail(person.email);
     if (!email) rowErrors.email = "Enter an email.";
     else if (!EMAIL_PATTERN.test(email))
       rowErrors.email = "Enter a valid email.";
     else if (owner && email === owner)
-      rowErrors.email = "That's your email. You're already the owner.";
+      rowErrors.email = "That's your email. Add theirs instead.";
     else if (seen.has(email)) rowErrors.email = "This email is already added.";
     if (email) seen.add(email);
     if (rowErrors.name || rowErrors.email) errors[person.key] = rowErrors;
@@ -50,29 +62,20 @@ export function peopleErrors(
 }
 
 /** First problem in row order, for the wizard footer. Undefined when the step can continue. */
-export function validatePeople(
-  people: PersonDraft[],
-  ownerEmail?: string,
+export function validatePeopleEmails(
+  answers: AgreementAnswers,
+  selfEmail?: string,
 ): string | undefined {
-  const errors = peopleErrors(people, ownerEmail);
-  for (const [index, person] of people.entries()) {
+  const errors = peopleEmailErrors(answers, selfEmail);
+  for (const person of answers.people.value) {
     const rowErrors = errors[person.key];
     if (!rowErrors) continue;
-    const label = person.name.trim() || `Person ${index + 2}`;
-    if (rowErrors.name) return `Person ${index + 2}: ${rowErrors.name}`;
-    if (rowErrors.email) return `${label}: ${rowErrors.email}`;
+    if (rowErrors.notInSplit) return rowErrors.notInSplit;
+    if (rowErrors.name)
+      return `Enter a name for the person with ${sharePercent(person.basisPoints)}.`;
+    if (rowErrors.email) return `${displayName(person)}: ${rowErrors.email}`;
   }
   return undefined;
-}
-
-let draftCounter = 0;
-export function newPersonDraft(): PersonDraft {
-  draftCounter += 1;
-  const key =
-    typeof crypto !== "undefined" && "randomUUID" in crypto
-      ? crypto.randomUUID()
-      : `person-${Date.now()}-${draftCounter}`;
-  return { key, name: "", email: "", role: InviteeRole.COLLABORATOR };
 }
 
 function TrashIcon() {
@@ -94,236 +97,185 @@ function TrashIcon() {
   );
 }
 
-function InfoIcon() {
-  return (
-    <svg
-      width={16}
-      height={16}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      aria-hidden="true"
-      className="inline-icon"
-    >
-      <circle cx="12" cy="12" r="9" />
-      <path d="M12 11v5M12 8h.01" />
-    </svg>
-  );
-}
-
 enum PeopleField {
   NAME = "name",
   EMAIL = "email",
 }
 
 export function PeopleStep({
-  owner,
-  people,
+  answers,
   onChange,
-  disabled = false,
   showErrors = false,
+  disabled = false,
+  selfEmail,
 }: {
-  owner: { name: string; email: string };
-  people: PersonDraft[];
-  onChange(people: PersonDraft[]): void;
-  disabled?: boolean;
+  answers: AgreementAnswers;
+  onChange(answers: AgreementAnswers): void;
   /** Set by the wizard after Continue is pressed so untouched rows show their errors too. */
   showErrors?: boolean;
+  disabled?: boolean;
+  /** The signed-in organizer's account email; falls back to the organizer row's email. */
+  selfEmail?: string;
 }) {
   const [touched, setTouched] = useState<Record<string, boolean>>({});
-  const [focusKey, setFocusKey] = useState<string | null>(null);
-  const nameInputs = useRef(new Map<string, HTMLInputElement>());
-  const errors = peopleErrors(people, owner.email);
+  const people = answers.people.value;
+  const roster = people.map((p) => ({ userId: rosterId(p) }));
+  const errors = peopleEmailErrors(answers, selfEmail);
 
-  useEffect(() => {
-    if (!focusKey) return;
-    nameInputs.current.get(focusKey)?.focus();
-    setFocusKey(null);
-  }, [focusKey]);
-
-  const update = (key: string, patch: Partial<PersonDraft>) =>
-    onChange(people.map((p) => (p.key === key ? { ...p, ...patch } : p)));
+  const setPeople = (next: PersonAnswer[]) =>
+    onChange({ ...answers, people: { ...answers.people, value: next } });
+  const update = (key: string, patch: Partial<PersonAnswer>) =>
+    setPeople(people.map((p) => (p.key === key ? { ...p, ...patch } : p)));
+  const remove = (key: string) =>
+    setPeople(people.filter((p) => p.key !== key));
   const touch = (key: string, field: PeopleField) =>
     setTouched((current) => ({ ...current, [`${key}:${field}`]: true }));
   const visibleError = (key: string, field: PeopleField) =>
     showErrors || touched[`${key}:${field}`] ? errors[key]?.[field] : undefined;
-  const add = () => {
-    const draft = newPersonDraft();
-    onChange([...people, draft]);
-    setFocusKey(draft.key);
-  };
-  const remove = (key: string) => {
-    onChange(people.filter((p) => p.key !== key));
-    nameInputs.current.delete(key);
-  };
 
   return (
     <section className="people-step" aria-labelledby="people-step-title">
-      <h2 id="people-step-title">People</h2>
+      <h2 id="people-step-title">Who should we send this to?</h2>
       <p className="people-step-lede">
-        Everyone who shares in this agreement&rsquo;s revenue.
+        We found these people in your agreement. Add their emails so they can
+        approve.
       </p>
 
-      <div className="people-table" role="list" aria-label="People">
-        <div className="people-head" aria-hidden="true">
-          <span>Name</span>
-          <span>Email</span>
-          <span>Role</span>
-          <span />
-        </div>
-
-        <div className="people-row people-row-owner" role="listitem">
-          <div className="people-cell">
-            <span className="people-field-label">Name</span>
-            <span className="people-static">
+      <ul className="people-list" aria-label="People">
+        {people.map((person) => {
+          const tone = toneInRoster(rosterId(person), roster);
+          const nameId = `person-${person.key}-name`;
+          const emailId = `person-${person.key}-email`;
+          const who = person.name.trim() || "this person";
+          const inSplit = person.basisPoints > 0;
+          const nameError = person.isSelf
+            ? undefined
+            : visibleError(person.key, PeopleField.NAME);
+          const emailError = visibleError(person.key, PeopleField.EMAIL);
+          const ownEmail = selfEmail ?? person.email ?? "";
+          return (
+            <li
+              key={person.key}
+              className={[
+                "people-row",
+                person.isSelf ? "people-row-self" : "",
+                inSplit ? "" : "people-row-out",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+            >
               <Avatar
-                name={owner.name}
-                tone={toneForId(owner.email)}
+                name={person.name || "?"}
+                tone={tone}
                 size={AvatarSize.SMALL}
                 label={false}
               />
-              <span className="people-static-text">{owner.name}</span>
-              <span className="people-you">(you)</span>
-            </span>
-          </div>
-          <div className="people-cell">
-            <span className="people-field-label">Email</span>
-            <span className="people-static people-static-muted">
-              <span className="people-static-text">{owner.email}</span>
-            </span>
-          </div>
-          <div className="people-cell">
-            <span className="people-field-label">Role</span>
-            <span className="people-static people-static-muted">Owner</span>
-          </div>
-          <span className="people-remove-slot" />
-        </div>
 
-        {people.map((person, index) => {
-          const n = index + 2;
-          const nameError = visibleError(person.key, PeopleField.NAME);
-          const emailError = visibleError(person.key, PeopleField.EMAIL);
-          const nameId = `person-${person.key}-name`;
-          const emailId = `person-${person.key}-email`;
-          const roleId = `person-${person.key}-role`;
-          const who = person.name.trim() || "person";
-          return (
-            <div className="people-row" role="listitem" key={person.key}>
-              <div className="people-cell">
+              <div className="people-cell people-cell-name">
                 <label className="people-field-label" htmlFor={nameId}>
                   Name
-                  <span className="visually-hidden">, person {n}</span>
                 </label>
-                <input
-                  id={nameId}
-                  ref={(el) => {
-                    if (el) nameInputs.current.set(person.key, el);
-                  }}
-                  className="people-input"
-                  value={person.name}
-                  autoComplete="off"
-                  placeholder="Full name"
-                  disabled={disabled}
-                  aria-invalid={nameError ? true : undefined}
-                  aria-describedby={nameError ? `${nameId}-error` : undefined}
-                  onChange={(e) => update(person.key, { name: e.target.value })}
-                  onBlur={() => touch(person.key, PeopleField.NAME)}
-                />
-                {nameError && (
-                  <small className="people-error" id={`${nameId}-error`}>
-                    {nameError}
-                  </small>
+                {person.isSelf ? (
+                  <span className="people-static" id={nameId}>
+                    <span className="people-static-text">{person.name}</span>
+                    <span className="people-you">You</span>
+                  </span>
+                ) : (
+                  <>
+                    <input
+                      id={nameId}
+                      className="people-input people-input-name"
+                      value={person.name}
+                      autoComplete="off"
+                      placeholder="Full name"
+                      disabled={disabled}
+                      aria-invalid={nameError ? true : undefined}
+                      aria-describedby={
+                        nameError ? `${nameId}-error` : undefined
+                      }
+                      onChange={(e) =>
+                        update(person.key, { name: e.target.value })
+                      }
+                      onBlur={() => touch(person.key, PeopleField.NAME)}
+                    />
+                    {nameError && (
+                      <small className="people-error" id={`${nameId}-error`}>
+                        {nameError}
+                      </small>
+                    )}
+                  </>
                 )}
               </div>
-              <div className="people-cell">
-                <label className="people-field-label" htmlFor={emailId}>
-                  Email
-                  <span className="visually-hidden">, person {n}</span>
-                </label>
-                <input
-                  id={emailId}
-                  className="people-input"
-                  type="email"
-                  inputMode="email"
-                  autoComplete="off"
-                  spellCheck={false}
-                  placeholder="name@example.com"
-                  value={person.email}
-                  disabled={disabled}
-                  aria-invalid={emailError ? true : undefined}
-                  aria-describedby={emailError ? `${emailId}-error` : undefined}
-                  onChange={(e) =>
-                    update(person.key, { email: e.target.value })
-                  }
-                  onBlur={() => touch(person.key, PeopleField.EMAIL)}
-                />
-                {emailError && (
-                  <small className="people-error" id={`${emailId}-error`}>
-                    {emailError}
-                  </small>
+
+              <div className="people-cell people-cell-share">
+                <span className="people-field-label">Share</span>
+                {inSplit ? (
+                  <span className="people-share">
+                    {sharePercent(person.basisPoints)}
+                  </span>
+                ) : (
+                  <span className="people-share people-share-out">
+                    Not in the split
+                  </span>
                 )}
               </div>
-              <div className="people-cell">
-                <label className="people-field-label" htmlFor={roleId}>
-                  Role
-                  <span className="visually-hidden">, person {n}</span>
-                </label>
-                <select
-                  id={roleId}
-                  className="people-input people-select"
-                  value={person.role}
-                  disabled={disabled}
-                  onChange={(e) =>
-                    update(person.key, {
-                      role: e.target.value as InviteeRole,
-                    })
-                  }
-                >
-                  {Object.values(InviteeRole).map((role) => (
-                    <option key={role} value={role}>
-                      {ROLE_LABELS[role]}
-                    </option>
-                  ))}
-                </select>
+
+              <div className="people-cell people-cell-email">
+                {person.isSelf ? (
+                  <>
+                    <span className="people-field-label">Email</span>
+                    <span className="people-static people-static-muted">
+                      <span className="people-static-text">{ownEmail}</span>
+                    </span>
+                  </>
+                ) : inSplit ? (
+                  <>
+                    <label className="people-field-label" htmlFor={emailId}>
+                      Email
+                      <span className="visually-hidden">, {who}</span>
+                    </label>
+                    <input
+                      id={emailId}
+                      className="people-input"
+                      type="email"
+                      inputMode="email"
+                      autoComplete="off"
+                      spellCheck={false}
+                      placeholder="name@example.com"
+                      value={person.email ?? ""}
+                      disabled={disabled}
+                      aria-invalid={emailError ? true : undefined}
+                      aria-describedby={
+                        emailError ? `${emailId}-error` : undefined
+                      }
+                      onChange={(e) =>
+                        update(person.key, { email: e.target.value })
+                      }
+                      onBlur={() => touch(person.key, PeopleField.EMAIL)}
+                    />
+                    {emailError && (
+                      <small className="people-error" id={`${emailId}-error`}>
+                        {emailError}
+                      </small>
+                    )}
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    className="people-remove"
+                    aria-label={`Remove ${who}`}
+                    disabled={disabled}
+                    onClick={() => remove(person.key)}
+                  >
+                    <TrashIcon />
+                    <span>Remove</span>
+                  </button>
+                )}
               </div>
-              <button
-                type="button"
-                className="people-remove"
-                aria-label={`Remove ${who}`}
-                disabled={disabled}
-                onClick={() => remove(person.key)}
-              >
-                <TrashIcon />
-              </button>
-            </div>
+            </li>
           );
         })}
-      </div>
-
-      <button
-        type="button"
-        className="people-add"
-        disabled={disabled}
-        onClick={add}
-      >
-        <PlusIcon />
-        Add person
-      </button>
-
-      {people.length === 0 && (
-        <p className="people-hint">
-          Just you for now. That works for a one-person agreement, and you can
-          add people later.
-        </p>
-      )}
-
-      <p className="people-callout">
-        <InfoIcon />
-        They&rsquo;ll get an invite link once the agreement is created. Nothing
-        is sent yet.
-      </p>
+      </ul>
     </section>
   );
 }

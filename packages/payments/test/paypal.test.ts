@@ -1,6 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { PayPalSandbox, PayPalError } from "../src/paypal.js";
+import {
+  PayPalSandbox,
+  PayPalError,
+  RecipientType,
+  normalizePayoutEmail,
+} from "../src/paypal.js";
 function setup(responses: unknown[]) {
   const requests: { url: string; init: RequestInit }[] = [];
   const fetcher = (async (url: string | URL | Request, init?: RequestInit) => {
@@ -199,6 +204,7 @@ test("payout is disabled unless both explicit gates are set", async () => {
   await assert.rejects(
     client.createPayout({
       requestId: "p1",
+      recipientType: RecipientType.PAYPAL_ID,
       recipientId: "ABCDEFGHIJKLM",
       amountCents: 100,
       currency: "USD",
@@ -252,6 +258,7 @@ test("payout acceptance is not completion and reconciliation validates recipient
   );
   const input = {
     requestId: "p1",
+    recipientType: RecipientType.PAYPAL_ID,
     recipientId: "ABCDEFGHIJKLM",
     amountCents: 100,
     currency: "USD",
@@ -382,4 +389,106 @@ test("refund parent accepts exact PayPal sandbox alias but rejects lookalikes", 
       ),
     );
   }
+});
+
+test("email payouts send recipient_type EMAIL and reconcile the receiver case-insensitively", async () => {
+  const bodies: any[] = [];
+  const responses: any[] = [
+    token,
+    {
+      batch_header: {
+        payout_batch_id: "b2",
+        sender_batch_header: { sender_batch_id: "p2" },
+      },
+    },
+    {
+      batch_header: {
+        payout_batch_id: "b2",
+        sender_batch_header: { sender_batch_id: "p2" },
+      },
+      items: [
+        {
+          payout_item_id: "i2",
+          transaction_status: "UNCLAIMED",
+          payout_item: {
+            sender_item_id: "p2",
+            recipient_type: "EMAIL",
+            receiver: "Maya@Example.test",
+            amount: { currency: "USD", value: "2.50" },
+          },
+        },
+      ],
+    },
+  ];
+  const client = new PayPalSandbox(
+    {
+      clientId: "id",
+      clientSecret: "secret",
+      payoutsEnabled: true,
+      payoutsEligibilityConfirmed: true,
+    },
+    (async (_url: any, init: any) => {
+      if (typeof init?.body === "string" && init.body.startsWith("{"))
+        bodies.push(JSON.parse(init.body));
+      return new Response(JSON.stringify(responses.shift()), { status: 200 });
+    }) as typeof fetch,
+  );
+  const input = {
+    requestId: "p2",
+    recipientType: RecipientType.EMAIL,
+    recipientId: "maya@example.test",
+    amountCents: 250,
+    currency: "USD",
+  };
+  await client.createPayout(input);
+  assert.equal(bodies[0].items[0].recipient_type, "EMAIL");
+  assert.equal(bodies[0].items[0].receiver, "maya@example.test");
+  const batch = structuredClone(responses[0]);
+  assert.equal((await client.getPayout("b2", input)).status, "UNCLAIMED");
+  responses.push(batch);
+  await assert.rejects(
+    client.getPayout("b2", {
+      ...input,
+      recipientType: RecipientType.PAYPAL_ID,
+    }),
+    { code: "PAYOUT_MISMATCH" },
+  );
+});
+test("payout recipients are validated per type before any provider call", async () => {
+  let requests = 0;
+  const gated = new PayPalSandbox(
+    {
+      clientId: "id",
+      clientSecret: "secret",
+      payoutsEnabled: true,
+      payoutsEligibilityConfirmed: true,
+    },
+    (async () => {
+      requests++;
+      throw new Error("no network");
+    }) as typeof fetch,
+  );
+  for (const [recipientType, recipientId] of [
+    [RecipientType.EMAIL, "Maya@Example.test"],
+    [RecipientType.EMAIL, "ABCDEFGHIJKLM"],
+    [RecipientType.PAYPAL_ID, "maya@example.test"],
+    ["PHONE", "5551234567"],
+  ] as const)
+    await assert.rejects(
+      gated.createPayout({
+        requestId: "p3",
+        recipientType: recipientType as RecipientType,
+        recipientId,
+        amountCents: 1,
+        currency: "USD",
+      }),
+      { code: "INVALID_PAYOUT_ID" },
+    );
+  assert.equal(
+    normalizePayoutEmail("  Maya@Example.TEST "),
+    "maya@example.test",
+  );
+  assert.equal(normalizePayoutEmail("maya@example"), null);
+  assert.equal(normalizePayoutEmail(`${"x".repeat(120)}@ex.test`), null);
+  assert.equal(requests, 0);
 });

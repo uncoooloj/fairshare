@@ -33,7 +33,7 @@ test("atomic creation adopts the returned workspace and document before optional
     creation,
     /item\.workspaceId !== result\.agreement\.workspaceId \|\|\s*item\.id !== result\.agreement\.id/,
   );
-  assert.match(creation, /setDocumentId\(result.document.documentId\)/);
+  assert.match(creation, /documentText: result\.document\.text/);
   assert.doesNotMatch(creation, /await loadWorkspaces|await openAgreement/);
 });
 test("first-run payouts explains its empty state without requiring a workspace name", () => {
