@@ -1,3 +1,4 @@
+import type { AllocationTrace } from "../../lib/allocation-trace";
 /** Read-only projection: amounts originate in the server's deterministic ledger. */
 export enum PaymentGridStatus {
   Unclaimed = "UNCLAIMED",
@@ -18,6 +19,7 @@ export interface PaymentGridRow {
   currency: "USD";
   status: PaymentGridStatus;
   createdAt?: string;
+  trace?: AllocationTrace;
   providerReference?: string;
 }
 export const paymentStatusLabels: Record<PaymentGridStatus, string> = {

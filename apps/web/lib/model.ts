@@ -10,6 +10,7 @@ export enum AgreementTab {
   People = "People",
   Document = "Document",
   Payments = "Payments",
+  Allocations = "Allocations",
 }
 export interface Member {
   userId: string;

@@ -1,4 +1,6 @@
 "use client";
+import { AgreementAllocations } from "./agreement-allocations";
+import { allocationTrace } from "../lib/allocation-trace";
 import { useEmailDelivery } from "../lib/email-capability";
 import { WorkspaceNameForm } from "./workspace-name-form";
 import {
@@ -1320,6 +1322,9 @@ export default function FairshareApp() {
                           )}
                         </>
                       )}
+                      {tab === AgreementTab.Allocations && (
+                        <AgreementAllocations agreement={selected} />
+                      )}
                       {tab === AgreementTab.Document && (
                         <AgreementDocument
                           key={selected.id}
@@ -1533,6 +1538,12 @@ export default function FairshareApp() {
                     currency: "USD",
                     status: payoutStatus(p.status),
                     providerReference: p.item_id || p.batch_id || undefined,
+                    trace: allocationTrace(
+                      p.agreement,
+                      p.capture_id,
+                      p.user_id,
+                      p.amount,
+                    ),
                   }))}
                   onOpenAgreement={(id) => {
                     const a = agreements.find((a) => a.id === id);
