@@ -32,6 +32,12 @@ test("manual rules and suggested shares both mark the proposal dirty; saving cle
   );
   assert.match(editor, /inert=\{busy\}/);
 });
+test("changing only the fee proposal preserves source evidence for an unchanged advance", () => {
+  assert.match(
+    editor,
+    /old\.advance\.id === id[\s\S]*?old\.advance\.recipientId === recipientId[\s\S]*?old\.advance\.amountCents === amountCents[\s\S]*?\? old\.advance\.source[\s\S]*?: ref/,
+  );
+});
 test("source upload can be retried with same file and late agreement reads cannot replace current source", () => {
   assert.match(app, /e.target.value = ""/);
   assert.match(app, /Replace your unsaved source and rules draft/);

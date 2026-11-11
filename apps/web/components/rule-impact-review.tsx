@@ -20,10 +20,15 @@ export function RuleImpactReview({
   const [fees, setFees] = useState("105.19");
   const [error, setError] = useState("");
   const [result, setResult] = useState<{
-    revision: number;
+    draftRevision: number;
+    agreementRevision: number;
     choices: ReturnType<typeof compareFeePolicies>;
   } | null>(null);
-  const current = result?.revision === revision ? result.choices : null;
+  const current =
+    result?.draftRevision === revision &&
+    result.agreementRevision === agreement.revision
+      ? result.choices
+      : null;
   return (
     <details className="section rule-impact-review">
       <summary>Compare fee interpretations · impact on everyone</summary>
@@ -71,7 +76,8 @@ export function RuleImpactReview({
               advance,
             );
             setResult({
-              revision,
+              draftRevision: revision,
+              agreementRevision: agreement.revision,
               choices: compareFeePolicies(
                 agreement,
                 draft,
@@ -95,7 +101,8 @@ export function RuleImpactReview({
       )}
       {result && !current && (
         <p role="status">
-          Draft changed. Calculate again to refresh the comparison.
+          Draft or saved agreement changed. Calculate again to refresh the
+          comparison.
         </p>
       )}
       {current && (

@@ -612,7 +612,8 @@ export function RulesEditor({
         <h3>Source agreement</h3>
         <p className="muted">
           Compare each proposed term with the saved text. This is extracted
-          text; the original file is available in Document.
+          text; Document shows its saved provenance and any retained original
+          file.
         </p>
         <div className="review-source-text" tabIndex={0}>
           {source ||
@@ -671,14 +672,25 @@ export function RulesEditor({
                 new Set(f.getAll("resolvedAiQuestion").map(String)),
               ),
             };
-            if (advance)
+            if (advance) {
+              const id = old?.advance?.id || crypto.randomUUID();
+              const recipientId = String(f.get("recipient"));
+              const amountCents = parseCents(String(f.get("advance")));
+              const advanceSource =
+                old?.advance &&
+                old.advance.id === id &&
+                old.advance.recipientId === recipientId &&
+                old.advance.amountCents === amountCents
+                  ? old.advance.source
+                  : ref;
               rules.advance = {
-                id: old?.advance?.id || crypto.randomUUID(),
-                recipientId: String(f.get("recipient")),
-                amountCents: parseCents(String(f.get("advance"))),
+                id,
+                recipientId,
+                amountCents,
                 verified: f.get("verified") === "on",
-                source: ref,
+                source: advanceSource,
               };
+            }
             onSave(rules);
           } catch (e) {
             setError((e as Error).message);
