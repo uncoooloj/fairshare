@@ -179,6 +179,7 @@ async function setup(
     ops,
     dispatch,
     sent,
+    provider,
   };
 }
 
@@ -325,6 +326,110 @@ test("agreement-wide holds still block everyone, even when some people are ready
     } finally {
       await s.app.close();
     }
+  }
+});
+
+test("an unsupported verified webhook blocks manual dispatch", async () => {
+  const s = await setup();
+  try {
+    await s.pay();
+    await s.setEmail(s.maya.token, "maya.pay@example.test");
+    s.app.store.db
+      .prepare(
+        "INSERT INTO fairshare_webhook_inbox VALUES('unsupported','fp',?,'PENDING',NULL)",
+      )
+      .run(
+        JSON.stringify({
+          kind: "RECORD_UNMATCHED",
+          reason: "UNSUPPORTED_WEBHOOK_EVENT",
+          eventType: "PAYMENT.CAPTURE.UNKNOWN",
+        }),
+      );
+    const r = await s.dispatch();
+    assert.equal(r.statusCode, 400, r.body);
+    assert.equal(r.json().error.code, "PAYMENT_HOLD");
+    assert.equal(s.sent.length, 0);
+  } finally {
+    await s.app.close();
+  }
+});
+
+test("a known hold for another capture does not block manual dispatch", async () => {
+  const s = await setup();
+  try {
+    await s.pay();
+    await s.setEmail(s.maya.token, "maya.pay@example.test");
+    s.app.store.db
+      .prepare("INSERT INTO fairshare_captures VALUES(?,?,?)")
+      .run("CAP-OTHER", s.w.id, "other-agreement");
+    s.app.store.db
+      .prepare(
+        "INSERT INTO fairshare_webhook_inbox VALUES('other','fp',?,'PENDING',NULL)",
+      )
+      .run(JSON.stringify({ kind: "HOLD_CAPTURE", providerId: "CAP-OTHER" }));
+    const r = await s.dispatch();
+    assert.equal(r.statusCode, 200, r.body);
+    assert.equal(s.sent.length, 1);
+  } finally {
+    await s.app.close();
+  }
+});
+
+test("a pending webhook added during the first payout parks the next reservation", async () => {
+  const s = await setup();
+  try {
+    await s.pay();
+    await s.setEmail(s.maya.token, "maya.pay@example.test");
+    await s.setEmail(s.riley.token, "riley.pay@example.test");
+    let calls = 0;
+    let release!: () => void;
+    let entered!: () => void;
+    const firstStarted = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const firstWrite = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    s.provider.createPayout = async () => {
+      calls++;
+      if (calls === 1) {
+        entered();
+        await firstWrite;
+      }
+      return { batchId: `BATCH${calls}`, status: "PENDING" };
+    };
+    const dispatch = s.dispatch();
+    await firstStarted;
+    s.app.store.db
+      .prepare(
+        "INSERT INTO fairshare_webhook_inbox VALUES('race','fp',?,'PENDING',NULL)",
+      )
+      .run(
+        JSON.stringify({
+          kind: "RECORD_UNMATCHED",
+          reason: "UNSUPPORTED_WEBHOOK_EVENT",
+          eventType: "PAYMENT.CAPTURE.UNKNOWN",
+        }),
+      );
+    release();
+    const r = await dispatch;
+    assert.equal(r.statusCode, 200, r.body);
+    assert.equal(calls, 1);
+    assert.deepEqual(
+      r
+        .json()
+        .payouts.map((p: any) => p.status)
+        .sort(),
+      ["AUTO_HELD", "PENDING"],
+    );
+    assert.equal(
+      s.app.store.db
+        .prepare("SELECT status FROM fairshare_payout_ops WHERE user_id=?")
+        .get(s.riley.user.id).status,
+      "AUTO_HELD",
+    );
+  } finally {
+    await s.app.close();
   }
 });
 

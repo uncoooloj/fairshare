@@ -64,3 +64,47 @@ export function safeInvoiceUrl(
     return false;
   }
 }
+
+export interface Invoice extends InvoiceDetails {
+  id: string;
+  status: string;
+  shareUrl: string | null;
+  providerStatus: string | null;
+  paidAmountCents: number | null;
+  dueAmountCents: number | null;
+  settlementStatus: "UNVERIFIED" | "VERIFIED" | "HELD";
+  settlementError: string | null;
+  checkedAt: string | null;
+  paidDate?: string | null;
+}
+
+export function invoiceStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    CREATING: "Creating",
+    DRAFT: "Draft",
+    PUBLISHING: "Preparing link",
+    SHARED: "Ready to share",
+    PAYMENT_PENDING: "Payment pending",
+    PAYMENT_RECORDED: "Payment recorded · settlement unverified",
+    PAID: "Paid · allocation verified",
+    PARTIALLY_PAID: "Partially paid",
+    CANCELLED: "Cancelled",
+    REFUNDED: "Refunded",
+    PARTIALLY_REFUNDED: "Partially refunded",
+    MARKED_AS_PAID: "Marked as paid externally",
+    MARKED_AS_REFUNDED: "Marked as refunded externally",
+    FAILED: "Needs attention",
+    UNKNOWN: "Check status",
+  };
+  return labels[status] || status;
+}
+
+/** Unknown provider balances must not be represented as zero. */
+export function invoiceMoney(
+  value: number | null | undefined,
+  currency: string,
+) {
+  return value == null
+    ? "Not verified"
+    : (value / 100).toLocaleString("en-US", { style: "currency", currency });
+}

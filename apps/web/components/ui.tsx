@@ -1,4 +1,4 @@
-import type { ReactNode, ButtonHTMLAttributes } from "react";
+import React, { type ReactNode, type ButtonHTMLAttributes } from "react";
 import { title } from "../lib/model";
 export function Button({
   children,

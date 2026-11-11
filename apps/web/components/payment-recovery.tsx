@@ -1,9 +1,10 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { api, money } from "../lib/model";
 import {
   recoveryRequest,
   refundBlocked,
+  refundablePayments,
   refundMessage,
   createSingleFlight,
 } from "../lib/payment-recovery";
@@ -80,7 +81,8 @@ export function PaymentRecovery({
       }
     });
   }
-  const payment = payments.find((p) => p.id === chosen);
+  const refundOptions = refundablePayments(payments);
+  const payment = refundOptions.find((p) => p.id === chosen);
   return (
     <section
       className={styles.root}
@@ -116,6 +118,50 @@ export function PaymentRecovery({
         </p>
       ) : (
         <>
+          {data.providerHold && (
+            <Notice warning>
+              A verified provider event is awaiting reconciliation. A recheck
+              never clears an existing payment hold.
+            </Notice>
+          )}
+          {!!data.events?.length && (
+            <section aria-label="Provider event recovery">
+              <h4>Provider events needing review</h4>
+              {data.events.map((event: any) => (
+                <div key={event.id} className="actions">
+                  <span>
+                    {event.eventType} · {event.error || event.status}
+                  </span>
+                  <Button
+                    variant="quiet"
+                    disabled={busy}
+                    onClick={() =>
+                      run(async () => {
+                        const result = await api(
+                          `${base}/recovery/events/${encodeURIComponent(event.id)}/reconcile`,
+                          "POST",
+                          {},
+                        );
+                        setNotice(
+                          result.status === "DONE"
+                            ? "Provider event reconciled. Existing payment holds remain in place."
+                            : "The event still needs matching provider evidence. No payment was resent.",
+                        );
+                      })
+                    }
+                  >
+                    Recheck provider event
+                  </Button>
+                </div>
+              ))}
+            </section>
+          )}
+          {data.providerHold && !data.events?.length && (
+            <p>
+              An event cannot yet be matched safely to this agreement. Operator
+              review is required; do not retry a payment or clear the hold.
+            </p>
+          )}
           <details>
             <summary>Review payment recovery</summary>
             {!data.payments.length && !data.payouts.length && (
@@ -156,8 +202,14 @@ export function PaymentRecovery({
             <summary>Refund an original payment</summary>
             <p>
               Full amount to the original sandbox payer only. Available before
-              any payout reservation. This pauses the agreement and retains
-              liabilities for review.
+              any payout reaches the provider. Never-submitted payout
+              reservations will be cancelled. This pauses the agreement and
+              retains liabilities for review.
+            </p>
+            <p>
+              Invoice refunds are handled in PayPal only. After refunding an
+              invoice there, use its Check status action to reconcile it here.
+              Invoice receipts cannot be refunded from this form.
             </p>
             <Field label="Payment">
               <select
@@ -169,7 +221,7 @@ export function PaymentRecovery({
                 disabled={busy}
               >
                 <option value="">Choose a payment</option>
-                {payments.map((p) => (
+                {refundOptions.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.id.slice(0, 8)} · {money(p.amount)} · {p.status}
                   </option>
@@ -177,9 +229,19 @@ export function PaymentRecovery({
               </select>
             </Field>
             {payment &&
-              (refundBlocked(payment, payouts, data.refunds, held) ? (
+              (refundBlocked(
+                payment,
+                payouts,
+                data.refunds,
+                held || !!data.providerHold,
+              ) ? (
                 <Notice warning>
-                  {refundBlocked(payment, payouts, data.refunds, held)}
+                  {refundBlocked(
+                    payment,
+                    payouts,
+                    data.refunds,
+                    held || !!data.providerHold,
+                  )}
                 </Notice>
               ) : (
                 <>

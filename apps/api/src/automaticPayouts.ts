@@ -76,7 +76,7 @@ export function automaticPayouts(
       if (prior && !PARKED_PAYOUT_STATUSES.includes(prior.status)) return;
       const recipient = readPayoutDestination(db, userId, capture.workspace_id);
       const held =
-        payoutHoldReason(db, agreement, revenue!, captureId, [allocation]) !==
+        payoutHoldReason(db, agreement, revenue!, capture, [allocation]) !==
         null;
       const ready = recipient !== null;
       const status = held

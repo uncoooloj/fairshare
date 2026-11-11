@@ -1,5 +1,6 @@
 import { AllocationStatus } from "@fairshare/domain";
 import type { Database } from "./database.js";
+import { pendingWebhookBlocksPayout } from "./paymentSafety.js";
 
 /** Why outgoing money for a capture must wait. Any of these blocks every
  * person's payout for that capture, not just one person. */
@@ -31,13 +32,18 @@ type Agreement = {
   versions: { id: number; approvals: Record<string, unknown> }[];
 };
 type Revenue = { versionId: number };
+type Capture = {
+  provider_capture_id: string;
+  workspace_id: string;
+  collaboration_id: string;
+};
 
 /** The single hold rule shared by manual and automatic payouts. */
 export function payoutHoldReason(
   db: Database,
   agreement: Agreement,
   revenue: Revenue,
-  captureId: string,
+  capture: Capture,
   allocations: { status: string }[],
 ): PayoutHoldReason | null {
   if (agreement.reviewHold) return PayoutHoldReason.REVIEW_HOLD;
@@ -46,25 +52,11 @@ export function payoutHoldReason(
   if (
     db
       .prepare("SELECT id FROM fairshare_refund_ops WHERE capture_id=? LIMIT 1")
-      .get(captureId)
+      .get(capture.provider_capture_id)
   )
     return PayoutHoldReason.REFUND;
-  const adverse = (
-    db
-      .prepare(
-        "SELECT action FROM fairshare_webhook_inbox WHERE status='PENDING'",
-      )
-      .all() as { action: string }[]
-  ).some((entry) => {
-    try {
-      const action = JSON.parse(entry.action);
-      // Conservative: any pending capture-hold event is processed before new outgoing funds.
-      return action.kind === "HOLD_CAPTURE" || action.kind === "HoldCapture";
-    } catch {
-      return true;
-    }
-  });
-  if (adverse) return PayoutHoldReason.ADVERSE_EVENT;
+  if (pendingWebhookBlocksPayout(db, capture))
+    return PayoutHoldReason.ADVERSE_EVENT;
   const version = agreement.versions.find((v) => v.id === revenue.versionId);
   if (
     !version ||

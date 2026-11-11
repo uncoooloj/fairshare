@@ -23,11 +23,25 @@ export function refundBlocked(
   refunds: any[],
   held: boolean,
 ): string | null {
+  if (payment.invoice_id)
+    return "Invoice refunds must be handled in PayPal, then checked using the invoice status action. They are not supported here.";
   if (refunds.some((r) => r.payment_id === payment.id))
     return "A refund is already recorded. Check its status below; do not submit another.";
   if (payment.status !== "ALLOCATED" || !payment.provider_capture_id)
     return "Wait until the payment is confirmed and its shares are calculated.";
-  if (payouts.some((p) => p.capture_id === payment.provider_capture_id))
+  if (
+    payouts.some(
+      (p) =>
+        p.capture_id === payment.provider_capture_id &&
+        !(
+          ["WAITING_RECIPIENT", "AUTO_HELD", "RESERVED", "HELD"].includes(
+            p.status,
+          ) &&
+          p.batch_id === null &&
+          p.item_id === null
+        ),
+    )
+  )
     return "A payout has already started. The amounts owed need to be reviewed before a refund can be issued; sent payouts won’t be reversed automatically.";
   if (held)
     return "This agreement is on hold. A new refund cannot be submitted.";
@@ -55,4 +69,19 @@ export function createSingleFlight() {
       inFlight = false;
     }
   };
+}
+
+export function paymentReconcilePath(payment: {
+  id: string;
+  invoice_id?: string | null;
+}) {
+  return payment.invoice_id
+    ? `invoices/${encodeURIComponent(payment.invoice_id)}/reconcile`
+    : `payments/${encodeURIComponent(payment.id)}/reconcile`;
+}
+
+export function refundablePayments<
+  T extends { id: string; invoice_id?: string | null },
+>(payments: T[]): T[] {
+  return payments.filter((payment) => !payment.invoice_id);
 }

@@ -1,3 +1,4 @@
+import { paymentReconcilePath } from "../../../lib/payment-recovery";
 import type { Dispatch, SetStateAction } from "react";
 import { AgreementInvoices } from "../../agreement-invoices";
 import { Heading, RevenueTable, safePayPalUrl } from "../../agreement-widgets";
@@ -64,6 +65,7 @@ export function AgreementPaymentsTab({
         agreementName={selected.value.name}
         userId={user.id}
         canCreate={organizer && !!active}
+        onReconciled={refresh}
       />
       <table>
         <thead>
@@ -82,7 +84,7 @@ export function AgreementPaymentsTab({
                 <code>{p.id.slice(0, 8)}</code>
               </td>
               <td>{p.source_name || "PayPal"}</td>
-              <td>{money(p.amount)}</td>
+              <td>{p.amount === null ? "Not verified" : money(p.amount)}</td>
               <td>
                 <Badge value={p.status} />
               </td>
@@ -97,24 +99,26 @@ export function AgreementPaymentsTab({
                       Open PayPal sandbox ↗
                     </a>
                   )}
-                  {organizer && p.status === "AWAITING_BUYER" && (
-                    <Button
-                      variant="quiet"
-                      disabled={busy}
-                      onClick={() =>
-                        run(async () => {
-                          await api(
-                            `${base}/payments/${p.id}/capture`,
-                            "POST",
-                            {},
-                          );
-                          await refresh();
-                        })
-                      }
-                    >
-                      Confirm approved payment
-                    </Button>
-                  )}
+                  {organizer &&
+                    !p.invoice_id &&
+                    p.status === "AWAITING_BUYER" && (
+                      <Button
+                        variant="quiet"
+                        disabled={busy}
+                        onClick={() =>
+                          run(async () => {
+                            await api(
+                              `${base}/payments/${p.id}/capture`,
+                              "POST",
+                              {},
+                            );
+                            await refresh();
+                          })
+                        }
+                      >
+                        Confirm approved payment
+                      </Button>
+                    )}
                   {organizer && (
                     <Button
                       variant="quiet"
@@ -122,7 +126,7 @@ export function AgreementPaymentsTab({
                       onClick={() =>
                         run(async () => {
                           await api(
-                            `${base}/payments/${p.id}/reconcile`,
+                            `${base}/${paymentReconcilePath(p)}`,
                             "POST",
                             {},
                           );
