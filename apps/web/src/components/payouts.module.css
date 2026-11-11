@@ -16,7 +16,8 @@
   align-items: center;
   gap: 6px;
   color: var(--color-muted, #66736d);
-  font-size: 13px;
+  font-size: var(--text-label);
+  line-height: var(--line-height-body);
   margin-bottom: 12px;
 }
 .amount {
@@ -30,7 +31,8 @@
   display: block;
   margin-top: 8px;
   color: var(--color-muted, #66736d);
-  font-size: 12px;
+  font-size: var(--text-helper);
+  line-height: var(--line-height-body);
   overflow-wrap: anywhere;
 }
 /* Info button + tooltip: the card's longer explanation, on hover or focus. */
@@ -99,8 +101,9 @@
 }
 .field {
   display: grid;
-  gap: 6px;
-  font-size: 12px;
+  gap: var(--space-2);
+  font-size: var(--text-label);
+  line-height: var(--line-height-body);
   color: var(--color-muted, #66736d);
 }
 .field input,
@@ -120,7 +123,8 @@
 .count {
   margin-left: auto;
   color: var(--color-muted, #66736d);
-  font-size: 12px;
+  font-size: var(--text-helper);
+  line-height: var(--line-height-body);
   padding-bottom: 12px;
 }
 .status {
@@ -221,7 +225,8 @@
   color: var(--color-ink, #202a25);
   cursor: pointer;
   font: inherit;
-  font-size: 13px;
+  font-size: var(--text-label);
+  line-height: var(--line-height-body);
 }
 .control:disabled {
   opacity: 0.5;
@@ -241,7 +246,7 @@
   max-height: 100dvh;
   border: 0;
   border-left: 1px solid var(--color-line, #e6e9e7);
-  padding: 28px;
+  padding: var(--space-8);
   background: #fff;
   color: var(--color-ink, #202a25);
   box-shadow: -12px 0 48px #17251d15;
@@ -253,28 +258,31 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 32px;
+  gap: var(--space-3);
+  margin-bottom: var(--space-8);
 }
 .drawerHeader h2 {
-  font-size: 18px;
+  font-size: var(--text-lg);
+  line-height: var(--line-height-section-title);
+  font-weight: var(--weight-bold);
   margin: 0;
 }
 .guidance {
-  font-size: 14px;
-  line-height: 1.6;
+  font-size: var(--text-helper);
+  line-height: var(--line-height-relaxed);
   color: var(--color-muted, #66736d);
 }
 .facts {
-  margin: 28px 0;
+  margin: var(--space-8) 0;
 }
 .facts div {
   display: grid;
   grid-template-columns: 120px 1fr;
-  gap: 16px;
-  padding: 14px 0;
+  gap: var(--space-4);
+  padding: var(--space-3) 0;
   border-bottom: 1px solid var(--color-line, #e6e9e7);
-  font-size: 13px;
+  font-size: var(--text-label);
+  line-height: var(--line-height-body);
 }
 .facts dt {
   color: var(--color-muted, #66736d);
@@ -283,18 +291,25 @@
   margin: 0;
   overflow-wrap: anywhere;
 }
+.facts code {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: var(--line-height-body);
+}
 .drawerNote {
-  padding: 18px;
+  padding: var(--space-5);
   background: var(--color-surface, #fafbf9);
   border-radius: 12px;
 }
 .drawerNote h3 {
-  font-size: 14px;
-  margin: 0 0 10px;
+  font-size: var(--text-label);
+  line-height: var(--line-height-body);
+  font-weight: var(--weight-medium);
+  margin: 0 0 var(--space-2);
 }
 .drawerNote p {
-  font-size: 13px;
-  line-height: 1.6;
+  font-size: var(--text-helper);
+  line-height: var(--line-height-relaxed);
   color: var(--color-muted, #66736d);
 }
 .drawer {

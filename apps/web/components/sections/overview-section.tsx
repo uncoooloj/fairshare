@@ -21,13 +21,10 @@ export interface OverviewSectionProps {
   setSection: Dispatch<SetStateAction<Section>>;
   setCreating: Dispatch<SetStateAction<boolean>>;
   run: Run;
-  openAgreement: (
-    a: Agreement,
-    initialTab?: AgreementTab,
-  ) => Promise<void>;
+  openAgreement: (a: Agreement, initialTab?: AgreementTab) => Promise<void>;
 }
 
-/** Overview greeting, dashboard and link to all agreements. */
+/** Overview greeting and dashboard. */
 export function OverviewSection({
   user,
   agreements,
@@ -66,18 +63,8 @@ export function OverviewSection({
         payoutsUnavailable={payoutsUnavailable}
         userId={user.id}
         onOpen={(a) => run(() => openAgreement(a))}
-        onSendReminder={(a) =>
-          run(() => openAgreement(a, AgreementTab.People))
-        }
+        onSendReminder={(a) => run(() => openAgreement(a, AgreementTab.People))}
       />
-      <p className="ov-footer-link">
-        <button
-          className="text-button"
-          onClick={() => setSection(Section.Agreements)}
-        >
-          View all agreements
-        </button>
-      </p>
     </>
   );
 }
