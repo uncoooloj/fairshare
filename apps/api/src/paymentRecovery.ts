@@ -212,10 +212,13 @@ export function registerPaymentRecovery({
         .get(op.id) as any;
       if (fresh.provider_refund_id && fresh.provider_refund_id !== refundId)
         fail("RECOVERY_CONFLICT", "Refund already linked");
-      if (fresh.status === "COMPLETED" && result.status !== "COMPLETED")
+      if (
+        ["COMPLETED", "FAILED", "CANCELLED"].includes(fresh.status) &&
+        fresh.status !== result.status
+      )
         fail(
           "REFUND_STATUS_CONFLICT",
-          "Completed refund changed state; hold remains",
+          "Terminal refund status changed; hold remains",
         );
       const other = db
         .prepare(

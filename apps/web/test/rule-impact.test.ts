@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { compareFeePolicies, impactDraft } from "../lib/rule-impact";
 import type { Agreement } from "../lib/model";
 const agreement: Agreement = {
@@ -102,5 +103,17 @@ test("preview rejects changes to an already recorded advance identity", () => {
   assert.throws(
     () => compareFeePolicies(copy, changed, 10000, 0),
     /cannot change/,
+  );
+});
+
+test("a refreshed agreement invalidates an earlier fee comparison", () => {
+  const review = readFileSync(
+    new URL("../components/rule-impact-review.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(review, /agreementRevision:\s*agreement\.revision/);
+  assert.match(
+    review,
+    /result\?\.draftRevision === revision\s*&&\s*result\.agreementRevision === agreement\.revision[\s\S]*?\? result\.choices[\s\S]*?: null/,
   );
 });
