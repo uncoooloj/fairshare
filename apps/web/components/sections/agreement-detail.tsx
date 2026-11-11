@@ -1,5 +1,7 @@
 import {
   useEffect,
+  useRef,
+  useState,
   type Dispatch,
   type MutableRefObject,
   type SetStateAction,
@@ -24,9 +26,17 @@ import { Notice } from "../ui";
 import type { Mutate, Run } from "./types";
 import { AgreementOverviewTab } from "./agreement-tabs/overview-tab";
 import { AgreementPeopleTab } from "./agreement-tabs/people-tab";
-import { AgreementTermsTab } from "./agreement-tabs/terms-tab";
+import {
+  AgreementTermsTab,
+  CollaboratorReviewCard,
+} from "./agreement-tabs/terms-tab";
+import { CollaboratorStage, collaboratorStage } from "../collaborator-review";
 import { AgreementPaymentsTab } from "./agreement-tabs/payments-tab";
 import { PaymentBreakdown } from "./agreement-tabs/payment-breakdown";
+import {
+  fullAgreementHistoryState,
+  isFullAgreementHistoryState,
+} from "../../lib/full-agreement-history";
 
 export interface AgreementDetailProps {
   selected: Agreement;
@@ -136,7 +146,93 @@ export function AgreementDetail({
 }: AgreementDetailProps) {
   // Splits live in Payments and the document in Agreement: old links land there.
   const shown = visibleTab(tab);
+  // A collaborator's "See the full agreement" is its own view with a way back.
+  const fullAgreement = !organizer && tab === AgreementTab.Document;
+  // A collaborator deciding on the terms sees what they get before any page
+  // chrome. It stays first through approving and the get-paid step.
+  const pending =
+    !organizer &&
+    collaboratorStage(selected, latest, user.id) === CollaboratorStage.REVIEW;
+  const [reviewPinned, setReviewPinned] = useState("");
+  const fullHeading = useRef<HTMLHeadingElement>(null);
+  const openDocument = useRef<HTMLButtonElement>(null);
+  const reviewHeading = useRef<HTMLHeadingElement>(null);
+  const wasFullAgreement = useRef(fullAgreement);
+  const reviewAbove =
+    !organizer &&
+    tab === AgreementTab.Terms &&
+    (pending ||
+      approvedForPayout === selected.id ||
+      reviewPinned === selected.id);
   useEffect(() => {
+    if (tab !== AgreementTab.Terms) setReviewPinned("");
+    else if (pending) setReviewPinned(selected.id);
+  }, [tab, pending, selected.id]);
+  useEffect(() => {
+    if (reviewAbove) window.scrollTo({ top: 0 });
+  }, [reviewAbove]);
+  useEffect(() => {
+    const onPop = (event: PopStateEvent) => {
+      if (
+        isFullAgreementHistoryState(
+          event.state,
+          selected.workspaceId,
+          selected.id,
+        )
+      )
+        setTab(AgreementTab.Document);
+      else if (wasFullAgreement.current) setTab(AgreementTab.Terms);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [selected.workspaceId, selected.id, setTab]);
+  useEffect(() => {
+    const leavingFullAgreement = wasFullAgreement.current && !fullAgreement;
+    wasFullAgreement.current = fullAgreement;
+    if (fullAgreement) {
+      if (
+        !isFullAgreementHistoryState(
+          window.history.state,
+          selected.workspaceId,
+          selected.id,
+        )
+      )
+        window.history.pushState(
+          fullAgreementHistoryState(
+            window.history.state,
+            selected.workspaceId,
+            selected.id,
+          ),
+          "",
+        );
+      window.scrollTo({ top: 0 });
+      const frame = requestAnimationFrame(() =>
+        fullHeading.current?.focus({ preventScroll: true }),
+      );
+      return () => cancelAnimationFrame(frame);
+    }
+    if (leavingFullAgreement) {
+      const frame = requestAnimationFrame(() =>
+        (openDocument.current ?? reviewHeading.current)?.focus({
+          preventScroll: true,
+        }),
+      );
+      return () => cancelAnimationFrame(frame);
+    }
+  }, [fullAgreement, selected.workspaceId, selected.id]);
+  const leaveFullAgreement = () => {
+    if (
+      isFullAgreementHistoryState(
+        window.history.state,
+        selected.workspaceId,
+        selected.id,
+      )
+    )
+      window.history.back();
+    else setTab(AgreementTab.Terms);
+  };
+  useEffect(() => {
+    if (fullAgreement) return;
     const target =
       tab === AgreementTab.Document
         ? "agreement-document"
@@ -147,7 +243,7 @@ export function AgreementDetail({
       document
         .getElementById(target)
         ?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, [tab]);
+  }, [tab, fullAgreement]);
   const onStatusAction = (action: StageAction) => {
     if (action === StageAction.GetPaid) {
       changeAgreementTab(AgreementTab.Payments);
@@ -159,12 +255,59 @@ export function AgreementDetail({
     } else if (
       action === StageAction.Approve ||
       action === StageAction.SeeRequest
-    )
+    ) {
+      if (reviewAbove) window.scrollTo({ top: 0, behavior: "smooth" });
       changeAgreementTab(AgreementTab.Terms);
+    }
   };
+  if (fullAgreement)
+    return (
+      <section className="collab-full" aria-labelledby="collab-full-title">
+        <button
+          type="button"
+          className="collab-back"
+          onClick={leaveFullAgreement}
+        >
+          <span aria-hidden="true">←</span> Back to what you get
+        </button>
+        <p className="collab-eyebrow">{selected.value.name}</p>
+        <h2
+          ref={fullHeading}
+          id="collab-full-title"
+          className="collab-full-title"
+          tabIndex={-1}
+        >
+          The full agreement
+        </h2>
+        <AgreementDocument
+          key={`${selected.id}:${latest?.id ?? ""}`}
+          agreement={selected}
+          base={base}
+          reviewedVersionId={latest?.id}
+        />
+      </section>
+    );
   return (
     <>
       <>
+        {reviewAbove && (
+          <div className="collab-terms collab-first">
+            <CollaboratorReviewCard
+              selected={selected}
+              latest={latest}
+              user={user}
+              base={base}
+              busy={busy}
+              approvedForPayout={approvedForPayout}
+              mutate={mutate}
+              mutateWithResult={mutateWithResult}
+              changeAgreementTab={changeAgreementTab}
+              setApprovedForPayout={setApprovedForPayout}
+              openDocumentRef={openDocument}
+              reviewHeadingRef={reviewHeading}
+            />
+          </div>
+        )}
         <AgreementHeader
           key={JSON.stringify([selected.workspaceId, selected.id])}
           agreement={selected}
@@ -271,6 +414,7 @@ export function AgreementDetail({
                 documentId={documentId}
                 extraction={extraction}
                 rulesLanding={rulesLanding}
+                reviewAbove={reviewAbove}
                 draftDirty={draftDirty}
                 rulesDirty={rulesDirty}
                 run={run}
@@ -288,6 +432,8 @@ export function AgreementDetail({
                 setSource={setSource}
                 setDocumentId={setDocumentId}
                 setExtraction={setExtraction}
+                openDocumentRef={openDocument}
+                reviewHeadingRef={reviewHeading}
               />
               {!editing && selected.value.versions.length > 0 && (
                 <>
