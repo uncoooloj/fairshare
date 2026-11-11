@@ -1511,6 +1511,32 @@ test("the stored reading records the Claude model that actually answered", async
   assert.equal(cf.model, DEFAULT_CLOUDFLARE_MODEL);
 });
 
+test("missing or malformed Claude model provenance fails closed without an attestation", async () => {
+  for (const model of [undefined, "", 42, "gpt-4o"] as unknown[]) {
+    const diagnostics: unknown[] = [];
+    const r = await extractContract(full, {
+      ...failingCloudflare,
+      anthropic: {
+        apiKey: anthropicKey,
+        fetch: async () =>
+          claudeReply([{ type: "text", text: JSON.stringify(fullDraft) }], {
+            model,
+          }),
+      },
+      onFailure: (d) => diagnostics.push(d),
+    });
+    assert.equal(r.status, ExtractionStatus.MANUAL_REQUIRED, String(model));
+    assert.equal(r.reason, FallbackReason.INVALID_OUTPUT, String(model));
+    assert.equal(r.provider, null, String(model));
+    assert.equal(r.model, null, String(model));
+    assert.deepEqual(diagnostics[1], {
+      provider: ExtractionProvider.ANTHROPIC,
+      category: DiagnosticCategory.INVALID_OUTPUT,
+      httpStatus: 200,
+    });
+  }
+});
+
 test("the Anthropic key never reaches the console, results or diagnostics", async () => {
   const logged: string[] = [];
   const methods = ["log", "info", "warn", "error", "debug"] as const;

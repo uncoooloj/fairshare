@@ -1570,15 +1570,14 @@ async function callAnthropic(
       throw new ProviderFailure(DiagnosticCategory.INVALID_OUTPUT, 200);
     }
     // A server-side refusal fallback can answer with a different Claude model; record the one
-    // that actually wrote this reading.
-    return {
-      raw,
-      model:
-        typeof message.model === "string" &&
-        /^claude-[a-z0-9.-]+$/.test(message.model)
-          ? message.model
-          : model,
-    };
+    // that actually wrote this reading. Missing or malformed provenance must fail closed rather
+    // than attesting that the requested model answered.
+    if (
+      typeof message.model !== "string" ||
+      !/^claude-[a-z0-9.-]+$/.test(message.model)
+    )
+      throw new ProviderFailure(DiagnosticCategory.INVALID_OUTPUT, 200);
+    return { raw, model: message.model };
   });
 }
 interface ProviderOutput {
