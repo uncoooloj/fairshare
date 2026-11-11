@@ -1,0 +1,72 @@
+/*
+ * Shared table language. Native tables and AG Grid intentionally use the same
+ * header metrics so that data moves between Agreements, People and Payouts
+ * without changing its visual rhythm or controls.
+ */
+table {
+  font-size: var(--text-sm);
+}
+
+thead th {
+  height: var(--table-header-height) !important;
+  padding: 0 var(--table-cell-padding-x) !important;
+  background: var(--color-surface) !important;
+  color: var(--color-muted) !important;
+  font-size: var(--table-header-font-size) !important;
+  font-weight: var(--weight-medium) !important;
+  letter-spacing: var(--table-header-letter-spacing) !important;
+  line-height: 1.2 !important;
+  text-transform: uppercase !important;
+  vertical-align: middle !important;
+}
+
+thead th + th {
+  box-shadow: inset 1px 0 0 var(--color-line);
+}
+
+tbody td,
+tbody th {
+  padding: var(--space-4) var(--table-cell-padding-x) !important;
+}
+
+tbody tr {
+  height: var(--table-row-min-height);
+}
+
+thead th:first-child,
+tbody td:first-child,
+tbody th:first-child {
+  padding-left: var(--table-cell-padding-x) !important;
+}
+
+/* AG Grid uses divs, so carry the native table contracts over explicitly. */
+.fairshare-data-grid .ag-header {
+  min-height: var(--table-header-height) !important;
+  background: var(--color-surface);
+}
+
+.fairshare-data-grid .ag-header-row,
+.fairshare-data-grid .ag-header-cell {
+  height: var(--table-header-height) !important;
+}
+
+.fairshare-data-grid .ag-header-cell {
+  padding-inline: var(--table-cell-padding-x);
+  color: var(--color-muted);
+  font-size: var(--table-header-font-size);
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--table-header-letter-spacing);
+  text-transform: uppercase;
+}
+
+.fairshare-data-grid .ag-header-cell + .ag-header-cell {
+  box-shadow: inset 1px 0 0 var(--color-line);
+}
+
+.fairshare-data-grid .ag-header-cell-label {
+  height: 100%;
+}
+
+.fairshare-data-grid .ag-cell {
+  padding-inline: var(--table-cell-padding-x);
+}
