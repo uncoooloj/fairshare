@@ -15,6 +15,8 @@ export const payoutGuidance: Record<PaymentGridStatus, string> = {
   REVERSED: "PayPal reversed this, so it doesn’t count as paid.",
   WAITING_RECIPIENT:
     "Nothing has been sent. The recipient’s PayPal details need to be added; their payout goes out after that.",
+  RESERVED:
+    "Nothing has been sent. This payout is ready to send when its dispatch runs.",
   CHECKING:
     "This payout may have reached PayPal. We are checking PayPal's record. Do not send it again.",
   UNKNOWN:

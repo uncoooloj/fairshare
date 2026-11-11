@@ -7,13 +7,14 @@ import {
   paymentStatusLabels,
 } from "../src/components/paymentGridModel";
 
-/** Payout state in the words the Payouts page uses; "On the way" covers queued and sending. */
+/** Payout state in the words the Payouts page uses; "On the way" only follows a send. */
 function payoutLabel(status: PaymentGridStatus) {
   if (
     status === PaymentGridStatus.Pending ||
     status === PaymentGridStatus.Processing
   )
     return "On the way";
+  if (status === PaymentGridStatus.Reserved) return "Ready to send";
   return paymentStatusLabels[status];
 }
 

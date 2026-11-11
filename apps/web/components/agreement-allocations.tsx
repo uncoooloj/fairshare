@@ -2,7 +2,7 @@
 import { useState } from "react";
 import type { Agreement } from "../lib/model";
 import { money, title } from "../lib/model";
-import { allocationRows } from "../lib/allocation-trace";
+import { allocationRows, allocationTrace } from "../lib/allocation-trace";
 import { formatDay, formatExact } from "../lib/dates";
 import { toneInRoster } from "../lib/person";
 import { AllocationCalculation } from "./allocation-calculation";
@@ -18,6 +18,7 @@ import {
 export interface AgreementPayout {
   capture_id: string;
   user_id: string;
+  amount: number;
   status: string;
   agreement?: { id: string };
 }
@@ -29,21 +30,34 @@ export function AgreementAllocations({
   agreement: Agreement;
   payouts?: AgreementPayout[];
 }) {
-  const rows = allocationRows(agreement);
   const [open, setOpen] = useState<string | null>(null);
   const members = agreement.value.members;
-  // The payment itself lives in the drawer; a date column tells payments apart.
-  const multiplePayments =
-    new Set(rows.map((row) => row.revenue.providerCaptureId)).size > 1;
-  const payoutStatus = (captureId: string, userId: string) => {
-    const payout = payouts.find(
+  const payoutFor = (captureId: string, userId: string) =>
+    payouts.find(
       (p) =>
         (!p.agreement || p.agreement.id === agreement.id) &&
         p.capture_id === captureId &&
         p.user_id === userId,
     );
-    return payout ? payoutGridStatus(payout.status) : undefined;
-  };
+  const rows = allocationRows(agreement).map((row) => {
+    const payout = payoutFor(
+      row.revenue.providerCaptureId,
+      row.allocation.userId,
+    );
+    return {
+      ...row,
+      payout,
+      trace: allocationTrace(
+        agreement,
+        row.revenue.providerCaptureId,
+        row.allocation.userId,
+        payout?.amount,
+      ),
+    };
+  });
+  // The payment itself lives in the drawer; a date column tells payments apart.
+  const multiplePayments =
+    new Set(rows.map((row) => row.revenue.providerCaptureId)).size > 1;
   const selected = rows.find(
     (row) =>
       `${row.revenue.providerCaptureId}:${row.allocation.userId}` === open,
@@ -165,10 +179,11 @@ export function AgreementAllocations({
             trace={selected.trace}
             name={selected.name}
             tone={toneInRoster(selected.allocation.userId, members)}
-            payout={payoutStatus(
-              selected.revenue.providerCaptureId,
-              selected.allocation.userId,
-            )}
+            payout={
+              selected.payout
+                ? payoutGridStatus(selected.payout.status)
+                : undefined
+            }
             advanceTo={
               members.find(
                 (m) =>

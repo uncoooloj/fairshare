@@ -299,7 +299,9 @@ export function InvoiceStatus({ invoice }: { invoice: Invoice }) {
             ? statusLabel(invoice.providerStatus)
             : "Not checked yet"}
         </span>
-        <span>{invoiceSplitLabel(invoice.settlementStatus)}</span>
+        <span>
+          {invoiceSplitLabel(invoice.settlementStatus, invoice.hasCapture)}
+        </span>
         {invoice.settlementError && <span>{invoice.settlementError}</span>}
         {invoice.paidDate && <span>Paid {invoiceDay(invoice.paidDate)}</span>}
         {checked && <span>Last checked {checked}</span>}

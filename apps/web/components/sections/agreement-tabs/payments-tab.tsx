@@ -110,7 +110,11 @@ export function AgreementPaymentsTab({
                 {payments.map((p) => (
                   <tr key={p.id} title={`Payment ${p.id}`}>
                     <td>{p.source_name || "PayPal"}</td>
-                    <td className="numeric">{money(p.amount)}</td>
+                    <td className="numeric">
+                      {typeof p.amount === "number"
+                        ? money(p.amount)
+                        : "Not verified"}
+                    </td>
                     <td>
                       <span
                         className={`status-chip ${GOOD.has(p.status) ? "good" : WARN.has(p.status) ? "warning" : ""}`}

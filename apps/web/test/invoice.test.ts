@@ -102,6 +102,7 @@ test("invoice status shows paid provider evidence without claiming verified allo
     settlementError: "Actual PayPal fees not available.",
     checkedAt: "2026-11-11T10:00:00Z",
     paidDate: "2026-11-11",
+    hasCapture: true,
   };
   const html = renderToStaticMarkup(createElement(InvoiceStatus, { invoice }));
   assert.match(html, /status-chip[^"]*">Checking with PayPal</);
@@ -144,6 +145,20 @@ test("invoice status shows paid provider evidence without claiming verified allo
     }),
   );
   assert.doesNotMatch(unverifiedPaid, /Paid · split/);
+
+  const cancelledWithoutCapture = renderToStaticMarkup(
+    createElement(InvoiceStatus, {
+      invoice: {
+        ...invoice,
+        status: "CANCELLED",
+        settlementStatus: "HELD",
+        hasCapture: false,
+      },
+    }),
+  );
+  assert.match(cancelledWithoutCapture, /status-chip">Cancelled</);
+  assert.match(cancelledWithoutCapture, /Not split yet/);
+  assert.doesNotMatch(cancelledWithoutCapture, /Split paused for review/);
 });
 
 test("invoice guidance remains visible and reconciliation refreshes agreement data", async () => {

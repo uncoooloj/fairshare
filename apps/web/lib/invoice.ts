@@ -76,6 +76,8 @@ export interface Invoice extends InvoiceDetails {
   settlementError: string | null;
   checkedAt: string | null;
   paidDate?: string | null;
+  /** A verified capture exists, so a settlement hold pauses an actual split. */
+  hasCapture?: boolean;
 }
 
 export function invoiceStatusLabel(status: string): string {
@@ -126,12 +128,15 @@ export function localToday(now = new Date()) {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
-/** The one chip an invoice row shows. A hold always wins: nothing is split while held. */
+/** The one chip an invoice row shows. A hold pauses an actual split. */
 export function invoiceChip(
-  invoice: Pick<Invoice, "status" | "settlementStatus" | "dueDate">,
+  invoice: Pick<
+    Invoice,
+    "status" | "settlementStatus" | "dueDate" | "hasCapture"
+  >,
   today = localToday(),
 ): { label: string; tone: InvoiceTone } {
-  if (invoice.settlementStatus === "HELD")
+  if (invoice.settlementStatus === "HELD" && invoice.hasCapture)
     return { label: "On hold", tone: InvoiceTone.WARNING };
   if (invoice.status === "PAID" && invoice.settlementStatus === "VERIFIED")
     return { label: invoiceStatusLabel("PAID"), tone: InvoiceTone.GOOD };
@@ -148,10 +153,13 @@ export function invoiceChip(
 }
 
 /** What the split side of an invoice looks like, in plain words. */
-export function invoiceSplitLabel(settlement: Invoice["settlementStatus"]) {
+export function invoiceSplitLabel(
+  settlement: Invoice["settlementStatus"],
+  hasCapture?: boolean,
+) {
   return settlement === "VERIFIED"
     ? "Split done"
-    : settlement === "HELD"
+    : settlement === "HELD" && hasCapture
       ? "Split paused for review"
       : "Not split yet";
 }
