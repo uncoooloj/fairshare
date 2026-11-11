@@ -76,6 +76,74 @@ test("everything read: name, dates, people, advance and fees, each with its clau
   );
 });
 
+test("term dates keep their own verified clause citations", () => {
+  const term = "1.1 Start: October 1, 2026.\n2.1 End: September 30, 2027.";
+  const doc = MIDNIGHT.replace(
+    "This agreement starts on October 1, 2026 and ends on September 30, 2027.",
+    term,
+  );
+  const extraction = fullReading(MIDNIGHT);
+  extraction.facts = extraction.facts.map((fact: any) => {
+    if (fact.kind === "TERM") {
+      const quote =
+        fact.boundary === "START"
+          ? "Start: October 1, 2026."
+          : "End: September 30, 2027.";
+      return { ...fact, citation: cite(doc, quote) };
+    }
+    return { ...fact, citation: cite(doc, fact.citation.quote) };
+  });
+  const answers = answersFromExtraction(extraction, doc, self).answers;
+  assert.equal(answers.effectiveFrom?.quote, "Start: October 1, 2026.");
+  assert.equal(answers.effectiveFrom?.clause, "1.1");
+  assert.equal(answers.effectiveTo?.quote, "End: September 30, 2027.");
+  assert.equal(answers.effectiveTo?.clause, "2.1");
+});
+
+test("a unique abbreviated organizer fee bearer resolves, while an ambiguous one stays open", () => {
+  const ownDoc = MIDNIGHT.replace(
+    "PayPal fees come off the top before the split.",
+    "PayPal fees are paid by Maya.",
+  );
+  const own = fullReading(MIDNIGHT);
+  own.facts = own.facts.map((fact: any) =>
+    fact.kind === "FEES"
+      ? {
+          ...fact,
+          subject: "Maya",
+          rawValue: "Maya",
+          feePolicy: "ORGANIZER_SHARE",
+          feeBearer: "Maya",
+          citation: cite(ownDoc, "PayPal fees are paid by Maya."),
+        }
+      : { ...fact, citation: cite(ownDoc, fact.citation.quote) },
+  );
+  assert.equal(
+    answersFromExtraction(own, ownDoc, self).answers.fees?.value,
+    FeeChoice.ORGANIZER_SHARE,
+  );
+
+  const ambiguousDoc = `${ownDoc}\nMaya Chen is a collaborator.`;
+  const ambiguous = {
+    ...own,
+    facts: [
+      ...own.facts.map((fact: any) => ({
+        ...fact,
+        citation: cite(ambiguousDoc, fact.citation.quote),
+      })),
+      person(ambiguousDoc, "Maya Chen", "Maya Chen is a collaborator."),
+    ],
+  };
+  const answers = answersFromExtraction(ambiguous, ambiguousDoc, self).answers;
+  assert.equal(answers.fees, undefined);
+  assert.match(
+    answers.questions.find(
+      (question) => question.id === StandardQuestionId.FEES,
+    )?.text ?? "",
+    /can't have Maya pay/,
+  );
+});
+
 test("a partial reading: the split is read, the advance becomes a question with dollar choices", () => {
   const { doc, extraction } = partialReading();
   const read = answersFromExtraction(extraction, doc, self);
