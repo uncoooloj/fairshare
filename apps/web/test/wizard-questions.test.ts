@@ -13,7 +13,6 @@ import {
   StandardQuestionId,
   choiceEffect,
   questionsFor,
-  refundEffect,
   sampleFeeCents,
 } from "../lib/standard-questions";
 import {
@@ -149,17 +148,15 @@ test("fee choices show real dollars on $3,000 with a $105 fee", () => {
   assert.ok(before.jordan < 30_000);
 });
 
-test("refund choices show who loses how much on $100", () => {
-  const answers = midnight();
-  const [, refunds] = questionsFor(answers);
-  assert.deepEqual(byKey(refundEffect(answers, refunds.choices[0])), {
-    maya: -5000,
-    jordan: -3000,
-    riley: -2000,
-  });
-  assert.deepEqual(byKey(refundEffect(answers, refunds.choices[1])), {
-    maya: -10_000,
-  });
+test("refund choices are recorded only: no promise about payouts", () => {
+  const [, refunds] = questionsFor(midnight());
+  for (const choice of refunds.choices)
+    assert.doesNotMatch(choice.explanation, /paid back less|shrinks/);
+  // Choosing changes the recorded answer, never the split or the advance.
+  const applied = refunds.choices[1].apply(midnight());
+  assert.equal(applied.refunds?.value, RefundChoice.ADVANCE);
+  assert.deepEqual(applied.people, midnight().people);
+  assert.deepEqual(applied.advance, midnight().advance);
 });
 
 test("answering records the choice and applies it", () => {
@@ -190,14 +187,63 @@ test("the step renders one question as radio cards with dollars", () => {
   assert.match(html, /Do refunds come off the advance or the split\?/);
   assert.match(html, /role="radiogroup"/);
   assert.equal(html.match(/role="radio"/g)?.length, 2);
-  assert.match(html, /On a \$3,000 payment/);
-  assert.match(html, /With a \$100 refund/);
-  assert.match(html, /−\$50/);
-  assert.match(html, /−\$100/);
+  // Refunds: the choices and one plain line, no dollars.
+  assert.match(
+    html,
+    /We(’|'|&#x27;)ll record this so everyone agrees\. Refunds are handled by the organizer for now\./,
+  );
+  assert.doesNotMatch(html, /\$\d|On a .* payment|refund:/);
   assert.match(html, /Not sure\? Skip for now/);
   assert.match(html, /<button[^>]*disabled=""[^>]*>Use this<\/button>/);
   assert.doesNotMatch(
     html,
     /recoup|allocation|basis points|provenance|activate/i,
+  );
+});
+
+test("the fee question keeps its dollar effects", () => {
+  const answers = midnight();
+  answers.questions = questionsFor(answers);
+  const html = renderToStaticMarkup(
+    createElement(WizardQuestionsStep, {
+      answers,
+      onChange: () => {},
+      index: 0,
+      onNext: () => {},
+      onBack: () => {},
+    }),
+  );
+  assert.match(html, /Who covers the PayPal fee\?/);
+  assert.match(html, /On a \$3,000 payment/);
+  assert.match(html, /With a \$105 PayPal fee, each person gets:/);
+  assert.match(html, /\$300/);
+  assert.doesNotMatch(html, /Refunds are handled by the organizer/);
+});
+
+test("an extracted question with its own choices replaces the standard one", () => {
+  const own: Question = {
+    id: StandardQuestionId.FEES,
+    text: "Who pays the processing fee?",
+    quote: "Fees are shared.",
+    choices: [
+      {
+        id: FeeChoice.BEFORE_SPLIT,
+        label: "Shared",
+        explanation: "",
+        apply: (a) => ({ ...a, fees: doc(FeeChoice.BEFORE_SPLIT) }),
+      },
+      {
+        id: FeeChoice.ORGANIZER_SHARE,
+        label: "Maya",
+        explanation: "",
+        apply: (a) => ({ ...a, fees: doc(FeeChoice.ORGANIZER_SHARE) }),
+      },
+    ],
+  };
+  const [fees] = questionsFor(midnight(), [own]);
+  assert.equal(fees.text, "Who pays the processing fee?");
+  assert.deepEqual(
+    fees.choices.map((c) => c.label),
+    ["Shared", "Maya"],
   );
 });

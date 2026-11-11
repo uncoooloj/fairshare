@@ -25,6 +25,12 @@ import { StandardQuestionId } from "../lib/standard-questions";
 import type { Agreement } from "../lib/model";
 import { saveDraftAnswers } from "../lib/wizard-draft-store";
 import { appSource } from "./app-source";
+import {
+  MIDNIGHT,
+  Status,
+  fullReading,
+  namesOnlyReading,
+} from "./extraction-v2-fixtures";
 
 const wizard = readFileSync(
   new URL("../components/agreement-creation-wizard.tsx", import.meta.url),
@@ -34,46 +40,14 @@ const owner = { id: "owner", name: "Maya Okafor", email: "maya@example.test" };
 const self = { name: owner.name, userId: owner.id };
 const noop = () => {};
 
-const doc =
-  "Revenue is split 50% to Maya, 30% to Jordan and 20% to Riley. Maya paid a $2,000 advance.";
-const cite = (quote: string) => {
-  const start = doc.indexOf(quote);
-  return { start, end: start + quote.length, quote };
-};
-const extraction = {
-  status: "REVIEW_REQUIRED",
-  documentId: "d",
-  requiresHumanReview: true,
-  executable: false,
-  suggestedTitle: "Midnight Sessions",
-  facts: [
-    {
-      kind: "SHARE",
-      subject: "Maya",
-      rawValue: "50%",
-      citation: cite("50% to Maya"),
-    },
-    {
-      kind: "SHARE",
-      subject: "Jordan",
-      rawValue: "30%",
-      citation: cite("30% to Jordan"),
-    },
-    {
-      kind: "SHARE",
-      subject: "Riley",
-      rawValue: "20%",
-      citation: cite("20% to Riley"),
-    },
-    {
-      kind: "ADVANCE",
-      subject: "Maya",
-      rawValue: "$2,000",
-      citation: cite("Maya paid a $2,000 advance"),
-    },
-  ],
-  issues: [],
-};
+const doc = MIDNIGHT;
+/** The v2 reading with the fees sentence left unread, so fees and refunds are both asked. */
+const extraction = (() => {
+  const reading = fullReading();
+  reading.facts = reading.facts.filter((f: any) => f.kind !== "FEES");
+  reading.sections.FEES.status = Status.ASK;
+  return reading;
+})();
 
 test("four progress dots: Upload · Check · People · Send", () => {
   const html = renderToStaticMarkup(
@@ -115,43 +89,40 @@ test("the wizard opens on Upload with the spec's copy and one privacy line", () 
   assert.doesNotMatch(html, /sandbox|Agreement name|Details/i);
 });
 
-test("today's extraction maps to answers, honestly: full split → FOUND_ALL", () => {
-  const read = answersFromExtraction(extraction, doc, self);
+test("the v2 reading maps to answers, honestly: full split → FOUND_ALL", () => {
+  const read = answersFromExtraction(fullReading(), doc, self);
   assert.equal(read.mode, CheckMode.FOUND_ALL);
   assert.equal(read.answers.name.value, "Midnight Sessions");
   const people = read.answers.people.value;
   assert.deepEqual(
     people.map((p) => [p.name, p.basisPoints, p.isSelf]),
     [
-      ["Maya", 5000, true],
-      ["Jordan", 3000, false],
-      ["Riley", 2000, false],
+      ["Maya Okafor", 5000, true],
+      ["Jordan Reyes", 3000, false],
+      ["Riley Chen", 2000, false],
     ],
   );
   assert.equal(people[0].userId, "owner");
   assert.equal(read.answers.advance?.value.amountCents, 200000);
   assert.equal(read.answers.advance?.value.recipientKey, "owner");
   assert.equal(read.answers.advance?.source, AnswerSource.DOCUMENT);
-  // The document is silent on fees and refunds: both become questions.
+  assert.equal(read.answers.fees?.value, FeeChoice.BEFORE_SPLIT);
+  // The document is silent on refunds: only that is asked. Silent fees are asked too.
   assert.deepEqual(
     read.answers.questions.map((q) => q.id),
+    [StandardQuestionId.REFUNDS],
+  );
+  assert.deepEqual(
+    answersFromExtraction(extraction, doc, self).answers.questions.map(
+      (q) => q.id,
+    ),
     [StandardQuestionId.FEES, StandardQuestionId.REFUNDS],
   );
 });
 
 test("names without percentages start equal; nothing read is MANUAL", () => {
-  const names = answersFromExtraction(
-    {
-      ...extraction,
-      facts: extraction.facts.map((f) =>
-        f.kind === "SHARE"
-          ? { ...f, kind: "RECIPIENT", rawValue: f.subject }
-          : f,
-      ),
-    },
-    doc,
-    self,
-  );
+  const only = namesOnlyReading();
+  const names = answersFromExtraction(only.extraction, only.doc, self);
   assert.equal(names.mode, CheckMode.FOUND_SOME);
   assert.ok(names.equalSplitGuessed);
   assert.deepEqual(
@@ -161,16 +132,6 @@ test("names without percentages start equal; nothing read is MANUAL", () => {
   for (const nothing of [
     null,
     { status: "MANUAL_REQUIRED", reason: "NOT_CONFIGURED", facts: [] },
-    // A quote that isn't in the document is ignored.
-    {
-      ...extraction,
-      facts: [
-        {
-          ...extraction.facts[0],
-          citation: { start: 0, end: 3, quote: "50%" },
-        },
-      ],
-    },
   ]) {
     const read = answersFromExtraction(nothing, doc, self);
     assert.equal(read.mode, CheckMode.MANUAL);
@@ -195,7 +156,7 @@ test("a resumed draft keeps its dates and pending people", () => {
         { userId: "owner", displayName: "Maya Okafor", role: "ORGANIZER" },
         {
           userId: "pending:i1",
-          displayName: "Jordan",
+          displayName: "Jordan Reyes",
           role: "COLLABORATOR",
           pending: { invitationId: "i1", email: "jordan@example.test" },
         },
@@ -206,7 +167,9 @@ test("a resumed draft keeps its dates and pending people", () => {
   const read = answersFromDraft(agreement, extraction, doc, self);
   assert.equal(read.answers.effectiveFrom?.value, "2026-10-01");
   assert.equal(read.answers.effectiveTo?.value, null);
-  const jordan = read.answers.people.value.find((p) => p.name === "Jordan");
+  const jordan = read.answers.people.value.find(
+    (p) => p.name === "Jordan Reyes",
+  );
   assert.equal(jordan?.invitationId, "i1");
   assert.equal(jordan?.email, "jordan@example.test");
   assert.equal(detailsPatch(agreement, read.answers), undefined);

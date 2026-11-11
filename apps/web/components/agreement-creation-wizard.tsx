@@ -548,6 +548,8 @@ export function AgreementCreationWizard({
               agreementId: created.agreementId,
               documentId: created.documentId,
               consent: true,
+              // Upload-first: no people yet, so names stay as written.
+              context: { source: created.documentText, members: null },
             });
             extraction = result.extraction;
             outcome = result.outcome;
