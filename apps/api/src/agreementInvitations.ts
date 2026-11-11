@@ -124,6 +124,29 @@ export function registerAgreementInvitations(
       throw new ApiError(403, "FORBIDDEN", "Agreement organizer required.");
     return { user, agreement, workspaceId, agreementId };
   }
+  /** A consumed link is a bookmark for its recipient, never a new access grant.
+   * Recover a lost acceptance response only while both current memberships exist. */
+  function acceptedLink(token: unknown, userId: string) {
+    if (typeof token !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(token))
+      return undefined;
+    const row = store.db
+      .prepare(
+        "SELECT i.* FROM fairshare_agreement_invites i JOIN memberships m ON m.workspace_id=i.workspace_id AND m.user_id=i.accepted_by WHERE i.hash=? AND i.accepted_by=? AND i.accepted_at IS NOT NULL AND i.revoked_at IS NULL AND m.role IN ('OWNER','MEMBER')",
+      )
+      .get(digest(token), userId) as any;
+    if (!row) return undefined;
+    const agreement = aggregates.read(row.workspace_id, row.agreement_id);
+    if (!agreement.value.members.some((member) => member.userId === userId))
+      return undefined;
+    const creator = store.db
+      .prepare("SELECT name FROM users WHERE id=?")
+      .get(row.created_by) as { name: string } | undefined;
+    return {
+      row,
+      agreement,
+      creator: creator ?? { name: "The organizer" },
+    };
+  }
   function validLink(token: unknown) {
     if (typeof token !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(token))
       throw new ApiError(
@@ -444,17 +467,32 @@ export function registerAgreementInvitations(
   app.post("/api/agreement-invitations/preview", async (req, reply) => {
     reply.header("Cache-Control", "no-store");
     store.limit(`agreement-invite-preview:ip:${digest(req.ip)}`, 60);
-    const { row, agreement, creator } = validLink((req.body as any)?.token);
+    let userId: string | undefined;
+    try {
+      userId = app.requireSession(req).id;
+    } catch (error) {
+      if (!(error instanceof ApiError && error.statusCode === 401)) throw error;
+    }
+    const token = (req.body as any)?.token;
+    const resumed = userId ? acceptedLink(token, userId) : undefined;
+    const { row, agreement, creator } = resumed ?? validLink(token);
     return {
       agreementName: agreement.value.name,
       inviterName: creator.name,
       expiresAt: row.expires_at,
+      ...(resumed ? { alreadyAccepted: true } : {}),
     };
   });
   app.post("/api/agreement-invitations/accept", async (req, reply) => {
     const user = app.requireSession(req);
     store.limit(`agreement-invite-accept:${user.id}`, 30);
     const result = store.tx(() => {
+      const resumed = acceptedLink((req.body as any)?.token, user.id);
+      if (resumed)
+        return {
+          workspace: store.membership(user.id, resumed.row.workspace_id),
+          agreement: resumed.agreement,
+        };
       const { row, agreement } = validLink((req.body as any)?.token);
       const existing = store.db
         .prepare(

@@ -491,3 +491,84 @@ test("invitee columns are added idempotently to a pre-existing table", async () 
     await app.close();
   }
 });
+
+test("accepted invitation resumes for its recipient without repeating membership or audit writes", async () => {
+  const f = await setup();
+  try {
+    const { invitation } = (await f.create()).json();
+    const first = await f.accept(invitation.token);
+    assert.equal(first.statusCode, 200, first.body);
+    const before = f.app.store.db.prepare("SELECT * FROM audit").all();
+    const repeated = await f.accept(invitation.token);
+    assert.equal(repeated.statusCode, 200, repeated.body);
+    assert.deepEqual(repeated.json(), first.json());
+    assert.deepEqual(
+      f.app.store.db.prepare("SELECT * FROM audit").all(),
+      before,
+    );
+    assert.equal((await f.accept(invitation.token, f.other)).statusCode, 400);
+    const preview = await f.app.inject({
+      method: "POST",
+      url: "/api/agreement-invitations/preview",
+      headers: f.headers(f.guest),
+      payload: { token: invitation.token },
+    });
+    assert.equal(preview.statusCode, 200, preview.body);
+    assert.equal(preview.json().alreadyAccepted, true);
+    assert.equal(preview.json().agreementName, "Private agreement");
+    // The token adds no authority after acceptance. Signed-out and other users
+    // cannot resume or learn details from someone else's accepted invitation.
+    for (const headers of [{}, f.headers(f.other)]) {
+      const hidden = await f.app.inject({
+        method: "POST",
+        url: "/api/agreement-invitations/preview",
+        headers,
+        payload: { token: invitation.token },
+      });
+      assert.equal(hidden.statusCode, 400);
+    }
+    f.advance();
+    assert.equal((await f.accept(invitation.token)).statusCode, 200);
+    f.app.store.db
+      .prepare("DELETE FROM memberships WHERE workspace_id=? AND user_id=?")
+      .run(f.workspace.id, f.guest.user.id);
+    assert.equal((await f.accept(invitation.token)).statusCode, 400);
+    assert.equal(
+      f.app.store.db
+        .prepare("SELECT 1 FROM memberships WHERE workspace_id=? AND user_id=?")
+        .get(f.workspace.id, f.guest.user.id),
+      undefined,
+    );
+  } finally {
+    await f.app.close();
+  }
+});
+
+test("resuming an accepted link never restores a removed roster seat or read-only membership", async () => {
+  const f = await setup();
+  try {
+    const { invitation } = (await f.create()).json();
+    assert.equal((await f.accept(invitation.token)).statusCode, 200);
+    f.app.store.db
+      .prepare(
+        "UPDATE memberships SET role='VIEWER' WHERE workspace_id=? AND user_id=?",
+      )
+      .run(f.workspace.id, f.guest.user.id);
+    assert.equal((await f.accept(invitation.token)).statusCode, 400);
+    f.app.store.db
+      .prepare(
+        "UPDATE memberships SET role='MEMBER' WHERE workspace_id=? AND user_id=?",
+      )
+      .run(f.workspace.id, f.guest.user.id);
+    const current = await f.app.inject({ url: f.url, headers: f.headers() });
+    const removed = await f.app.inject({
+      method: "DELETE",
+      url: `${f.url}/people/${f.guest.user.id}?expectedRevision=${current.json().revision}`,
+      headers: f.headers(),
+    });
+    assert.equal(removed.statusCode, 200, removed.body);
+    assert.equal((await f.accept(invitation.token)).statusCode, 400);
+  } finally {
+    await f.app.close();
+  }
+});

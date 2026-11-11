@@ -173,8 +173,11 @@ test("named person: add, send with pending seat, join binds the seat, last appro
       value.versions[0].rules.shares.map((s: any) => s.userId),
       [f.owner.user.id, f.riley.user.id],
     );
-    // The link is single use.
+    // It grants one seat once, while the same recipient can reopen review.
     assert.equal((await f.accept(invitation.token, f.other)).statusCode, 400);
+    const reopened = await f.accept(invitation.token);
+    assert.equal(reopened.statusCode, 200, reopened.body);
+    assert.deepEqual(reopened.json(), joined.json());
 
     const previewAfter = (
       await f.post("/versions/1/preview", f.riley, {
@@ -196,6 +199,9 @@ test("named person: add, send with pending seat, join binds the seat, last appro
     const last = value.audit.at(-1);
     assert.equal(last.type, AuditType.ACTIVATED);
     assert.equal(last.details.automatic, true);
+    const afterApproval = await f.accept(invitation.token);
+    assert.equal(afterApproval.statusCode, 200, afterApproval.body);
+    assert.deepEqual(afterApproval.json().agreement, approved.json());
     // The old manual route still answers.
     assert.equal((await f.post("/versions/1/activate")).statusCode, 200);
   } finally {

@@ -1,10 +1,11 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { api } from "../lib/model";
 import { publicWebOrigin } from "../lib/public-web-origin";
 import { Button, Notice } from "./ui";
 import { formatExact } from "../lib/dates";
 import { LogoMark } from "./logo-mark";
+import { Avatar } from "./person";
 
 export const AGREEMENT_INVITE_PREFIX = "agreement:";
 export function AgreementInvitation({
@@ -128,6 +129,7 @@ export type InvitePreview = {
   agreementName: string;
   inviterName: string;
   expiresAt: number;
+  alreadyAccepted?: boolean;
 };
 
 /** The agreement-invite token in `#token=agreement:…` (or `#agreement:…`), without the prefix. */
@@ -191,22 +193,28 @@ export function InvitationSignInContext({ token }: { token?: string }) {
   return <InvitationSignInCopy preview={preview} />;
 }
 
-/** The invite landing: who invited you, to what, and one button to review it. */
+/** The invite landing: accepting joins the agreement; approval happens in review. */
 export function AgreementInvitationPreview({
   token,
   email,
   busy,
+  error: actionError = "",
   onAccept,
   onCancel,
 }: {
   token: string;
   email: string;
   busy: boolean;
-  onAccept: () => void;
+  error?: string;
+  onAccept: () => Promise<void>;
   onCancel: () => void;
 }) {
   const [preview, setPreview] = useState<InvitePreview | null>(null);
   const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);
+  const [accepting, setAccepting] = useState(false);
+  const pending = useRef(false);
+  const disabled = busy || accepting;
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     let live = true;
@@ -222,10 +230,58 @@ export function AgreementInvitationPreview({
     return () => {
       live = false;
     };
-  }, [token]);
+  }, [token, attempt]);
   useEffect(() => {
     heading.current?.focus();
   }, [preview, error]);
+  async function accept() {
+    if (pending.current || busy) return;
+    pending.current = true;
+    setAccepting(true);
+    try {
+      await onAccept();
+    } finally {
+      pending.current = false;
+      setAccepting(false);
+    }
+  }
+  return (
+    <InvitationCard
+      preview={preview}
+      error={error}
+      actionError={actionError}
+      disabled={disabled}
+      heading={heading}
+      email={email}
+      onAccept={() => void accept()}
+      onCancel={onCancel}
+      onRetry={() => setAttempt((current) => current + 1)}
+    />
+  );
+}
+
+/** Keep acceptance errors inside the visible standalone card, not under its overlay. */
+export function InvitationCard({
+  preview,
+  error = "",
+  actionError = "",
+  disabled,
+  heading,
+  email,
+  onAccept,
+  onCancel,
+  onRetry,
+}: {
+  preview: InvitePreview | null;
+  error?: string;
+  actionError?: string;
+  disabled: boolean;
+  heading?: RefObject<HTMLHeadingElement | null>;
+  email: string;
+  onAccept: () => void;
+  onCancel: () => void;
+  onRetry: () => void;
+}) {
   return (
     <div className="collab-invite-page">
       <InviteBrand />
@@ -239,43 +295,75 @@ export function AgreementInvitationPreview({
             <p className="muted">
               Ask the person who invited you to send a new link.
             </p>
+            <Button variant="secondary" disabled={disabled} onClick={onRetry}>
+              Try again
+            </Button>
           </>
         ) : preview ? (
           <>
-            <h1 id="invite-title" ref={heading} tabIndex={-1}>
-              {preview.inviterName} invited you to {preview.agreementName}
-            </h1>
+            <div className="collab-invite-sender">
+              <Avatar name={preview.inviterName} tone={0} label={false} />
+              <p>
+                <strong>{preview.inviterName}</strong> invited you to an
+                agreement
+              </p>
+            </div>
             <p className="collab-invite-lede">
-              {firstName(preview.inviterName)}’s asking you to approve how its
-              money is split.
+              {preview.alreadyAccepted
+                ? "You’ve already joined. Open the agreement to continue your review."
+                : `${firstName(preview.inviterName)}’s asking you to review how the money is split.`}
             </p>
-            <Button
-              className="collab-invite-primary"
-              disabled={busy}
-              onClick={onAccept}
-            >
-              {busy ? "Opening…" : "Review"}
-            </Button>
+            <h1 id="invite-title" ref={heading} tabIndex={-1}>
+              {preview.agreementName}
+            </h1>
+            {actionError && (
+              <div role="alert">
+                <Notice warning>{actionError}</Notice>
+              </div>
+            )}
+            <div className="collab-invite-actions">
+              <Button
+                variant="secondary"
+                disabled={disabled}
+                onClick={onCancel}
+              >
+                Not now
+              </Button>
+              <Button
+                className="collab-invite-primary"
+                disabled={disabled}
+                onClick={onAccept}
+              >
+                {disabled
+                  ? "Opening…"
+                  : preview.alreadyAccepted
+                    ? "Open agreement"
+                    : "Accept"}
+              </Button>
+            </div>
             <p className="collab-invite-safe">
-              Nothing is paid until everyone approves.
+              Accepting this invitation doesn’t approve the terms.
             </p>
             <p className="collab-invite-meta muted">
-              Joining as <strong>{email}</strong>, as a collaborator on this
-              agreement only. {"It does not grant access to other agreements."}{" "}
-              Link expires {formatExact(preview.expiresAt)}.
+              {preview.alreadyAccepted ? "Signed in" : "Joining"} as{" "}
+              <strong>{email}</strong>.{" Access is limited to this agreement."}
+              {!preview.alreadyAccepted &&
+                ` Link expires ${formatExact(preview.expiresAt)}.`}
             </p>
           </>
         ) : (
           <p role="status">Opening your invite…</p>
         )}
-        <Button
-          variant="quiet"
-          className="collab-invite-later"
-          disabled={busy}
-          onClick={onCancel}
-        >
-          Not now
-        </Button>
+        {!preview && (
+          <Button
+            variant="quiet"
+            className="collab-invite-later"
+            disabled={disabled}
+            onClick={onCancel}
+          >
+            Not now
+          </Button>
+        )}
       </section>
     </div>
   );
