@@ -566,7 +566,7 @@ export function registerPaymentRecovery({
             "UPDATE fairshare_refund_ops SET status='OUTCOME_UNKNOWN' WHERE id=?",
           ).run(refund.id);
       });
-      return refundView(ctx, refund.id);
+      return refundView(access(req, true), refund.id);
     }
     const terminal = tx(() => {
       const fresh = db
@@ -574,7 +574,7 @@ export function registerPaymentRecovery({
         .get(refund.id) as any;
       return ["COMPLETED", "FAILED", "CANCELLED"].includes(fresh.status);
     });
-    if (terminal) return refundView(ctx, refund.id);
+    if (terminal) return refundView(access(req, true), refund.id);
     // Preserve a known provider identifier even if access was revoked during the external write.
     if (
       !result.id ||
@@ -603,7 +603,7 @@ export function registerPaymentRecovery({
       ).run(result.id, refund.id);
       return false;
     });
-    if (settledBeforeVerify) return refundView(ctx, refund.id);
+    if (settledBeforeVerify) return refundView(access(req, true), refund.id);
     access(req, true);
     return verifyRefund(req, refund, result.id);
   });

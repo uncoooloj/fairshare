@@ -551,6 +551,58 @@ test("provider webhook failure during submission survives the submitter catch", 
     );
   }));
 
+for (const terminal of ["COMPLETED", "FAILED"])
+  test(`terminal refund settlement during submission revalidates revoked organizer access (${terminal})`, () =>
+    run(async (s) => {
+      const { id, captureId } = await s.pay();
+      let requestKey = "";
+      s.mock.provider.getRefund = async (refundId) => ({
+        id: refundId,
+        status: terminal,
+        amountCents: 10000,
+        currency: "USD",
+        captureId,
+        reference: requestKey,
+      });
+      s.mock.provider.refundCapture = async (
+        _capture,
+        amountCents,
+        currency,
+        key,
+      ) => {
+        requestKey = key;
+        if (terminal === "FAILED")
+          s.app.store.db
+            .prepare(
+              "UPDATE fairshare_refund_ops SET provider_refund_id=? WHERE request_key=?",
+            )
+            .run("REF1", key);
+        const settled =
+          terminal === "COMPLETED"
+            ? await s.refundEvent("refund-revoked-completed", "REF1", captureId)
+            : await s.webhook(
+                "refund-revoked-failed",
+                "PAYMENT.REFUND.FAILED",
+                { id: "REF1" },
+              );
+        assert.equal(settled.statusCode, 200, settled.body);
+        s.app.store.db
+          .prepare(
+            "UPDATE memberships SET role='VIEWER' WHERE workspace_id=? AND user_id=?",
+          )
+          .run(s.w.id, s.maya.user.id);
+        if (terminal === "FAILED") throw new Error("provider closed");
+        return { id: "REF1", status: terminal, amountCents, currency };
+      };
+      const response = await s.post(`/payments/${id}/refund`, {
+        confirmFullRefund: true,
+      });
+      assert.equal(response.statusCode, 403, response.body);
+      assert.equal(response.json().error.code, "FORBIDDEN");
+      assert.equal(response.json().id, undefined);
+      assert.equal(response.json().amountCents, undefined);
+    }));
+
 test("a provider refund racing a payout dispatch: shares in flight count as paid out, the rest stop", () =>
   run(async (s) => {
     const { captureId } = await s.pay();
