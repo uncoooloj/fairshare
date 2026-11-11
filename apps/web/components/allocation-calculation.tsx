@@ -1,7 +1,35 @@
 import { statusLabel } from "../lib/status-labels";
 import type { AllocationTrace } from "../lib/allocation-trace";
 import { formatDay, formatExact } from "../lib/dates";
-import { money, title } from "../lib/model";
+import { money, title, type Source } from "../lib/model";
+import {
+  PaymentGridStatus,
+  paymentStatusLabels,
+} from "../src/components/paymentGridModel";
+
+/** Payout state in the words the Payouts page uses; "On the way" only follows a send. */
+function payoutLabel(status: PaymentGridStatus) {
+  if (
+    status === PaymentGridStatus.Pending ||
+    status === PaymentGridStatus.Processing
+  )
+    return "On the way";
+  if (status === PaymentGridStatus.Reserved) return "Ready to send";
+  return paymentStatusLabels[status];
+}
+
+/** A clause number when the rule came from the document; otherwise the team typed it. */
+function SourceChip({ source }: { source?: Source }) {
+  if (!source) return null;
+  if (source.origin !== "SOURCE_CLAUSE")
+    return <span className="clause-chip is-team">Added by you</span>;
+  const clause = source.clause.replace(/^(clause|section|§)\s*/i, "").trim();
+  return clause ? <span className="clause-chip">§ {clause}</span> : null;
+}
+
+/** Only a real document clause is worth quoting back. */
+const fromDocument = (source?: Source): source is Source =>
+  source?.origin === "SOURCE_CLAUSE" && !!source.excerpt?.trim();
 
 /** Recorded history only: every figure comes from the trace, nothing is recomputed. */
 export function AllocationCalculation({
@@ -9,8 +37,11 @@ export function AllocationCalculation({
   name = "This person",
   tone,
   advanceTo,
+  payout,
 }: {
   trace: AllocationTrace;
+  /** The payout for this share, from the same records the Payouts page reads. */
+  payout?: PaymentGridStatus;
   name?: string;
   tone?: number;
   advanceTo?: string;
@@ -27,6 +58,12 @@ export function AllocationCalculation({
     a.feeCents > 0
       ? `${money(a.feeCents)} PayPal fee came out of that share.`
       : undefined,
+    a.offsetCents
+      ? `${money(a.offsetCents)} was kept back to settle an earlier refund.`
+      : undefined,
+    a.creditCents
+      ? `${money(a.creditCents)} was added back after an earlier payout did not arrive.`
+      : undefined,
   ].filter(Boolean);
   const reason = reasonParts.length
     ? reasonParts.join(" ")
@@ -41,6 +78,12 @@ export function AllocationCalculation({
     trace.poolCents > 0 ? `${money(trace.poolCents)} split` : undefined,
     `${money(a.shareCents)} to ${name}`,
     a.feeCents > 0 ? `${money(a.feeCents)} recipient fee` : undefined,
+    (a.offsetCents ?? 0) > 0
+      ? `${money(a.offsetCents ?? 0)} kept back`
+      : undefined,
+    (a.creditCents ?? 0) > 0
+      ? `${money(a.creditCents ?? 0)} added back`
+      : undefined,
   ]
     .filter(Boolean)
     .join(", ");
@@ -49,10 +92,11 @@ export function AllocationCalculation({
   const toneClass = `tone-${tone ?? 0}`;
   const advanceHolder = ownsAdvance ? name : advanceTo;
   // Clauses follow the steps: the advance clause first whenever this payment repaid it.
-  const showAdvanceClause = Boolean(
-    trace.advanceSource && (trace.recoupedCents > 0 || trace.poolCents === 0),
-  );
-  const showSplitClause = a.shareCents > 0 || !showAdvanceClause;
+  const showAdvanceClause =
+    Boolean(trace.recoupedCents > 0 || trace.poolCents === 0) &&
+    fromDocument(trace.advanceSource);
+  const showSplitClause =
+    (a.shareCents > 0 || !showAdvanceClause) && fromDocument(trace.source);
   let step = 1;
   return (
     <section className="calculation" aria-label={`Calculation for ${name}`}>
@@ -61,12 +105,22 @@ export function AllocationCalculation({
       </p>
       <p className="calculation-reason">{reason}</p>
       <div className="calculation-chips">
-        <span
-          className={`status-chip ${trace.held ? "warning" : ""}`}
-          title="This is what they’re owed. Sending it is tracked in Payouts."
-        >
-          {trace.held ? "Paused" : statusLabel(a.status)}
-        </span>
+        {trace.held ? (
+          <span className="status-chip warning">Paused</span>
+        ) : payout ? (
+          <span
+            className={`status-chip ${payout === PaymentGridStatus.Paid ? "good" : ""}`}
+          >
+            {payoutLabel(payout)}
+          </span>
+        ) : (
+          <span
+            className="status-chip"
+            title="This is what they’re owed. Sending it is tracked in Payouts."
+          >
+            {statusLabel(a.status)}
+          </span>
+        )}
       </div>
 
       <div className="waterfall" role="img" aria-label={waterfallDescription}>
@@ -105,12 +159,18 @@ export function AllocationCalculation({
       <h3 className="calculation-label">From payment</h3>
       <p title={formatExact(trace.recordedAt)}>
         {money(trace.grossCents)} · PayPal · {formatDay(trace.recordedAt)}
+        <span className="muted">
+          {" "}
+          ·{" "}
+          {trace.providerFeeCents
+            ? `${money(trace.providerFeeCents)} PayPal fee`
+            : "No fee"}
+        </span>
       </p>
 
       <h3 className="calculation-label">Rules used</h3>
-      <p>
-        <span className="version-chip">v{trace.versionId}</span> The split in
-        use when this payment came in
+      <p title={`Version ${trace.versionId}`}>
+        Split in use on {formatDay(trace.recordedAt)}
       </p>
 
       <h3 className="calculation-label">Calculation</h3>
@@ -131,11 +191,7 @@ export function AllocationCalculation({
               <td>
                 <span className="calculation-step-title">
                   Pay back advance
-                  {trace.advanceSource.clause && (
-                    <span className="clause-chip">
-                      § {trace.advanceSource.clause}
-                    </span>
-                  )}
+                  <SourceChip source={trace.advanceSource} />
                 </span>
                 <small>
                   {`Paid back to ${advanceHolder || "the advance holder"} first`}
@@ -158,19 +214,17 @@ export function AllocationCalculation({
               <td>
                 <span className="calculation-step-title">
                   Split {percent}% of {money(trace.poolCents)}
-                  {trace.source.clause && (
-                    <span className="clause-chip">§ {trace.source.clause}</span>
-                  )}
+                  <SourceChip source={trace.source} />
                 </span>
               </td>
               <td className="numeric">{money(a.shareCents)}</td>
             </tr>
-          ) : (
+          ) : trace.netCents > 0 ? (
             <tr className="calculation-skipped">
               <td />
-              <td colSpan={2}>No split from this payment</td>
+              <td colSpan={2}>Nothing left to split after the advance</td>
             </tr>
-          )}
+          ) : null}
           {a.feeCents > 0 && (
             <tr>
               <td>{step++}</td>
@@ -178,6 +232,20 @@ export function AllocationCalculation({
               <td className="numeric">−{money(a.feeCents)}</td>
             </tr>
           )}
+          {a.offsetCents ? (
+            <tr>
+              <td>{step++}</td>
+              <td>Kept back for an earlier refund</td>
+              <td className="numeric">−{money(a.offsetCents)}</td>
+            </tr>
+          ) : null}
+          {a.creditCents ? (
+            <tr>
+              <td>{step++}</td>
+              <td>Returned payout credit</td>
+              <td className="numeric">+{money(a.creditCents)}</td>
+            </tr>
+          ) : null}
           <tr className="calculation-total">
             <td />
             <td>Owed to {name}</td>
@@ -186,23 +254,23 @@ export function AllocationCalculation({
         </tbody>
       </table>
 
-      <h3 className="calculation-label">
-        {showAdvanceClause && showSplitClause
-          ? "Source clauses"
-          : "Source clause"}
-      </h3>
+      {(showAdvanceClause || showSplitClause) && (
+        <h3 className="calculation-label">
+          {showAdvanceClause && showSplitClause
+            ? "Source clauses"
+            : "Source clause"}
+        </h3>
+      )}
       {showAdvanceClause && trace.advanceSource && (
         <figure className="clause-card">
-          <span className="clause-chip">§ {trace.advanceSource.clause}</span>
+          <SourceChip source={trace.advanceSource} />
           <blockquote>{trace.advanceSource.excerpt}</blockquote>
         </figure>
       )}
       {showSplitClause && (
         <figure className="clause-card">
-          <span className="clause-chip">§ {trace.source.clause || "—"}</span>
-          <blockquote>
-            {trace.source.excerpt || "Source excerpt not recorded."}
-          </blockquote>
+          <SourceChip source={trace.source} />
+          <blockquote>{trace.source.excerpt}</blockquote>
         </figure>
       )}
 

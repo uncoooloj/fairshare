@@ -184,6 +184,19 @@ test("refund hold does not erase recorded shares", () => {
   assert.equal(allocationRows(a).length, 3);
 });
 
+test("refund recovery adjustments preserve the recorded payment trace", () => {
+  const a = agreement();
+  const riley = a.value.revenue[0].allocations.find(
+    (allocation) => allocation.userId === "riley",
+  )!;
+  riley.offsetCents = 5000;
+  riley.totalCents -= riley.offsetCents;
+
+  const trace = allocationTrace(a, "capture", "riley", 15000);
+  assert.equal(trace?.allocation.offsetCents, 5000);
+  assert.equal(trace?.allocation.totalCents, 15000);
+});
+
 test("ledger order is newest first and former participant names are explicit", () => {
   const a = agreement();
   const next = structuredClone(a.value.revenue[0]);
@@ -205,11 +218,19 @@ test("ledger order is newest first and former participant names are explicit", (
   assert.ok(rows.every((row) => row.trace));
 });
 
-test("payout mapping joins the actual capture and recipient, no invented timestamp", () => {
+test("payout mapping joins the actual capture, recipient and amount", () => {
   const app = appSource();
   assert.match(
     app,
     /allocationTrace\(\s*p.agreement,\s*p.capture_id,\s*p.user_id,\s*p.amount/,
+  );
+  const allocations = readFileSync(
+    new URL("../components/agreement-allocations.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    allocations,
+    /allocationTrace\(\s*agreement,\s*row\.revenue\.providerCaptureId,\s*row\.allocation\.userId,\s*payout\?\.amount,\s*\)/,
   );
   assert.match(app, /AgreementTab.Allocations/);
 });

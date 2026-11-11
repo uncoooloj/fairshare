@@ -14,8 +14,8 @@ import {
  * answered questions), kept per draft until it is sent or discarded. The server only stores
  * the document, name, dates and pending people before sending, so without this a reload or
  * a resumed draft would lose the rest. Browser storage can be missing or full; every call is
- * best effort. Invite links are never stored: answers carry no tokens, and people are copied
- * field by field so nothing else rides along.
+ * best effort. Answers carry no tokens, and people are copied field by field so nothing else
+ * rides along; invite links live in their own store below, written once when they're made.
  */
 const VERSION = 1;
 
@@ -25,9 +25,16 @@ export interface StoredQuestion {
   answeredChoiceId?: string;
 }
 
+/** Where the organizer stopped. The stage is the wizard's own enum value, checked on resume. */
+export interface StoredPlace {
+  stage: string;
+  questionIndex: number;
+}
+
 export interface StoredAnswers {
   answers: Omit<AgreementAnswers, "questions">;
   questions: StoredQuestion[];
+  place?: StoredPlace;
 }
 
 interface StoredDraft extends StoredAnswers {
@@ -222,15 +229,29 @@ function writeDraft(
   }
 }
 
+function storedPlace(value: unknown): StoredPlace | undefined {
+  if (!isRecord(value) || typeof value.stage !== "string") return undefined;
+  const index = value.questionIndex;
+  return {
+    stage: value.stage,
+    questionIndex:
+      typeof index === "number" && Number.isInteger(index) && index >= 0
+        ? index
+        : 0,
+  };
+}
+
 export function saveDraftAnswers(
   workspaceId: string,
   agreementId: string,
   answers: AgreementAnswers,
+  place?: StoredPlace,
 ) {
   writeDraft(workspaceId, agreementId, {
     version: VERSION,
     answers: storedAnswers(answers),
     questions: storedQuestions(answers.questions),
+    ...(place ? { place: storedPlace(place) } : {}),
   });
 }
 
@@ -249,9 +270,11 @@ export function loadDraftAnswers(
       const draft = JSON.parse(raw) as StoredDraft;
       if (draft?.version !== VERSION || !usable(draft.answers))
         return undefined;
+      const place = storedPlace(draft.place);
       return {
         answers: draft.answers,
         questions: Array.isArray(draft.questions) ? draft.questions : [],
+        ...(place ? { place } : {}),
       };
     }
     const legacy = localStorage.getItem(legacyKey(workspaceId, agreementId));
@@ -319,4 +342,119 @@ export function restoreQuestions(
       return [q];
     }),
   ];
+}
+
+/**
+ * Invite links made for a draft, by invitation id. The server keeps only a hash, so this
+ * device is the one place a link can be shown again. A cached token must retain the expiry
+ * returned when it was issued; legacy token-only values are deliberately unusable. Kept after
+ * sending; writes merge so a link is never made twice for one invitation.
+ */
+export const inviteLinksKey = (workspaceId: string, agreementId: string) =>
+  `fairshare:invite-links:v1:${workspaceId}:${agreementId}`;
+
+export interface StoredInviteToken {
+  token: string;
+  expiresAt: number;
+}
+
+/** Drops malformed and expired bearer tokens without treating legacy token-only values as live. */
+export function forgetStaleInviteTokens(
+  links: Record<string, StoredInviteToken>,
+  now = Date.now(),
+): Record<string, StoredInviteToken> {
+  return Object.fromEntries(
+    Object.entries(links).filter(
+      (entry): entry is [string, StoredInviteToken] =>
+        typeof entry[1]?.token === "string" &&
+        Number.isFinite(entry[1]?.expiresAt) &&
+        entry[1].expiresAt > now,
+    ),
+  );
+}
+
+function storedInviteTokens(value: unknown): Record<string, StoredInviteToken> {
+  if (!isRecord(value)) return {};
+  return forgetStaleInviteTokens(
+    Object.fromEntries(
+      Object.entries(value).flatMap(([id, entry]) =>
+        isRecord(entry) &&
+        typeof entry.token === "string" &&
+        typeof entry.expiresAt === "number"
+          ? [[id, { token: entry.token, expiresAt: entry.expiresAt }]]
+          : [],
+      ),
+    ),
+  );
+}
+
+export function loadInviteLinks(
+  workspaceId: string,
+  agreementId: string,
+): Record<string, string> {
+  try {
+    const parsed = loadStoredInviteTokens(workspaceId, agreementId);
+    return Object.fromEntries(
+      Object.entries(parsed).map(([id, entry]) => [id, entry.token]),
+    );
+  } catch {
+    return {};
+  }
+}
+
+export function loadStoredInviteTokens(
+  workspaceId: string,
+  agreementId: string,
+): Record<string, StoredInviteToken> {
+  try {
+    return storedInviteTokens(
+      JSON.parse(
+        localStorage.getItem(inviteLinksKey(workspaceId, agreementId)) ?? "{}",
+      ),
+    );
+  } catch {
+    return {};
+  }
+}
+
+export function saveInviteLinks(
+  workspaceId: string,
+  agreementId: string,
+  links: Record<string, StoredInviteToken>,
+) {
+  try {
+    const existing = storedInviteTokens(
+      JSON.parse(
+        localStorage.getItem(inviteLinksKey(workspaceId, agreementId)) ?? "{}",
+      ),
+    );
+    localStorage.setItem(
+      inviteLinksKey(workspaceId, agreementId),
+      JSON.stringify({
+        ...existing,
+        ...forgetStaleInviteTokens(links),
+      }),
+    );
+  } catch {
+    // Storage full or blocked: the Sent screen still has the link in memory.
+  }
+}
+
+/** Replaces the cached set after the agreement tells us which pending seats still exist. */
+export function replaceInviteLinks(
+  workspaceId: string,
+  agreementId: string,
+  links: Record<string, StoredInviteToken>,
+) {
+  try {
+    const live = forgetStaleInviteTokens(links);
+    if (Object.keys(live).length)
+      localStorage.setItem(
+        inviteLinksKey(workspaceId, agreementId),
+        JSON.stringify(live),
+      );
+    else localStorage.removeItem(inviteLinksKey(workspaceId, agreementId));
+  } catch {
+    // Storage can be blocked; callers keep their in-memory cache.
+  }
 }

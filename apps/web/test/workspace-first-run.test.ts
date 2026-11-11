@@ -43,6 +43,6 @@ test("first-run payouts explains its empty state without requiring a workspace n
   );
   assert.match(firstRun, /No payouts yet/);
   assert.match(firstRun, /No agreements yet/);
-  assert.match(firstRun, /setCreating\(true\)/);
+  assert.match(firstRun, /onClick=\{startNewAgreement\}/);
   assert.doesNotMatch(firstRun, /WorkspaceOnboarding|Workspace name/);
 });

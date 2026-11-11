@@ -5,6 +5,7 @@ import {
   type Collaboration,
   AllocationStatus,
   RevenueStatus,
+  allocatedNetCents,
 } from "./index.ts";
 export enum AnalyticsAction {
   EXPLAIN_ALLOCATION = "EXPLAIN_ALLOCATION",
@@ -53,14 +54,24 @@ function validateAllocationLedger(
     allocation.recoupmentCents,
     allocation.shareCents,
     allocation.feeCents,
+    allocation.offsetCents ?? 0,
+    allocation.creditCents ?? 0,
     allocation.totalCents,
   );
+  // Refunds reduce what a payment's allocations add up to; amounts kept back still count.
   if (
     revenue.grossCents - revenue.feeCents !== revenue.netCents ||
-    allocation.recoupmentCents + allocation.shareCents - allocation.feeCents !==
+    allocation.recoupmentCents +
+      allocation.shareCents -
+      allocation.feeCents -
+      (allocation.offsetCents ?? 0) +
+      (allocation.creditCents ?? 0) !==
       allocation.totalCents ||
-    revenue.allocations.reduce((sum, row) => sum + row.totalCents, 0) !==
-      revenue.netCents
+    revenue.allocations.reduce(
+      (sum, row) =>
+        sum + row.totalCents + (row.offsetCents ?? 0) - (row.creditCents ?? 0),
+      0,
+    ) !== allocatedNetCents(revenue)
   )
     throw new Error("INVALID_LEDGER");
 }

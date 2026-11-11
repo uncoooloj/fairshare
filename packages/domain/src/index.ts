@@ -38,6 +38,7 @@ export enum AuditType {
   APPROVED = "APPROVED",
   CHANGE_REQUESTED = "CHANGE_REQUESTED",
   ACTIVATED = "ACTIVATED",
+  ADVANCE_CONFIRMED = "ADVANCE_CONFIRMED",
   REVENUE_ALLOCATED = "REVENUE_ALLOCATED",
   PAYMENT_HELD = "PAYMENT_HELD",
   PERSON_ADDED = "PERSON_ADDED",
@@ -48,6 +49,8 @@ export enum AuditType {
   ORGANIZER_HANDOVER_CANCELLED = "ORGANIZER_HANDOVER_CANCELLED",
   ORGANIZER_HANDOVER_DECLINED = "ORGANIZER_HANDOVER_DECLINED",
   ORGANIZER_HANDED_OVER = "ORGANIZER_HANDED_OVER",
+  REFUND_APPLIED = "REFUND_APPLIED",
+  PAYOUTS_RESUMED = "PAYOUTS_RESUMED",
 }
 /** A person named in the agreement who has not accepted their invitation yet. */
 export interface PendingInvite {
@@ -105,10 +108,58 @@ export interface Allocation {
   recoupmentCents: number;
   shareCents: number;
   feeCents: number;
+  /** Kept back to settle an earlier overpayment (see Collaboration.owedBack). */
+  offsetCents?: number;
+  /** Exact refund liabilities this allocation settled. Their sum is offsetCents. */
+  offsetAttributions?: LiabilityAttribution[];
+  /** Offset attribution removed when this allocation was later refunded. */
+  restoredOffsetAttributions?: LiabilityAttribution[];
+  /** Given back: an amount kept back earlier for a payout PayPal then never delivered. */
+  creditCents?: number;
+  /** Exact refund liabilities whose excess settlement this allocation credited. */
+  creditAttributions?: LiabilityAttribution[];
+  /** Credits assigned here whose payout PayPal later did not deliver. */
+  returnedCreditAttributions?: LiabilityAttribution[];
+  /** recoupment + share - fee - offset + credit. */
   totalCents: number;
   status: AllocationStatus;
 }
+/** A refund gives the buyer money back; a reversal is PayPal taking the payment back. */
+export enum RefundKind {
+  REFUND = "REFUND",
+  REVERSAL = "REVERSAL",
+}
+/** What one refund took off one person's part of one payment. */
+export interface RefundShare {
+  userId: string;
+  /** Taken off what this payment paid back on the advance. */
+  recoupmentCents: number;
+  /** Taken off their split. */
+  shareCents: number;
+  /** Fee given back to whoever covered it (ORGANIZER_SHARE only). */
+  feeCents: number;
+  /** An earlier offset that this refund undid; owed again. */
+  offsetRestoredCents: number;
+  /** Their part of an unreturned fee that this payment no longer covers. */
+  shortfallCents: number;
+  /** An earlier fee shortfall repaid by this refund's returned fee. */
+  shortfallReturnedCents?: number;
+  /** Added to owedBack: paid out beyond what they are now entitled to, plus shortfall and restored offset. */
+  owedCents: number;
+}
+export interface RevenueRefund {
+  /** Provider refund ID (or a stable reversal key); applying the same ID twice is a no-op. */
+  id: string;
+  kind: RefundKind;
+  grossCents: number;
+  feeReturnedCents: number;
+  shares: RefundShare[];
+  /** True when this refund paused the agreement for review. */
+  held: boolean;
+  at: string;
+}
 export interface Revenue {
+  /** Original capture. gross/fee/net never change; refunds are recorded beside them. */
   providerCaptureId: string;
   currency: "USD";
   grossCents: number;
@@ -118,6 +169,11 @@ export interface Revenue {
   allocations: Allocation[];
   status: RevenueStatus;
   at: string;
+  /** The advance this payment's repayment was counted against (absent on older payments). */
+  advanceId?: string;
+  refunds?: RevenueRefund[];
+  /** People whose payout from this payment PayPal finally did not deliver after a refund. */
+  undeliveredUserIds?: string[];
 }
 export interface AuditEntry {
   sequence: number;
@@ -144,6 +200,25 @@ export interface OrganizerHandover {
   toUserId: string;
   at: string;
 }
+export enum RefundLiabilityKind {
+  PAYOUT_OVERPAYMENT = "PAYOUT_OVERPAYMENT",
+  FEE_SHORTFALL = "FEE_SHORTFALL",
+}
+export interface LiabilityAttribution {
+  liabilityId: string;
+  cents: number;
+}
+/** One refund-created obligation. Settlement and later cancellation stay tied to this source. */
+export interface RefundLiability {
+  id: string;
+  captureId: string;
+  refundId: string;
+  userId: string;
+  kind: RefundLiabilityKind;
+  createdCents: number;
+  cancelledCents: number;
+  externalSettledCents: number;
+}
 export interface Collaboration {
   id: string;
   name: string;
@@ -158,6 +233,23 @@ export interface Collaboration {
   audit: AuditEntry[];
   /** At most one open offer; cleared when accepted, declined, cancelled or replaced. */
   organizerHandover?: OrganizerHandover;
+  /** Per person: paid out beyond what refunds left them, still to be settled. */
+  owedBack?: Record<string, number>;
+  /** Set by resumePayouts: owedBack is kept back from each person's next shares until settled. */
+  offsetOwedBack?: boolean;
+  /** Per person: owed amounts actually kept back from their shares so far. */
+  offsetRecovered?: Record<string, number>;
+  /** Per person: kept back for an overpayment that turned out not to be one; added to their
+   * next share. */
+  creditBack?: Record<string, number>;
+  /** Capture -> person -> overpayment that the organizer recorded as settled outside
+   * Fairshare. Kept so a later returned payout can restore the person's credit once. */
+  externallySettledOverpayments?: Record<string, Record<string, number>>;
+  /** Versioned, source-specific refund obligations. Generic legacy balances are never guessed. */
+  refundAttributionVersion?: 1;
+  refundLiabilities?: RefundLiability[];
+  /** Advance ID -> the advance whose repaid count was carried onto it when it replaced it. */
+  advanceCarries?: Record<string, string>;
 }
 export class DomainError extends Error {
   constructor(
@@ -334,13 +426,23 @@ function replacedAdvance(c: Collaboration, r: Rules): number {
 /** Moves the repaid amount onto a replacement advance ID before its rules take effect. */
 function carryRecoupment(out: Collaboration, next: Rules) {
   const carried = replacedAdvance(out, next);
-  if (carried && next.advance)
+  if (carried && next.advance) {
     Object.defineProperty(out.recoupedByAdvance, next.advance.id, {
       value: carried,
       enumerable: true,
       writable: true,
       configurable: true,
     });
+    // Remember the chain so a refund lowers exactly the counts that include its repayment.
+    const from = recoupedInForce(out).advance!.id;
+    out.advanceCarries ??= {};
+    Object.defineProperty(out.advanceCarries, next.advance.id, {
+      value: from,
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    });
+  }
 }
 const CALENDAR_DATE = /^\d{4}-\d{2}-\d{2}$/;
 function sameCalendarDate(value: string): boolean {
@@ -768,10 +870,22 @@ export function proposeVersion(
     )
   )
     latest.status = VersionStatus.SUPERSEDED;
+  const next = copy(rules);
+  // Confirming an advance was paid is a fact about that advance, so a revision that
+  // keeps it (same ID) stays confirmed.
+  if (
+    next.advance &&
+    c.versions.some(
+      (old) =>
+        old.rules.advance?.id === next.advance!.id &&
+        old.rules.advance.verified,
+    )
+  )
+    next.advance.verified = true;
   const v: AgreementVersion = {
     id: (latest?.id ?? 0) + 1,
     status: VersionStatus.DRAFT,
-    rules: copy(rules),
+    rules: next,
     approvals: {},
     changeRequests: [],
     createdAt: at,
@@ -798,14 +912,10 @@ export function sendForReview(
   if (v.status !== VersionStatus.DRAFT) fail("INVALID_STATE", "Draft required");
   // The people list may have changed since this draft was written.
   validateRules(c, v.rules);
-  if (
-    v.rules.unresolvedQuestions.length ||
-    (v.rules.advance && !v.rules.advance.verified)
-  )
-    fail(
-      "UNRESOLVED_RULES",
-      "Resolve questions and verify any existing advance first",
-    );
+  // An advance that isn't paid yet can still be sent and approved; it must be
+  // confirmed before the rules switch on (see confirmAdvancePaid).
+  if (v.rules.unresolvedQuestions.length)
+    fail("UNRESOLVED_RULES", "Resolve questions first");
   v.status = VersionStatus.AWAITING_APPROVAL;
   audit(out, AuditType.SENT_FOR_REVIEW, actorId, at, { versionId });
   return out;
@@ -835,6 +945,9 @@ const everyoneApproved = (c: Collaboration, v: AgreementVersion) =>
   v.status === VersionStatus.AWAITING_APPROVAL &&
   !c.members.some((m) => m.pending) &&
   c.members.every((m) => Object.hasOwn(v.approvals, m.userId));
+/** An advance in these rules that nobody has confirmed as paid yet. */
+const advanceUnconfirmed = (v: AgreementVersion) =>
+  !!v.rules.advance && !v.rules.advance.verified;
 function switchOn(
   out: Collaboration,
   v: AgreementVersion,
@@ -866,7 +979,9 @@ export function approveAndSwitchOn(
 ): Collaboration {
   const out = approveVersion(c, versionId, actorId, at);
   const v = latestVersion(out, versionId);
-  if (everyoneApproved(out, v)) switchOn(out, v, actorId, at, true);
+  // Approved but the advance isn't confirmed paid: it waits, approved, until it is.
+  if (everyoneApproved(out, v) && !advanceUnconfirmed(v))
+    switchOn(out, v, actorId, at, true);
   return out;
 }
 /** Organizer's one-shot send: propose, approve as the sender, send, and switch on if nobody else must approve. */
@@ -919,7 +1034,46 @@ export function activateVersion(
       "APPROVALS_REQUIRED",
       "Every participant must approve this exact version",
     );
+  if (advanceUnconfirmed(v))
+    fail(
+      "ADVANCE_UNCONFIRMED",
+      "Confirm the advance is paid before the agreement switches on",
+    );
   switchOn(out, v, actorId, at, false);
+  return out;
+}
+/**
+ * Organizer confirms the advance in the sent proposal was paid. The terms everyone
+ * approved already say it was put in upfront, so this records a fact, not a new version:
+ * approvals stand. When everyone has approved, the rules switch on in the same transition.
+ */
+export function confirmAdvancePaid(
+  c: Collaboration,
+  advanceId: string,
+  actorId: string,
+  at: string,
+): Collaboration {
+  organizer(c, actorId);
+  nonempty(advanceId, "Advance ID");
+  timestamp(at);
+  const out = copy(c);
+  const v = out.versions.at(-1);
+  if (
+    !v ||
+    ![VersionStatus.AWAITING_APPROVAL, VersionStatus.ACTIVE].includes(v.status)
+  )
+    fail("INVALID_STATE", "Send the agreement before confirming the advance");
+  const advance = v!.rules.advance;
+  if (!advance || advance.id !== advanceId)
+    fail("STALE_VERSION", "This advance is not in the current agreement");
+  if (advance!.verified)
+    fail("ADVANCE_ALREADY_CONFIRMED", "This advance is already confirmed");
+  advance!.verified = true;
+  audit(out, AuditType.ADVANCE_CONFIRMED, actorId, at, {
+    versionId: v!.id,
+    advanceId,
+  });
+  if (everyoneApproved(out, v!)) switchOn(out, v!, actorId, at, true);
   return out;
 }
 /** A private draft can be thrown away only by its organizer, before anything was sent or paid. */
@@ -1023,6 +1177,13 @@ export function allocateConfirmedRevenue(
   at: string,
 ): Collaboration {
   noPendingMembers(c);
+  // Activation already waits for the advance; never split money against an unpaid one.
+  const v = c.versions.find((v) => v.id === c.activeVersionId);
+  if (v && advanceUnconfirmed(v))
+    fail(
+      "ADVANCE_UNCONFIRMED",
+      "Confirm the advance is paid before payments are split",
+    );
   return allocate(c, input, at);
 }
 function allocate(
@@ -1080,14 +1241,17 @@ function allocate(
       writable: true,
       configurable: true,
     });
-  out.revenue.push({
+  const revenue: Revenue = {
     ...copy(input),
     netCents,
     versionId: v.id,
+    ...(r.advance ? { advanceId: r.advance.id } : {}),
     allocations,
     status: RevenueStatus.CONFIRMED,
     at,
-  });
+  };
+  out.revenue.push(revenue);
+  offsetOwedBack(out, revenue.allocations);
   audit(out, AuditType.REVENUE_ALLOCATED, "provider", at, {
     captureId: input.providerCaptureId,
     versionId: v.id,
@@ -1117,6 +1281,836 @@ export function holdReversedRevenue(
   audit(out, AuditType.PAYMENT_HELD, "provider", at, { captureId, reason });
   return out;
 }
+const setOwn = (record: Record<string, number>, key: string, value: number) =>
+  Object.defineProperty(record, key, {
+    value,
+    enumerable: true,
+    writable: true,
+    configurable: true,
+  });
+const own = (record: Record<string, number> | undefined, key: string) =>
+  record && Object.hasOwn(record, key) ? record[key] : 0;
+const liabilityKey = (
+  captureId: string,
+  refundId: string,
+  userId: string,
+  kind: RefundLiabilityKind,
+) => JSON.stringify([captureId, refundId, userId, kind]);
+const attributionTotal = (refs: LiabilityAttribution[] | undefined) =>
+  (refs ?? []).reduce((sum, ref) => sum + ref.cents, 0);
+const positiveValues = (record: Record<string, number> | undefined) =>
+  Object.values(record ?? {}).some((value) => value > 0);
+function hasLegacyRefundAttribution(c: Collaboration): boolean {
+  if (
+    c.offsetOwedBack ||
+    positiveValues(c.owedBack) ||
+    positiveValues(c.offsetRecovered) ||
+    positiveValues(c.creditBack) ||
+    Object.values(c.externallySettledOverpayments ?? {}).some(positiveValues)
+  )
+    return true;
+  return c.revenue.some(
+    (revenue) =>
+      revenue.allocations.some(
+        (allocation) =>
+          !!(allocation.offsetCents || allocation.creditCents) ||
+          !!allocation.offsetAttributions?.length ||
+          !!allocation.restoredOffsetAttributions?.length ||
+          !!allocation.creditAttributions?.length ||
+          !!allocation.returnedCreditAttributions?.length,
+      ) ||
+      (revenue.refunds ?? []).some((refund) =>
+        refund.shares.some(
+          (share) =>
+            share.owedCents > 0 ||
+            share.shortfallCents > 0 ||
+            share.offsetRestoredCents > 0 ||
+            (share.shortfallReturnedCents ?? 0) > 0,
+        ),
+      ),
+  );
+}
+function ensureRefundAttribution(c: Collaboration) {
+  if (c.refundAttributionVersion === 1) {
+    c.refundLiabilities ??= [];
+    validateRefundAttribution(c);
+    return;
+  }
+  if (c.refundLiabilities?.length || hasLegacyRefundAttribution(c))
+    fail(
+      "ATTRIBUTION_REQUIRED",
+      "Historical refund balances need operator attribution before money can move",
+    );
+  c.refundAttributionVersion = 1;
+  c.refundLiabilities = [];
+}
+function liabilityAttributionCents(
+  c: Collaboration,
+  liabilityId: string,
+  field: "offsetAttributions" | "creditAttributions",
+) {
+  let total = 0;
+  for (const revenue of c.revenue)
+    for (const allocation of revenue.allocations)
+      for (const ref of allocation[field] ?? [])
+        if (ref.liabilityId === liabilityId) total += ref.cents;
+  if (!Number.isSafeInteger(total))
+    fail("CONSERVATION_ERROR", "Refund attribution total is invalid");
+  return total;
+}
+function liabilityBalance(c: Collaboration, liability: RefundLiability) {
+  const balance =
+    liability.createdCents -
+    liability.cancelledCents +
+    liabilityAttributionCents(c, liability.id, "creditAttributions") -
+    liabilityAttributionCents(c, liability.id, "offsetAttributions") -
+    liability.externalSettledCents;
+  if (!Number.isSafeInteger(balance))
+    fail("CONSERVATION_ERROR", "Refund liability balance is invalid");
+  return balance;
+}
+function addToRecord(
+  record: Record<string, number>,
+  key: string,
+  amount: number,
+) {
+  if (amount > 0) setOwn(record, key, own(record, key) + amount);
+}
+function refreshRefundAttribution(c: Collaboration) {
+  if (c.refundAttributionVersion !== 1) return;
+  const owed: Record<string, number> = {};
+  const credit: Record<string, number> = {};
+  const recovered: Record<string, number> = {};
+  const external: Record<string, Record<string, number>> = {};
+  for (const liability of c.refundLiabilities ?? []) {
+    const balance = liabilityBalance(c, liability);
+    if (balance > 0) addToRecord(owed, liability.userId, balance);
+    else if (balance < 0) addToRecord(credit, liability.userId, -balance);
+
+    // Compatibility views only. Attribution decisions always use the liability and refs above.
+    const uncancelled = Math.max(
+      0,
+      liability.createdCents - liability.cancelledCents,
+    );
+    const offset = Math.min(
+      uncancelled,
+      liabilityAttributionCents(c, liability.id, "offsetAttributions"),
+    );
+    addToRecord(recovered, liability.userId, offset);
+    if (liability.kind === RefundLiabilityKind.PAYOUT_OVERPAYMENT) {
+      const settledOutside = Math.min(
+        liability.externalSettledCents,
+        Math.max(0, uncancelled - offset),
+      );
+      if (settledOutside > 0) {
+        external[liability.captureId] ??= {};
+        addToRecord(
+          external[liability.captureId],
+          liability.userId,
+          settledOutside,
+        );
+      }
+    }
+  }
+  if (Object.keys(owed).length) c.owedBack = owed;
+  else {
+    delete c.owedBack;
+    delete c.offsetOwedBack;
+  }
+  if (Object.keys(credit).length) c.creditBack = credit;
+  else delete c.creditBack;
+  if (Object.keys(recovered).length) c.offsetRecovered = recovered;
+  else delete c.offsetRecovered;
+  if (Object.keys(external).length) c.externallySettledOverpayments = external;
+  else delete c.externallySettledOverpayments;
+  validateRefundAttribution(c);
+}
+function validateAttributionRefs(
+  allocation: Allocation,
+  refs: LiabilityAttribution[] | undefined,
+  liabilities: Map<string, RefundLiability>,
+) {
+  for (const ref of refs ?? []) {
+    cents(ref.cents, "Attributed amount");
+    if (!ref.cents) fail("CONSERVATION_ERROR", "Attribution must be positive");
+    const liability = liabilities.get(ref.liabilityId);
+    if (!liability || liability.userId !== allocation.userId)
+      fail(
+        "CONSERVATION_ERROR",
+        "Attribution must name this person's liability",
+      );
+  }
+}
+function validateRefundAttribution(c: Collaboration) {
+  if (c.refundAttributionVersion !== 1) return;
+  const liabilities = new Map<string, RefundLiability>();
+  for (const liability of c.refundLiabilities ?? []) {
+    cents(liability.createdCents, "Liability");
+    cents(liability.cancelledCents, "Cancelled liability");
+    cents(liability.externalSettledCents, "External settlement");
+    if (
+      !liability.createdCents ||
+      liability.cancelledCents > liability.createdCents ||
+      liability.externalSettledCents > liability.createdCents ||
+      !Object.values(RefundLiabilityKind).includes(liability.kind) ||
+      liability.id !==
+        liabilityKey(
+          liability.captureId,
+          liability.refundId,
+          liability.userId,
+          liability.kind,
+        ) ||
+      liabilities.has(liability.id)
+    )
+      fail("CONSERVATION_ERROR", "Refund liability attribution is invalid");
+    liabilities.set(liability.id, liability);
+  }
+  for (const revenue of c.revenue)
+    for (const allocation of revenue.allocations) {
+      validateAttributionRefs(
+        allocation,
+        allocation.offsetAttributions,
+        liabilities,
+      );
+      validateAttributionRefs(
+        allocation,
+        allocation.restoredOffsetAttributions,
+        liabilities,
+      );
+      validateAttributionRefs(
+        allocation,
+        allocation.creditAttributions,
+        liabilities,
+      );
+      validateAttributionRefs(
+        allocation,
+        allocation.returnedCreditAttributions,
+        liabilities,
+      );
+      if (
+        attributionTotal(allocation.offsetAttributions) !==
+          (allocation.offsetCents ?? 0) ||
+        attributionTotal(allocation.creditAttributions) +
+          attributionTotal(allocation.returnedCreditAttributions) !==
+          (allocation.creditCents ?? 0)
+      )
+        fail("CONSERVATION_ERROR", "Allocation attribution does not reconcile");
+    }
+  for (const liability of liabilities.values()) {
+    const offset = liabilityAttributionCents(
+      c,
+      liability.id,
+      "offsetAttributions",
+    );
+    const credit = liabilityAttributionCents(
+      c,
+      liability.id,
+      "creditAttributions",
+    );
+    if (offset + liability.externalSettledCents > liability.createdCents)
+      fail(
+        "CONSERVATION_ERROR",
+        "Refund liability was settled for more than it created",
+      );
+    const creditDue = Math.max(
+      0,
+      liability.cancelledCents +
+        offset +
+        liability.externalSettledCents -
+        liability.createdCents,
+    );
+    if (credit > creditDue)
+      fail(
+        "CONSERVATION_ERROR",
+        "Refund liability credit exceeds the returned recovery",
+      );
+  }
+}
+function addLiability(
+  c: Collaboration,
+  captureId: string,
+  refundId: string,
+  userId: string,
+  kind: RefundLiabilityKind,
+  amount: number,
+) {
+  if (!amount) return;
+  cents(amount, "Liability");
+  const id = liabilityKey(captureId, refundId, userId, kind);
+  if (c.refundLiabilities!.some((liability) => liability.id === id))
+    fail("CONSERVATION_ERROR", "Refund liability already exists");
+  c.refundLiabilities!.push({
+    id,
+    captureId,
+    refundId,
+    userId,
+    kind,
+    createdCents: amount,
+    cancelledCents: 0,
+    externalSettledCents: 0,
+  });
+}
+function cancelLiabilities(
+  c: Collaboration,
+  amount: number,
+  matches: (liability: RefundLiability) => boolean,
+) {
+  let left = amount;
+  for (const liability of c.refundLiabilities ?? []) {
+    if (!matches(liability) || left <= 0) continue;
+    const available = liability.createdCents - liability.cancelledCents;
+    const take = Math.min(available, left);
+    liability.cancelledCents += take;
+    left -= take;
+  }
+  if (left)
+    fail(
+      "CONSERVATION_ERROR",
+      "Refund cancellation exceeds its attributed liability",
+    );
+}
+function appendAttribution(
+  refs: LiabilityAttribution[] | undefined,
+  liabilityId: string,
+  amount: number,
+) {
+  const out = refs ?? [];
+  const prior = out.at(-1);
+  if (prior?.liabilityId === liabilityId) prior.cents += amount;
+  else out.push({ liabilityId, cents: amount });
+  return out;
+}
+function restoreOffsetAttributions(allocation: Allocation, amount: number) {
+  let left = amount;
+  const active = allocation.offsetAttributions ?? [];
+  for (let index = active.length - 1; index >= 0 && left > 0; index--) {
+    const ref = active[index];
+    const take = Math.min(ref.cents, left);
+    allocation.restoredOffsetAttributions = appendAttribution(
+      allocation.restoredOffsetAttributions,
+      ref.liabilityId,
+      take,
+    );
+    ref.cents -= take;
+    left -= take;
+    if (!ref.cents) active.splice(index, 1);
+  }
+  if (left)
+    fail(
+      "ATTRIBUTION_REQUIRED",
+      "Historical offset needs operator attribution before it can be restored",
+    );
+  if (active.length) allocation.offsetAttributions = active;
+  else delete allocation.offsetAttributions;
+}
+function returnAttributedCredits(allocation: Allocation) {
+  for (const ref of allocation.creditAttributions ?? [])
+    allocation.returnedCreditAttributions = appendAttribution(
+      allocation.returnedCreditAttributions,
+      ref.liabilityId,
+      ref.cents,
+    );
+  delete allocation.creditAttributions;
+}
+/** Largest remainder over integer weights with stable user-ID tie break. When
+ * total <= the sum of weights, no part is negative or larger than its weight. */
+function prorate(
+  total: number,
+  weights: { userId: string; weight: number }[],
+): Map<string, number> {
+  const sum = weights.reduce((s, w) => s + w.weight, 0);
+  if (!Number.isSafeInteger(total) || total < 0 || total > sum)
+    fail("CONSERVATION_ERROR", "A refund cannot take more than is left");
+  const rows = weights.map((w) => ({
+    userId: w.userId,
+    amount: sum ? Number((BigInt(total) * BigInt(w.weight)) / BigInt(sum)) : 0,
+    remainder: sum ? (BigInt(total) * BigInt(w.weight)) % BigInt(sum) : 0n,
+  }));
+  let left = total - rows.reduce((s, r) => s + r.amount, 0);
+  rows.sort((a, b) =>
+    a.remainder !== b.remainder
+      ? a.remainder > b.remainder
+        ? -1
+        : 1
+      : a.userId < b.userId
+        ? -1
+        : a.userId > b.userId
+          ? 1
+          : 0,
+  );
+  for (const row of rows)
+    if (left > 0) {
+      row.amount++;
+      left--;
+    }
+  return new Map(rows.map((r) => [r.userId, r.amount]));
+}
+/** Everything refunds have taken back from one payment so far. */
+export function refundedCents(r: Revenue): {
+  grossCents: number;
+  feeReturnedCents: number;
+} {
+  return (r.refunds ?? []).reduce(
+    (sum, x) => ({
+      grossCents: sum.grossCents + x.grossCents,
+      feeReturnedCents: sum.feeReturnedCents + x.feeReturnedCents,
+    }),
+    { grossCents: 0, feeReturnedCents: 0 },
+  );
+}
+/** What a payment's allocations (totals plus amounts kept back, less amounts given back) must add up to after its refunds:
+ * the net received, less each refund's net, plus any shortfall now owed instead of covered. */
+export function allocatedNetCents(r: Revenue): number {
+  return (r.refunds ?? []).reduce(
+    (sum, x) =>
+      sum -
+      (x.grossCents - x.feeReturnedCents) +
+      x.shares.reduce(
+        (s, p) => s + p.shortfallCents - (p.shortfallReturnedCents ?? 0),
+        0,
+      ),
+    r.netCents,
+  );
+}
+export interface CaptureRefundInput {
+  /** Provider refund ID, or a stable key for a reversal. Replays are no-ops. */
+  refundId: string;
+  captureId: string;
+  kind: RefundKind;
+  /** Amount the buyer got back, as PayPal reported it. */
+  grossCents: number;
+  /** Part of PayPal's fee that PayPal gave back with this refund (0 when not returned). */
+  feeReturnedCents: number;
+}
+export interface CapturePayoutState {
+  /** A share of this payment was reserved for, or may have reached, PayPal. */
+  payoutsStarted: boolean;
+  /** Per person: what may already have been paid out from this payment. */
+  paidCents: Record<string, number>;
+}
+/**
+ * A refund comes back out of the payment it refunds, by that payment's stored allocation
+ * (never the current rules). Ordering, decided by the owner: a refund is undone in the
+ * reverse of how the payment came in. The payment first paid back the advance, so the refund
+ * first reduces what this payment paid back (the advance counts as less paid back and later
+ * payments repay it again); whatever is left comes off each person's split in proportion to
+ * what they still get from this payment, by largest remainder. Never negative, integer cents.
+ *
+ * Fees: the reversal is based on PayPal's net refund. Under BEFORE_SPLIT the net refund
+ * (refund minus fee returned) comes off everyone, so an unreturned fee is shared by the split.
+ * Under ORGANIZER_SHARE the refund comes off everyone's gross share and only a returned fee goes
+ * back to whoever covered it, so they keep covering any unreturned fee. When an unreturned fee
+ * is more than the payment has left, the rest becomes a shortfall owed by the same people.
+ *
+ * The agreement pauses (reviewHold) when payouts from this payment already started, for a
+ * reversal, when a shortfall or undone offset becomes owed, or when the advance changed since
+ * this payment. Otherwise only this payment's shares change. Everyone's newly owed amount is
+ * added to owedBack.
+ */
+export function applyCaptureRefund(
+  c: Collaboration,
+  input: CaptureRefundInput,
+  payouts: CapturePayoutState,
+  at: string,
+): {
+  collaboration: Collaboration;
+  duplicate: boolean;
+  held: boolean;
+  refund: RevenueRefund;
+} {
+  nonempty(input.refundId, "Refund ID");
+  nonempty(input.captureId, "Capture ID");
+  timestamp(at);
+  if (!Object.values(RefundKind).includes(input.kind))
+    fail("INVALID_INPUT", "Refund kind required");
+  cents(input.grossCents, "Refund");
+  cents(input.feeReturnedCents, "Returned fee");
+  if (!input.grossCents || input.feeReturnedCents > input.grossCents)
+    fail("INVALID_MONEY", "A positive refund is required");
+  const out = copy(c);
+  const revenue =
+    out.revenue.find((r) => r.providerCaptureId === input.captureId) ??
+    fail("UNKNOWN_CAPTURE", "Refund does not match a recorded payment");
+  const prior = revenue.refunds?.find((r) => r.id === input.refundId);
+  if (prior) {
+    if (
+      prior.kind !== input.kind ||
+      prior.grossCents !== input.grossCents ||
+      prior.feeReturnedCents !== input.feeReturnedCents
+    )
+      fail(
+        "REFUND_CONFLICT",
+        "Refund previously recorded with different money",
+      );
+    return {
+      collaboration: copy(c),
+      duplicate: true,
+      held: prior.held,
+      refund: copy(prior),
+    };
+  }
+  const done = refundedCents(revenue);
+  if (done.grossCents + input.grossCents > revenue.grossCents)
+    fail(
+      "REFUND_EXCEEDS_PAYMENT",
+      "Refunds cannot add up to more than the payment",
+    );
+  if (done.feeReturnedCents + input.feeReturnedCents > revenue.feeCents)
+    fail("REFUND_FEE_MISMATCH", "Returned fees cannot exceed the fee charged");
+  ensureRefundAttribution(out);
+  const rules =
+    out.versions.find((v) => v.id === revenue.versionId)?.rules ??
+    fail("UNKNOWN_VERSION", "The payment's rules are missing");
+  const organizerPays = rules.feePolicy === FeePolicy.ORGANIZER_SHARE;
+  const before = new Map(
+    revenue.allocations.map((a) => [
+      a.userId,
+      a.totalCents - (a.creditCents ?? 0),
+    ]),
+  );
+  const shares = new Map<string, RefundShare>(
+    revenue.allocations.map((a) => [
+      a.userId,
+      {
+        userId: a.userId,
+        recoupmentCents: 0,
+        shareCents: 0,
+        feeCents: 0,
+        offsetRestoredCents: 0,
+        shortfallCents: 0,
+        owedCents: 0,
+      },
+    ]),
+  );
+  const base = organizerPays
+    ? input.grossCents
+    : input.grossCents - input.feeReturnedCents;
+  // 1. The advance first: what this payment paid back.
+  let fromAdvance = 0;
+  for (const a of revenue.allocations) {
+    const take = Math.min(a.recoupmentCents, base - fromAdvance);
+    a.recoupmentCents -= take;
+    shares.get(a.userId)!.recoupmentCents = take;
+    fromAdvance += take;
+  }
+  // 2. Then the split, in proportion to what each person still gets from this payment.
+  const splitLeft = revenue.allocations.reduce((s, a) => s + a.shareCents, 0);
+  const fromSplit = Math.min(base - fromAdvance, splitLeft);
+  const split = prorate(
+    fromSplit,
+    revenue.allocations.map((a) => ({
+      userId: a.userId,
+      weight: a.shareCents,
+    })),
+  );
+  for (const a of revenue.allocations) {
+    a.shareCents -= split.get(a.userId)!;
+    shares.get(a.userId)!.shareCents = split.get(a.userId)!;
+  }
+  // 3. An unreturned fee beyond what the payment has left is shared like the fee was.
+  const beyond = base - fromAdvance - fromSplit;
+  if (beyond > 0)
+    for (const [userId, part] of Object.entries(
+      splitCents(beyond, rules.shares),
+    ))
+      if (shares.has(userId)) shares.get(userId)!.shortfallCents += part;
+      else fail("CONSERVATION_ERROR", "Refund shortfall has no owner");
+  // 4. A returned fee goes back to whoever covered it.
+  if (organizerPays && input.feeReturnedCents) {
+    const bearer =
+      revenue.allocations.find((a) => a.userId === rules.feeBearerId) ??
+      fail("REFUND_FEE_MISMATCH", "The fee was not covered by anyone");
+    const shortfallLiabilities = (out.refundLiabilities ?? []).filter(
+      (liability) =>
+        liability.captureId === input.captureId &&
+        liability.userId === bearer.userId &&
+        liability.kind === RefundLiabilityKind.FEE_SHORTFALL,
+    );
+    const shortfallLeft = shortfallLiabilities.reduce(
+      (sum, liability) =>
+        sum + liability.createdCents - liability.cancelledCents,
+      0,
+    );
+    if (bearer.feeCents + shortfallLeft < input.feeReturnedCents)
+      fail(
+        "REFUND_FEE_MISMATCH",
+        "Returned fees cannot exceed the fee still covered or owed",
+      );
+    const returnedFromFee = Math.min(bearer.feeCents, input.feeReturnedCents);
+    const returnedFromShortfall = input.feeReturnedCents - returnedFromFee;
+    bearer.feeCents -= returnedFromFee;
+    shares.get(bearer.userId)!.feeCents = input.feeReturnedCents;
+    if (returnedFromShortfall) {
+      shares.get(bearer.userId)!.shortfallReturnedCents = returnedFromShortfall;
+      cancelLiabilities(out, returnedFromShortfall, (liability) =>
+        shortfallLiabilities.includes(liability),
+      );
+    }
+  }
+  // 5. Never negative: undo an offset this payment's own entitlement can no longer cover,
+  // then any fee it no longer covers. A credit from another liability is added afterwards;
+  // it cannot fund this payment's offset or fee.
+  for (const a of revenue.allocations) {
+    const share = shares.get(a.userId)!;
+    let offset = a.offsetCents ?? 0,
+      fundedTotal = a.recoupmentCents + a.shareCents - a.feeCents - offset;
+    if (fundedTotal < 0) {
+      const restore = Math.min(offset, -fundedTotal);
+      offset -= restore;
+      fundedTotal += restore;
+      share.offsetRestoredCents = restore;
+      if (restore) restoreOffsetAttributions(a, restore);
+    }
+    if (fundedTotal < 0) {
+      a.feeCents += fundedTotal;
+      share.shortfallCents -= fundedTotal;
+      fundedTotal = 0;
+    }
+    if (offset) a.offsetCents = offset;
+    else delete a.offsetCents;
+    a.totalCents = fundedTotal + (a.creditCents ?? 0);
+  }
+  // 6. Advance bookkeeping, and whether it can be trusted without a person looking.
+  let advanceUnclear = false;
+  if (fromAdvance) {
+    const advance =
+      rules.advance ??
+      fail("CONSERVATION_ERROR", "Repayment without an advance");
+    const lower = (id: string) => {
+      const was = own(out.recoupedByAdvance, id);
+      if (was < fromAdvance) advanceUnclear = true;
+      setOwn(out.recoupedByAdvance, id, Math.max(0, was - fromAdvance));
+    };
+    if (revenue.advanceId) {
+      // Lower the advance this payment repaid and every advance its count was carried onto,
+      // never an unrelated later advance.
+      const chain = [revenue.advanceId];
+      for (let grew = true; grew; ) {
+        grew = false;
+        for (const [to, from] of Object.entries(out.advanceCarries ?? {}))
+          if (chain.includes(from) && !chain.includes(to)) {
+            chain.push(to);
+            grew = true;
+          }
+      }
+      for (const id of chain) lower(id);
+    } else {
+      // An older payment did not record its advance or carry-overs: lower its own advance and
+      // pause for review if different rules are in force now.
+      lower(advance.id);
+      if (recoupedInForce(out).advance?.id !== advance.id)
+        advanceUnclear = true;
+    }
+  }
+  const owesNew = [...shares.values()].some(
+    (s) => s.shortfallCents || s.offsetRestoredCents,
+  );
+  const held =
+    input.kind === RefundKind.REVERSAL ||
+    payouts.payoutsStarted ||
+    owesNew ||
+    advanceUnclear;
+  // 7. Owed: newly overpaid against what may already have been paid, plus anything uncovered.
+  for (const a of revenue.allocations) {
+    const share = shares.get(a.userId)!;
+    const paid = own(payouts.paidCents, a.userId);
+    cents(paid, "Paid");
+    const overpayment =
+      Math.max(0, paid - (a.totalCents - (a.creditCents ?? 0))) -
+      Math.max(0, paid - before.get(a.userId)!);
+    share.owedCents =
+      overpayment + share.shortfallCents + share.offsetRestoredCents;
+    addLiability(
+      out,
+      input.captureId,
+      input.refundId,
+      a.userId,
+      RefundLiabilityKind.PAYOUT_OVERPAYMENT,
+      overpayment,
+    );
+    addLiability(
+      out,
+      input.captureId,
+      input.refundId,
+      a.userId,
+      RefundLiabilityKind.FEE_SHORTFALL,
+      share.shortfallCents,
+    );
+  }
+  const refund: RevenueRefund = {
+    id: input.refundId,
+    kind: input.kind,
+    grossCents: input.grossCents,
+    feeReturnedCents: input.feeReturnedCents,
+    shares: [...shares.values()],
+    held,
+    at,
+  };
+  (revenue.refunds ??= []).push(refund);
+  refreshRefundAttribution(out);
+  if (
+    revenue.allocations.some((a) => a.totalCents < 0) ||
+    revenue.allocations.reduce(
+      (s, a) => s + a.totalCents + (a.offsetCents ?? 0) - (a.creditCents ?? 0),
+      0,
+    ) !== allocatedNetCents(revenue)
+  )
+    fail("CONSERVATION_ERROR", "Refund must reconcile to the money left");
+  audit(out, AuditType.REFUND_APPLIED, "provider", at, {
+    captureId: input.captureId,
+    refundId: input.refundId,
+    kind: input.kind,
+    grossCents: input.grossCents,
+    feeReturnedCents: input.feeReturnedCents,
+    held,
+  });
+  if (held) {
+    revenue.status = RevenueStatus.REVIEW_REQUIRED;
+    out.reviewHold = true;
+    for (const e of out.revenue)
+      for (const a of e.allocations) a.status = AllocationStatus.HELD;
+    audit(out, AuditType.PAYMENT_HELD, "provider", at, {
+      captureId: input.captureId,
+      refundId: input.refundId,
+      reason:
+        input.kind === RefundKind.REVERSAL
+          ? "PayPal took this payment back"
+          : payouts.payoutsStarted
+            ? "Refunded after payouts started"
+            : "Refund needs a review",
+    });
+  }
+  return { collaboration: out, duplicate: false, held, refund: copy(refund) };
+}
+/** PayPal finally did not deliver a person's payout from this payment (returned, failed...).
+ * Refunds counted that payout as paid, so the part of their owed amount that came from being
+ * "overpaid" on this payment is released. Shortfalls and undone offsets stay owed. Once per
+ * person per payment. */
+export function releaseUndeliveredOverpayment(
+  c: Collaboration,
+  captureId: string,
+  userId: string,
+  at: string,
+): Collaboration {
+  timestamp(at);
+  const out = copy(c);
+  const revenue =
+    out.revenue.find((r) => r.providerCaptureId === captureId) ??
+    fail("UNKNOWN_CAPTURE", "Payment not found");
+  if (revenue.undeliveredUserIds?.includes(userId)) return copy(c);
+  ensureRefundAttribution(out);
+  refreshRefundAttribution(out);
+  const owedBefore = own(out.owedBack, userId);
+  const creditBefore = own(out.creditBack, userId);
+  (revenue.undeliveredUserIds ??= []).push(userId);
+  const allocation = revenue.allocations.find((row) => row.userId === userId);
+  if (allocation) returnAttributedCredits(allocation);
+  for (const liability of out.refundLiabilities ?? [])
+    if (
+      liability.captureId === captureId &&
+      liability.userId === userId &&
+      liability.kind === RefundLiabilityKind.PAYOUT_OVERPAYMENT
+    )
+      liability.cancelledCents = liability.createdCents;
+  refreshRefundAttribution(out);
+  const released = Math.max(0, owedBefore - own(out.owedBack, userId));
+  const credited = Math.max(0, own(out.creditBack, userId) - creditBefore);
+  audit(out, AuditType.REFUND_APPLIED, "provider", at, {
+    captureId,
+    userId,
+    payoutNotDelivered: true,
+    releasedCents: released,
+    creditedCents: credited,
+  });
+  return out;
+}
+/** Settles each person's owed amount from their next shares, up to what each share pays, and
+ * adds back anything kept back earlier that turned out not to be owed. */
+function offsetOwedBack(c: Collaboration, allocations: Allocation[]) {
+  ensureRefundAttribution(c);
+  if (c.offsetOwedBack) {
+    for (const a of allocations) {
+      let available = a.totalCents;
+      for (const liability of c.refundLiabilities ?? []) {
+        if (liability.userId !== a.userId || available <= 0) continue;
+        const take = Math.min(
+          Math.max(0, liabilityBalance(c, liability)),
+          available,
+        );
+        if (!take) continue;
+        a.offsetAttributions = appendAttribution(
+          a.offsetAttributions,
+          liability.id,
+          take,
+        );
+        a.offsetCents = (a.offsetCents ?? 0) + take;
+        a.totalCents -= take;
+        available -= take;
+      }
+    }
+  }
+  for (const a of allocations) {
+    for (const liability of c.refundLiabilities ?? []) {
+      if (liability.userId !== a.userId) continue;
+      const credit = Math.max(0, -liabilityBalance(c, liability));
+      if (!credit) continue;
+      a.creditAttributions = appendAttribution(
+        a.creditAttributions,
+        liability.id,
+        credit,
+      );
+      a.creditCents = (a.creditCents ?? 0) + credit;
+      a.totalCents += credit;
+    }
+  }
+  refreshRefundAttribution(c);
+}
+/** Organizer clears the pause after reviewing. With offsetFromFuturePayouts, what each person
+ * owes is kept back from their next shares until settled; otherwise it is recorded as settled
+ * outside Fairshare and cleared. The application layer refuses while PayPal is unsettled. */
+export function resumePayouts(
+  c: Collaboration,
+  input: { offsetFromFuturePayouts: boolean; note?: string },
+  actorId: string,
+  at: string,
+): Collaboration {
+  organizer(c, actorId);
+  timestamp(at);
+  if (typeof input.offsetFromFuturePayouts !== "boolean")
+    fail("INVALID_INPUT", "Choose whether to take it out of future payouts");
+  if (
+    input.note !== undefined &&
+    (typeof input.note !== "string" || input.note.length > 1000)
+  )
+    fail("INVALID_INPUT", "Note must be 1000 characters or fewer");
+  if (!c.reviewHold) fail("NOT_PAUSED", "Payouts are not paused");
+  const out = copy(c);
+  ensureRefundAttribution(out);
+  refreshRefundAttribution(out);
+  out.reviewHold = false;
+  for (const r of out.revenue) {
+    if (r.status === RevenueStatus.REVIEW_REQUIRED)
+      r.status = RevenueStatus.CONFIRMED;
+    for (const a of r.allocations) a.status = AllocationStatus.ALLOCATED;
+  }
+  const owed = copy(out.owedBack ?? {});
+  const anyOwed = Object.values(owed).some((v) => v > 0);
+  if (input.offsetFromFuturePayouts && anyOwed) out.offsetOwedBack = true;
+  else {
+    for (const liability of out.refundLiabilities ?? []) {
+      const balance = liabilityBalance(out, liability);
+      if (balance > 0) liability.externalSettledCents += balance;
+    }
+    delete out.offsetOwedBack;
+    refreshRefundAttribution(out);
+  }
+  audit(out, AuditType.PAYOUTS_RESUMED, actorId, at, {
+    offsetFromFuturePayouts: input.offsetFromFuturePayouts && anyOwed,
+    owedCents: owed,
+    ...(input.note?.trim() ? { note: input.note.trim() } : {}),
+  });
+  return out;
+}
 export interface AllocationPreview {
   previewOnly: true;
   versionId: number;
@@ -1143,6 +2137,14 @@ export function previewVersion(
   v.status = VersionStatus.ACTIVE;
   scratch.reviewHold = false;
   scratch.revenue = [];
+  // Illustrates the rules alone; refund obligations, offsets and credits are not rules.
+  delete scratch.offsetOwedBack;
+  delete scratch.owedBack;
+  delete scratch.offsetRecovered;
+  delete scratch.creditBack;
+  delete scratch.externallySettledOverpayments;
+  delete scratch.refundAttributionVersion;
+  delete scratch.refundLiabilities;
   // Illustrative only, so it also works while invited people have not joined yet.
   const preview = allocate(
     scratch,

@@ -124,6 +124,9 @@ export interface AdvanceFact extends FactBase {
   amountCents: number;
   /** null: the document does not say whether it is paid back before the split. */
   recoupedBeforeSplit: boolean | null;
+  /** Set when paying back is stated in another clause under the advance's defined name;
+   * `citation` is then the clause that defines it. */
+  recoupCitation?: Citation;
 }
 export interface FeesFact extends FactBase {
   kind: FactKind.FEES;
@@ -203,6 +206,7 @@ export interface ExtractionResult extends ExtractionDraft {
   executable: false;
   /** Internal metadata: which provider produced the accepted output. Not user copy. */
   provider: ExtractionProvider | null;
+  /** The model that wrote the accepted output (for Claude, the model that served the reply). */
   model: string | null;
   /** Set when the primary provider failed and the fallback produced this result. */
   fallbackFrom: ExtractionProvider | null;
@@ -414,6 +418,207 @@ function monthIndex(name: string): number {
   return i + 1;
 }
 
+/** A date defined as a term, with the sentence that defines it as its citation. */
+export interface DefinedDate {
+  term: string;
+  /** The date exactly as written in the defining sentence. */
+  raw: string;
+  date: string;
+  citation: Citation;
+}
+const MONTH_NAME = `(?:${MONTHS.map((m) => `${m[0].toUpperCase()}${m.slice(1, 3)}(?:${m.slice(3)})?`).join("|")})\\.?`;
+const WRITTEN_DATE = `(?:${MONTH_NAME}\\s+\\d{1,2}(?:st|nd|rd|th)?,?\\s+\\d{4}|\\d{1,2}(?:st|nd|rd|th)?\\s+${MONTH_NAME},?\\s+\\d{4}|\\d{4}-\\d{2}-\\d{2})`;
+const OPEN_Q = `["“'‘]`;
+const CLOSE_Q = `["”'’]`;
+const TERM_NAME = `([A-Z][A-Za-z-]*(?:\\s+[A-Z][A-Za-z-]*){0,4})`;
+/** `dated October 1, 2026 (the "Effective Date")` */
+const DATE_THEN_TERM = new RegExp(
+  `(${WRITTEN_DATE})\\s*,?\\s*\\((?:the\\s+|this\\s+|hereinafter(?:\\s+referred\\s+to\\s+as)?(?:\\s+the)?\\s+)?${OPEN_Q}${TERM_NAME}${CLOSE_Q}\\)`,
+  "g",
+);
+/** `"Commencement Date" means October 1, 2026.` The date must end the clause, so
+ * "means the later of October 1, 2026 and first release" is not a definition of one date. */
+const TERM_MEANS_DATE = new RegExp(
+  `${OPEN_Q}${TERM_NAME}${CLOSE_Q}\\s+(?:means|shall\\s+mean|is|shall\\s+be)\\s+(?:(?:on|the\\s+date\\s+of)\\s+)?(${WRITTEN_DATE})(?=\\s*(?:[.;]|$))`,
+  "gm",
+);
+/** The sentence around [start, end): bounded by a sentence stop, a blank line, or a colon at a line end. */
+function sentenceAround(text: string, start: number, end: number): Citation {
+  const breaks = /[.!?](?=\s+["“(]?[A-Z0-9])|\n\s*\n|:(?=[ \t]*\n)/g;
+  let from = 0;
+  let to = text.length;
+  for (let m = breaks.exec(text); m; m = breaks.exec(text)) {
+    const stop = m[0][0] === "." ? m.index + 1 : m.index + m[0].length;
+    if (m[0][0] === "." && ABBREVIATION.test(text.slice(0, stop))) continue;
+    if (stop <= start) from = stop;
+    else if (m.index >= end) {
+      to = m[0][0] === "\n" ? m.index : m.index + 1;
+      break;
+    }
+  }
+  while (from < to && /\s/.test(text[from])) from++;
+  while (to > from && /\s/.test(text[to - 1])) to--;
+  return { start: from, end: to, quote: text.slice(from, to) };
+}
+/** Every date the document defines as a term. A term defined with two different dates is dropped
+ * as ambiguous. The citation is the defining sentence, or just its clause when the sentence is too long. */
+export function findDefinedDates(text: string): DefinedDate[] {
+  const found = new Map<string, DefinedDate | null>();
+  const add = (term: string, raw: string, at: number, end: number) => {
+    const date = parseDocumentDate(raw);
+    if (!date) return;
+    let citation = sentenceAround(text, at, end);
+    if (citation.quote.length > MAX_QUOTE_CHARS) {
+      const clauseStart = Math.max(
+        text.lastIndexOf(",", at),
+        text.lastIndexOf(";", at),
+        citation.start - 1,
+      );
+      let from = clauseStart + 1;
+      while (from < end && /\s/.test(text[from])) from++;
+      citation = { start: from, end, quote: text.slice(from, end) };
+    }
+    if (
+      citation.quote.length > MAX_QUOTE_CHARS ||
+      !isSingleSentence(citation.quote)
+    )
+      return;
+    const key = normalizeWhitespace(term).toLowerCase();
+    const prior = found.get(key);
+    if (prior === undefined)
+      found.set(key, {
+        term: normalizeWhitespace(term),
+        raw: normalizeWhitespace(raw),
+        date,
+        citation,
+      });
+    else if (prior && prior.date !== date) found.set(key, null);
+  };
+  for (const m of text.matchAll(DATE_THEN_TERM))
+    add(m[2], m[1], m.index, m.index + m[0].length);
+  for (const m of text.matchAll(TERM_MEANS_DATE))
+    add(m[1], m[2], m.index, m.index + m[0].length);
+  return [...found.values()].filter((d): d is DefinedDate => d !== null);
+}
+/** A TERM value whose quote only uses a defined term ("commence on the Effective Date") resolves to
+ * the sentence that defines it. The quote must name the term, and the value must be that term or
+ * its exact date; anything else (no definition, two candidates) stays unresolved. */
+export function resolveDefinedDate(
+  text: string,
+  quote: string,
+  value: string,
+): DefinedDate | null {
+  const q = normalizeWhitespace(quote).toLowerCase();
+  const asDate = parseDocumentDate(value);
+  const asTerm = normalizeWhitespace(quoteMarks(value).replace(/"/g, ""))
+    .replace(/^the\s+/i, "")
+    .toLowerCase();
+  const matches = findDefinedDates(text).filter(
+    (d) =>
+      q.includes(d.term.toLowerCase()) &&
+      (asDate ? d.date === asDate : d.term.toLowerCase() === asTerm),
+  );
+  return matches.length === 1 ? matches[0] : null;
+}
+
+const MAX_CLAUSE_CHARS = 600;
+const RECOUP_ACTION =
+  /recoup|repa(?:y|id)|recover|reimburs|paid back|deducted/i;
+const RECOUP_BEFORE_SPLIT =
+  /\b(?:before\s+(?:(?:the\s+)?split|any\s+distribution)|first)\b/i;
+const RECOUP_FROM_SHARE = /\b(?:from|against)\s+[^.;]{0,80}\bshare\b/i;
+const RECOUP_AFTER_SPLIT = /\bafter\s+(?:the\s+)?split\b/i;
+const RECOUP_NEGATED =
+  /\bnon-?(?:recoup|repay|refund)|\bnot\s+(?:be\s+)?(?:recoup|repa|recover|reimburs|deduct|paid back)|\bnever\b|\bno\s+(?:recoup|repayment)/i;
+const CLAUSE_BREAK =
+  /\n[ \t]*\n|\n(?=[ \t]*(?:\(?\d+(?:\.\d+)*[.)]?|\([a-z]{1,3}\))\s)/g;
+/** Numbered clauses and paragraphs: bounded by blank lines and by lines that start a new numbered
+ * clause ("4.2 ", "(b) "). Each is an exact, whitespace-trimmed source range. */
+function clauses(text: string): Citation[] {
+  const out: Citation[] = [];
+  const push = (from: number, to: number) => {
+    while (from < to && /\s/.test(text[from])) from++;
+    while (to > from && /\s/.test(text[to - 1])) to--;
+    if (to > from)
+      out.push({ start: from, end: to, quote: text.slice(from, to) });
+  };
+  let from = 0;
+  for (const m of text.matchAll(CLAUSE_BREAK)) {
+    push(from, m.index);
+    from = m.index + m[0].length;
+  }
+  push(from, text.length);
+  return out;
+}
+const clauseOf = (text: string, citation: Citation) =>
+  clauses(text).find(
+    (c) => c.start <= citation.start && c.end >= citation.end,
+  ) ?? null;
+const showsRecoup = (clause: string) => {
+  const words = normalizeWhitespace(clause);
+  return (
+    new RegExp(
+      `${RECOUP_ACTION.source}[^.;]{0,160}${RECOUP_BEFORE_SPLIT.source}`,
+      "i",
+    ).test(words) &&
+    !RECOUP_FROM_SHARE.test(words) &&
+    !RECOUP_AFTER_SPLIT.test(words) &&
+    !RECOUP_NEGATED.test(words)
+  );
+};
+/** The numbered clause or paragraph holding a citation, when that clause says the advance is paid
+ * back first and says nothing negating it. A different clause never counts here. */
+export function clauseShowingRecoup(
+  text: string,
+  citation: Citation,
+): Citation | null {
+  const clause = clauseOf(text, citation);
+  if (
+    !clause ||
+    clause.quote.length > MAX_CLAUSE_CHARS ||
+    clause.quote.length <= citation.quote.length
+  )
+    return null;
+  return showsRecoup(clause.quote) ? clause : null;
+}
+const DEFINES_TERM = new RegExp(
+  `\\((?:the\\s+|this\\s+)?${OPEN_Q}${TERM_NAME}${CLOSE_Q}\\)|${OPEN_Q}${TERM_NAME}${CLOSE_Q}\\s+(?:means|shall\\s+mean)\\b`,
+  "g",
+);
+const RECOUP_DENIED = /\bnon-?recoup|\bnot\s+(?:be\s+)?recoup/i;
+/** Paid back first, stated in another clause under the advance's defined name. The amount's clause
+ * must define a quoted term (`(the "Production Advance")`), and another clause must name that exact
+ * term, say it is paid back, and negate nothing. Any clause naming the term that says it is not
+ * recouped, or two different terms, leaves it not stated. Returns [defining clause, paying-back clause]. */
+export function definedTermShowingRecoup(
+  text: string,
+  citation: Citation,
+): [Citation, Citation] | null {
+  const own = clauseOf(text, citation);
+  if (
+    !own ||
+    own.quote.length > MAX_CLAUSE_CHARS ||
+    RECOUP_NEGATED.test(normalizeWhitespace(own.quote))
+  )
+    return null;
+  const terms = new Set(
+    [...own.quote.matchAll(DEFINES_TERM)].map((m) =>
+      normalizeWhitespace(m[1] ?? m[2]),
+    ),
+  );
+  if (terms.size !== 1) return null;
+  const [term] = terms;
+  const naming = clauses(text).filter(
+    (c) => c.start !== own.start && normalizeWhitespace(c.quote).includes(term),
+  );
+  if (naming.some((c) => RECOUP_DENIED.test(normalizeWhitespace(c.quote))))
+    return null;
+  const paidBack = naming.find(
+    (c) => c.quote.length <= MAX_CLAUSE_CHARS && showsRecoup(c.quote),
+  );
+  return paidBack ? [own, paidBack] : null;
+}
+
 const FACT_KEYS = [
   "kind",
   "subject",
@@ -453,6 +658,8 @@ function validateFact(raw: unknown, text: string): ExtractedFact {
     throw new Reject(RejectionReason.QUOTE_TOO_LONG);
   if (!isSingleSentence(citation.quote))
     throw new Reject(RejectionReason.QUOTE_MULTIPLE_SENTENCES);
+  const inQuote = (value: string) =>
+    includesNormalized(citation.quote.toLowerCase(), value.toLowerCase());
   // Names may be written in a different case elsewhere ("KEMI ADEYEMI", "the Producer").
   if (!includesNormalized(citation.quote.toLowerCase(), subject.toLowerCase()))
     throw new Reject(RejectionReason.SUBJECT_NOT_IN_QUOTE);
@@ -489,19 +696,14 @@ function validateFact(raw: unknown, text: string): ExtractedFact {
       });
       // A recoup claim the quote does not show becomes "not stated" (asked later) instead of
       // dropping the advance: the amount and recipient are still in the quote.
-      const shown =
-        recouped === true
-          ? /recoup|repa(?:y|id)|recover|reimburs|paid back|deducted first/i
-          : recouped === false
-            ? /non-?recoup|not (?:be )?(?:recouped|repaid|recovered|deducted|paid back)/i
-            : null;
-      return {
-        kind,
-        ...base,
-        amountCents,
-        recoupedBeforeSplit:
-          shown && shown.test(normalizeWhitespace(q)) ? recouped : null,
-      };
+      const recoupDenied =
+        /non-?recoup|not (?:be )?(?:recouped|repaid|recovered|deducted|paid back)/i;
+      if (
+        (recouped === true && showsRecoup(q)) ||
+        (recouped === false && recoupDenied.test(normalizeWhitespace(q)))
+      )
+        return { kind, ...base, amountCents, recoupedBeforeSplit: recouped };
+      return { kind, ...base, amountCents, recoupedBeforeSplit: null };
     }
     case FactKind.FEES: {
       requireNull(f, ["recoupedBeforeSplit", "refundStep", "termBoundary"]);
@@ -1311,7 +1513,7 @@ async function callAnthropic(
   document: SourceDocument,
   config: AnthropicConfig,
   model: string,
-): Promise<unknown> {
+): Promise<ProviderOutput> {
   return withTimeout(config.timeoutMs, async (signal) => {
     const client = new Anthropic({
       apiKey: config.apiKey,
@@ -1359,17 +1561,34 @@ async function callAnthropic(
       .join("");
     if (!text || text.length > MAX_RESPONSE_BYTES)
       throw new ProviderFailure(DiagnosticCategory.INVALID_OUTPUT, 200);
+    // Structured outputs return bare JSON. Anything else (code fences, prose, a cut-off object)
+    // means the format was not honoured, so fail closed rather than salvage it.
+    let raw: unknown;
     try {
-      return JSON.parse(text);
+      raw = JSON.parse(text);
     } catch {
       throw new ProviderFailure(DiagnosticCategory.INVALID_OUTPUT, 200);
     }
+    // A server-side refusal fallback can answer with a different Claude model; record the one
+    // that actually wrote this reading. Missing or malformed provenance must fail closed rather
+    // than attesting that the requested model answered.
+    if (
+      typeof message.model !== "string" ||
+      !/^claude-[a-z0-9.-]+$/.test(message.model)
+    )
+      throw new ProviderFailure(DiagnosticCategory.INVALID_OUTPUT, 200);
+    return { raw, model: message.model };
   });
+}
+interface ProviderOutput {
+  raw: unknown;
+  /** The model that produced the output, when the provider reports a different one. */
+  model?: string;
 }
 interface ProviderAttempt {
   provider: ExtractionProvider;
   model: string;
-  call: () => Promise<unknown>;
+  call: () => Promise<ProviderOutput>;
 }
 /** Caller must authenticate/authorize document access and consent to provider processing. No logging,
  * persistence, remote document fetching, tools or payment operations occur in this package.
@@ -1416,7 +1635,9 @@ export async function extractContract(
     attempts.push({
       provider: ExtractionProvider.CLOUDFLARE,
       model: cloudflareModel,
-      call: () => callCloudflare(document, config, cloudflareModel),
+      call: async () => ({
+        raw: await callCloudflare(document, config, cloudflareModel),
+      }),
     });
   const anthropic = config.anthropic ?? {};
   const anthropicModel = anthropic.model || DEFAULT_ANTHROPIC_MODEL;
@@ -1432,9 +1653,9 @@ export async function extractContract(
   for (const attempt of attempts) {
     try {
       let draft: ExtractionDraft;
-      const raw = await attempt.call();
+      const output = await attempt.call();
       try {
-        draft = validateDraft(raw, document);
+        draft = validateDraft(output.raw, document);
       } catch {
         throw new ProviderFailure(DiagnosticCategory.INVALID_OUTPUT, 200);
       }
@@ -1443,7 +1664,7 @@ export async function extractContract(
         ...draft,
         status: ExtractionStatus.REVIEW_REQUIRED,
         provider: attempt.provider,
-        model: attempt.model,
+        model: output.model ?? attempt.model,
         fallbackFrom: failedProvider,
         reason: null,
       };

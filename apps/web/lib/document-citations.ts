@@ -1,5 +1,6 @@
 import type { Source, Version } from "./model";
-import type { SourceHighlight } from "./source-highlights";
+import { formatMoneyHeadline } from "./preferences";
+import { highlightSegments, type SourceHighlight } from "./source-highlights";
 export interface DocumentCitation {
   id: string;
   label: string;
@@ -112,4 +113,143 @@ export function documentCitations(
       ...(matches.length === 1 ? { page: matches[0].page } : {}),
     };
   });
+}
+
+/** Where a saved rule came from. Only clauses from the file are citations. */
+export enum SourceOrigin {
+  Document = "SOURCE_CLAUSE",
+  Team = "HUMAN_PROPOSAL",
+}
+
+export const fromDocument = (citation: DocumentCitation) =>
+  citation.reference.origin !== SourceOrigin.Team;
+
+/** "4.2" from "Clause 4.2", "§ 4.2" or "Section 4.2". */
+export function clauseLabel(clause: string) {
+  return clause.replace(/^(clause|section|§)\s*/i, "").trim();
+}
+
+/** One plain line per cited rule, in the words the rules card uses. */
+export function citationSummary(
+  id: string,
+  version: Version,
+  nameOf: (userId: string) => string,
+) {
+  const { rules } = version;
+  if (id === CitationId.Advance && rules.advance)
+    return `${nameOf(rules.advance.recipientId)}'s ${formatMoneyHeadline(
+      rules.advance.amountCents,
+    )} advance is paid back first`;
+  const after = rules.advance ? " after the advance is paid back" : "";
+  if (rules.shares.length === 1)
+    return `${nameOf(rules.shares[0].userId)} gets ${
+      rules.shares[0].basisPoints / 100
+    }%${after}`;
+  return `Split ${rules.shares
+    .map((share) => share.basisPoints / 100)
+    .join(" / ")}${after}`;
+}
+
+export interface DocumentPage {
+  page: number;
+  start: number;
+  end: number;
+}
+
+/** Real page ranges when the file had them; otherwise the whole text is one page. */
+export function documentPages(
+  text: string,
+  pages?: number | PageRange[],
+): { pages: DocumentPage[]; paged: boolean } {
+  const valid = Array.isArray(pages)
+    ? pages
+        .filter(
+          (page) =>
+            Number.isInteger(page.page) &&
+            page.page > 0 &&
+            Number.isInteger(page.start) &&
+            Number.isInteger(page.end) &&
+            page.start >= 0 &&
+            page.end >= page.start &&
+            page.end <= text.length,
+        )
+        .sort((a, b) => a.start - b.start)
+    : [];
+  const overlapping = valid.some(
+    (page, index) => index > 0 && page.start < valid[index - 1].end,
+  );
+  if (valid.length && !overlapping)
+    return {
+      pages: valid.map(({ page, start, end }) => ({ page, start, end })),
+      paged: true,
+    };
+  return { pages: [{ page: 1, start: 0, end: text.length }], paged: false };
+}
+
+/** Index of the page holding this offset, or -1. */
+export function pageIndexOf(pages: DocumentPage[], offset: number) {
+  return pages.findIndex((page) => offset >= page.start && offset < page.end);
+}
+
+/** Every case-insensitive match of the search words, as highlights. */
+export function searchHighlights(
+  text: string,
+  query: string,
+): SourceHighlight[] {
+  const needle = query.trim().toLowerCase();
+  if (needle.length < 2) return [];
+  const haystack = text.toLowerCase();
+  const found: SourceHighlight[] = [];
+  for (
+    let at = haystack.indexOf(needle);
+    at !== -1 && found.length < 500;
+    at = haystack.indexOf(needle, at + needle.length)
+  )
+    found.push({
+      id: `${SEARCH_PREFIX}${found.length}`,
+      label: query,
+      kind: "SEARCH",
+      rawValue: query,
+      quote: text.slice(at, at + needle.length),
+      start: at,
+      end: at + needle.length,
+    });
+  return found;
+}
+export const SEARCH_PREFIX = "search-";
+
+export interface PageBlock {
+  start: number;
+  segments: { start: number; text: string; ids: string[] }[];
+}
+
+/** A page as paragraphs (one per line), each split where a highlight starts or ends. */
+export function pageBlocks(
+  text: string,
+  page: DocumentPage,
+  highlights: SourceHighlight[],
+): PageBlock[] {
+  const blocks: PageBlock[] = [];
+  let start = page.start;
+  for (const line of text.slice(page.start, page.end).split("\n")) {
+    const end = start + line.length;
+    if (line.trim()) {
+      const local = highlights
+        .filter((item) => item.start < end && item.end > start)
+        .map((item) => ({
+          ...item,
+          start: Math.max(item.start, start) - start,
+          end: Math.min(item.end, end) - start,
+        }));
+      blocks.push({
+        start,
+        segments: highlightSegments(line, local).map((segment) => ({
+          ...segment,
+          start: segment.start + start,
+        })),
+      });
+    }
+    start = end + 1;
+  }
+  return blocks;
 }

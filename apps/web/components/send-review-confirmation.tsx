@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { type Agreement, type Version } from "../lib/model";
 import { reviewMessage } from "../lib/review-message";
 import { publicWebOrigin } from "../lib/public-web-origin";
+import { CloseButton } from "./close-button";
 import { Button, Field } from "./ui";
 
 export function SendReviewConfirmation({
@@ -54,14 +55,7 @@ export function SendReviewConfirmation({
         <h2 id="send-review-title">
           {sent ? "Ready for everyone’s review" : "Ask everyone to review"}
         </h2>
-        <Button
-          type="button"
-          variant="quiet"
-          disabled={pending}
-          onClick={onClose}
-        >
-          Close
-        </Button>
+        <CloseButton disabled={pending} onClick={onClose} />
       </div>
       <p>
         <strong>{agreement.value.name}</strong> · Version {version.id}

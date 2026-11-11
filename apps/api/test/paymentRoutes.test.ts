@@ -486,16 +486,16 @@ async function pendingRefund() {
   assert.equal(response.json().status, "PENDING");
   return { ...s, original, refundId: response.json().id as string };
 }
-test("full original refund is durable exactly-once and holds liabilities without editing agreed split", async () => {
+test("full refund is durable exactly-once and comes back out of the split", async () => {
   const s = await refundable();
   try {
-    const before = s.agg.read(s.w.id, "collab").value.revenue[0].allocations[0]
-      .totalCents;
     const r = await s.post(`/payments/${s.paymentId}/refund`, {
       confirmFullRefund: true,
     });
     assert.equal(r.statusCode, 200, r.body);
     assert.equal(r.json().status, "COMPLETED");
+    // The mock reports no fee returned: the kept 300 fee is owed, so payouts pause.
+    assert.equal(r.json().outcome, "PAUSED_FOR_REVIEW");
     assert.equal(r.json().holdRemains, true);
     assert.equal(
       (
@@ -508,7 +508,8 @@ test("full original refund is durable exactly-once and holds liabilities without
     assert.equal(s.refundCount(), 1);
     const c = s.agg.read(s.w.id, "collab").value;
     assert.equal(c.reviewHold, true);
-    assert.equal(c.revenue[0].allocations[0].totalCents, before);
+    assert.equal(c.revenue[0].allocations[0].totalCents, 0);
+    assert.equal(c.revenue[0].grossCents, 10000);
     assert.equal(
       (await s.post("/payouts/dispatch", { captureId: "CAP1" })).statusCode,
       400,
@@ -520,6 +521,9 @@ test("full original refund is durable exactly-once and holds liabilities without
       })
     ).json();
     assert.equal(recovery.refunds.length, 1);
+    assert.deepEqual(recovery.review.owed, [
+      { userId: s.owner.user.id, name: "Maya", cents: 300 },
+    ]);
     assert.ok(
       recovery.audit.some((e: any) => e.kind === "REFUND_EVIDENCE_VERIFIED"),
     );
@@ -1666,7 +1670,7 @@ test("refund status notifications reconcile exact reserved refunds and keep term
   try {
     const db = s.app.store.db;
     db.prepare(
-      "INSERT INTO fairshare_refund_ops VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+      "INSERT INTO fairshare_refund_ops(id,workspace_id,collaboration_id,payment_id,capture_id,amount,request_key,provider_refund_id,status,created_by,created_at,client_key) VALUES(?,?,?,?,?,?,?,?,?,?,?,'full')",
     ).run(
       "refund-op",
       s.w.id,

@@ -10,6 +10,8 @@ export enum PaymentGridStatus {
   Reversed = "REVERSED",
   /** Parked until this person adds a PayPal email. Nothing was sent. */
   WaitingRecipient = "WAITING_RECIPIENT",
+  /** Allocated and ready to send, but PayPal has not received it. */
+  Reserved = "RESERVED",
   /** A send may have reached PayPal; we are reading PayPal's record. */
   Checking = "CHECKING",
   Unknown = "UNKNOWN",
@@ -41,6 +43,7 @@ export const paymentStatusLabels: Record<PaymentGridStatus, string> = {
   FAILED: "Failed",
   REVERSED: "Reversed",
   WAITING_RECIPIENT: "Waiting for PayPal email",
+  RESERVED: "Ready to send",
   CHECKING: "Checking with PayPal",
   UNKNOWN: "Being checked",
 };
@@ -64,8 +67,8 @@ export function payoutGridStatus(status: string): PaymentGridStatus {
     return PaymentGridStatus.Reversed;
   if (["SUBMITTING", "PROCESSING"].includes(status))
     return PaymentGridStatus.Processing;
-  if (["PENDING", "RESERVED"].includes(status))
-    return PaymentGridStatus.Pending;
+  if (status === "PENDING") return PaymentGridStatus.Pending;
+  if (status === "RESERVED") return PaymentGridStatus.Reserved;
   if (status === "WAITING_RECIPIENT") return PaymentGridStatus.WaitingRecipient;
   if (status === "OUTCOME_UNKNOWN") return PaymentGridStatus.Checking;
   return PaymentGridStatus.Unknown;

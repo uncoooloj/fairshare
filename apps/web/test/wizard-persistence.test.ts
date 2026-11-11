@@ -11,14 +11,18 @@ import {
   RefundChoice,
   type AgreementAnswers,
 } from "../lib/rules-answers";
-import { StandardQuestionId } from "../lib/standard-questions";
+import { StandardQuestionId, feeQuestion } from "../lib/standard-questions";
 import type { Agreement } from "../lib/model";
 import {
   clearDraftAnswers,
   draftAnswersKey,
+  forgetStaleInviteTokens,
+  inviteLinksKey,
   loadDraftAnswers,
+  loadInviteLinks,
   restoreQuestions,
   saveDraftAnswers,
+  saveInviteLinks,
 } from "../lib/wizard-persistence";
 
 const self = { name: "Maya Okafor", userId: "owner" };
@@ -39,7 +43,8 @@ function withStorage(run: (store: Map<string, string>) => void) {
   }
 }
 
-/** 50/30/20 with a $2,000 advance Maya already paid, fees answered on the Questions step. */
+/** 50/30/20 with a $2,000 advance Maya already paid, fees answered on the Questions step
+ * (asked because the document wanted someone Fairshare can't charge). */
 function midnight(): AgreementAnswers {
   const base = emptyAnswers(self);
   const answers: AgreementAnswers = {
@@ -63,8 +68,8 @@ function midnight(): AgreementAnswers {
       source: AnswerSource.PERSON,
     },
   };
-  // Ask the questions, then answer fees the way the Questions step does.
-  const asked = mergeQuestions(answers);
+  // Ask the fee question, then answer it the way the Questions step does.
+  const asked = { ...answers, questions: [feeQuestion(answers)] };
   const fees = asked.questions.find((q) => q.id === StandardQuestionId.FEES)!;
   const choice = fees.choices.find((c) => c.id === FeeChoice.BEFORE_SPLIT)!;
   return {
@@ -147,15 +152,8 @@ test("a reopened draft gets back the split, advance and answered questions", () 
     );
     assert.equal(back.advance?.value.alreadyPaid, true);
     assert.equal(back.fees?.value, FeeChoice.BEFORE_SPLIT);
-    const fees = back.questions.find((q) => q.id === StandardQuestionId.FEES);
-    assert.equal(fees?.answeredChoiceId, FeeChoice.BEFORE_SPLIT);
-    assert.ok(fees?.choices.length, "choices are rebuilt, not stored");
-    // Still-open questions are asked again.
-    assert.ok(
-      back.questions.some(
-        (q) => q.id === StandardQuestionId.REFUNDS && !q.answeredChoiceId,
-      ),
-    );
+    // Without a reading nothing raises the fee question again, and refunds are never asked.
+    assert.deepEqual(back.questions, []);
   });
 });
 
@@ -195,9 +193,7 @@ test("legacy saves migrate through the versioned whitelist without leaking extra
     const raw = store.get(draftAnswersKey("w", "a"))!;
     assert.doesNotMatch(raw, /token|extra|ignored|invite/);
     assert.equal(
-      resumedAnswers(resume, self).answers.questions.find(
-        (q) => q.id === StandardQuestionId.FEES,
-      )?.answeredChoiceId,
+      resumedAnswers(resume, self).answers.fees?.value,
       FeeChoice.BEFORE_SPLIT,
     );
     store.set(
@@ -249,10 +245,37 @@ test("blocked storage never throws", () => {
   assert.equal(loadDraftAnswers("w", "a"), undefined);
 });
 
+test("invite cache keeps only unexpired structured tokens and fails closed for legacy values", () => {
+  withStorage((store) => {
+    const now = 1000;
+    assert.deepEqual(
+      forgetStaleInviteTokens(
+        {
+          current: { token: "current", expiresAt: now + 1 },
+          expired: { token: "expired", expiresAt: now },
+        },
+        now,
+      ),
+      { current: { token: "current", expiresAt: now + 1 } },
+    );
+    store.set(
+      inviteLinksKey("w", "a"),
+      JSON.stringify({ legacy: "bearer", invalid: { token: "x" } }),
+    );
+    assert.deepEqual(loadInviteLinks("w", "a"), {});
+    saveInviteLinks("w", "a", {
+      current: { token: "current", expiresAt: Date.now() + 48 * 3600000 },
+    });
+    assert.deepEqual(loadInviteLinks("w", "a"), { current: "current" });
+  });
+});
+
 test("restoreQuestions drops unknown questions and stale answers", () => {
-  const asked = mergeQuestions(
-    (({ fees: _f, ...rest }) => rest)(midnight()) as AgreementAnswers,
-  ).questions;
+  const asked = [
+    feeQuestion(
+      (({ fees: _f, ...rest }) => rest)(midnight()) as AgreementAnswers,
+    ),
+  ];
   const restored = restoreQuestions(
     [
       { id: "gone" },
@@ -262,34 +285,32 @@ test("restoreQuestions drops unknown questions and stale answers", () => {
   );
   assert.deepEqual(
     restored.map((q) => [q.id, q.answeredChoiceId]),
-    [
-      [StandardQuestionId.FEES, undefined],
-      [StandardQuestionId.REFUNDS, undefined],
-    ],
+    [[StandardQuestionId.FEES, undefined]],
   );
 });
 
 test("restoreQuestions retains stored order and appends a newly live question", () => {
-  const asked = mergeQuestions(
-    (({ fees: _f, ...rest }) => rest)(midnight()) as AgreementAnswers,
-  ).questions;
+  const asked = [
+    feeQuestion(
+      (({ fees: _f, ...rest }) => rest)(midnight()) as AgreementAnswers,
+    ),
+  ];
   const restored = restoreQuestions(
     [{ id: StandardQuestionId.FEES, answeredChoiceId: FeeChoice.BEFORE_SPLIT }],
     asked,
   );
   assert.deepEqual(
     restored.map((q) => [q.id, q.answeredChoiceId]),
-    [
-      [StandardQuestionId.FEES, FeeChoice.BEFORE_SPLIT],
-      [StandardQuestionId.REFUNDS, undefined],
-    ],
+    [[StandardQuestionId.FEES, FeeChoice.BEFORE_SPLIT]],
   );
 });
 
 test("restoreQuestions keeps only the first persisted copy of an id", () => {
-  const asked = mergeQuestions(
-    (({ fees: _f, ...rest }) => rest)(midnight()) as AgreementAnswers,
-  ).questions;
+  const asked = [
+    feeQuestion(
+      (({ fees: _f, ...rest }) => rest)(midnight()) as AgreementAnswers,
+    ),
+  ];
   assert.deepEqual(
     restoreQuestions(
       [
@@ -304,10 +325,7 @@ test("restoreQuestions keeps only the first persisted copy of an id", () => {
       ],
       asked,
     ).map((question) => [question.id, question.answeredChoiceId]),
-    [
-      [StandardQuestionId.FEES, FeeChoice.BEFORE_SPLIT],
-      [StandardQuestionId.REFUNDS, undefined],
-    ],
+    [[StandardQuestionId.FEES, FeeChoice.BEFORE_SPLIT]],
   );
 });
 
@@ -348,29 +366,27 @@ test("a fresh unresolved question wins a capped list over older answered questio
   );
 });
 
-test("a stale refunds answer is reopened instead of being marked answered", () => {
+test("an old saved refunds question is dropped on resume", () => {
   withStorage(() => {
     const answers = midnight();
-    const refunds = answers.questions.find(
-      (question) => question.id === StandardQuestionId.REFUNDS,
-    )!;
-    const saved = refunds.choices
-      .find((choice) => choice.id === RefundChoice.SPLIT)!
-      .apply(answers);
     saveDraftAnswers("w", "a", {
-      ...saved,
+      ...answers,
       refunds: { value: RefundChoice.ADVANCE, source: AnswerSource.PERSON },
-      questions: saved.questions.map((question) =>
-        question.id === refunds.id
-          ? { ...question, answeredChoiceId: RefundChoice.SPLIT }
-          : question,
-      ),
+      questions: [
+        ...answers.questions,
+        {
+          id: StandardQuestionId.REFUNDS,
+          text: "Refunds?",
+          choices: [],
+          answeredChoiceId: RefundChoice.SPLIT,
+        },
+      ],
     });
     assert.equal(
-      resumedAnswers(resume, self).answers.questions.find(
+      resumedAnswers(resume, self).answers.questions.some(
         (question) => question.id === StandardQuestionId.REFUNDS,
-      )?.answeredChoiceId,
-      undefined,
+      ),
+      false,
     );
   });
 });

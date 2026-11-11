@@ -77,7 +77,7 @@ test("payout dates show the day, the exact time on hover, and a dash when none w
   });
   assert.equal(
     payoutSentLabel({ status: S.Paid, updatedAt: at }),
-    "Sent Nov 11",
+    "Status updated Nov 11",
   );
   assert.equal(payoutSentLabel({ status: S.Paid }), undefined);
   assert.equal(

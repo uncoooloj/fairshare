@@ -529,3 +529,51 @@ test("webhook configuration is reported as a boolean and still fails closed with
   );
   assert.equal(requests, 0);
 });
+
+test("refund exposes PayPal's fee breakdown and rejects one that does not add up", async () => {
+  const breakdown = (fee: string, net: string) => ({
+    gross_amount: { value: "5.00", currency_code: "USD" },
+    paypal_fee: { value: fee, currency_code: "USD" },
+    net_amount: { value: net, currency_code: "USD" },
+  });
+  const { client } = setup([
+    token,
+    {
+      id: "r1",
+      status: "COMPLETED",
+      amount: { value: "5.00", currency_code: "USD" },
+      seller_payable_breakdown: breakdown("0.15", "4.85"),
+    },
+    {
+      id: "r1",
+      status: "COMPLETED",
+      amount: { value: "5.00", currency_code: "USD" },
+    },
+    {
+      id: "r1",
+      status: "COMPLETED",
+      amount: { value: "5.00", currency_code: "USD" },
+      seller_payable_breakdown: breakdown("0.15", "4.80"),
+    },
+    {
+      id: "REFUND",
+      status: "COMPLETED",
+      amount: { value: "5.00", currency_code: "USD" },
+      seller_payable_breakdown: breakdown("0.00", "5.00"),
+    },
+  ]);
+  assert.deepEqual((await client.getRefund("r1")).accounting, {
+    grossCents: 500,
+    feeReturnedCents: 15,
+    netCents: 485,
+  });
+  assert.equal((await client.getRefund("r1")).accounting, undefined);
+  await assert.rejects(client.getRefund("r1"), {
+    code: "REFUND_ACCOUNTING_MISMATCH",
+  });
+  assert.equal(
+    (await client.refundCapture("CAPTURE", 500, "USD", "refund-2")).accounting!
+      .feeReturnedCents,
+    0,
+  );
+});

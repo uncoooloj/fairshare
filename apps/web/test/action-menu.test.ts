@@ -115,5 +115,6 @@ test("closed trigger announces a menu and renders no list in place", () => {
 test("agreement header uses the shared menu, not a details popover", () => {
   const header = readComponent("agreement-workspace.tsx");
   assert.match(header, /<ActionMenu[\s\S]*label="Agreement actions"/);
+  assert.match(header, /description: item\.note/);
   assert.doesNotMatch(header, /ag-menu|<details/);
 });

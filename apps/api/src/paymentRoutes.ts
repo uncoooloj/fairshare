@@ -12,6 +12,7 @@ import {
   holdReversedRevenue,
   DomainError,
   MemberRole,
+  RefundKind,
 } from "@fairshare/domain";
 import {
   PayPalSandbox,
@@ -28,10 +29,16 @@ import type { FairshareApp } from "./app.js";
 import { Role } from "./identity.js";
 import { registerPaymentRecovery } from "./paymentRecovery.js";
 import {
+  applyRefundToCapture,
+  applyReversal,
+  settleRefundOp,
+  notePayoutStatus,
+  recordDispute,
+} from "./refundReversal.js";
+import {
   advancePayoutAccountGeneration,
   ensurePayoutAccountSchema,
   hasAccountPayoutDestination,
-  payoutTimestamp,
   readPayoutDestination,
 } from "./payoutAccounts.js";
 import {
@@ -459,7 +466,7 @@ export function registerPaymentRoutes(
         member.userId === user.id && member.role === MemberRole.ORGANIZER,
     );
     const query =
-      "SELECT id,capture_id,user_id,amount,batch_id,status,item_id,created_at AS createdAt,updated_at AS updatedAt FROM fairshare_payout_ops WHERE workspace_id=? AND collaboration_id=?";
+      "SELECT id,capture_id,user_id,amount,batch_id,status,item_id FROM fairshare_payout_ops WHERE workspace_id=? AND collaboration_id=?";
     return {
       payouts: organizer
         ? db.prepare(query).all(p.workspaceId, p.collaborationId)
@@ -487,15 +494,23 @@ export function registerPaymentRoutes(
       paymentError(e);
     }
     assertLease();
-    const fresh = db
-      .prepare("SELECT status,batch_id FROM fairshare_payout_ops WHERE id=?")
-      .get(op.id) as any;
-    if (!fresh || fresh.batch_id !== op.batch_id || fresh.status !== op.status)
-      fail("RECONCILIATION_CONFLICT", "Payout changed during provider read");
-    // updated_at marks the last status change, so a repeat read keeps it.
-    db.prepare(
-      "UPDATE fairshare_payout_ops SET updated_at=CASE WHEN status=? THEN updated_at ELSE ? END,status=?,item_id=? WHERE id=?",
-    ).run(r!.status, payoutTimestamp(), r!.status, r!.itemId, op.id);
+    const fresh = tx(() => {
+      const fresh = db
+        .prepare("SELECT status,batch_id FROM fairshare_payout_ops WHERE id=?")
+        .get(op.id) as any;
+      if (
+        !fresh ||
+        fresh.batch_id !== op.batch_id ||
+        fresh.status !== op.status
+      )
+        fail("RECONCILIATION_CONFLICT", "Payout changed during provider read");
+      const at = payoutTimestamp();
+      db.prepare(
+        "UPDATE fairshare_payout_ops SET updated_at=CASE WHEN status=? THEN updated_at ELSE ? END,status=?,item_id=? WHERE id=?",
+      ).run(r!.status, at, r!.status, r!.itemId, op.id);
+      notePayoutStatus(db, aggregates, op, fresh.status, r!.status, at);
+      return fresh;
+    });
     if (r!.status !== fresh.status)
       app.store.audit("provider", op.workspace_id, "PAYOUT_STATUS_CHANGED", {
         agreementId: op.collaboration_id,
@@ -551,10 +566,8 @@ export function registerPaymentRoutes(
         const status = recipient ? "RESERVED" : "WAITING_RECIPIENT";
         if (prior) {
           db.prepare(
-            `UPDATE fairshare_payout_ops SET updated_at=CASE WHEN status=? THEN updated_at ELSE ? END,status=?,recipient_type=?,recipient_id=? WHERE id=? AND status IN (${PARKED_PAYOUT_STATUSES.map(() => "?").join(",")})`,
+            `UPDATE fairshare_payout_ops SET status=?,recipient_type=?,recipient_id=? WHERE id=? AND status IN (${PARKED_PAYOUT_STATUSES.map(() => "?").join(",")})`,
           ).run(
-            status,
-            payoutTimestamp(),
             status,
             recipient?.type ?? prior.recipient_type,
             recipient?.value ?? prior.recipient_id,
@@ -567,9 +580,8 @@ export function registerPaymentRoutes(
           .update(`${captureId}:${a.userId}`)
           .digest("hex")
           .slice(0, 30);
-        const at = payoutTimestamp();
         db.prepare(
-          "INSERT INTO fairshare_payout_ops(id,workspace_id,collaboration_id,capture_id,user_id,recipient_type,recipient_id,amount,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+          "INSERT INTO fairshare_payout_ops(id,workspace_id,collaboration_id,capture_id,user_id,recipient_type,recipient_id,amount,status) VALUES(?,?,?,?,?,?,?,?,?)",
         ).run(
           id,
           p.workspaceId,
@@ -580,8 +592,6 @@ export function registerPaymentRoutes(
           recipient?.value ?? "",
           a.totalCents,
           status,
-          at,
-          at,
         );
         return read(id);
       });
@@ -630,10 +640,9 @@ export function registerPaymentRoutes(
           );
         if (!revenue || hold) {
           db.prepare(
-            "UPDATE fairshare_payout_ops SET status=?,updated_at=? WHERE id=? AND status='RESERVED'",
+            "UPDATE fairshare_payout_ops SET status=? WHERE id=? AND status='RESERVED'",
           ).run(
             hold === PayoutHoldReason.ADVERSE_EVENT ? "AUTO_HELD" : "HELD",
-            payoutTimestamp(),
             op.id,
           );
           return false;
@@ -642,9 +651,9 @@ export function registerPaymentRoutes(
         // dispatcher must not replay an in-flight or uncertain submission.
         const claim = db
           .prepare(
-            "UPDATE fairshare_payout_ops SET status='SUBMITTING',updated_at=? WHERE id=? AND status='RESERVED'",
+            "UPDATE fairshare_payout_ops SET status='SUBMITTING' WHERE id=? AND status='RESERVED'",
           )
-          .run(payoutTimestamp(), op.id);
+          .run(op.id);
         return claim.changes === 1;
       });
       if (!permitted) {
@@ -663,8 +672,8 @@ export function registerPaymentRoutes(
           currency: "USD",
         });
         db.prepare(
-          "UPDATE fairshare_payout_ops SET batch_id=?,status='PENDING',updated_at=? WHERE id=?",
-        ).run(result.batchId, payoutTimestamp(), op.id);
+          "UPDATE fairshare_payout_ops SET batch_id=?,status='PENDING' WHERE id=?",
+        ).run(result.batchId, op.id);
         app.store.audit("provider", op.workspace_id, "PAYOUT_SUBMITTED", {
           agreementId: op.collaboration_id,
           payoutId: op.id,
@@ -675,13 +684,13 @@ export function registerPaymentRoutes(
           // The adapter rejects this before any provider call. Keep the same
           // immutable reservation available after configuration is corrected.
           db.prepare(
-            "UPDATE fairshare_payout_ops SET status='RESERVED',updated_at=? WHERE id=? AND status='SUBMITTING' AND batch_id IS NULL",
-          ).run(payoutTimestamp(), op.id);
+            "UPDATE fairshare_payout_ops SET status='RESERVED' WHERE id=? AND status='SUBMITTING' AND batch_id IS NULL",
+          ).run(op.id);
           throw e;
         }
         db.prepare(
-          "UPDATE fairshare_payout_ops SET status='OUTCOME_UNKNOWN',updated_at=? WHERE id=?",
-        ).run(payoutTimestamp(), op.id);
+          "UPDATE fairshare_payout_ops SET status='OUTCOME_UNKNOWN' WHERE id=?",
+        ).run(op.id);
         app.store.audit("provider", op.workspace_id, "PAYOUT_OUTCOME_UNKNOWN", {
           agreementId: op.collaboration_id,
           payoutId: op.id,
@@ -734,7 +743,48 @@ export function registerPaymentRoutes(
         result.status,
         op.id,
       );
+      settleRefundOp(db, aggregates, op.id, result, now());
     });
+  }
+  /** A refund PayPal reports (made here or in PayPal): read it back from PayPal, link it to a
+   * Fairshare refund if it is one, and take it back out of that payment's split once. */
+  function settleProviderRefund(
+    captureId: string,
+    refund: {
+      id: string;
+      status: string;
+      amountCents: number;
+      reference?: string;
+      accounting?: { feeReturnedCents: number };
+    },
+  ) {
+    const op = db
+      .prepare(
+        "SELECT * FROM fairshare_refund_ops WHERE provider_refund_id=? OR (provider_refund_id IS NULL AND request_key=?)",
+      )
+      .get(refund.id, refund.reference ?? "") as any;
+    if (!op)
+      return applyRefundToCapture(db, aggregates, {
+        captureId,
+        refundId: refund.id,
+        kind: RefundKind.REFUND,
+        grossCents: refund.amountCents,
+        feeReturnedCents: refund.accounting?.feeReturnedCents ?? 0,
+        at: now(),
+      }).held;
+    if (op.capture_id !== captureId || op.amount !== refund.amountCents)
+      fail("REFUND_MISMATCH", "Refund evidence mismatch");
+    if (
+      ["COMPLETED", "FAILED", "CANCELLED"].includes(op.status) &&
+      op.status !== refund.status
+    )
+      fail("REFUND_STATUS_CONFLICT", "Terminal refund status cannot regress");
+    db.prepare(
+      "UPDATE fairshare_refund_ops SET provider_refund_id=?,status=? WHERE id=?",
+    ).run(refund.id, refund.status, op.id);
+    settleRefundOp(db, aggregates, op.id, refund, now());
+    return !!aggregates.read(op.workspace_id, op.collaboration_id).value
+      .reviewHold;
   }
   async function processEvent(id: string, assertLease: () => void = () => {}) {
     assertLease();
@@ -804,6 +854,33 @@ export function registerPaymentRoutes(
         }
         if (!captureIds.length)
           fail("UNMATCHED_EVENT", "Capture provenance needs verification");
+        // A capture refund with verified parent provenance is read back from PayPal and taken
+        // out of the split. A refund PayPal still reports as pending keeps this event open,
+        // which keeps that agreement's payouts waiting.
+        let verifiedRefund: Awaited<
+          ReturnType<NonNullable<PaymentProvider["getRefund"]>>
+        > | null = null;
+        const refunds = provider().getRefund;
+        if (
+          action.eventType === "PAYMENT.CAPTURE.REFUNDED" &&
+          action.refundId &&
+          action.captureProvenance &&
+          captureIds.length === 1 &&
+          refunds
+        ) {
+          const refund = await refunds(action.refundId);
+          assertLease();
+          if (
+            refund.id !== action.refundId ||
+            refund.currency !== "USD" ||
+            (refund.captureId !== undefined &&
+              refund.captureId !== captureIds[0])
+          )
+            fail("REFUND_MISMATCH", "Refund evidence mismatch");
+          if (refund.status === "PENDING")
+            fail("REFUND_PENDING", "PayPal has not finished this refund");
+          if (refund.status === "COMPLETED") verifiedRefund = refund;
+        }
         let unmatched = false;
         tx(() => {
           for (const captureId of captureIds) {
@@ -816,16 +893,43 @@ export function registerPaymentRoutes(
               unmatched = true;
               continue;
             }
-            const row = aggregates.read(
-              match.workspace_id,
-              match.collaboration_id,
-            );
-            aggregates.updateInsideTransaction(
-              match.workspace_id,
-              match.collaboration_id,
-              row.revision,
-              (c) => holdReversedRevenue(c, captureId, action.reason, now()),
-            );
+            if (action.eventType.startsWith("CUSTOMER.DISPUTE."))
+              recordDispute(db, action, captureIds, match, now());
+            if (verifiedRefund) {
+              if (settleProviderRefund(captureId, verifiedRefund))
+                invoices.markSettlementHeld(captureId);
+              continue;
+            }
+            // PayPal took the payment back: it comes out of the split like a refund with the fee
+            // kept, and payouts pause for review.
+            const reversal =
+              action.eventType === "PAYMENT.CAPTURE.REVERSED"
+                ? applyReversal(
+                    db,
+                    aggregates,
+                    {
+                      reversalId: id,
+                      captureId,
+                      statedCents: action.amountCents,
+                      at: now(),
+                    },
+                    match,
+                  )
+                : 0;
+            // Nothing to take out now (already refunded, or set aside for refunds in flight):
+            // still pause the agreement.
+            if (!reversal || (!reversal.replayed && !reversal.appliedCents)) {
+              const row = aggregates.read(
+                match.workspace_id,
+                match.collaboration_id,
+              );
+              aggregates.updateInsideTransaction(
+                match.workspace_id,
+                match.collaboration_id,
+                row.revision,
+                (c) => holdReversedRevenue(c, captureId, action.reason, now()),
+              );
+            }
             invoices.markSettlementHeld(captureId);
           }
         });

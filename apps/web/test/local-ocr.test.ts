@@ -21,8 +21,5 @@ test("upload paths let the server choose how to read a document without an OCR c
 test("scanned source is clearly distinguished and page counts remain readable", () => {
   const source = read("agreement-document");
   assert.match(source, /Scanned\. Check against the original\./);
-  assert.match(
-    source,
-    /Array\.isArray\(document\.provenance\.pages\)\s*\?\s*document\.provenance\.pages\.length/,
-  );
+  assert.match(source, /Array\.isArray\(pages\)\s*\?\s*pages\.length/);
 });

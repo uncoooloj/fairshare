@@ -15,12 +15,12 @@ export function payoutDate(value: string | undefined) {
     ? { label: formatDay(value), title: exact, recorded: true }
     : { label: "—", title: NO_PAYOUT_DATE_HINT, recorded: false };
 }
-/** "Sent Nov 11" for a paid payout, from its last status change. */
+/** A paid payout's last observed status update, not a provider send time. */
 export function payoutSentLabel(
   row: Pick<PaymentGridRow, "status" | "updatedAt">,
 ) {
   return row.status === PaymentGridStatus.Paid && formatExact(row.updatedAt)
-    ? `Sent ${formatDay(row.updatedAt)}`
+    ? `Status updated ${formatDay(row.updatedAt)}`
     : undefined;
 }
 export const payoutGuidance: Record<PaymentGridStatus, string> = {
@@ -34,6 +34,8 @@ export const payoutGuidance: Record<PaymentGridStatus, string> = {
   REVERSED: "PayPal reversed this, so it doesn’t count as paid.",
   WAITING_RECIPIENT:
     "Nothing has been sent. The recipient’s PayPal details need to be added; their payout goes out after that.",
+  RESERVED:
+    "Nothing has been sent. This payout is ready to send when its dispatch runs.",
   CHECKING:
     "This payout may have reached PayPal. We are checking PayPal's record. Do not send it again.",
   UNKNOWN:

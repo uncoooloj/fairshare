@@ -1,17 +1,55 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Version } from "../lib/model";
 import {
+  citationSummary,
+  clauseLabel,
   documentCitations,
+  documentPages,
+  fromDocument,
   matchesCitationTarget,
   OPEN_CITATION_EVENT,
   type OpenCitationDetail,
+  pageBlocks,
+  pageIndexOf,
+  SEARCH_PREFIX,
+  searchHighlights,
 } from "../lib/document-citations";
-import { HighlightedSource } from "./source-rule-context";
 
+const ZOOM_STEPS = [75, 90, 100, 115, 130, 150];
+
+function Icon({ d, size = 16 }: { d: string[]; size?: number }) {
+  return (
+    <svg
+      aria-hidden="true"
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {d.map((path) => (
+        <path key={path} d={path} />
+      ))}
+    </svg>
+  );
+}
+const FILE_ICON = [
+  "M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z",
+  "M14 2v4a2 2 0 0 0 2 2h4",
+  "M16 13H8",
+  "M16 17H8",
+];
+
+/** The agreement as pages, cited clauses highlighted, with a panel to jump to each. */
 export function DocumentCitationView({
   version,
   document,
+  fileName,
+  nameOf,
   pendingCitation,
 }: {
   version?: Version;
@@ -19,20 +57,72 @@ export function DocumentCitationView({
     documentId: string;
     text: string;
     provenance?: {
+      ocr?: boolean;
       pages?: number | { page: number; start: number; end: number }[];
     };
   };
+  /** Shown in the viewer bar. */
+  fileName: string;
+  nameOf: (userId: string) => string;
+  /** A citation chosen from other terms or another source document, shown once it loads. */
   pendingCitation?: OpenCitationDetail;
 }) {
   const [selected, setSelected] = useState<string | null>(null);
-  const citations = useMemo(
+  const [pageIndex, setPageIndex] = useState(0);
+  const [zoom, setZoom] = useState(100);
+  const [searching, setSearching] = useState(false);
+  const [query, setQuery] = useState("");
+  const [hit, setHit] = useState(0);
+  const body = useRef<HTMLDivElement>(null);
+  const searchInput = useRef<HTMLInputElement>(null);
+  const all = useMemo(
     () => documentCitations(version, document),
     [version, document],
   );
-  const highlights = citations.flatMap((citation) =>
-    citation.highlight ? [citation.highlight] : [],
+  // Rules the team typed are not clauses: count them, never cite them.
+  const cited = all.filter(fromDocument);
+  const added = all.length - cited.length;
+  const { pages, paged } = useMemo(
+    () => documentPages(document.text, document.provenance?.pages),
+    [document],
   );
-  useEffect(() => setSelected(null), [document.documentId, version?.id]);
+  const matches = useMemo(
+    () => searchHighlights(document.text, query),
+    [document.text, query],
+  );
+  const highlights = [
+    ...cited.flatMap((citation) =>
+      citation.highlight ? [citation.highlight] : [],
+    ),
+    ...matches,
+  ];
+  const page = pages[Math.min(pageIndex, pages.length - 1)];
+  const blocks = pageBlocks(document.text, page, highlights);
+  const focusId = selected ?? (matches.length ? matches[hit]?.id : null);
+
+  useEffect(() => {
+    setSelected(null);
+    setPageIndex(0);
+  }, [document.documentId, version?.id]);
+  // Bring the chosen clause or search hit into view once its page is showing.
+  useEffect(() => {
+    if (!focusId) return;
+    body.current
+      ?.querySelector<HTMLElement>(`[data-ids~="${focusId}"]`)
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [focusId, pageIndex]);
+  useEffect(() => {
+    if (searching) searchInput.current?.focus();
+  }, [searching]);
+
+  function show(id: string) {
+    const citation = cited.find((item) => item.id === id);
+    if (!citation?.highlight) return;
+    const index = pageIndexOf(pages, citation.highlight.start);
+    if (index >= 0) setPageIndex(index);
+    setSelected(null);
+    requestAnimationFrame(() => setSelected(id));
+  }
   useEffect(() => {
     if (
       !pendingCitation ||
@@ -41,72 +131,286 @@ export function DocumentCitationView({
         version?.id,
         document.documentId,
       ) ||
-      !citations.some(
+      !cited.some(
         (citation) => citation.id === pendingCitation.id && citation.highlight,
       )
     )
       return;
-    setSelected(null);
-    const frame = requestAnimationFrame(() => setSelected(pendingCitation.id));
-    return () => cancelAnimationFrame(frame);
-  }, [citations, document.documentId, pendingCitation, version?.id]);
-  // Legacy callers can still ask the currently selected document to highlight by ID.
+    show(pendingCitation.id);
+    // Runs when the requested citation or the loaded document changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [all, document.documentId, pendingCitation, version?.id]);
+  // Legacy callers can still ask the currently selected document to show a quote by ID.
   useEffect(() => {
     const open = (event: Event) => {
       const detail = (event as CustomEvent<string | OpenCitationDetail>).detail;
       if (typeof detail !== "string") return;
       const id = detail;
-      if (
-        !citations.some((citation) => citation.id === id && citation.highlight)
-      )
+      if (!cited.some((citation) => citation.id === id && citation.highlight))
         return;
       event.preventDefault();
-      setSelected(null);
-      requestAnimationFrame(() => setSelected(id));
+      body.current
+        ?.closest("section")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      show(id);
     };
     window.addEventListener(OPEN_CITATION_EVENT, open);
     return () => window.removeEventListener(OPEN_CITATION_EVENT, open);
-  }, [citations]);
-  const chosen = citations.find((citation) => citation.id === selected);
+  });
+
+  function goToHit(next: number) {
+    if (!matches.length) return;
+    const index = (next + matches.length) % matches.length;
+    setHit(index);
+    setSelected(null);
+    const at = pageIndexOf(pages, matches[index].start);
+    if (at >= 0) setPageIndex(at);
+  }
+
+  const chosen = cited.find((citation) => citation.id === selected);
+  const tip = document.provenance?.ocr
+    ? "This is the text we read from a scanned file. Check it against the original."
+    : "This is the text we read from your file.";
+  const zoomAt = ZOOM_STEPS.indexOf(zoom);
   return (
-    <div className="document-layout">
-      <article className="panel source-paper" aria-label="Agreement text">
-        <HighlightedSource
-          source={document.text}
-          highlights={highlights}
-          selected={selected}
-          onSelect={setSelected}
-        />
-      </article>
-      <aside className="panel" aria-label="Where the split comes from">
-        <h3>Where the split comes from</h3>
-        <p className="muted">Tap one to find it in the text.</p>
-        {citations.length ? (
-          citations.map((citation) => (
-            <div className="section" key={citation.id}>
+    <div className="dv-layout">
+      <div className="dv-viewer">
+        <div className="dv-bar">
+          <p className="dv-file">
+            <Icon d={FILE_ICON} />
+            <span className="dv-file-name">{fileName}</span>
+            <span
+              className="dv-info"
+              tabIndex={0}
+              role="img"
+              aria-label={tip}
+              data-tip={tip}
+            >
+              i
+            </span>
+          </p>
+          <div className="dv-tools">
+            <div className="dv-pager">
               <button
                 type="button"
-                className="text-button"
-                disabled={!citation.highlight}
-                aria-pressed={selected === citation.id}
-                onClick={() => setSelected(citation.id)}
+                className="dv-tool"
+                aria-label="Previous page"
+                disabled={pageIndex === 0}
+                onClick={() => setPageIndex((value) => value - 1)}
               >
-                {citation.reference.clause || citation.label} · {citation.label}
-                {citation.page !== undefined && ` · Page ${citation.page}`}
+                <Icon d={["m15 18-6-6 6-6"]} />
               </button>
-              <blockquote>
-                {citation.reference.excerpt || "No saved quote"}
-              </blockquote>
-              {citation.unavailable && (
-                <p className="muted">{citation.unavailable}</p>
-              )}
+              <span aria-live="polite">
+                {pageIndex + 1} / {pages.length}
+              </span>
+              <button
+                type="button"
+                className="dv-tool"
+                aria-label="Next page"
+                disabled={pageIndex >= pages.length - 1}
+                onClick={() => setPageIndex((value) => value + 1)}
+              >
+                <Icon d={["m9 18 6-6-6-6"]} />
+              </button>
             </div>
-          ))
-        ) : (
+            <div className="dv-zoom">
+              <button
+                type="button"
+                className="dv-tool"
+                aria-label="Zoom out"
+                disabled={zoomAt <= 0}
+                onClick={() => setZoom(ZOOM_STEPS[zoomAt - 1])}
+              >
+                <Icon d={["M5 12h14"]} />
+              </button>
+              <span>{zoom}%</span>
+              <button
+                type="button"
+                className="dv-tool"
+                aria-label="Zoom in"
+                disabled={zoomAt >= ZOOM_STEPS.length - 1}
+                onClick={() => setZoom(ZOOM_STEPS[zoomAt + 1])}
+              >
+                <Icon d={["M5 12h14", "M12 5v14"]} />
+              </button>
+            </div>
+            <button
+              type="button"
+              className="dv-tool dv-search-toggle"
+              aria-label="Search the agreement"
+              aria-expanded={searching}
+              onClick={() => {
+                setSearching((value) => !value);
+                setQuery("");
+                setHit(0);
+              }}
+            >
+              <Icon
+                d={["m21 21-4.3-4.3", "M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14Z"]}
+              />
+            </button>
+          </div>
+        </div>
+        {searching && (
+          <div className="dv-search">
+            <input
+              ref={searchInput}
+              type="search"
+              aria-label="Find in the agreement"
+              placeholder="Find in the agreement"
+              value={query}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setHit(0);
+                setSelected(null);
+                const first = searchHighlights(
+                  document.text,
+                  event.target.value,
+                )[0];
+                const at = first ? pageIndexOf(pages, first.start) : -1;
+                if (at >= 0) setPageIndex(at);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter")
+                  goToHit(hit + (event.shiftKey ? -1 : 1));
+                if (event.key === "Escape") setSearching(false);
+              }}
+            />
+            <span className="dv-search-count" role="status">
+              {query.trim().length > 1
+                ? matches.length
+                  ? `${hit + 1} of ${matches.length}`
+                  : "No matches"
+                : ""}
+            </span>
+          </div>
+        )}
+        <div className="dv-body" ref={body}>
+          <article
+            className="dv-page"
+            aria-label={paged ? `Page ${page.page}` : "Agreement text"}
+            style={{ fontSize: `${(15 * zoom) / 100}px` }}
+          >
+            {blocks.length ? (
+              blocks.map((block) => {
+                const clause = block.segments.some((segment) =>
+                  segment.ids.some((id) => !id.startsWith(SEARCH_PREFIX)),
+                );
+                return (
+                  <p
+                    key={block.start}
+                    className={clause ? "dv-para is-cited" : "dv-para"}
+                  >
+                    {block.segments.map((segment) => {
+                      const clauseId = segment.ids.find(
+                        (id) => !id.startsWith(SEARCH_PREFIX),
+                      );
+                      const searchHit = segment.ids.some((id) =>
+                        id.startsWith(SEARCH_PREFIX),
+                      );
+                      const ids = segment.ids.join(" ");
+                      if (clauseId)
+                        return (
+                          <button
+                            type="button"
+                            key={segment.start}
+                            className={`dv-mark${searchHit ? " is-hit" : ""}`}
+                            data-ids={ids}
+                            data-selected={selected === clauseId}
+                            aria-pressed={selected === clauseId}
+                            onClick={() => setSelected(clauseId)}
+                          >
+                            {segment.text}
+                          </button>
+                        );
+                      if (searchHit)
+                        return (
+                          <mark
+                            key={segment.start}
+                            className={`dv-hit${
+                              segment.ids.includes(matches[hit]?.id ?? "")
+                                ? " is-current"
+                                : ""
+                            }`}
+                            data-ids={ids}
+                          >
+                            {segment.text}
+                          </mark>
+                        );
+                      return <span key={segment.start}>{segment.text}</span>;
+                    })}
+                  </p>
+                );
+              })
+            ) : (
+              <p className="dv-para muted">
+                This page has no text we could read.
+              </p>
+            )}
+          </article>
+        </div>
+      </div>
+      <aside className="dv-clauses" aria-labelledby="dv-clauses-title">
+        <h3 id="dv-clauses-title">Cited clauses</h3>
+        {cited.length > 0 && <p className="muted">Click one to jump to it.</p>}
+        {cited.length > 0 && version && (
+          <ul>
+            {cited.map((citation) => {
+              const index = citation.highlight
+                ? pageIndexOf(pages, citation.highlight.start)
+                : -1;
+              const clause =
+                clauseLabel(citation.reference.clause) || citation.label;
+              return (
+                <li key={citation.id}>
+                  <button
+                    type="button"
+                    className="dv-clause"
+                    disabled={!citation.highlight}
+                    aria-pressed={selected === citation.id}
+                    onClick={() => show(citation.id)}
+                  >
+                    <span className="dv-clause-meta">
+                      <span className="dv-chip">
+                        <Icon d={FILE_ICON} size={12} />
+                        {clause}
+                      </span>
+                      {paged && index >= 0 && (
+                        <span>Page {pages[index].page}</span>
+                      )}
+                    </span>
+                    <span className="dv-clause-summary">
+                      {citationSummary(citation.id, version, nameOf)}
+                    </span>
+                    {!citation.highlight && (
+                      <span className="dv-clause-note">
+                        {citation.reference.documentId !== document.documentId
+                          ? "From an earlier file"
+                          : "We can't find this wording in the text"}
+                      </span>
+                    )}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        {!version ? (
           <p className="muted">These appear once you propose a split.</p>
+        ) : !cited.length && !added ? (
+          <p className="muted">No clauses cited yet.</p>
+        ) : null}
+        {added > 0 && (
+          <p className="dv-added">
+            {added === 1
+              ? "1 rule was added by you, not from the document"
+              : `${added} rules were added by you, not from the document`}
+          </p>
         )}
         <p className="sr-only" role="status">
-          {chosen ? `Showing ${chosen.reference.clause || chosen.label}` : ""}
+          {chosen
+            ? `Showing clause ${clauseLabel(chosen.reference.clause)}`
+            : ""}
         </p>
       </aside>
     </div>
