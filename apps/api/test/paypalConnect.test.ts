@@ -1,5 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { DatabaseSync } from "node:sqlite";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   PayPalError,
   PayPalIdentitySandbox,
@@ -403,12 +407,131 @@ test("a delayed callback cannot replace a newer payout decision or a revoked ses
   }
 });
 
+test("a newer Connect with PayPal start fences a callback already awaiting exchange", async () => {
+  const deferred = deferredProvider();
+  const s = await setup(deferred.provider);
+  try {
+    const firstState = await s.start();
+    const pending = s.callback(firstState);
+    await deferred.waitForExchange();
+    await s.start();
+    deferred.release();
+    const completed = await pending;
+    assert.equal(completed.statusCode, 409, completed.body);
+    assert.equal(
+      s.app.store.db
+        .prepare("SELECT COUNT(*) AS n FROM fairshare_payout_accounts")
+        .get()?.n,
+      0,
+    );
+  } finally {
+    await s.app.close();
+  }
+});
+
+test("legacy payout writers fence a delayed callback", async () => {
+  for (const action of ["save", "remove"] as const) {
+    const deferred = deferredProvider();
+    const s = await setup(deferred.provider);
+    try {
+      const mine = `/api/workspaces/${s.w.id}/payment-accounts/mine`;
+      if (action === "remove")
+        await s.app.inject({
+          method: "PUT",
+          url: mine,
+          headers: auth(s.maya.token),
+          payload: { paypalId: "ABCDEFGHIJKLM" },
+        });
+      const state = await s.start();
+      const pending = s.callback(state);
+      await deferred.waitForExchange();
+      const newer = await s.app.inject({
+        method: action === "save" ? "PUT" : "DELETE",
+        url: mine,
+        headers: auth(s.maya.token),
+        payload: { paypalId: "NOPQRSTUVWXYZ" },
+      });
+      assert.equal(newer.statusCode, 200, newer.body);
+      deferred.release();
+      assert.equal((await pending).statusCode, 409);
+      const legacy = s.app.store.db
+        .prepare(
+          "SELECT paypal_id AS paypalId FROM fairshare_recipients WHERE workspace_id=? AND user_id=?",
+        )
+        .get(s.w.id, s.maya.user.id) as { paypalId: string } | undefined;
+      assert.equal(legacy?.paypalId, action === "save" ? "NOPQRSTUVWXYZ" : undefined);
+    } finally {
+      await s.app.close();
+    }
+  }
+});
+
+test("legacy collaboration recipient writer fences a delayed callback", async () => {
+  const deferred = deferredProvider();
+  const s = await setup(deferred.provider);
+  try {
+    const collaboration = await s.app.inject({
+      method: "POST",
+      url: `/api/workspaces/${s.w.id}/collaborations`,
+      headers: auth(s.org.token),
+      payload: { name: "Legacy recipient" },
+    });
+    assert.equal(collaboration.statusCode, 201, collaboration.body);
+    const state = await s.start(s.org.token);
+    const pending = s.callback(state, s.org.token);
+    await deferred.waitForExchange();
+    const recipient = await s.app.inject({
+      method: "PUT",
+      url: `/api/workspaces/${s.w.id}/collaborations/${collaboration.json().id}/recipient`,
+      headers: auth(s.org.token),
+      payload: { paypalId: "NOPQRSTUVWXYZ" },
+    });
+    assert.equal(recipient.statusCode, 200, recipient.body);
+    deferred.release();
+    assert.equal((await pending).statusCode, 409);
+  } finally {
+    await s.app.close();
+  }
+});
+
+test("startup adds generation to a pre-existing five-column connect-state table", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "fairshare-paypal-state-"));
+  const dbPath = join(directory, "state.db");
+  const db = new DatabaseSync(dbPath);
+  db.exec(
+    "CREATE TABLE fairshare_paypal_connect_states(nonce TEXT PRIMARY KEY,user_id TEXT NOT NULL,session_hash TEXT NOT NULL,return_to TEXT NOT NULL,expires_at INTEGER NOT NULL); INSERT INTO fairshare_paypal_connect_states VALUES('nonce','user','session','/app',1)",
+  );
+  db.close();
+  const app = await buildApp({
+    dbPath,
+    paypalIdentity: { provider: fakeProvider(), stateSecret: SECRET },
+  });
+  try {
+    const columns = app.store.db
+      .prepare("PRAGMA table_info(fairshare_paypal_connect_states)")
+      .all() as { name: string }[];
+    assert(columns.some((column) => column.name === "generation"));
+    assert.deepEqual({
+      ...(app.store.db
+        .prepare(
+          "SELECT nonce,user_id AS userId,generation FROM fairshare_paypal_connect_states",
+        )
+        .get() as any),
+    },
+      { nonce: "nonce", userId: "user", generation: 0 },
+    );
+  } finally {
+    await app.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("organizer sees readiness only, never the verified email or payer ID", async () => {
   const s = await setup(fakeProvider());
   try {
     await s.callback(await s.start());
     const r = await s.app.inject({
-      url: `/api/workspaces/${s.w.id}/payment-accounts`,
+      url: `/api/workspaces/${s.w.id}/payment-accounts?version=2`,
       headers: auth(s.org.token),
     });
     assert.equal(r.statusCode, 200, r.body);

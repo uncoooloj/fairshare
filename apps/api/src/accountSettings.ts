@@ -1,6 +1,7 @@
 import type { FairshareApp } from "./app.js";
 import { ApiError, Role } from "./identity.js";
 import {
+  advancePayoutAccountGeneration,
   payoutReadiness,
   readPayoutDestination,
   registerPayoutAccountRoutes,
@@ -95,6 +96,7 @@ export function registerAccountSettings(
         "Enter your 13-character sandbox PayPal merchant ID.",
       );
     app.store.tx(() => {
+      advancePayoutAccountGeneration(db, user.id);
       db.prepare(
         "INSERT INTO fairshare_recipients VALUES(?,?,?) ON CONFLICT(workspace_id,user_id) DO UPDATE SET paypal_id=excluded.paypal_id",
       ).run(req.params.workspaceId, user.id, paypalId);
@@ -110,6 +112,7 @@ export function registerAccountSettings(
         Role.MEMBER,
       ]);
       app.store.tx(() => {
+        advancePayoutAccountGeneration(db, user.id);
         db.prepare(
           "DELETE FROM fairshare_recipients WHERE workspace_id=? AND user_id=?",
         ).run(req.params.workspaceId, user.id);

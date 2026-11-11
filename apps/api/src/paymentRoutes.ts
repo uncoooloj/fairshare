@@ -27,6 +27,7 @@ import type { FairshareApp } from "./app.js";
 import { Role } from "./identity.js";
 import { registerPaymentRecovery } from "./paymentRecovery.js";
 import {
+  advancePayoutAccountGeneration,
   ensurePayoutAccountSchema,
   readPayoutDestination,
 } from "./payoutAccounts.js";
@@ -371,10 +372,13 @@ export function registerPaymentRoutes(
     const paypalId = str((req.body as any)?.paypalId);
     if (!/^[A-Z0-9]{13}$/.test(paypalId))
       fail("INVALID_RECIPIENT", "Sandbox PayPal merchant ID required");
-    db.prepare(
-      "INSERT INTO fairshare_recipients VALUES(?,?,?) ON CONFLICT(workspace_id,user_id) DO UPDATE SET paypal_id=excluded.paypal_id",
-    ).run(p.workspaceId, user.id, paypalId);
-    app.store.audit(user.id, p.workspaceId, "PAYOUT_ACCOUNT_SAVED");
+    tx(() => {
+      advancePayoutAccountGeneration(db, user.id);
+      db.prepare(
+        "INSERT INTO fairshare_recipients VALUES(?,?,?) ON CONFLICT(workspace_id,user_id) DO UPDATE SET paypal_id=excluded.paypal_id",
+      ).run(p.workspaceId, user.id, paypalId);
+      app.store.audit(user.id, p.workspaceId, "PAYOUT_ACCOUNT_SAVED");
+    });
     return { configured: true };
   });
   app.get(`${base}/payouts`, async (req) => {
