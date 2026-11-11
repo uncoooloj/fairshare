@@ -108,11 +108,11 @@ export function splitSentences(
     );
   if (advance) {
     const paidBack = agreement.value.recoupedByAdvance[advance.id] || 0;
-    const subject = advanceTo === "you" ? "Your" : `${advanceTo}'s`;
+    const advanceOwner = advanceTo === "you" ? "your" : `${advanceTo}'s`;
     out.push(
-      `${subject} ${formatMoneyHeadline(advance.amountCents)} advance is paid back first${
+      `${formatMoneyHeadline(advance.amountCents)} is allocated toward ${advanceOwner} advance before the split${
         paidBack > 0
-          ? ` (${formatMoneyHeadline(Math.min(paidBack, advance.amountCents))} so far)`
+          ? ` (${formatMoneyHeadline(Math.min(paidBack, advance.amountCents))} allocated so far)`
           : ""
       }.`,
     );
