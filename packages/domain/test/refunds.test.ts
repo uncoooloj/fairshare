@@ -471,3 +471,45 @@ test("a payout PayPal never delivered releases the overpayment it caused, once; 
     { a: 5000, b: 90, c: 60 },
   );
 });
+
+test("offset first, payout returned later: what was kept back is given back on the next share", () => {
+  // b's 2910 from P1 counted as paid; P1 fully refunded, so b owes 2910.
+  const c = pay(active(), "CAP1");
+  const held = refund(c, "R1", 10000, 300, {
+    payoutsStarted: true,
+    paidCents: { b: 2910 },
+  }).collaboration;
+  assert.deepEqual({ ...held.owedBack }, { b: 2910 });
+  // Resume with offset: P2 keeps back all 2910 of b's share.
+  let next = pay(
+    resumePayouts(held, { offsetFromFuturePayouts: true }, "a", at),
+    "CAP2",
+  );
+  assert.deepEqual(totals(next, "CAP2"), { a: 4850, b: 0, c: 1940 });
+  assert.equal(next.owedBack, undefined);
+  // Then PayPal returns b's P1 payout: b never got it, so the 2910 comes back to b.
+  next = releaseUndeliveredOverpayment(next, "CAP1", "b", at);
+  assert.equal(next.owedBack, undefined);
+  assert.deepEqual({ ...next.creditBack }, { b: 2910 });
+  // P2 stays as recorded; the next payment adds it to b's share, once.
+  assert.deepEqual(totals(next, "CAP2"), { a: 4850, b: 0, c: 1940 });
+  next = pay(next, "CAP3");
+  const b3 = next.revenue[2].allocations.find((x) => x.userId === "b")!;
+  assert.equal(b3.creditCents, 2910);
+  assert.equal(b3.totalCents, 2910 + 2910);
+  assert.equal(next.creditBack, undefined);
+  assert.equal(
+    explainRecordedAllocation(next, "a", "CAP3", "b").allocatedCents,
+    5820,
+  );
+  assert.deepEqual(totals(pay(next, "CAP4"), "CAP4"), {
+    a: 4850,
+    b: 2910,
+    c: 1940,
+  });
+  // Seeing the return again gives nothing more.
+  assert.equal(
+    releaseUndeliveredOverpayment(next, "CAP1", "b", at).creditBack,
+    undefined,
+  );
+});

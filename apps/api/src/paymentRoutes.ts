@@ -29,12 +29,11 @@ import type { FairshareApp } from "./app.js";
 import { Role } from "./identity.js";
 import { registerPaymentRecovery } from "./paymentRecovery.js";
 import {
-  applyCompletedRefundOp,
   applyRefundToCapture,
-  inFlightRefundCents,
+  applyReversal,
+  settleRefundOp,
   notePayoutStatus,
   recordDispute,
-  unrefundedCents,
 } from "./refundReversal.js";
 import {
   advancePayoutAccountGeneration,
@@ -743,7 +742,7 @@ export function registerPaymentRoutes(
         result.status,
         op.id,
       );
-      applyCompletedRefundOp(db, aggregates, op.id, result, now());
+      settleRefundOp(db, aggregates, op.id, result, now());
     });
   }
   /** A refund PayPal reports (made here or in PayPal): read it back from PayPal, link it to a
@@ -782,7 +781,7 @@ export function registerPaymentRoutes(
     db.prepare(
       "UPDATE fairshare_refund_ops SET provider_refund_id=?,status=? WHERE id=?",
     ).run(refund.id, refund.status, op.id);
-    applyCompletedRefundOp(db, aggregates, op.id, refund, now());
+    settleRefundOp(db, aggregates, op.id, refund, now());
     return !!aggregates.read(op.workspace_id, op.collaboration_id).value
       .reviewHold;
   }
@@ -900,32 +899,24 @@ export function registerPaymentRoutes(
                 invoices.markSettlementHeld(captureId);
               continue;
             }
-            // PayPal took the whole payment back: it comes out of the split like a full refund
-            // with the fee kept, and payouts pause for review.
-            // PayPal's stated amount, never more than is left once refunds still going
-            // through are set aside (they are taken out when they complete).
-            const left =
+            // PayPal took the payment back: it comes out of the split like a refund with the fee
+            // kept, and payouts pause for review.
+            const reversed =
               action.eventType === "PAYMENT.CAPTURE.REVERSED"
-                ? Math.min(
-                    action.amountCents ?? Number.MAX_SAFE_INTEGER,
-                    unrefundedCents(
-                      aggregates,
-                      match.workspace_id,
-                      match.collaboration_id,
+                ? applyReversal(
+                    db,
+                    aggregates,
+                    {
                       captureId,
-                    ) - inFlightRefundCents(db, captureId),
+                      statedCents: action.amountCents,
+                      at: now(),
+                    },
+                    match,
                   )
                 : 0;
-            if (left > 0)
-              applyRefundToCapture(db, aggregates, {
-                captureId,
-                refundId: `reversal:${captureId}`,
-                kind: RefundKind.REVERSAL,
-                grossCents: left,
-                feeReturnedCents: 0,
-                at: now(),
-              });
-            else {
+            // Nothing to take out now (already refunded, or set aside for refunds in flight):
+            // still pause the agreement.
+            if (!reversed) {
               const row = aggregates.read(
                 match.workspace_id,
                 match.collaboration_id,

@@ -788,6 +788,109 @@ test("resume ignores PayPal events not linked to this agreement and catches disp
     assert.equal((await s.resume()).statusCode, 200);
   }));
 
+test("a refund in flight fails after a reversal: the part set aside for it is reversed then", () =>
+  run(async (s) => {
+    const { id, captureId } = await s.pay();
+    s.mock.config.refundStatus = "PENDING";
+    const pending = await s.post(`/payments/${id}/refund`, {
+      confirmRefund: true,
+      amountCents: 3000,
+      requestKey: "in-flight",
+    });
+    await reversalEvent(s, "rev", captureId, 10000);
+    const revenue = () =>
+      s
+        .agreement()
+        .value.revenue.find((r) => r.providerCaptureId === captureId)!;
+    assert.deepEqual(
+      revenue().refunds!.map((r) => r.grossCents),
+      [7000],
+    );
+    // 9700 net less 7000 reversed, split 60/40.
+    assert.deepEqual(s.totals(captureId), { maya: 1620, riley: 1080 });
+    // PayPal reports the refund failed: the 3000 PayPal already took back comes out now.
+    s.mock.refunds.get(pending.json().providerRefundId)!.status = "FAILED";
+    const failed = await s.post(`/refunds/${pending.json().id}/reconcile`);
+    assert.equal(failed.json().status, "FAILED", failed.body);
+    assert.deepEqual(
+      revenue().refunds!.map((r) => [r.kind, r.grossCents]),
+      [
+        ["REVERSAL", 7000],
+        ["REVERSAL", 3000],
+      ],
+    );
+    assert.deepEqual(s.totals(captureId), { maya: 0, riley: 0 });
+    assert.equal(
+      (
+        s.app.store.db
+          .prepare("SELECT count(*) AS n FROM fairshare_reversal_holdbacks")
+          .get() as any
+      ).n,
+      0,
+    );
+    // Checking again changes nothing; Resume then pays nothing from this payment.
+    const settled = s.agreement().revision;
+    await s.post(`/refunds/${pending.json().id}/reconcile`);
+    assert.equal(s.agreement().revision, settled);
+    assert.equal((await s.resume()).statusCode, 200);
+    await s.setEmails();
+    await s.post("/payouts/dispatch", { captureId });
+    assert.equal(s.mock.counts.payoutWrites, 0);
+  }));
+
+test("a refund cut down by a reversal replays without conflict", () =>
+  run(async (s) => {
+    const { captureId } = await s.pay();
+    await reversalEvent(s, "rev", captureId, 8000);
+    const late = s.mock.external(captureId, 3000);
+    assert.equal(
+      (await s.refundEvent("late-1", late.id, captureId)).statusCode,
+      200,
+    );
+    const stored = s
+      .agreement()
+      .value.revenue.find((r) => r.providerCaptureId === captureId)!
+      .refunds!.find((r) => r.id === late.id)!;
+    assert.equal(stored.grossCents, 2000);
+    const revision = s.agreement().revision;
+    const replay = await s.refundEvent("late-2", late.id, captureId);
+    assert.equal(replay.statusCode, 200, replay.body);
+    assert.equal(s.agreement().revision, revision);
+  }));
+
+test("offset first, payout returned later: the kept-back amount is given back on the next payment", () =>
+  run(async (s) => {
+    const { captureId } = await s.pay();
+    await s.setEmails();
+    const sent = await s.post("/payouts/dispatch", { captureId });
+    // Full refund after payouts; PayPal returns its fee, so only what was paid is owed.
+    s.mock.config.feeReturned = (cents) => fee(cents);
+    const full = s.mock.external(captureId, 10000);
+    await s.refundEvent("full", full.id, captureId);
+    assert.deepEqual(s.owed(), { maya: 5820, riley: 3880 });
+    await s.resume({ offsetFromFuturePayouts: true });
+    const second = await s.pay();
+    assert.deepEqual(s.totals(second.captureId), { maya: 0, riley: 0 });
+    // Riley's first payout comes back from PayPal.
+    s.mock.config.payoutStatus = "RETURNED";
+    const riley = sent
+      .json()
+      .payouts.find((p: any) => p.userId === s.riley.user.id).id;
+    await s.post(`/payouts/${riley}/reconcile`);
+    assert.deepEqual(s.owed(), {});
+    assert.deepEqual(s.agreement().value.creditBack, {
+      [s.riley.user.id]: 3880,
+    });
+    assert.deepEqual((await s.recovery()).review.credits, [
+      { userId: s.riley.user.id, name: "Riley", cents: 3880 },
+    ]);
+    const third = await s.pay();
+    assert.deepEqual(s.totals(third.captureId), {
+      maya: 5820,
+      riley: 3880 + 3880,
+    });
+  }));
+
 test("legacy refunds migrate: COMPLETED is settled by the old pause and never reversed; PENDING still blocks", async () => {
   const dir = mkdtempSync(join(tmpdir(), "fairshare-refunds-"));
   try {

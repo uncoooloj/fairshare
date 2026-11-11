@@ -10,7 +10,7 @@ import {
   pendingWebhookForAgreement,
 } from "./paymentSafety.js";
 import {
-  applyCompletedRefundOp,
+  settleRefundOp,
   capturePayoutState,
   ensureRefundSchema,
   notePayoutStatus,
@@ -176,6 +176,16 @@ export function registerPaymentRecovery({
         paused: !!agreement.reviewHold,
         offsetActive: !!agreement.offsetOwedBack,
         owed: Object.entries(agreement.owedBack ?? {})
+          .filter(([, cents]) => (cents as number) > 0)
+          .map(([userId, cents]) => ({
+            userId,
+            name:
+              agreement.members.find((m: any) => m.userId === userId)
+                ?.displayName ?? "Someone",
+            cents,
+          })),
+        // Kept back for a payout PayPal then never delivered; added to their next share.
+        credits: Object.entries(agreement.creditBack ?? {})
           .filter(([, cents]) => (cents as number) > 0)
           .map(([userId, cents]) => ({
             userId,
@@ -380,7 +390,7 @@ export function registerPaymentRecovery({
         "UPDATE fairshare_refund_ops SET provider_refund_id=?,status=? WHERE id=?",
       ).run(refundId, result.status, op.id);
       audit(ctx, "REFUND_EVIDENCE_VERIFIED", op.id, refundId);
-      if (applyCompletedRefundOp(db, aggregates, op.id, result, date()).applied)
+      if (settleRefundOp(db, aggregates, op.id, result, date()).applied)
         audit(ctx, "REFUND_APPLIED_TO_SPLIT", op.id, refundId);
       return refundView(ctx, op.id);
     });

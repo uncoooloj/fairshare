@@ -55,6 +55,7 @@ function validateAllocationLedger(
     allocation.shareCents,
     allocation.feeCents,
     allocation.offsetCents ?? 0,
+    allocation.creditCents ?? 0,
     allocation.totalCents,
   );
   // Refunds reduce what a payment's allocations add up to; amounts kept back still count.
@@ -63,10 +64,12 @@ function validateAllocationLedger(
     allocation.recoupmentCents +
       allocation.shareCents -
       allocation.feeCents -
-      (allocation.offsetCents ?? 0) !==
+      (allocation.offsetCents ?? 0) +
+      (allocation.creditCents ?? 0) !==
       allocation.totalCents ||
     revenue.allocations.reduce(
-      (sum, row) => sum + row.totalCents + (row.offsetCents ?? 0),
+      (sum, row) =>
+        sum + row.totalCents + (row.offsetCents ?? 0) - (row.creditCents ?? 0),
       0,
     ) !== allocatedNetCents(revenue)
   )

@@ -109,7 +109,9 @@ export interface Allocation {
   feeCents: number;
   /** Kept back to settle an earlier overpayment (see Collaboration.owedBack). */
   offsetCents?: number;
-  /** recoupment + share - fee - offset. */
+  /** Given back: an amount kept back earlier for a payout PayPal then never delivered. */
+  creditCents?: number;
+  /** recoupment + share - fee - offset + credit. */
   totalCents: number;
   status: AllocationStatus;
 }
@@ -205,6 +207,11 @@ export interface Collaboration {
   owedBack?: Record<string, number>;
   /** Set by resumePayouts: owedBack is kept back from each person's next shares until settled. */
   offsetOwedBack?: boolean;
+  /** Per person: owed amounts actually kept back from their shares so far. */
+  offsetRecovered?: Record<string, number>;
+  /** Per person: kept back for an overpayment that turned out not to be one; added to their
+   * next share. */
+  creditBack?: Record<string, number>;
   /** Advance ID -> the advance whose repaid count was carried onto it when it replaced it. */
   advanceCarries?: Record<string, string>;
 }
@@ -1233,7 +1240,7 @@ export function refundedCents(r: Revenue): {
     { grossCents: 0, feeReturnedCents: 0 },
   );
 }
-/** What a payment's allocations (totals plus amounts kept back) must add up to after its refunds:
+/** What a payment's allocations (totals plus amounts kept back, less amounts given back) must add up to after its refunds:
  * the net received, less each refund's net, plus any shortfall now owed instead of covered. */
 export function allocatedNetCents(r: Revenue): number {
   return (r.refunds ?? []).reduce(
@@ -1401,12 +1408,23 @@ export function applyCaptureRefund(
   for (const a of revenue.allocations) {
     const share = shares.get(a.userId)!;
     let offset = a.offsetCents ?? 0,
-      total = a.recoupmentCents + a.shareCents - a.feeCents - offset;
+      total =
+        a.recoupmentCents +
+        a.shareCents -
+        a.feeCents -
+        offset +
+        (a.creditCents ?? 0);
     if (total < 0) {
       const restore = Math.min(offset, -total);
       offset -= restore;
       total += restore;
       share.offsetRestoredCents = restore;
+      if (restore && out.offsetRecovered)
+        setOwn(
+          out.offsetRecovered,
+          a.userId,
+          Math.max(0, own(out.offsetRecovered, a.userId) - restore),
+        );
     }
     if (total < 0) {
       a.feeCents += total;
@@ -1489,7 +1507,7 @@ export function applyCaptureRefund(
   if (
     revenue.allocations.some((a) => a.totalCents < 0) ||
     revenue.allocations.reduce(
-      (s, a) => s + a.totalCents + (a.offsetCents ?? 0),
+      (s, a) => s + a.totalCents + (a.offsetCents ?? 0) - (a.creditCents ?? 0),
       0,
     ) !== allocatedNetCents(revenue)
   )
@@ -1553,29 +1571,56 @@ export function releaseUndeliveredOverpayment(
       delete out.offsetOwedBack;
     }
   }
+  // Whatever of it was already kept back from their shares is given back on their next share.
+  const recovered = own(out.offsetRecovered, userId);
+  const credit = Math.min(recovered, Math.max(0, overpaid - release));
+  if (credit > 0) {
+    setOwn(out.offsetRecovered!, userId, recovered - credit);
+    out.creditBack ??= {};
+    setOwn(out.creditBack, userId, own(out.creditBack, userId) + credit);
+  }
   audit(out, AuditType.REFUND_APPLIED, "provider", at, {
     captureId,
     userId,
     payoutNotDelivered: true,
     releasedCents: release,
+    creditedCents: credit,
   });
   return out;
 }
-/** Settles each person's owed amount from their next shares, up to what each share pays. */
+/** Settles each person's owed amount from their next shares, up to what each share pays, and
+ * adds back anything kept back earlier that turned out not to be owed. */
 function offsetOwedBack(c: Collaboration, allocations: Allocation[]) {
-  if (!c.offsetOwedBack || !c.owedBack) return;
-  for (const a of allocations) {
-    const owed = own(c.owedBack, a.userId);
-    const take = Math.min(owed, a.totalCents);
-    if (take <= 0) continue;
-    a.offsetCents = take;
-    a.totalCents -= take;
-    if (owed > take) setOwn(c.owedBack, a.userId, owed - take);
-    else delete c.owedBack[a.userId];
+  if (c.offsetOwedBack && c.owedBack) {
+    for (const a of allocations) {
+      const owed = own(c.owedBack, a.userId);
+      const take = Math.min(owed, a.totalCents);
+      if (take <= 0) continue;
+      a.offsetCents = take;
+      a.totalCents -= take;
+      if (owed > take) setOwn(c.owedBack, a.userId, owed - take);
+      else delete c.owedBack[a.userId];
+      c.offsetRecovered ??= {};
+      setOwn(
+        c.offsetRecovered,
+        a.userId,
+        own(c.offsetRecovered, a.userId) + take,
+      );
+    }
+    if (!Object.keys(c.owedBack).length) {
+      delete c.owedBack;
+      delete c.offsetOwedBack;
+    }
   }
-  if (!Object.keys(c.owedBack).length) {
-    delete c.owedBack;
-    delete c.offsetOwedBack;
+  if (c.creditBack) {
+    for (const a of allocations) {
+      const credit = own(c.creditBack, a.userId);
+      if (credit <= 0) continue;
+      a.creditCents = credit;
+      a.totalCents += credit;
+      delete c.creditBack[a.userId];
+    }
+    if (!Object.keys(c.creditBack).length) delete c.creditBack;
   }
 }
 /** Organizer clears the pause after reviewing. With offsetFromFuturePayouts, what each person

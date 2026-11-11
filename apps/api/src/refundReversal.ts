@@ -40,6 +40,11 @@ export function ensureRefundSchema(db: Database, tx: <T>(fn: () => T) => T) {
       );
       db.exec("DROP TABLE fairshare_refund_ops_v1");
     } else db.exec(REFUND_OPS_SQL);
+    // Part of a PayPal reversal set aside for a Fairshare refund still going through on the same
+    // payment. If that refund fails, the set-aside part is reversed then.
+    db.exec(
+      "CREATE TABLE IF NOT EXISTS fairshare_reversal_holdbacks(refund_op_id TEXT PRIMARY KEY,capture_id TEXT NOT NULL,cents INTEGER NOT NULL)",
+    );
     db.exec(
       "CREATE TABLE IF NOT EXISTS fairshare_disputes(id TEXT NOT NULL,workspace_id TEXT NOT NULL,collaboration_id TEXT NOT NULL,status TEXT NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(id,workspace_id,collaboration_id))",
     );
@@ -164,12 +169,15 @@ export function applyRefundToCapture(
   const recorded = row.value.revenue.find(
     (r) => r.providerCaptureId === input.captureId,
   );
+  // A replay is checked against what was stored, which a reversal may have cut down.
+  const stored = recorded?.refunds?.find((r) => r.id === input.refundId);
+  if (stored) {
+    grossCents = stored.grossCents;
+    feeReturnedCents = stored.feeReturnedCents;
+  }
   // A reversal already took (part of) this money: a refund completing afterwards only takes what
   // is left, and when nothing is left it is settled by the reversal instead of failing forever.
-  if (
-    recorded?.refunds?.some((r) => r.kind === RefundKind.REVERSAL) &&
-    !recorded.refunds.some((r) => r.id === input.refundId)
-  ) {
+  else if (recorded?.refunds?.some((r) => r.kind === RefundKind.REVERSAL)) {
     const done = refundedCents(recorded);
     const left = recorded.grossCents - done.grossCents;
     if (left <= 0)
@@ -261,6 +269,95 @@ export function applyCompletedRefundOp(
   return { applied: true, held: outcome.held };
 }
 
+/** Call inside a transaction after a Fairshare refund's provider status was stored. Applies a
+ * completed refund once, and settles any part of a reversal set aside for it: a completed
+ * refund took that money itself; a failed or cancelled one did not, so the set-aside part of
+ * the reversal is taken out of the split now. */
+export function settleRefundOp(
+  db: Database,
+  aggregates: AggregateStore,
+  opId: string,
+  result: {
+    id: string;
+    status: string;
+    amountCents: number;
+    accounting?: { feeReturnedCents: number };
+  },
+  at: string,
+): { applied: boolean; held: boolean } {
+  const outcome = applyCompletedRefundOp(db, aggregates, opId, result, at);
+  if (!["COMPLETED", "FAILED", "CANCELLED"].includes(result.status))
+    return outcome;
+  const holdback = db
+    .prepare("SELECT * FROM fairshare_reversal_holdbacks WHERE refund_op_id=?")
+    .get(opId) as { capture_id: string; cents: number } | undefined;
+  if (!holdback) return outcome;
+  db.prepare(
+    "DELETE FROM fairshare_reversal_holdbacks WHERE refund_op_id=?",
+  ).run(opId);
+  if (result.status === "COMPLETED") return outcome;
+  const match = db
+    .prepare("SELECT * FROM fairshare_captures WHERE provider_capture_id=?")
+    .get(holdback.capture_id) as any;
+  const left = unrefundedCents(
+    aggregates,
+    match.workspace_id,
+    match.collaboration_id,
+    holdback.capture_id,
+  );
+  const cents = Math.min(holdback.cents, left);
+  if (cents > 0)
+    applyRefundToCapture(db, aggregates, {
+      captureId: holdback.capture_id,
+      refundId: `reversal:${holdback.capture_id}:${opId}`,
+      kind: RefundKind.REVERSAL,
+      grossCents: cents,
+      feeReturnedCents: 0,
+      at,
+    });
+  return { applied: outcome.applied, held: true };
+}
+/** Call inside a transaction. Applies the reversal PayPal reported on a payment: its stated
+ * amount (or everything left), less Fairshare refunds still going through, which are set aside
+ * for those refunds. Returns the cents applied now. */
+export function applyReversal(
+  db: Database,
+  aggregates: AggregateStore,
+  input: { captureId: string; statedCents?: number; at: string },
+  agreement: { workspace_id: string; collaboration_id: string },
+): number {
+  const left = unrefundedCents(
+    aggregates,
+    agreement.workspace_id,
+    agreement.collaboration_id,
+    input.captureId,
+  );
+  const wanted = Math.min(input.statedCents ?? left, left);
+  let setAside = Math.min(wanted, inFlightRefundCents(db, input.captureId));
+  const now = wanted - setAside;
+  for (const op of db
+    .prepare(
+      `SELECT id,amount FROM fairshare_refund_ops WHERE capture_id=? AND ${UNSETTLED_REFUND_SQL} ORDER BY created_at,rowid`,
+    )
+    .all(input.captureId) as { id: string; amount: number }[]) {
+    if (setAside <= 0) break;
+    const cents = Math.min(setAside, op.amount);
+    db.prepare(
+      "INSERT INTO fairshare_reversal_holdbacks VALUES(?,?,?) ON CONFLICT(refund_op_id) DO UPDATE SET cents=cents+excluded.cents",
+    ).run(op.id, input.captureId, cents);
+    setAside -= cents;
+  }
+  if (now > 0)
+    applyRefundToCapture(db, aggregates, {
+      captureId: input.captureId,
+      refundId: `reversal:${input.captureId}`,
+      kind: RefundKind.REVERSAL,
+      grossCents: now,
+      feeReturnedCents: 0,
+      at: input.at,
+    });
+  return now;
+}
 /** Fairshare refunds on a payment still going through, which a reversal must leave for them. */
 export function inFlightRefundCents(db: Database, captureId: string): number {
   return Number(

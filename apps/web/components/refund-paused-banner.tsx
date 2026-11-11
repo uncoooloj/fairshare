@@ -76,6 +76,9 @@ function ResumeReview({
   const state = agreement.value as unknown as RefundReviewState;
   const lines = owedLines(state);
   const [blockers, setBlockers] = useState<string[] | null>(null),
+    [credits, setCredits] = useState<
+      { userId: string; name: string; cents: number }[]
+    >([]),
     [offset, setOffset] = useState(false),
     [note, setNote] = useState(""),
     [busy, setBusy] = useState(false),
@@ -85,7 +88,9 @@ function ResumeReview({
     let active = true;
     api(`${base}/recovery`)
       .then((r) => {
-        if (active) setBlockers(r.review?.blockers ?? []);
+        if (!active) return;
+        setBlockers(r.review?.blockers ?? []);
+        setCredits(r.review?.credits ?? []);
       })
       .catch((e) => {
         if (active) setError(e.message);
@@ -117,6 +122,22 @@ function ResumeReview({
           Nobody was paid more than the refund left them. Resuming sends the
           payouts that are waiting.
         </p>
+      )}
+      {credits.length > 0 && (
+        <>
+          <p>
+            Kept back earlier for a payout PayPal then returned. It’s added to
+            their next payment:
+          </p>
+          <ul className={styles.owed}>
+            {credits.map((line) => (
+              <li key={line.userId}>
+                <span>{line.name}</span>
+                <strong>{money(line.cents)}</strong>
+              </li>
+            ))}
+          </ul>
+        </>
       )}
       {waiting.map((message) => (
         <Notice warning key={message}>
