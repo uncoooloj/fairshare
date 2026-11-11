@@ -1,0 +1,22 @@
+{
+  "description": "Three named people, proportions 'to be agreed': no shares should be read, and the split must be asked.",
+  "people": [
+    { "name": "Lena Park" },
+    { "name": "Marcus Webb" },
+    { "name": "Priya Nair" }
+  ],
+  "shares": [],
+  "advance": null,
+  "fees": { "feePolicy": "BEFORE_SPLIT", "feeBearer": null },
+  "refunds": null,
+  "term": { "start": "2026-04-15", "end": null },
+  "sections": {
+    "SPLIT": "ASK",
+    "ADVANCE": "NOT_FOUND",
+    "FEES": "READ",
+    "REFUNDS": "NOT_FOUND",
+    "TERM": "READ",
+    "PEOPLE": "READ"
+  },
+  "questions": { "min": 1, "max": 1, "topics": ["SPLIT"] }
+}

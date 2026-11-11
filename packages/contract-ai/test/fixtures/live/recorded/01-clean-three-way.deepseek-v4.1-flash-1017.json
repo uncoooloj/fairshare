@@ -1,0 +1,31 @@
+{
+  "result": {
+    "id": "chatcmpl-30d2b39b-0096-4b08-9660-6704a318b7e0",
+    "object": "chat.completion",
+    "created": 1794392238,
+    "model": "@cf/deepseek-ai/deepseek-v4.1-flash-1017",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "{\n  \"suggestedTitle\": \"NIGHT MARKET TOUR REVENUE SHARE AGREEMENT\",\n  \"facts\": [\n    {\n      \"kind\": \"TERM\",\n      \"subject\": \"March 1, 2026\",\n      \"rawValue\": \"March 1, 2026\",\n      \"quote\": \"This Agreement starts on March 1, 2026 and ends on February 28, 2027, unless the Parties agree in writing to extend it.\",\n      \"recoupedBeforeSplit\": null,\n      \"feePolicy\": null,\n      \"refundStep\": null,\n      \"termBoundary\": \"START\"\n    },\n    {\n      \"kind\": \"TERM\",\n      \"subject\": \"February 28, 2027\",\n      \"rawValue\": \"February 28, 2027\",\n      \"quote\": \"This Agreement starts on March 1, 2026 and ends on February 28, 2027, unless the Parties agree in writing to extend it.\",\n      \"recoupedBeforeSplit\": null,\n      \"feePolicy\": null,\n      \"refundStep\": null,\n      \"termBoundary\": \"END\"\n    },\n    {\n      \"kind\": \"FEES\",\n      \"subject\": \"Payment processing fees are deducted from Gross Receipts before the split\",\n      \"rawValue\": \"Payment processing fees are deducted from Gross Receipts before the split\",\n      \"quote\": \"Payment processing fees are deducted from Gross Receipts before the split.\",\n      \"recoupedBeforeSplit\": null,\n      \"feePolicy\": \"BEFORE_SPLIT\",\n      \"refundStep\": null,\n      \"termBoundary\": null\n    },\n    {\n      \"kind\": \"ADVANCE\",\n      \"subject\": \"Ada Obi\",\n      \"rawValue\": \"$2,000\",\n      \"quote\": \"Ada Obi received a $2,000 advance to cover rehearsal space, which is recouped from Net Revenue before the split.\",\n      \"recoupedBeforeSplit\": true,\n      \"feePolicy\": null,\n      \"refundStep\": null,\n      \"termBoundary\": null\n    },\n    {\n      \"kind\": \"SHARE\",\n      \"subject\": \"Ada Obi\",\n      \"rawValue\": \"50%\",\n      \"quote\": \"Ada Obi receives 50% of Net Revenue.\",\n      \"recoupedBeforeSplit\": null,\n      \"feePolicy\": null,\n      \"refundStep\": null,\n      \"termBoundary\": null\n    },\n    {\n      \"kind\": \"SHARE\",\n      \"subject\": \"Tunde Bakare\",\n      \"rawValue\": \"30%\",\n      \"quote\": \"Tunde Bakare receives 30% of Net Revenue.\",\n      \"recoupedBeforeSplit\": null,\n      \"feePolicy\": null,\n      \"refundStep\": null,\n      \"termBoundary\": null\n    },\n    {\n      \"kind\": \"SHARE\",\n      \"subject\": \"Chioma Eze\",\n      \"rawValue\": \"20%\",\n      \"quote\": \"Chioma Eze receives 20% of Net Revenue.\",\n      \"recoupedBeforeSplit\": null,\n      \"feePolicy\": null,\n      \"refundStep\": null,\n      \"termBoundary\": null\n    },\n    {\n      \"kind\": \"REFUNDS\",\n      \"subject\": \"Refunds issued to ticket buyers are deducted from Gross Receipts before the split\",\n      \"rawValue\": \"Refunds issued to ticket buyers are deducted from Gross Receipts before the split\",\n      \"quote\": \"Refunds issued to ticket buyers are deducted from Gross Receipts before the split.\",\n      \"recoupedBeforeSplit\": null,\n      \"feePolicy\": null,\n      \"refundStep\": \"BEFORE_SPLIT\",\n      \"termBoundary\": null\n    },\n    {\n      \"kind\": \"CURRENCY\",\n      \"subject\": \"USD\",\n      \"rawValue\": \"USD\",\n      \"quote\": \"All amounts under this Agreement are in USD.\",\n      \"recoupedBeforeSplit\": null,\n      \"feePolicy\": null,\n      \"refundStep\": null,\n      \"termBoundary\": null\n    },\n    {\n      \"kind\": \"PERSON\",\n      \"subject\": \"Ada Obi\",\n      \"rawValue\": \"Ada Obi\",\n      \"quote\": \"This Revenue Share Agreement (the “Agreement”) is entered into by and between Ada Obi, Tunde Bakare and Chioma Eze (each a “Party” and together the “Parties”) in connection with the live concert series known as the Night Market Tour (the “Tour”).\",\n      \"recoupedBeforeSplit\": null,\n      \"feePolicy\": null,\n      \"refundStep\": null,\n      \"termBoundary\": null\n    },\n    {\n      \"kind\": \"PERSON\",\n      \"subject\": \"Tunde Bakare\",\n      \"rawValue\": \"Tunde Bakare\",\n      \"quote\": \"This Revenue Share Agreement (the “Agreement”) is entered into by and between Ada Obi, Tunde Bakare and Chioma Eze (each a “Party” and together the “Parties”) in connection with the live concert series known as the Night Market Tour (the “Tour”).\",\n      \"recoupedBeforeSplit\": null,\n      \"feePolicy\": null,\n      \"refundStep\": null,\n      \"termBoundary\": null\n    },\n    {\n      \"kind\": \"PERSON\",\n      \"subject\": \"Chioma Eze\",\n      \"rawValue\": \"Chioma Eze\",\n      \"quote\": \"This Revenue Share Agreement (the “Agreement”) is entered into by and between Ada Obi, Tunde Bakare and Chioma Eze (each a “Party” and together the “Parties”) in connection with the live concert series known as the Night Market Tour (the “Tour”).\",\n      \"recoupedBeforeSplit\": null,\n      \"feePolicy\": null,\n      \"refundStep\": null,\n      \"termBoundary\": null\n    }\n  ],\n  \"issues\": []\n}"
+        },
+        "finish_reason": "stop",
+        "logprobs": null
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 1410,
+      "completion_tokens": 1292,
+      "total_tokens": 2702,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "neurons": 179.39999389648438
+    }
+  },
+  "success": true,
+  "errors": [],
+  "messages": []
+}

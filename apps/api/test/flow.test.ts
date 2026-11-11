@@ -340,6 +340,7 @@ test("AI is consent gated, source bound and cannot activate rules", async () => 
     await app.close();
   }
 });
+
 test("concurrent same-revision updates commit one proposal only", async () => {
   const { app, owner, base, c } = await setup();
   try {

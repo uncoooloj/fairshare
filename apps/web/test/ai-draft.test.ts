@@ -47,6 +47,37 @@ test("prepares exact source-backed shares for explicit draft review", () =>
     ),
     { "0": "50", "1": "30", "2": "20" },
   ));
+
+test("accepts server-valid casing and quote normalization while retaining exact source proof", () => {
+  const source = "“MAYA OKAFOR” receives 50%. Jordan receives 50%.";
+  const firstEnd = source.indexOf(" Jordan");
+  const secondStart = firstEnd + 1;
+  const extraction = result([
+    {
+      kind: "SHARE",
+      subject: "maya okafor",
+      rawValue: "50%",
+      citation: { start: 0, end: firstEnd, quote: source.slice(0, firstEnd) },
+    },
+    {
+      kind: "SHARE",
+      subject: "JORDAN",
+      rawValue: "50%",
+      citation: {
+        start: secondStart,
+        end: source.length,
+        quote: source.slice(secondStart),
+      },
+    },
+  ]);
+  assert.deepEqual(
+    suggestedShares(extraction, "doc", source, [
+      { displayName: "Maya Okafor", userId: "maya", role: "MEMBER" },
+      { displayName: "Jordan", userId: "jordan", role: "MEMBER" },
+    ]),
+    { maya: "50", jordan: "50" },
+  );
+});
 test("rejects stale documents, unavailable model and executable output", () => {
   for (const e of [
     { ...result([fact("Maya", "50%")]), documentId: "stale" },

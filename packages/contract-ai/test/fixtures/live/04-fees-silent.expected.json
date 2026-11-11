@@ -1,0 +1,21 @@
+{
+  "description": "60/40 of gross with no word about fees: no fee reading should be invented, and fees must be asked.",
+  "people": [{ "name": "Dana Cole" }, { "name": "Felix Grant" }],
+  "shares": [
+    { "name": "Dana Cole", "basisPoints": 6000 },
+    { "name": "Felix Grant", "basisPoints": 4000 }
+  ],
+  "advance": null,
+  "fees": null,
+  "refunds": null,
+  "term": { "start": "2026-06-01", "end": "2027-05-31" },
+  "sections": {
+    "SPLIT": "READ",
+    "ADVANCE": "NOT_FOUND",
+    "FEES": "ASK",
+    "REFUNDS": "NOT_FOUND",
+    "TERM": "READ",
+    "PEOPLE": "READ"
+  },
+  "questions": { "min": 1, "max": 1, "topics": ["FEES"] }
+}

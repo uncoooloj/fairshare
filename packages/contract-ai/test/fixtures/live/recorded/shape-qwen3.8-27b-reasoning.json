@@ -1,0 +1,46 @@
+{
+  "result": {
+    "id": "chatcmpl-843e5fe7-6884-4e30-a296-0d3e15162ce8",
+    "object": "chat.completion",
+    "created": 1794390838,
+    "model": "@cf/qwen/qwen3.8-27b",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "{\n  \"suggestedTitle\": \"NIGHT MARKET TOUR REVENUE SHARE AGREEMENT\",\n  \"facts\": [\n    {\n      \"kind\": \"PERSON\",\n      \"subject\": \"Ada Obi\",\n      \"rawValue\": \"Ada Obi\",\n      \"quote\": \"Ada Obi, Tunde Bakare and Chioma Eze (each a \"\n    ,\n      \"recoupedBeforeSplit\": null,\n      \"feePolicy\": null,\n      \"refundStep\": null,\n      \"termBoundary\": null\n    },\n    {\n      \"kind\": \"PERSON\",\n      \"subject\": \"Tunde Bakare\",\n      \"rawValue\": \"Tunde Bakare\",\n      \"quote\": \"Ada Obi, Tunde Bakare and Chioma Eze (each a \"\n    ,\n      \"recoupedBeforeSplit\": null,\n      \"feePolicy\": null,\n      \"refundStep\": null,\n      \"termBoundary\": null\n    },\n    {\n      \"kind\": \"PERSON\",\n      \"subject\": \"Chioma Eze\",\n      \"rawValue\": \"Chioma Eze\",\n      \"quote\": \"Ada Obi, Tunde Bakare and Chioma Eze (each a \"\n    ,\n      \"recoupedBeforeSplit\": null,\n      \"feePolicy\": null,\n      \"refundStep\": null,\n      \"termBoundary\": null\n    },\n    {\n      \"kind\": \"SHARE\",\n      \"subject\": \"Ada Obi\",\n      \"rawValue\": \"50%\",\n      \"quote\": \"Ada Obi receives 50% of Net Revenue.\",\n      \"recoupedBeforeSplit\": null,\n      \"feePolicy\": null,\n      \"refundStep\": null,\n      \"termBoundary\": null\n    },\n    {\n      \"kind\": \"SHARE\",\n      \"subject\": \"Tunde Bakare\",\n      \"rawValue\": \"30%\",\n      \"quote\": \"Tunde Bakare receives 30% of Net Revenue.\",\n      \"recoupedBeforeSplit\": null,\n      \"feePolicy\": null,\n      \"refundStep\": null,\n      \"termBoundary\": null\n    },\n    {\n      \"kind\": \"SHARE\",\n      \"subject\": \"Chioma Eze\",\n      \"rawValue\": \"20%\",\n      \"quote\": \"Chioma Eze receives 20% of Net Revenue.\",\n      \"recoupedBeforeSplit\": null,\n      \"feePolicy\": null,\n      \"refundStep\": null,\n      \"termBoundary\": null\n    },\n    {\n      \"kind\": \"ADVANCE\",\n      \"subject\": \"Ada Obi\",\n      \"rawValue\": \"$2,000\",\n      \"quote\": \"Ada Obi received a $2,000 advance to cover rehearsal space, which is recouped from Net Revenue before the split.\",\n      \"recoupedBeforeSplit\": true,\n      \"feePolicy\": null,\n      \"refundStep\": null,\n      \"termBoundary\": null\n    },\n    {\n      \"kind\": \"FEES\",\n      \"subject\": \"Payment processing fees are deducted from Gross Receipts before the split.\",\n      \"rawValue\": \"Payment processing fees are deducted from Gross Receipts before the split.\",\n      \"quote\": \"Payment processing fees are deducted from Gross Receipts before the split.\",\n      \"recoupedBeforeSplit\": null,\n      \"feePolicy\": \"BEFORE_SPLIT\",\n      \"refundStep\": null,\n      \"termBoundary\": null\n    },\n    {\n      \"kind\": \"REFUNDS\",\n      \"subject\": \"Refunds issued to ticket buyers are deducted from Gross Receipts before the split.\",\n      \"rawValue\": \"Refunds issued to ticket buyers are deducted from Gross Receipts before the split.\",\n      \"quote\": \"Refunds issued to ticket buyers are deducted from Gross Receipts before the split.\",\n      \"recoupedBeforeSplit\": null,\n      \"feePolicy\": null,\n      \"refundStep\": \"BEFORE_SPLIT\",\n      \"termBoundary\": null\n    },\n    {\n      \"kind\": \"TERM\",\n      \"subject\": \"March 1, 2026\",\n      \"rawValue\": \"March 1, 2026\",\n      \"quote\": \"This Agreement starts on March 1, 2026 and ends on February 28, 2027, unless the Parties agree in writing to extend it.\",\n      \"recoupedBeforeSplit\": null,\n      \"feePolicy\": null,\n      \"refundStep\": null,\n      \"termBoundary\": \"START\"\n    },\n    {\n      \"kind\": \"TERM\",\n      \"subject\": \"February 28, 2027\",\n      \"rawValue\": \"February 28, 2027\",\n      \"quote\": \"This Agreement starts on March 1, 2026 and ends on February 28, 2027, unless the Parties agree in writing to extend it.\",\n      \"recoupedBeforeSplit\": null,\n      \"feePolicy\": null,\n      \"refundStep\": null,\n      \"termBoundary\": \"END\"\n    },\n    {\n      \"kind\": \"CURRENCY\",\n      \"subject\": \"USD\",\n      \"rawValue\": \"USD\",\n      \"quote\": \"All amounts under this Agreement are in USD.\",\n      \"recoupedBeforeSplit\": null,\n      \"feePolicy\": null,\n      \"refundStep\": null,\n      \"termBoundary\": null\n    }\n  ],\n  \"issues\": []\n}",
+          "refusal": null,
+          "annotations": null,
+          "audio": null,
+          "function_call": null,
+          "reasoning": "Let me carefully parse this revenue-sharing agreement and extract all the facts according to the schema.\n\n**PERSONS:**\n- Ada Obi\n- Tunde Bakare\n- Chioma Eze\n\n**SHARES:**\n- Ada Obi: 50% of Net Revenue\n- Tunde Bakare: 30% of Net Revenue\n- Chioma Eze: 20% of Net Revenue\n\n**ADVANCE:**\n- Ada Obi received $2,000 advance, recouped from Net Revenue before the split.\n\n**FEES:**\n- Payment processing fees are deducted from Gross Receipts before the split. So feePolicy = BEFORE_SPLIT.\n\n**REFUNDS:**\n- Refunds are deducted from Gross Receipts before the split. So refundStep = BEFORE_SPLIT.\n\n**TERM:**\n- Starts March 1, 2026\n- Ends February 28, 2027\n\n**CURRENCY:**\n- USD\n\nNow let me construct the JSON with proper quotes.\n\nFor PERSON:\n- \"Ada Obi\" - quote: \"Ada Obi, Tunde Bakare and Chioma Eze (each a \\\"Party\\\" and together the \\\"Parties\\\")\"\n- \"Tunde Bakare\" - same quote\n- \"Chioma Eze\" - same quote\n\nFor SHARE:\n- Ada Obi 50%: \"Ada Obi receives 50% of Net Revenue.\"\n- Tunde Bakare 30%: \"Tunde Bakare receives 30% of Net Revenue.\"\n- Chioma Eze 20%: \"Chioma Eze receives 20% of Net Revenue.\"\n\nFor ADVANCE:\n- subject: \"Ada Obi\", rawValue: \"$2,000\", recoupedBeforeSplit: true\n- quote: \"Ada Obi received a $2,000 advance to cover rehearsal space, which is recouped from Net Revenue before the split.\"\n\nFor FEES:\n- feePolicy: BEFORE_SPLIT\n- subject: \"Payment processing fees are deducted from Gross Receipts before the split.\"\n- rawValue: \"Payment processing fees are deducted from Gross Receipts before the split.\"\n\nWait, let me re-read the instructions. For FEES: \"feePolicy BEFORE_SPLIT when fees come off before the split or shares are of net revenue (subject = rawValue = the words that say so).\"\n\nSo subject and rawValue should be the words that say so. Let me use: \"Payment processing fees are deducted from Gross Receipts before the split.\"\n\nFor REFUNDS:\n- refundStep: BEFORE_SPLIT\n- subject = rawValue = the words that say so: \"Refunds issued to ticket buyers are deducted from Gross Receipts before the split.\"\n\nFor TERM:\n- START: \"March 1, 2026\" - quote: \"This Agreement starts on March 1, 2026 and ends on February 28, 2027, unless the Parties agree in writing to extend it.\"\n- END: \"February 28, 2027\" - same quote\n\nFor CURRENCY:\n- subject: \"USD\", rawValue: \"USD\"\n- quote: \"All amounts under this Agreement are in USD.\"\n\nNow let me check for QUESTIONS. The document is quite clear:\n- Split is defined (50/30/20)\n- Advance recoupment is clear (before split)\n- Fees are clear (before split)\n\nNo questions needed.\n\nLet me also check suggestedTitle. The first 4000 characters include \"NIGHT MARKET TOUR REVENUE SHARE AGREEMENT\" which is a good title.\n\nLet me format the JSON now.\n"
+        },
+        "logprobs": null,
+        "finish_reason": "stop",
+        "stop_reason": null,
+        "token_ids": null,
+        "routed_experts": null
+      }
+    ],
+    "service_tier": null,
+    "usage": {
+      "prompt_tokens": 1266,
+      "completion_tokens": 2064,
+      "total_tokens": 3330,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "neurons": 652.2272338867188
+    },
+    "prompt_logprobs": null,
+    "prompt_token_ids": null,
+    "prompt_text": null,
+    "kv_transfer_params": null,
+    "ec_transfer_params": null,
+    "metrics": null
+  },
+  "success": true,
+  "errors": [],
+  "messages": []
+}

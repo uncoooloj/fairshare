@@ -1,0 +1,30 @@
+{
+  "description": "Defined-term parties, a schedule and an amendment that replaces it. Only the amended shares (45/30/25) should be read. The separate recoupment clause explicitly says the Production Advance is recouped before distribution.",
+  "people": [
+    { "name": "Kemi Adeyemi", "aliases": ["Artist", "the Artist", "Kemi A."] },
+    { "name": "Daniel Osei", "aliases": ["Producer", "the Producer"] },
+    { "name": "Ruth Mensah", "aliases": ["Manager", "the Manager"] }
+  ],
+  "shares": [
+    { "name": "Kemi Adeyemi", "basisPoints": 4500 },
+    { "name": "Daniel Osei", "basisPoints": 3000 },
+    { "name": "Ruth Mensah", "basisPoints": 2500 }
+  ],
+  "advance": {
+    "recipient": "Daniel Osei",
+    "amountCents": 300000,
+    "recoupedBeforeSplit": true
+  },
+  "fees": { "feePolicy": "BEFORE_SPLIT", "feeBearer": null },
+  "refunds": { "refundStep": "FROM_PARTY_SHARE", "chargedTo": "Kemi Adeyemi" },
+  "term": { "start": "2026-01-15", "end": "2028-01-14" },
+  "sections": {
+    "SPLIT": "READ",
+    "ADVANCE": "READ",
+    "FEES": "READ",
+    "REFUNDS": "READ",
+    "TERM": "READ",
+    "PEOPLE": "READ"
+  },
+  "questions": { "min": 0, "max": 1, "topics": [] }
+}

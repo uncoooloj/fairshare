@@ -8,11 +8,11 @@ Extraction tries Cloudflare Workers AI first and falls back to Anthropic. Config
 
 **Cloudflare Workers AI (primary)**
 
-| Variable                | Required | Notes                                                                                                                                                                                                           |
-| ----------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `CLOUDFLARE_ACCOUNT_ID` | yes      | 32 hex characters.                                                                                                                                                                                              |
-| `CLOUDFLARE_API_TOKEN`  | yes      | Token with Workers AI permission.                                                                                                                                                                               |
-| `CLOUDFLARE_AI_MODEL`   | no       | Defaults to `@cf/meta/llama-3.3-70b-instruct-fp8-fast`, the largest model Cloudflare lists as supporting `json_schema` response format (24k-token context). Must be a text-generation `@cf/<org>/<name>` model. |
+| Variable                | Required | Notes                                                                                                                                                                                                                                                         |
+| ----------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CLOUDFLARE_ACCOUNT_ID` | yes      | 32 hex characters.                                                                                                                                                                                                                                            |
+| `CLOUDFLARE_API_TOKEN`  | yes      | Token with Workers AI permission.                                                                                                                                                                                                                             |
+| `CLOUDFLARE_AI_MODEL`   | no       | Defaults to `@cf/deepseek-ai/deepseek-v4.1-flash-1017` (picked in the 2026-11 live bake-off, see below; 1M-token context). Must be a text-generation `@cf/<org>/<name>` model. Known reasoning models get per-model request options in `CLOUDFLARE_PROFILES`. |
 
 `scripts/verify-contract-ai.mjs` reads the same `CLOUDFLARE_AI_MODEL`; the older `CLOUDFLARE_CONTRACT_MODEL` name is still accepted there.
 
@@ -23,7 +23,7 @@ Extraction tries Cloudflare Workers AI first and falls back to Anthropic. Config
 | `ANTHROPIC_API_KEY` | yes      | Server-side API key.             |
 | `ANTHROPIC_MODEL`   | no       | Defaults to `claude-sonnet-5-5`. |
 
-Anthropic is used when Cloudflare is not configured, returns an HTTP/transport error, times out (30 s cap per provider), or returns output that fails validation. With neither configured the result is `MANUAL_REQUIRED` with `reason: NOT_CONFIGURED`, and no request is made.
+Anthropic is used when Cloudflare is not configured, returns an HTTP/transport error, times out (30 s per provider by default; callers may pass `timeoutMs` up to 120 s), or returns output that fails validation. With neither configured the result is `MANUAL_REQUIRED` with `reason: NOT_CONFIGURED`, and no request is made.
 
 Wiring: `apps/api/src/server.ts` (Node) and `apps/api/cloudflare/worker.ts` (Worker) map these variables into `extractContract(document, { accountId, apiToken, model, anthropic: { apiKey, model } })`. For the hosted Worker, set the tokens with `wrangler secret put`, not in `wrangler.jsonc` vars. Locally, export them into the API process (the server does not load `.env`). Then the user must tick the consent box, which sends `{ consentToCloudflare: true }`; the route is rate limited to 10 calls per user.
 
@@ -44,7 +44,7 @@ The Anthropic call uses the official SDK (`@anthropic-ai/sdk`, pinned) with stru
 - `issues[]` (max 3, one per topic, `SPLIT` > `ADVANCE` > `FEES`): `{ topic, question (≤ 90 chars, plain words), citation | null, readings[2–3] }`. Each reading is `{ label (≤ 40), explanation (one line), setting }`, where `setting` is the exact Rules change: `{ feePolicy, feeBearer? }`, `{ advanceRecoupedBeforeSplit }` or `{ shares: [{ name, basisPoints }] }` summing to 10,000. Names in readings must appear in the document.
 - `sections`: per `SPLIT | ADVANCE | FEES | REFUNDS | TERM | PEOPLE`, `{ status: READ | ASK | NOT_FOUND, factIndexes, issueIndex }`. `SPLIT` is `READ` only when every share is consistent and they add up to exactly 100%.
 - `rejections[]`: internal `{ item, index, reason }` codes for dropped facts/issues. Never show them verbatim to users.
-- `provider`, `model`, `fallbackFrom`, `promptVersion` (`contract-extraction-v4`): internal metadata.
+- `provider`, `model`, `fallbackFrom`, `promptVersion` (`contract-extraction-v5`): internal metadata.
 - Constants `requiresHumanReview: true`, `executable: false`.
 
 ## Validation rules
@@ -67,4 +67,17 @@ Every fact and issue is validated independently. Invalid ones are dropped with a
 
 ## Verification status
 
-Deterministic tests cover both providers with recorded fixture responses, the fallback path and the validation rules. No live provider call was made for v4. The Anthropic structured-output schema and the Workers AI `json_schema` behavior for this schema have not been exercised live. The 2026-11-10 live run (`docs/ai-live-verification.json`) used the earlier v3 prompt and three synthetic sentences; it says nothing about v4 quality. Before claiming accuracy on real contracts, run `scripts/verify-contract-ai.mjs` and a labelled eval on realistic documents.
+Deterministic tests cover both providers, the fallback path and the validation rules, and replay real Workers AI responses recorded on 2026-11-11 (`test/fixtures/live/recorded/`).
+
+Live eval (`npm run eval:live -w @fairshare/contract-ai`, see `scripts/live-eval.ts`): six synthetic agreements under `test/fixtures/live/` with hand-written expected readings, scored per field (people, shares, advance, fees, refunds, term, section statuses, questions, verbatim quotes). On 2026-11-11 the model bake-off on the v4 prompt scored:
+
+| Model                           | Field accuracy | Valid JSON | Median latency | Cost / agreement        |
+| ------------------------------- | -------------- | ---------- | -------------- | ----------------------- |
+| qwen3.8-27b                     | 87%            | 6/6        | 95 s           | $0.0080                 |
+| deepseek-v4.1-flash-1017        | 80%            | 5/6        | 27 s           | $0.0071                 |
+| glm-5.3                         | 77%            | 6/6        | 6 s            | $0.0060                 |
+| gpt-oss-120b                    | 68%            | 6/6        | 25 s           | $0.0015                 |
+| llama-3.3-70b-instruct-fp8-fast | 58%            | 6/6        | 29 s           | $0.0024                 |
+| gemma-4-26b-a4b-it              | 32%            | 0/6        | 116 s          | n/a (ran out of tokens) |
+
+DeepSeek V4.1 Flash became the default; with prompt v5, `reasoning_effort: none`, curly-quoted source text and the validation fixes it currently scores 57/60 on the six recorded synthetic fixtures at 4–16 s per agreement. A prior 59/60 figure used a relaxed amendment expectation. The recorded amendment fixture misses its explicit Production Advance recoupment: the model separates it from the amount, validation preserves the amount as unknown, and the scorer counts the advance and its section as misses. A start date given only through a defined term ("the Effective Date") is also dropped. The Anthropic fallback has not been exercised live. These are synthetic documents; run the eval on real agreements before claiming accuracy on them.

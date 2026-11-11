@@ -1,0 +1,26 @@
+{
+  "description": "Shares as written add up to 110%; read them as stated and ask about the split. The signing date is not the start date.",
+  "people": [
+    { "name": "Sam Rivera" },
+    { "name": "Jo Kim" },
+    { "name": "Alex Moreno" }
+  ],
+  "shares": [
+    { "name": "Sam Rivera", "basisPoints": 5000 },
+    { "name": "Jo Kim", "basisPoints": 3000 },
+    { "name": "Alex Moreno", "basisPoints": 3000 }
+  ],
+  "advance": null,
+  "fees": { "feePolicy": "BEFORE_SPLIT", "feeBearer": null },
+  "refunds": null,
+  "term": { "start": "2026-05-01", "end": "2029-04-30" },
+  "sections": {
+    "SPLIT": "ASK",
+    "ADVANCE": "NOT_FOUND",
+    "FEES": "READ",
+    "REFUNDS": "NOT_FOUND",
+    "TERM": "READ",
+    "PEOPLE": "READ"
+  },
+  "questions": { "min": 1, "max": 1, "topics": ["SPLIT"] }
+}
