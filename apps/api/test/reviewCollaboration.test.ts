@@ -175,7 +175,10 @@ test("real transport receives verified recipient only, generic reminder, duplica
     assert.equal(messages.length, 1);
     assert.equal(messages[0].kind, MailKind.AGREEMENT_REVIEW);
     assert.equal(messages[0].to, f.b.user.email);
-    assert.equal(messages[0].link, "https://fairshare.example/app");
+    assert.equal(
+      messages[0].link,
+      `https://fairshare.example/app/agreements/workspace/${f.w.id}/agreement/agreement`,
+    );
     const again = await f.call("/reminders", { recipientId: f.b.user.id });
     assert.equal(again.json().repeated, true);
     assert.equal(messages.length, 1);

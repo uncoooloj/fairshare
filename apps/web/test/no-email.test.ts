@@ -21,7 +21,7 @@ test("email controls require confirmed server capability, failing closed", () =>
   );
   assert.match(appSource(), /emailDelivery\s*&&\s*\(?\s*<Button/);
 });
-test("review reminders copy locally and notification preferences are in-app only", () => {
+test("review reminders retain copy and email preferences expose only approval requests", () => {
   const reminder = source("components/review-discussion.tsx").split(
     "export function ReviewReminder",
   )[1];
@@ -33,9 +33,13 @@ test("review reminders copy locally and notification preferences are in-app only
     source("components/settings-preferences.tsx"),
     /\(\["inApp"\]\s+as\s+const\)/,
   );
-  assert.doesNotMatch(
+  assert.match(
     source("components/settings-preferences.tsx"),
-    /<th scope="col">Email/,
+    /emailDelivery && <th scope="col">Email/,
+  );
+  assert.match(
+    source("components/settings-preferences.tsx"),
+    /kind === "approvalRequests"/,
   );
   assert.match(
     source("components/payment-account-settings.tsx"),

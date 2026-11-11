@@ -1,10 +1,16 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { EmailSendButton } from "./email-send-button";
+import { useEmailDelivery } from "../lib/email-capability";
 import { publicWebOrigin } from "../lib/public-web-origin";
 import { AGREEMENT_INVITE_PREFIX } from "./agreement-invitation";
 
 export interface SentInvite {
   key: string;
+  workspaceId?: string;
+  agreementId?: string;
+  userId?: string;
+  invitationId?: string;
   name: string;
   email: string;
   token?: string;
@@ -121,7 +127,7 @@ function InviteRow({ invite }: { invite: SentInvite }) {
           This link expired. Create a new link from the agreement’s People tab.
         </small>
       ) : link ? (
-        <span className="wiz-invite-link">
+        <div className="wiz-invite-link">
           {state === RowState.SHOW_LINK && (
             <input
               readOnly
@@ -146,7 +152,20 @@ function InviteRow({ invite }: { invite: SentInvite }) {
           >
             Share
           </button>
-        </span>
+          {invite.workspaceId && invite.agreementId && invite.userId && (
+            <EmailSendButton
+              key={`${invite.workspaceId}:${invite.agreementId}:${invite.userId}:${invite.invitationId}`}
+              path={`workspaces/${encodeURIComponent(invite.workspaceId)}/collaborations/${encodeURIComponent(invite.agreementId)}/people/${encodeURIComponent(invite.userId)}/invitation-email`}
+              destination={invite.email}
+              label="Email invitation"
+              payload={() =>
+                liveInviteLink(invite, location.origin)
+                  ? { token: invite.token }
+                  : undefined
+              }
+            />
+          )}
+        </div>
       ) : (
         <small className="wiz-hint">
           Their link is on the agreement’s People tab.
@@ -156,19 +175,27 @@ function InviteRow({ invite }: { invite: SentInvite }) {
   );
 }
 
-/** Step 7. No email is sent: the organizer copies or shares each person's link. */
+/** Step 7. The organizer explicitly copies, shares, or emails each link. */
 export function WizardSentStep({ invites }: { invites: SentInvite[] }) {
+  const emailDelivery = useEmailDelivery();
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => heading.current?.focus(), []);
   return (
     <section className="wiz-step" aria-labelledby="wiz-step-title">
       <h1 id="wiz-step-title" ref={heading} tabIndex={-1}>
-        Sent to {joinNames(invites.map((invite) => firstName(invite.name)))}
+        Ready for {joinNames(invites.map((invite) => firstName(invite.name)))}
       </h1>
-      <p className="wiz-lede">Send them their link. We don’t email it yet.</p>
+      <p className="wiz-lede">
+        {emailDelivery
+          ? "Copy, share, or email each invitation below. Nothing is emailed automatically."
+          : "Send them their link. Email is unavailable here."}
+      </p>
       <ul className="wiz-invites">
         {invites.map((invite) => (
-          <InviteRow key={invite.key} invite={invite} />
+          <InviteRow
+            key={`${invite.workspaceId}:${invite.agreementId}:${invite.userId}:${invite.invitationId}:${invite.key}`}
+            invite={invite}
+          />
         ))}
       </ul>
     </section>

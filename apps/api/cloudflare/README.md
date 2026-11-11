@@ -46,3 +46,7 @@ route or service binding, secrets and durable resources, confirm current storage
 limits, test alarm recovery and signed PayPal sandbox webhooks against the
 deployed database, and prepare backup/migration/rollback. Existing local SQLite
 data is not migrated by this scaffold.
+
+## Optional transactional email
+
+The Worker uses the same explicitly enabled Resend transport as the Node API. Install `RESEND_API_KEY` only as an API Worker secret and configure `EMAIL_DELIVERY_ENABLED`, `EMAIL_PROVIDER`, `EMAIL_FROM` and the trusted HTTPS `PUBLIC_APP_ORIGIN` after verifying the sender. Hosted manifests preserve existing email settings and do not enable them. Follow [email setup and acceptance](../../../docs/EMAIL-DELIVERY.md); the mocked Worker smoke is not inbox delivery evidence.

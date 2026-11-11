@@ -81,6 +81,7 @@ These checks provide source-level and build evidence. They do not prove browser 
 - [Authentication and persistence](docs/AUTH-PERSISTENCE.md)
 - [Source-document storage and downloads](docs/security/source-documents.md)
 - [Password recovery](docs/password-recovery.md)
+- [Transactional email setup](docs/EMAIL-DELIVERY.md)
 - [Local OCR](docs/LOCAL-OCR.md)
 - [Authenticator MFA](docs/mfa.md)
 - [Hackathon MFA simulation](docs/HACKATHON-MFA.md)

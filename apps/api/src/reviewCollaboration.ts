@@ -345,7 +345,7 @@ export function registerReviewCollaboration(
           "RECIPIENT_UNVERIFIED",
           "The participant must verify their email first.",
         );
-      const reminderLink = publicAppOrigin(options.publicAppOrigin) + "/app";
+      const reminderLink = `${publicAppOrigin(options.publicAppOrigin)}/app/agreements/workspace/${encodeURIComponent(routeParams.workspaceId)}/${encodeURIComponent(routeParams.collaborationId)}/agreement`;
       const reminderId = randomUUID(),
         createdAt = app.store.now();
       app.store.limit(`reminders:${user.id}`, 10, 3600000);
@@ -367,6 +367,8 @@ export function registerReviewCollaboration(
       try {
         const receipt = await options.mailTransport.send({
           kind: MailKind.AGREEMENT_REVIEW,
+          agreementName: collaborationRow.value.name,
+          inviterName: user.name,
           to: reminderRecipient.email,
           link: reminderLink,
           expiresAt: createdAt + 86400000,

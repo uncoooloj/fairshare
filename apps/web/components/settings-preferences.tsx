@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState, type ReactNode } from "react";
+import { useEmailDelivery } from "../lib/email-capability";
 import { api } from "../lib/model";
 import {
   formatDate,
@@ -125,6 +126,7 @@ function Feedback({ error, notice }: { error: string; notice: string }) {
   );
 }
 export function NotificationsSettings() {
+  const emailDelivery = useEmailDelivery();
   const state = usePreferences();
   const { preferences, setPreferences, saving } = state;
   return (
@@ -151,6 +153,7 @@ export function NotificationsSettings() {
                     <span className="visually-hidden">Notification</span>
                   </th>
                   <th scope="col">In-app</th>
+                  {emailDelivery && <th scope="col">Email</th>}
                 </tr>
               </thead>
               <tbody>
@@ -189,6 +192,37 @@ export function NotificationsSettings() {
                           />
                         </td>
                       ))}
+                      {emailDelivery && (
+                        <td>
+                          {kind === "approvalRequests" ? (
+                            <input
+                              type="checkbox"
+                              role="switch"
+                              className="settings-switch"
+                              aria-label="Approval requests email"
+                              disabled={saving}
+                              checked={
+                                preferences.notifications.approvalRequests.email
+                              }
+                              onChange={(event) =>
+                                setPreferences({
+                                  ...preferences,
+                                  notifications: {
+                                    ...preferences.notifications,
+                                    approvalRequests: {
+                                      ...preferences.notifications
+                                        .approvalRequests,
+                                      email: event.target.checked,
+                                    },
+                                  },
+                                })
+                              }
+                            />
+                          ) : (
+                            <span className="muted">In-app only</span>
+                          )}
+                        </td>
+                      )}
                     </tr>
                   ),
                 )}
@@ -197,7 +231,9 @@ export function NotificationsSettings() {
           </div>
           <div className="settings-actions">
             <p className="muted">
-              In-app only. No email is sent; share links and reminders directly.
+              {emailDelivery
+                ? "Email is available for approval requests and review reminders only. Other updates are in-app."
+                : "In-app only. No email is sent; share links and reminders directly."}
             </p>
             <button type="submit" className="button primary" disabled={saving}>
               {saving ? "Saving…" : "Save preferences"}

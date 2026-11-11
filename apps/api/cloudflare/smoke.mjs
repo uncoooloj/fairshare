@@ -5,11 +5,25 @@ import { randomUUID } from "node:crypto";
 import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 import assert from "node:assert/strict";
 const directory = await mkdtemp(join(tmpdir(), "fairshare-worker-test-"));
+const emailMessages = [];
 let reference = "",
   orderWrites = 0,
   captureWrites = 0;
 const providerFixture = async (request) => {
   const url = new URL(request.url);
+  if (url.origin === "https://api.resend.com") {
+    assert.equal(url.pathname, "/emails");
+    assert.equal(request.method, "POST");
+    assert.equal(
+      request.headers.get("authorization"),
+      "Bearer local-email-fixture",
+    );
+    assert(request.headers.get("idempotency-key"));
+    const message = await request.json();
+    assert(message.html && message.text);
+    emailMessages.push(message);
+    return Response.json({ id: `email-fixture-${emailMessages.length}` });
+  }
   assert.equal(url.origin, "https://api-m.sandbox.paypal.com");
   const money = (value) => ({ currency_code: "USD", value });
   if (url.pathname === "/v1/oauth2/token")
@@ -92,6 +106,7 @@ async function request(path, body, expected = 200, overrideToken = token) {
 }
 try {
   await request("/health");
+  assert.equal((await request("/api/auth/capabilities")).emailDelivery, false);
   await request(
     "/api/auth/register",
     {
@@ -172,9 +187,70 @@ try {
     PAYPAL_MERCHANT_ID: "ABCDEFGHIJKLM",
     PAYPAL_WEBHOOK_ID: "test-webhook",
     PUBLIC_API_URL: "https://callbacks.example.test",
+    PUBLIC_APP_ORIGIN: "https://fairshare.test",
+    EMAIL_DELIVERY_ENABLED: "true",
+    EMAIL_PROVIDER: "resend",
+    EMAIL_FROM: "Fairshare <mail@example.test>",
+    RESEND_API_KEY: "local-email-fixture",
   }))
     options.workers[0].config.env[key] = { type: "text", value };
   mf = new Miniflare(options);
+  assert.equal((await request("/api/auth/capabilities")).emailDelivery, true);
+  await request("/api/auth/verification/request", {});
+  assert.equal(emailMessages.length, 1);
+  const verificationLink = emailMessages[0].text.match(
+    /https:\/\/fairshare\.test\/verify-email#token=([^\s]+)/,
+  )[0];
+  await request("/api/auth/verification/confirm", {
+    token: new URLSearchParams(new URL(verificationLink).hash.slice(1)).get(
+      "token",
+    ),
+  });
+  const invitationIntake = await request(
+    "/api/agreements/intake",
+    { ...intakeInput, requestId: randomUUID() },
+    201,
+  );
+  const invitationBase = `/api/workspaces/${invitationIntake.workspace.id}/collaborations/${invitationIntake.agreement.id}`;
+  const person = await request(
+    invitationBase + "/people",
+    {
+      expectedRevision: invitationIntake.agreement.revision,
+      name: "B",
+      email: "b@example.com",
+    },
+    201,
+  );
+  const invitePath = `${invitationBase}/people/${encodeURIComponent("pending:" + person.invitation.id)}/invitation-email`;
+  assert.equal(
+    (await request(invitePath, { token: person.invitation.token })).status,
+    "PROVIDER_ACCEPTED",
+  );
+  await mf.dispose();
+  mf = new Miniflare(options);
+  assert.equal(
+    (await request(invitePath, { token: person.invitation.token })).repeated,
+    true,
+  );
+  assert.equal(emailMessages.length, 2);
+  assert.deepEqual(emailMessages[1].to, ["b@example.com"]);
+  assert(
+    emailMessages[1].text.includes(
+      "#token=agreement%3A" + person.invitation.token,
+    ),
+  );
+  await request(
+    "/api/agreement-invitations/accept",
+    { token: person.invitation.token },
+    200,
+    outsider.token,
+  );
+  await request(
+    "/api/auth/password-reset/request",
+    { email: "a@example.com" },
+    200,
+  );
+  assert.equal(emailMessages.length, 3);
   const payment = await request(base + "/payments", {
     amountCents: 100,
     requestKey: "fixture-payment",
@@ -196,7 +272,7 @@ try {
     401,
   );
   console.log(
-    "workerd full handlers PASS: auth, schema rejection, atomic intake/replay, tenant isolation, source-backed rules/approval/activation, stale revision, fail-closed payments, durable restart; MOCKED PayPal create/capture/net allocation/idempotency (not provider evidence)",
+    "workerd full handlers PASS: auth, schema rejection, atomic intake/replay, tenant isolation, source-backed rules/approval/activation, stale revision, fail-closed payments, durable restart; MOCKED PayPal create/capture/net allocation/idempotency; MOCKED Resend capabilities, verification, recovery, invitation delivery/acceptance/deduplication (not live provider evidence)",
   );
 } finally {
   await mf.dispose();

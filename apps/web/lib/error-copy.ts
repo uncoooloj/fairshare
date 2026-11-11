@@ -5,6 +5,12 @@ export function errorCopy(
   message?: string,
 ): string {
   const messages: Record<string, string> = {
+    EMAIL_VERIFICATION_REQUIRED:
+      "Verify your email before sending invitations or review reminders.",
+    EMAIL_UNAVAILABLE:
+      "Email is not available right now. No email was sent. Copy or share the link directly instead.",
+    EMAIL_DELIVERY_UNCONFIRMED:
+      "Email delivery is unconfirmed. Do not resend; copy or share the link directly instead.",
     OCR_UNAVAILABLE:
       "We can’t read this scan right now. Try again later, or paste the agreement text.",
     OCR_BUSY:
