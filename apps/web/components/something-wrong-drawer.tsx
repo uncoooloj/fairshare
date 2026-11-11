@@ -42,11 +42,13 @@ export function changeRequestReason(part: WrongPart, note: string) {
 /** "Something's not right": pick the part, add a note, send it to the organizer. */
 export function SomethingWrongDrawer({
   organizerName,
+  versionId,
   busy,
   onSend,
   onClose,
 }: {
   organizerName: string;
+  versionId: number;
   busy: boolean;
   onSend: (reason: string) => Promise<void>;
   onClose: () => void;
@@ -62,7 +64,7 @@ export function SomethingWrongDrawer({
   const opener = useRef<Element | null>(null);
   useEffect(() => {
     opener.current = document.activeElement;
-    panel.current?.querySelector<HTMLElement>("input:checked")?.focus();
+    panel.current?.querySelector<HTMLSelectElement>("select")?.focus();
     return () => {
       if (opener.current instanceof HTMLElement && opener.current.isConnected)
         opener.current.focus();
@@ -91,7 +93,7 @@ export function SomethingWrongDrawer({
           // Keep keyboard focus inside the drawer while it is open.
           const items = [
             ...(panel.current?.querySelectorAll<HTMLElement>(
-              "button:not([disabled]), textarea:not([disabled]), input:not([disabled]), [tabindex='-1']",
+              "button:not([disabled]), textarea:not([disabled]), select:not([disabled]), input:not([disabled]), [tabindex='-1']",
             ) ?? []),
           ].filter((el) => el.tabIndex >= 0);
           if (!items.length) return;
@@ -157,23 +159,21 @@ export function SomethingWrongDrawer({
               }
             }}
           >
-            <h2 id={titleId}>Request changes</h2>
-            <fieldset className="collab-parts">
-              <legend className="collab-rule-label">Rule</legend>
-              {Object.values(WrongPart).map((value) => (
-                <label key={value} className="collab-part">
-                  <input
-                    type="radio"
-                    name="part"
-                    value={value}
-                    checked={part === value}
-                    disabled={disabled}
-                    onChange={() => setPart(value)}
-                  />
-                  <span>{wrongPartLabels[value]}</span>
-                </label>
-              ))}
-            </fieldset>
+            <h2 id={titleId}>Request changes to v{versionId}</h2>
+            <label className="collab-rule-field">
+              <span>Rule</span>
+              <select
+                value={part}
+                disabled={disabled}
+                onChange={(event) => setPart(event.target.value as WrongPart)}
+              >
+                {Object.values(WrongPart).map((value) => (
+                  <option key={value} value={value}>
+                    {wrongPartTopics[value] || "Agreement overall"}
+                  </option>
+                ))}
+              </select>
+            </label>
             <label htmlFor={noteId} className="collab-note-label">
               Comment <span className="muted">(required)</span>
             </label>
