@@ -25,12 +25,10 @@ const recorded = (name: string) =>
   readFileSync(join(live, "recorded", name), "utf8");
 const fixtures = loadFixtures(live);
 
-/** Fields the recorded reading is known to miss. 06: the model puts recoupment
- * in a different quote from the advance amount, so validation preserves it as
- * unknown. Its start date sits behind "the Effective Date" and resolves to the defining sentence. */
-const KNOWN_MISSES: Record<string, ScoredField[]> = {
-  "06-messy-amended": [ScoredField.ADVANCE, ScoredField.SECTIONS],
-};
+/** Fields the recorded reading is known to miss. None now: in 06 the start date behind
+ * "the Effective Date" resolves to the defining sentence, and paying back stated in a separate
+ * clause under the "Production Advance" name resolves through that defined term. */
+const KNOWN_MISSES: Record<string, ScoredField[]> = {};
 
 for (const fixture of fixtures) {
   test(`recorded DeepSeek reading of ${fixture.id} scores as confirmed live`, async () => {

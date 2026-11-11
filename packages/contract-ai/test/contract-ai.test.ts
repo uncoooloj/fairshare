@@ -669,6 +669,68 @@ test("paid back first is read from the same clause as the advance amount, never 
   }
 });
 
+test("paid back first is read from another clause only through the advance's defined name", () => {
+  const amount =
+    '4.1 Maya received an advance of $3,000 (the "Production Advance") for studio costs.';
+  const advanceIn = (text: string, quote = amount) => {
+    const r = validateDraft(
+      {
+        facts: [fact(FactKind.ADVANCE, "Maya", "$3,000", quote)],
+        issues: [],
+      },
+      { documentId: "doc_def", revision: 1, text },
+    );
+    return r.facts[0] as Extract<ExtractedFact, { kind: FactKind.ADVANCE }>;
+  };
+  const recoupClause =
+    "4.2 The Production Advance shall be recouped from revenue before the split.";
+  // Defined term in a different clause, plus a clause that only mentions recoupment as the way back.
+  const text = [
+    amount,
+    "",
+    recoupClause,
+    "",
+    "4.3 The Production Advance is not repayable other than by recoupment under clause 4.2.",
+  ].join("\n");
+  const a = advanceIn(text);
+  assert.equal(a.recoupedBeforeSplit, true);
+  assert.equal(a.citation.quote, amount);
+  assert.equal(a.recoupCitation?.quote, recoupClause);
+  assert.equal(
+    text.slice(a.recoupCitation!.start, a.recoupCitation!.end),
+    recoupClause,
+  );
+  // The "means" form of definition works too.
+  const means =
+    '"Studio Advance" means the $3,000 paid to Maya before release.';
+  assert.equal(
+    advanceIn(
+      `${means}\n\nThe Studio Advance is recouped before the split.`,
+      means,
+    ).recoupedBeforeSplit,
+    true,
+  );
+  // A different term, no definition, a negation, or a clause saying it is not recouped: not stated.
+  const notStated = [
+    [amount, "4.2 The Tour Advance shall be recouped before the split."],
+    [
+      "4.1 Maya received an advance of $3,000 for studio costs.",
+      "4.2 The Production Advance shall be recouped before the split.",
+    ],
+    [amount, "4.2 The Production Advance shall never be recouped."],
+    [
+      amount,
+      "4.2 The Production Advance shall be recouped before the split.\n4.3 The Production Advance shall not be recouped from tour income.",
+    ],
+  ];
+  for (const [first, rest] of notStated) {
+    const other = advanceIn(`${first}\n${rest}`, first);
+    assert.equal(other.recoupedBeforeSplit, null, rest);
+    assert.equal(other.recoupCitation, undefined);
+    assert.equal(other.citation.quote, first);
+  }
+});
+
 test("organizer-pays fees and refunds charged to a person carry the named person", () => {
   const text =
     "Shares are of gross revenue and Maya pays all payment processing fees. Any refund is taken from Jordan's share.";

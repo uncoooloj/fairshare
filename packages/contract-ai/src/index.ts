@@ -124,6 +124,9 @@ export interface AdvanceFact extends FactBase {
   amountCents: number;
   /** null: the document does not say whether it is paid back before the split. */
   recoupedBeforeSplit: boolean | null;
+  /** Set when paying back is stated in another clause under the advance's defined name;
+   * `citation` is then the clause that defines it. */
+  recoupCitation?: Citation;
 }
 export interface FeesFact extends FactBase {
   kind: FactKind.FEES;
@@ -522,32 +525,85 @@ const RECOUP_SHOWN =
   /recoup|repa(?:y|id)|recover|reimburs|paid back|deducted first/i;
 const RECOUP_NEGATED =
   /\bnon-?(?:recoup|repay|refund)|\bnot\s+(?:be\s+)?(?:recoup|repa|recover|reimburs|deduct|paid back)|\bnever\b|\bno\s+(?:recoup|repayment)/i;
-/** The numbered clause or paragraph holding a citation: bounded by blank lines and by lines that
- * start a new numbered clause ("4.2 ", "(b) "). Null unless that clause says the advance is paid back
- * first and says nothing negating it. A different clause never counts. */
+const CLAUSE_BREAK =
+  /\n[ \t]*\n|\n(?=[ \t]*(?:\(?\d+(?:\.\d+)*[.)]?|\([a-z]{1,3}\))\s)/g;
+/** Numbered clauses and paragraphs: bounded by blank lines and by lines that start a new numbered
+ * clause ("4.2 ", "(b) "). Each is an exact, whitespace-trimmed source range. */
+function clauses(text: string): Citation[] {
+  const out: Citation[] = [];
+  const push = (from: number, to: number) => {
+    while (from < to && /\s/.test(text[from])) from++;
+    while (to > from && /\s/.test(text[to - 1])) to--;
+    if (to > from)
+      out.push({ start: from, end: to, quote: text.slice(from, to) });
+  };
+  let from = 0;
+  for (const m of text.matchAll(CLAUSE_BREAK)) {
+    push(from, m.index);
+    from = m.index + m[0].length;
+  }
+  push(from, text.length);
+  return out;
+}
+const clauseOf = (text: string, citation: Citation) =>
+  clauses(text).find(
+    (c) => c.start <= citation.start && c.end >= citation.end,
+  ) ?? null;
+const showsRecoup = (clause: string) => {
+  const words = normalizeWhitespace(clause);
+  return RECOUP_SHOWN.test(words) && !RECOUP_NEGATED.test(words);
+};
+/** The numbered clause or paragraph holding a citation, when that clause says the advance is paid
+ * back first and says nothing negating it. A different clause never counts here. */
 export function clauseShowingRecoup(
   text: string,
   citation: Citation,
 ): Citation | null {
-  const breaks =
-    /\n[ \t]*\n|\n(?=[ \t]*(?:\(?\d+(?:\.\d+)*[.)]?|\([a-z]{1,3}\))\s)/g;
-  let from = 0;
-  let to = text.length;
-  for (let m = breaks.exec(text); m; m = breaks.exec(text)) {
-    if (m.index + m[0].length <= citation.start) from = m.index + m[0].length;
-    else if (m.index >= citation.end) {
-      to = m.index;
-      break;
-    }
-  }
-  while (from < to && /\s/.test(text[from])) from++;
-  while (to > from && /\s/.test(text[to - 1])) to--;
-  const quote = text.slice(from, to);
-  if (quote.length > MAX_CLAUSE_CHARS || quote.length <= citation.quote.length)
+  const clause = clauseOf(text, citation);
+  if (
+    !clause ||
+    clause.quote.length > MAX_CLAUSE_CHARS ||
+    clause.quote.length <= citation.quote.length
+  )
     return null;
-  const words = normalizeWhitespace(quote);
-  if (!RECOUP_SHOWN.test(words) || RECOUP_NEGATED.test(words)) return null;
-  return { start: from, end: to, quote };
+  return showsRecoup(clause.quote) ? clause : null;
+}
+const DEFINES_TERM = new RegExp(
+  `\\((?:the\\s+|this\\s+)?${OPEN_Q}${TERM_NAME}${CLOSE_Q}\\)|${OPEN_Q}${TERM_NAME}${CLOSE_Q}\\s+(?:means|shall\\s+mean)\\b`,
+  "g",
+);
+const RECOUP_DENIED = /\bnon-?recoup|\bnot\s+(?:be\s+)?recoup/i;
+/** Paid back first, stated in another clause under the advance's defined name. The amount's clause
+ * must define a quoted term (`(the "Production Advance")`), and another clause must name that exact
+ * term, say it is paid back, and negate nothing. Any clause naming the term that says it is not
+ * recouped, or two different terms, leaves it not stated. Returns [defining clause, paying-back clause]. */
+export function definedTermShowingRecoup(
+  text: string,
+  citation: Citation,
+): [Citation, Citation] | null {
+  const own = clauseOf(text, citation);
+  if (
+    !own ||
+    own.quote.length > MAX_CLAUSE_CHARS ||
+    RECOUP_NEGATED.test(normalizeWhitespace(own.quote))
+  )
+    return null;
+  const terms = new Set(
+    [...own.quote.matchAll(DEFINES_TERM)].map((m) =>
+      normalizeWhitespace(m[1] ?? m[2]),
+    ),
+  );
+  if (terms.size !== 1) return null;
+  const [term] = terms;
+  const naming = clauses(text).filter(
+    (c) => c.start !== own.start && normalizeWhitespace(c.quote).includes(term),
+  );
+  if (naming.some((c) => RECOUP_DENIED.test(normalizeWhitespace(c.quote))))
+    return null;
+  const paidBack = naming.find(
+    (c) => c.quote.length <= MAX_CLAUSE_CHARS && showsRecoup(c.quote),
+  );
+  return paidBack ? [own, paidBack] : null;
 }
 
 const FACT_KEYS = [
@@ -666,6 +722,17 @@ function validateFact(raw: unknown, text: string): ExtractedFact {
           citation: clause,
           amountCents,
           recoupedBeforeSplit: true,
+        };
+      const defined =
+        recouped === false ? null : definedTermShowingRecoup(text, citation);
+      if (defined)
+        return {
+          kind,
+          ...base,
+          citation: defined[0],
+          amountCents,
+          recoupedBeforeSplit: true,
+          recoupCitation: defined[1],
         };
       return { kind, ...base, amountCents, recoupedBeforeSplit: null };
     }
