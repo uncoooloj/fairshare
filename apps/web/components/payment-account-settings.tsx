@@ -59,7 +59,7 @@ export function PaymentAccountsSettings({
     [changing, setChanging] = useState(false),
     [confirm, setConfirm] = useState(false);
   const pending = useRef(false),
-    path = `workspaces/${encodeURIComponent(workspace)}/payment-accounts`;
+    path = `workspaces/${encodeURIComponent(workspace)}/payment-accounts?version=2`;
   async function load() {
     setData(await api(path));
   }

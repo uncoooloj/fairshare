@@ -591,7 +591,7 @@ export function AIReview({
           onChange={(e) => setConsent(e.target.checked)}
         />
         I authorize Fairshare to send this agreement to Cloudflare AI to suggest
-        terms.
+        terms, with Anthropic as an optional fallback if configured.
       </label>
       <Button
         variant="secondary"

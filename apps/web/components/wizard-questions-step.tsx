@@ -11,10 +11,8 @@ import type {
 } from "../lib/rules-answers";
 import {
   SAMPLE_GROSS_CENTS,
-  SAMPLE_REFUND_CENTS,
   StandardQuestionId,
   choiceEffect,
-  refundEffect,
   sampleFeeCents,
   type PersonEffect,
 } from "../lib/standard-questions";
@@ -243,18 +241,21 @@ export function WizardQuestionsStep({
         <p className="wq-silent">Your agreement doesn't say.</p>
       )}
 
-      <SampleAmount cents={sampleCents} onChange={setSampleCents} />
-      <p className="wq-example-line">
-        {isRefund
-          ? `With a ${formatMoneyHeadline(SAMPLE_REFUND_CENTS)} refund:`
-          : `With a ${formatMoneyHeadline(feeCents)} PayPal fee, each person gets:`}
-      </p>
+      {/* Payouts have no refund rule yet, so a refund choice is recorded, never shown in dollars. */}
+      {!isRefund && (
+        <>
+          <SampleAmount cents={sampleCents} onChange={setSampleCents} />
+          <p className="wq-example-line">
+            {`With a ${formatMoneyHeadline(feeCents)} PayPal fee, each person gets:`}
+          </p>
+        </>
+      )}
 
       <div className="wq-choices" role="radiogroup" aria-labelledby={headingId}>
         {question.choices.map((choice, i) => {
           const checked = choice.id === selectedId;
           const rows = isRefund
-            ? refundEffect(answers, choice)
+            ? undefined
             : choiceEffect(answers, choice, sampleCents, feeCents);
           return (
             <div
@@ -283,6 +284,12 @@ export function WizardQuestionsStep({
           );
         })}
       </div>
+      {isRefund && (
+        <p className="wq-record-note">
+          We'll record this so everyone agrees. Refunds are handled by the
+          organizer for now.
+        </p>
+      )}
 
       <div className="wq-actions">
         <button type="button" className="button secondary" onClick={onBack}>

@@ -1,5 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { buildApp } from "../src/app.js";
 
 test("payout email: one per person, validated and lowercased, suggestion never saved, organizer sees readiness only", async () => {
@@ -30,7 +33,7 @@ test("payout email: one per person, validated and lowercased, suggestion never s
       suggestedEmail: "b@example.test",
       paypalConnect: false,
     });
-    const accounts = `/api/workspaces/${w.id}/payment-accounts`;
+    const accounts = `/api/workspaces/${w.id}/payment-accounts?version=2`;
     let list = (await app.inject({ url: accounts, headers: asA })).json();
     assert.deepEqual(
       list.members.map((m: any) => m.status),
@@ -67,7 +70,7 @@ test("payout email: one per person, validated and lowercased, suggestion never s
       assert.equal(
         (
           await app.inject({
-            url: `/api/workspaces/${workspace}/payment-accounts`,
+            url: `/api/workspaces/${workspace}/payment-accounts?version=2`,
             headers: asB,
           })
         ).json().own.value,
@@ -114,7 +117,7 @@ test("legacy per-workspace PayPal ID is read as a fallback without rewriting it"
     app.store.db
       .prepare("INSERT INTO fairshare_recipients VALUES(?,?,?)")
       .run(w.id, a.user.id, "ABCDEFGHIJKLM");
-    const path = `/api/workspaces/${w.id}/payment-accounts`;
+    const path = `/api/workspaces/${w.id}/payment-accounts?version=2`;
     let result = (await app.inject({ url: path, headers })).json();
     assert.deepEqual(result.own, {
       type: "PAYPAL_ID",
@@ -203,7 +206,134 @@ test("activity filters, pagination and authorization keep account events private
   }
 });
 
-test("activity includes accessible contract events but hides unrelated contracts; no workspace-scoped payout writes", async () => {
+test("v1 payout compatibility keeps merchant IDs scoped and v2 email private", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "fairshare-payout-compat-"));
+  const app = await buildApp({ dbPath: join(directory, "db.sqlite") });
+  try {
+    const a = app.store.register({
+      name: "A",
+      email: "a@example.test",
+      password: "Correct-Horse-123",
+    });
+    const b = app.store.register({
+      name: "B",
+      email: "b@example.test",
+      password: "Correct-Horse-123",
+    });
+    const w = app.store.createWorkspace(a.user.id, "Studio");
+    app.store.db
+      .prepare("INSERT INTO memberships VALUES(?,?,?)")
+      .run(w.id, b.user.id, "MEMBER");
+    const asA = { authorization: `Bearer ${a.token}` };
+    const asB = { authorization: `Bearer ${b.token}` };
+    const accounts = `/api/workspaces/${w.id}/payment-accounts`;
+    const origin = await app.listen({ host: "127.0.0.1", port: 0 });
+
+    // v2 saves B's email, which is intentionally absent from the v1 response.
+    assert.equal(
+      (
+        await app.inject({
+          method: "PUT",
+          url: "/api/auth/payout-account",
+          headers: asB,
+          payload: { email: "b.paypal@example.test" },
+        })
+      ).statusCode,
+      200,
+    );
+    const legacySave = await fetch(`${origin}${accounts}/mine`, {
+      method: "PUT",
+      headers: { ...asA, "content-type": "application/json" },
+      body: JSON.stringify({ paypalId: "ABCDEFGHIJKLM" }),
+    });
+    assert.equal(legacySave.status, 200);
+    assert.deepEqual(await legacySave.json(), { status: "SAVED_UNVERIFIED" });
+    const legacy = await fetch(`${origin}${accounts}`, { headers: asA });
+    assert.equal(legacy.status, 200);
+    const legacyBody = (await legacy.json()) as any;
+    assert.equal(legacyBody.ownPaypalId, "ABCDEFGHIJKLM");
+    const legacyMembers = legacyBody.members
+      .map((member: any) => ({
+        id: member.id,
+        status: member.status,
+        accountHint: member.accountHint,
+      }))
+      .sort((left: any, right: any) => left.id.localeCompare(right.id));
+    assert.deepEqual(
+      legacyMembers,
+      [
+        {
+          id: a.user.id,
+          status: "SAVED_UNVERIFIED",
+          accountHint: "•••• JKLM",
+        },
+        { id: b.user.id, status: "MISSING", accountHint: null },
+      ].sort((left, right) => left.id.localeCompare(right.id)),
+    );
+    assert(!JSON.stringify(legacyBody).includes("b.paypal@example.test"));
+
+    const v2 = await fetch(`${origin}${accounts}?version=2`, { headers: asA });
+    assert.equal(v2.status, 200);
+    const v2Body = (await v2.json()) as any;
+    assert.deepEqual(
+      v2Body.members.map((member: any) => Object.keys(member).sort()),
+      [
+        ["id", "name", "status"],
+        ["id", "name", "status"],
+      ],
+    );
+    assert.equal(
+      v2Body.members.find((member: any) => member.id === b.user.id).status,
+      "READY",
+    );
+    assert(!JSON.stringify(v2Body).includes("b.paypal@example.test"));
+
+    const collaboration = await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${w.id}/collaborations`,
+      headers: asA,
+      payload: { name: "Compatibility" },
+    });
+    assert.equal(collaboration.statusCode, 201, collaboration.body);
+    const recipient = await app.inject({
+      method: "PUT",
+      url: `/api/workspaces/${w.id}/collaborations/${collaboration.json().id}/recipient`,
+      headers: asA,
+      payload: { paypalId: "NOPQRSTUVWXYZ" },
+    });
+    assert.equal(recipient.statusCode, 200, recipient.body);
+    assert.deepEqual(recipient.json(), { configured: true });
+    assert.equal(
+      (
+        app.store.db
+          .prepare(
+            "SELECT paypal_id FROM fairshare_recipients WHERE workspace_id=? AND user_id=?",
+          )
+          .get(w.id, a.user.id) as any
+      ).paypal_id,
+      "NOPQRSTUVWXYZ",
+    );
+    assert.equal(
+      (
+        await app.inject({
+          method: "DELETE",
+          url: `${accounts}/mine`,
+          headers: asA,
+        })
+      ).statusCode,
+      200,
+    );
+    assert.equal(
+      (await app.inject({ url: accounts, headers: asA })).json().ownPaypalId,
+      null,
+    );
+  } finally {
+    await app.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("activity includes accessible contract events but hides unrelated contracts; legacy writes still reject viewers", async () => {
   const app = await buildApp({ dbPath: ":memory:" });
   try {
     const a = app.store.register({
@@ -238,7 +368,7 @@ test("activity includes accessible contract events but hides unrelated contracts
       (await app.inject({ url: path, headers: viewer })).json().events.length,
       0,
     );
-    // Destinations are account-level; there is no workspace-scoped write route.
+    // The legacy route preserves its former owner/member authorization.
     for (const method of ["PUT", "DELETE"] as const)
       assert.equal(
         (
@@ -246,10 +376,10 @@ test("activity includes accessible contract events but hides unrelated contracts
             url: `/api/workspaces/${w.id}/payment-accounts/mine`,
             method,
             headers: viewer,
-            payload: { email: "b@example.test" },
+            payload: { paypalId: "ABCDEFGHIJKLM" },
           })
         ).statusCode,
-        404,
+        403,
       );
   } finally {
     await app.close();

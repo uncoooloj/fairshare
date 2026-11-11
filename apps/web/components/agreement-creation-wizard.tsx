@@ -93,13 +93,54 @@ interface IssuedInvite {
 }
 
 const PRIVACY_LINE =
-  "Your document is read by AI to suggest the split. Nothing is shared with anyone else.";
+  "Read my agreement sends it to AI (Cloudflare Workers AI, with an Anthropic fallback) to suggest the split.";
 
 /** Pending people the server holds for this draft. */
 function pendingMembers(agreement: Agreement) {
   return (agreement.value.members as AgreementMember[]).flatMap((member) =>
     member.pending ? [{ ...member, pending: member.pending }] : [],
   );
+}
+
+/** A retry may only adopt a submit whose new version contains this attempt's rules. */
+export function submissionWasCommitted(
+  before: Agreement,
+  recovered: Agreement,
+  rules: ReturnType<typeof toRules>,
+): boolean {
+  return recovered.value.versions
+    .slice(before.value.versions.length)
+    .some(
+      (version) =>
+        version.status !== "DRAFT" &&
+        JSON.stringify(version.rules) === JSON.stringify(rules),
+    );
+}
+
+/** A late read must never replace choices made after the organizer continued manually. */
+export function readingResultIsCurrent(
+  activeGeneration: number,
+  resultGeneration: number,
+): boolean {
+  return activeGeneration === resultGeneration;
+}
+
+/** Once an old pending seat is removed, a retry must add rather than remove it again. */
+export function clearPersonInvitation(
+  answers: AgreementAnswers,
+  personKey: string,
+): AgreementAnswers {
+  return {
+    ...answers,
+    people: {
+      ...answers.people,
+      value: answers.people.value.map((person) =>
+        person.key === personKey
+          ? { ...person, invitationId: undefined }
+          : person,
+      ),
+    },
+  };
 }
 
 /**
@@ -188,6 +229,7 @@ export function AgreementCreationWizard({
   // One idempotency key per intake attempt: kept across a retry of the same input, cleared on any edit.
   const requestId = useRef("");
   const lock = useRef(false);
+  const readingGeneration = useRef(0);
   const heading = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
@@ -368,13 +410,24 @@ export function AgreementCreationWizard({
         );
       else {
         // New, or the name or email changed: their old place and link go.
-        if (held)
+        if (held) {
           current = await removePerson(
             workspaceId,
             agreementId,
             current.revision,
             held.userId,
           );
+          // The removal is already committed even if adding the replacement fails.
+          // Keep its revision and clear the obsolete invitation before retrying.
+          delete issued[person.key];
+          setAgreement(current);
+          setInvites({ ...issued });
+          setAnswers((currentAnswers) =>
+            currentAnswers
+              ? clearPersonInvitation(currentAnswers, person.key)
+              : currentAnswers,
+          );
+        }
         result = await addPerson(workspaceId, agreementId, current.revision, {
           name,
           email,
@@ -408,6 +461,8 @@ export function AgreementCreationWizard({
         current.revision,
         member.userId,
       );
+      // Each deletion advances the revision. Retain it before the next deletion or retry.
+      setAgreement(current);
     }
     setAgreement(current);
     setInvites(issued);
@@ -441,17 +496,36 @@ export function AgreementCreationWizard({
           "POST",
           { expectedRevision: current.revision, ...patch },
         );
+      // Details and submit are separate revisioned commits. Keep the acknowledged
+      // details revision even when sending fails, so retry does not conflict.
+      setAgreement(current);
       const rules = toRules(answers, {
         documentId,
         organizerId: owner.id,
         documentText: created.documentText,
       });
-      current = await submitForApproval(
-        workspaceId,
-        agreementId,
-        current.revision,
-        rules,
-      );
+      try {
+        current = await submitForApproval(
+          workspaceId,
+          agreementId,
+          current.revision,
+          rules,
+        );
+      } catch (cause) {
+        // A response can be lost after the server commits. Re-read once, and only
+        // finish when the new version is exactly the rules this attempt submitted.
+        try {
+          const recovered = await api<Agreement>(
+            `${workspaceBase(workspaceId)}/collaborations/${agreementId}`,
+          );
+          setAgreement(recovered);
+          if (submissionWasCommitted(current, recovered, rules))
+            current = recovered;
+          else throw cause;
+        } catch {
+          throw cause;
+        }
+      }
       setAgreement(current);
       clearDraftAnswers(workspaceId, agreementId);
       setStage(WizardStage.SENT);
@@ -531,7 +605,10 @@ export function AgreementCreationWizard({
     </p>
   );
 
-  if (stage === WizardStage.READING && created)
+  if (stage === WizardStage.READING && created) {
+    // This render owns its read attempt. Manual exit invalidates it before Check opens.
+    // The server request may finish, but it cannot overwrite manual edits afterward.
+    const generation = readingGeneration.current;
     return frame(
       null,
       <ReadingDocument
@@ -548,25 +625,42 @@ export function AgreementCreationWizard({
               agreementId: created.agreementId,
               documentId: created.documentId,
               consent: true,
+              // Upload-first: no people yet, so names stay as written.
+              context: { source: created.documentText, members: null },
             });
             extraction = result.extraction;
             outcome = result.outcome;
           } finally {
-            adopt(
-              answersFromDraft(
-                created.agreement,
-                extraction,
-                created.documentText,
-                self,
-              ),
-              created,
-            );
+            if (readingResultIsCurrent(readingGeneration.current, generation))
+              adopt(
+                answersFromDraft(
+                  created.agreement,
+                  extraction,
+                  created.documentText,
+                  self,
+                ),
+                created,
+              );
           }
           return outcome;
         }}
         onDone={() => setStage(WizardStage.CHECK)}
+        onCancel={() => {
+          readingGeneration.current++;
+          adopt(
+            answersFromDraft(
+              created.agreement,
+              null,
+              created.documentText,
+              self,
+            ),
+            created,
+          );
+          setStage(WizardStage.CHECK);
+        }}
       />,
     );
+  }
 
   if (stage === WizardStage.CHECK && answers)
     return frame(
