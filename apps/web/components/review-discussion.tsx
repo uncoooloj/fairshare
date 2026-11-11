@@ -12,6 +12,7 @@ import {
 } from "../lib/review-discussion";
 import { Button, Field, Notice } from "./ui";
 import { formatExact, formatWhen } from "../lib/dates";
+import { publicWebOrigin } from "../lib/public-web-origin";
 
 type DiscussionProps = {
   base: string;
@@ -355,7 +356,7 @@ export function ReviewReminder({
         type="button"
         variant="quiet"
         onClick={async () => {
-          const message = `Hi ${name}, please sign in to Fairshare, open “${agreement.value.name}” and review version ${version.id}. ${window.location.origin}/app`;
+          const message = `Hi ${name}, please sign in to Fairshare, open “${agreement.value.name}” and review version ${version.id}. ${publicWebOrigin(window.location.origin)}/app`;
           try {
             await navigator.clipboard.writeText(message);
             setFallback("");
