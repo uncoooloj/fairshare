@@ -29,12 +29,14 @@ import { recoverSourceDocument } from "../lib/source-recovery";
 import { useRouter } from "next/navigation";
 import { Button } from "./ui";
 import { workspaceBase } from "../lib/workspace-base";
+import { mutationIsCurrent } from "../lib/mutation-generation";
 import { AppShell } from "./app-shell";
 import { OverviewSection } from "./sections/overview-section";
 import { AgreementsSection } from "./sections/agreements-section";
 import { AgreementDetail } from "./sections/agreement-detail";
 import { PayoutsSection } from "./sections/payouts-section";
 import { SettingsSection } from "./sections/settings-section";
+
 export default function FairshareApp() {
   const router = useRouter();
   const emailDelivery = useEmailDelivery();
@@ -504,10 +506,13 @@ export default function FairshareApp() {
     setError("");
     router.replace("/app");
   }
-  async function mutate(action: string, extra: Record<string, unknown> = {}) {
+  async function mutateWithResult(
+    action: string,
+    extra: Record<string, unknown> = {},
+  ): Promise<boolean> {
     const workspaceRequestId = workspaceRequest.current;
     const openRequestId = openRequest.current;
-    if (selected?.workspaceId !== currentWorkspace.current) return;
+    if (selected?.workspaceId !== currentWorkspace.current) return false;
     try {
       const a = await api<Agreement>(base + action, "POST", {
         expectedRevision: selected!.revision,
@@ -517,26 +522,36 @@ export default function FairshareApp() {
         workspaceRequestId !== workspaceRequest.current ||
         openRequestId !== openRequest.current
       )
-        return;
+        return false;
       setSelected(a);
       try {
         await loadWorkspace(currentWorkspace.current);
       } catch {
         setNotice("Updated. Refresh to see the latest.");
       }
+      if (
+        !mutationIsCurrent(
+          workspaceRequestId,
+          openRequestId,
+          workspaceRequest.current,
+          openRequest.current,
+        )
+      )
+        return false;
+      return true;
     } catch (cause) {
       if (
         workspaceRequestId !== workspaceRequest.current ||
         openRequestId !== openRequest.current
       )
-        return;
+        return false;
       if (cause instanceof ApiError && cause.code === "REVISION_CONFLICT") {
         const current = await api<Agreement>(base);
         if (
           workspaceRequestId !== workspaceRequest.current ||
           openRequestId !== openRequest.current
         )
-          return;
+          return false;
         setSelected(current);
         throw new Error(
           "Someone else just changed this. Here’s the latest; try again.",
@@ -544,6 +559,30 @@ export default function FairshareApp() {
       }
       throw cause;
     }
+  }
+  async function mutate(action: string, extra: Record<string, unknown> = {}) {
+    await mutateWithResult(action, extra);
+  }
+  function onAgreementChange(next: Agreement) {
+    setSelected((current) => {
+      if (
+        !current ||
+        current.workspaceId !== next.workspaceId ||
+        current.id !== next.id ||
+        next.revision < current.revision
+      )
+        return current;
+      return next;
+    });
+    setAgreements((current) =>
+      current.map((agreement) =>
+        agreement.workspaceId === next.workspaceId &&
+        agreement.id === next.id &&
+        next.revision >= agreement.revision
+          ? next
+          : agreement,
+      ),
+    );
   }
   if (!ready)
     return (
@@ -745,6 +784,8 @@ export default function FairshareApp() {
               rulesDirty={rulesDirty}
               run={run}
               mutate={mutate}
+              mutateWithResult={mutateWithResult}
+              onAgreementChange={onAgreementChange}
               refresh={refresh}
               loadWorkspace={loadWorkspace}
               navigate={navigate}

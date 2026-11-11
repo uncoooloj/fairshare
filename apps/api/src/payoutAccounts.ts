@@ -86,6 +86,14 @@ function tableExists(db: Database, name: string) {
     .get(name);
 }
 
+/** A v1 workspace merchant ID cannot safely override or delete this account-wide
+ * destination. Callers must resolve the explicit compatibility conflict first. */
+export function hasAccountPayoutDestination(db: Database, userId: string) {
+  return !!db
+    .prepare("SELECT 1 FROM fairshare_payout_accounts WHERE user_id=?")
+    .get(userId);
+}
+
 /** Self-only routes. The one place a payout destination is written. */
 export function registerPayoutAccountRoutes(app: FairshareApp) {
   const db = app.store.db;

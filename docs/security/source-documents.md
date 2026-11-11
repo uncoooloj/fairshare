@@ -1,6 +1,6 @@
 # Source documents
 
-PDF and DOCX files selected by an authorized agreement member are parsed locally. No automatic AI/OCR request occurs. Cloudflare rule extraction remains a separate explicit-consent action.
+PDF and DOCX files selected by an authorized agreement member are parsed locally. No automatic AI request occurs. When local OCR is host-enabled, a textless PDF automatically falls back once to local OCR; Cloudflare rule extraction remains a separate explicit-consent action.
 
 ## Storage and access
 
@@ -19,4 +19,4 @@ PDF and DOCX files selected by an authorized agreement member are parsed locally
 
 ## Local OCR is opt-in
 
-Image-only PDFs can use local OCR only when the API operator enables the native Apple Vision helper on macOS or Poppler/Tesseract on Linux and the user explicitly selects that path. The Node API runs OCR on its host. The optional Cloudflare API transfers documents through its private parser Container binding, with no public parser route. Both paths have separate page, time, and resource limits. Text-layer PDF parsing never falls back to OCR. See [LOCAL-OCR.md](../LOCAL-OCR.md) for the implementation boundary and host acceptance requirements.
+Image-only PDFs use local OCR only when the API operator enables the native Apple Vision helper on macOS or Poppler/Tesseract on Linux. In that enabled mode, textless PDFs automatically fall back once after native extraction; text-layer PDF parsing never uses OCR. The Node API runs OCR on its host. The optional Cloudflare API transfers documents through its private parser Container binding, with no public parser route. Both paths have separate page, time, and resource limits. See [LOCAL-OCR.md](../LOCAL-OCR.md) for the implementation boundary and host acceptance requirements.

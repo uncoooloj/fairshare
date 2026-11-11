@@ -18,6 +18,7 @@ export interface AgreementPeopleTabProps {
   workspace: string;
   run: Run;
   mutate: Mutate;
+  onAgreementChange: (agreement: Agreement) => void;
   /** Unused since the payout email moved to its own step; kept for callers. */
   setNotice: Dispatch<SetStateAction<string>>;
 }
@@ -35,6 +36,7 @@ export function AgreementPeopleTab({
   workspace,
   run,
   mutate,
+  onAgreementChange,
 }: AgreementPeopleTabProps) {
   return (
     <>
@@ -44,11 +46,13 @@ export function AgreementPeopleTab({
         description="Add everyone before you set the split. Each person approves for themselves."
       />
       <AgreementPeople
-        key={selected.id}
+        key={`${selected.workspaceId}:${selected.id}`}
         agreement={selected}
         version={latest}
         userId={user.id}
         base={base}
+        organizer={organizer}
+        onAgreementChange={onAgreementChange}
       />
       {organizer && !selected.value.versions.length && (
         <section className="section">

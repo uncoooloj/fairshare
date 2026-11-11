@@ -48,6 +48,10 @@ export interface AgreementTermsTabProps {
   rulesDirty: MutableRefObject<boolean>;
   run: Run;
   mutate: Mutate;
+  mutateWithResult: (
+    action: string,
+    extra?: Record<string, unknown>,
+  ) => Promise<boolean>;
   mayLeaveDraft: () => boolean;
   changeAgreementTab: (next: AgreementTab) => void;
   setBusy: Dispatch<SetStateAction<boolean>>;
@@ -82,6 +86,7 @@ export function AgreementTermsTab({
   rulesDirty,
   run,
   mutate,
+  mutateWithResult,
   mayLeaveDraft,
   changeAgreementTab,
   setBusy,
@@ -112,8 +117,8 @@ export function AgreementTermsTab({
           justApproved={approvedForPayout === selected.id}
           onApprove={async () => {
             if (!latest) return;
-            await mutate(`/versions/${latest.id}/approve`);
-            setApprovedForPayout(selected.id);
+            if (await mutateWithResult(`/versions/${latest.id}/approve`))
+              setApprovedForPayout(selected.id);
           }}
           onRequestChange={async (reason) => {
             if (!latest) return;
@@ -214,8 +219,12 @@ export function AgreementTermsTab({
                 setError("");
                 setNotice("");
                 try {
-                  await mutate(`/versions/${latest.id}/${action}`, payload);
-                  if (action === "approve") setApprovedForPayout(selected.id);
+                  const committed = await mutateWithResult(
+                    `/versions/${latest.id}/${action}`,
+                    payload,
+                  );
+                  if (action === "approve" && committed)
+                    setApprovedForPayout(selected.id);
                 } finally {
                   setBusy(false);
                 }
