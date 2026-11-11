@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   formatPaymentAmount,
   PaymentGridStatus,
+  payoutStatus,
   validatePaymentRows,
   type PaymentGridRow,
 } from "../src/components/paymentGridModel";
@@ -45,4 +46,11 @@ test("rejects duplicates, unsafe amounts, invalid dates and unknown status", () 
 test("empty history valid; held records remain held", () => {
   assert.deepEqual(validatePaymentRows([]), []);
   assert.equal(validatePaymentRows([row])[0].status, PaymentGridStatus.Held);
+});
+test("raw payout states preserve recipient and automatic hold blockers", () => {
+  assert.equal(
+    payoutStatus("WAITING_RECIPIENT"),
+    PaymentGridStatus.WaitingRecipient,
+  );
+  assert.equal(payoutStatus("AUTO_HELD"), PaymentGridStatus.Held);
 });

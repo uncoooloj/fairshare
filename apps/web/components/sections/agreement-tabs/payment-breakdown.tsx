@@ -42,7 +42,7 @@ export function PaymentBreakdown({
   return (
     <section className="panel breakdown">
       <div className="row">
-        <h2>How this payment was allocated</h2>
+        <h2>How this payment was split</h2>
         <Button variant="quiet" onClick={() => setBreakdown(null)}>
           Close
         </Button>
@@ -56,8 +56,7 @@ export function PaymentBreakdown({
         agreement={selected}
       />
       <p className="muted">
-        Applied version {breakdown.versionId}. Recoupment is included in each
-        recipient’s total. An allocation is not proof of payout.
+        Applied version {breakdown.versionId}. Totals include advance payback.
       </p>
       <blockquote>
         {
@@ -85,7 +84,7 @@ export function PaymentBreakdown({
             })
           }
         >
-          Send fixed allocations in sandbox
+          Pay everyone (test)
         </Button>
       )}
       <p className="muted">{automaticPayoutCopy(setup)}</p>

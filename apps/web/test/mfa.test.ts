@@ -7,13 +7,13 @@ test("MFA UI requires current password and code, never a cosmetic toggle or exte
     "utf8",
   );
   assert.match(source, /Confirm current password/);
-  assert.match(source, /Enable authenticator and show recovery codes/);
+  assert.match(source, /"Turn on"/);
   assert.match(source, /pending.current\s*=\s*true/);
   assert.match(source, /auth\/mfa/);
   assert.match(source, /action\s*===\s*['"]cancel['"]/);
   assert(!source.includes("localStorage"));
   assert(!source.includes("https://"));
-  assert.match(source, /They will not be shown again/);
+  assert.match(source, /You won’t see them again/);
 });
 test("sign-in submits optional factor and BFF clears cookie after enrollment or disable", () => {
   const auth = readFileSync(

@@ -40,7 +40,7 @@ export const paymentStatusLabels: Record<PaymentGridStatus, string> = {
   REVERSED: "Reversed",
   WAITING_RECIPIENT: "Waiting for PayPal email",
   CHECKING: "Checking with PayPal",
-  UNKNOWN: "Needs reconciliation",
+  UNKNOWN: "Being checked",
 };
 /** The label for one row; names the person when we are waiting on them. */
 export function paymentStatusLabel(
@@ -67,6 +67,10 @@ export function payoutGridStatus(status: string): PaymentGridStatus {
   if (status === "WAITING_RECIPIENT") return PaymentGridStatus.WaitingRecipient;
   if (status === "OUTCOME_UNKNOWN") return PaymentGridStatus.Checking;
   return PaymentGridStatus.Unknown;
+}
+/** Kept for callers that import it from here; same mapping as `payoutGridStatus`. */
+export function payoutStatus(status: string): PaymentGridStatus {
+  return payoutGridStatus(status);
 }
 export function formatPaymentAmount(cents: number, currency: "USD"): string {
   if (!Number.isSafeInteger(cents) || cents < 0 || currency !== "USD")

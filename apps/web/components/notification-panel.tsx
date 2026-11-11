@@ -120,10 +120,6 @@ export function NotificationPanel({
               Close
             </button>
           </div>
-          <p className="muted">
-            Recent updates across your agreements. Your notification preferences
-            apply.
-          </p>
           <div className="notification-toolbar">
             <Button
               type="button"
@@ -149,8 +145,7 @@ export function NotificationPanel({
             <p role="alert">{error}</p>
           ) : !events.length ? (
             <p className="notification-empty">
-              No matching updates yet. Agreement reviews and payout updates will
-              appear here.
+              Nothing yet. Approvals and payouts show up here.
             </p>
           ) : (
             <ul className="notification-events">
@@ -182,9 +177,7 @@ export function NotificationPanel({
                       View agreement
                     </Button>
                   ) : (
-                    <small>
-                      This agreement is no longer available to your account.
-                    </small>
+                    <small>You no longer have access to this agreement.</small>
                   )}
                 </li>
               ))}

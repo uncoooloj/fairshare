@@ -244,7 +244,6 @@ export function registerInvoiceRoutes(
     const preservedVerifiedPayment =
       status === "PAYMENT_RECORDED" &&
       fresh.status === "PAID" &&
-      fresh.settlement_status === "VERIFIED" &&
       fresh.capture_id;
     db.prepare(
       `UPDATE fairshare_invoices SET status=?,provider_status=?,share_url=?,paid_amount=?,due_amount=?,settlement_error=?,checked_at=?,paid_date=?,evidence_revision=evidence_revision+1 WHERE id=?`,

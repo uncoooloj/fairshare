@@ -30,14 +30,14 @@ test("tab markup and panel have connected names, roving tab stop and manual acti
   const tabs = source("../components/agreement-tabs.tsx");
   const app = appSource();
   assert.match(tabs, /role="tablist"\s*aria-label="Agreement sections"/);
-  assert.match(tabs, /tabIndex=\{value === tab \? 0 : -1\}/);
+  assert.match(tabs, /tabIndex=\{current === tab \? 0 : -1\}/);
   assert.match(
     tabs,
-    /aria-controls=\{value\s*===\s*tab\s*\?\s*"agreement-panel"/,
+    /aria-controls=\{current\s*===\s*tab\s*\?\s*"agreement-panel"/,
   );
   assert.match(
     app,
-    /role="tabpanel"\s*id="agreement-panel"\s*aria-labelledby=\{`agreement-tab-\$\{tab\}`\}/,
+    /role="tabpanel"\s*id="agreement-panel"\s*aria-labelledby=\{`agreement-tab-\$\{shown\}`\}/,
   );
   assert.match(tabs, /buttons.current\[next\]\?\.focus\(\)/);
 });
@@ -80,6 +80,17 @@ test("AI extraction adds one concise polite result announcement", () => {
     /role="status">Suggestions ready\. Review the extracted terms before using them\.<\/p>/,
   );
   assert.equal((markup.match(/\srole="(?:alert|status)"/g) || []).length, 1);
+});
+test("AI extraction consent discloses its primary provider and optional fallback", () => {
+  const markup = renderToStaticMarkup(
+    createElement(AIReview, {
+      busy: false,
+      extraction: null,
+      onExtract: () => {},
+    }),
+  );
+  assert.match(markup, /Cloudflare AI/);
+  assert.match(markup, /Anthropic as an optional fallback if configured/);
 });
 test("small screens retain sign out and overflowing dialog content can scroll", () => {
   const css = source("../app/globals.css");

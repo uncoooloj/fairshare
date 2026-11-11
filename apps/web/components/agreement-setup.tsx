@@ -57,31 +57,24 @@ export function NewAgreement({
         <ol>
           <li>
             <strong>Bring everyone in</strong>
-            <p>
-              Invite collaborators and add accepted members before proposing
-              terms.
-            </p>
+            <p>Invite everyone who gets a share.</p>
           </li>
           <li>
             <strong>Make the rules clear</strong>
-            <p>
-              Add a PDF or text agreement. Review source-linked suggestions and
-              resolve questions.
-            </p>
+            <p>Add your agreement. We'll suggest the split; you check it.</p>
           </li>
           <li>
-            <strong>Agree, then activate</strong>
-            <p>
-              Everyone approves the same version. The organizer activates it
-              before payments begin.
-            </p>
+            <strong>Everyone approves</strong>
+            <p>When the last person approves, payments split automatically.</p>
           </li>
         </ol>
-        <small>Creating an agreement does not move money.</small>
+        <small>No money moves yet.</small>
       </aside>
     </div>
   );
 }
+/** Only for agreements that never got a split (made before the wizard).
+ * Once a split is sent, the header's status line says where things stand. */
 export function AgreementSetup({
   agreement,
   tab,
@@ -91,24 +84,16 @@ export function AgreementSetup({
   tab: AgreementTab;
   onNavigate: (tab: AgreementTab) => void;
 }) {
-  const latest = agreement.value.versions.at(-1);
   if (agreement.value.activeVersionId) return null;
+  if (agreement.value.versions.length) return null;
   const target = AgreementTab.Terms;
   return (
     <section className="setup-progress" aria-label="Agreement setup status">
-      <strong>
-        {latest
-          ? "Review the proposal together"
-          : "Finish setting up your agreement"}
-      </strong>
-      <p>
-        {latest
-          ? `${agreement.value.members.filter((m) => latest.approvals[m.userId]).length} of ${agreement.value.members.length} approved this version. Everyone must approve before the organizer activates it.`
-          : "Review the source in Terms. Add collaborators in People before saving a proposal for everyone to review."}
-      </p>
+      <strong>Set the split</strong>
+      <p>Add everyone in People first, then set the split in Agreement.</p>
       {tab !== target && (
         <Button variant="secondary" onClick={() => onNavigate(target)}>
-          {latest ? "Review proposed terms" : "Continue setting up terms"}
+          Set the split
         </Button>
       )}
     </section>

@@ -37,9 +37,9 @@ export function DocumentCitationView({
           onSelect={setSelected}
         />
       </article>
-      <aside className="panel" aria-label="Cited clauses">
-        <h3>Cited clauses</h3>
-        <p className="muted">Choose a clause to find it in the agreement.</p>
+      <aside className="panel" aria-label="Where the split comes from">
+        <h3>Where the split comes from</h3>
+        <p className="muted">Tap one to find it in the text.</p>
         {citations.length ? (
           citations.map((citation) => (
             <div className="section" key={citation.id}>
@@ -62,9 +62,7 @@ export function DocumentCitationView({
             </div>
           ))
         ) : (
-          <p className="muted">
-            Cited clauses will appear after you propose the rules.
-          </p>
+          <p className="muted">These appear once you propose a split.</p>
         )}
         <p className="sr-only" role="status">
           {chosen ? `Showing ${chosen.reference.clause || chosen.label}` : ""}

@@ -76,7 +76,7 @@ export function PayoutDetails({
           </dd>
         </div>
         <div>
-          <dt>Provider reference</dt>
+          <dt>PayPal reference</dt>
           <dd>
             <code>{row.providerReference || "Not recorded"}</code>
           </dd>
@@ -88,8 +88,7 @@ export function PayoutDetails({
           <AllocationCalculation trace={row.trace} name={row.recipientName} />
         ) : (
           <p>
-            The source payment, historical rules or matching allocation could
-            not be verified from this record. Open the agreement to review it.
+            We can’t show the maths for this one. Open the agreement to check.
           </p>
         )}
         {onOpenAgreement && (

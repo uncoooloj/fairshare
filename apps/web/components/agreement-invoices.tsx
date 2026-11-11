@@ -58,7 +58,7 @@ export function AgreementInvoices({
     );
     if (!invoice?.id)
       throw new Error(
-        "No invoice confirmation received. Retry with the same details to check this request.",
+        "We didn’t hear back. Try again with the same details; you won’t be billed twice.",
       );
     setInvoices((current) => [
       invoice,
@@ -68,13 +68,11 @@ export function AgreementInvoices({
     if (invoice.status === "SHARED" && safeInvoiceUrl(invoice.shareUrl)) {
       sessionStorage.removeItem(storageKey);
       setCreating(false);
-      setNotice(
-        "Invoice ready. Copy the link and share it with your customer. No email was sent.",
-      );
+      setNotice("Invoice ready. Copy the link and send it to your customer.");
       requestAnimationFrame(() => resultHeading.current?.focus());
     } else {
       throw new Error(
-        "Invoice recorded, but its payment link is not ready. Check status below before trying again.",
+        "The invoice is saved but its link isn’t ready. Check status before trying again.",
       );
     }
   }
@@ -95,10 +93,7 @@ export function AgreementInvoices({
           </Button>
         )}
       </div>
-      <p className="muted">
-        Request payment against this agreement, then share a payment link with
-        your customer.
-      </p>
+      <p className="muted">Bill someone and send them a payment link.</p>
       <p className="muted">
         PayPal reporting an invoice paid is not a verified allocation. Shares
         are allocated only after capture amounts and actual PayPal fees are

@@ -28,7 +28,9 @@ import type { FairshareApp } from "./app.js";
 import { Role } from "./identity.js";
 import { registerPaymentRecovery } from "./paymentRecovery.js";
 import {
+  advancePayoutAccountGeneration,
   ensurePayoutAccountSchema,
+  hasAccountPayoutDestination,
   readPayoutDestination,
 } from "./payoutAccounts.js";
 import {
@@ -428,6 +430,27 @@ export function registerPaymentRoutes(
     message:
       "No payment status is assumed. Return to Fairshare to check your payment.",
   }));
+  // v1 compatibility: preserve its collaboration-member authorization and
+  // workspace-scoped merchant-ID destination without touching v2 email accounts.
+  app.put(`${base}/recipient`, async (req) => {
+    const { p, user } = access(req);
+    const paypalId = str((req.body as any)?.paypalId);
+    if (!/^[A-Z0-9]{13}$/.test(paypalId))
+      fail("INVALID_RECIPIENT", "Sandbox PayPal merchant ID required");
+    tx(() => {
+      if (hasAccountPayoutDestination(db, user.id))
+        fail(
+          "PAYOUT_DESTINATION_CONFLICT",
+          "Manage your account-level payout destination before using this legacy route",
+        );
+      advancePayoutAccountGeneration(db, user.id);
+      db.prepare(
+        "INSERT INTO fairshare_recipients VALUES(?,?,?) ON CONFLICT(workspace_id,user_id) DO UPDATE SET paypal_id=excluded.paypal_id",
+      ).run(p.workspaceId, user.id, paypalId);
+      app.store.audit(user.id, p.workspaceId, "PAYOUT_ACCOUNT_SAVED");
+    });
+    return { configured: true };
+  });
   app.get(`${base}/payouts`, async (req) => {
     const { p, user, row } = access(req);
     const organizer = row.value.members.some(

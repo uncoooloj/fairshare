@@ -18,8 +18,7 @@ export default function ChangeEmail() {
     >
       <h1>Confirm your new email</h1>
       <p>
-        Stay signed in to the account that requested this change. Confirming
-        verifies your new address and signs out every session.
+        Confirming signs you out everywhere. Sign back in with your new email.
       </p>
       {!done && (
         <Button

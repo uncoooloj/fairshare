@@ -243,7 +243,7 @@ export function ProfileContact({
           </Field>
           <Field
             label="Authenticator or recovery code"
-            hint="Required if two-factor authentication is enabled."
+            hint="Only if two-step sign-in is on."
           >
             <input
               name="mfaCode"

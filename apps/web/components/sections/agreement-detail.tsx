@@ -1,8 +1,14 @@
-import type { Dispatch, MutableRefObject, SetStateAction } from "react";
-import { AgreementAllocations } from "../agreement-allocations";
+import {
+  useEffect,
+  type Dispatch,
+  type MutableRefObject,
+  type SetStateAction,
+} from "react";
 import { AgreementHeader } from "../agreement-workspace";
-import { AgreementTabs } from "../agreement-tabs";
+import { AgreementTabs, visibleTab } from "../agreement-tabs";
 import { AgreementDocument } from "../agreement-document";
+import { AgreementVersions } from "../agreement-versions";
+import { StageAction } from "../../lib/agreement-status";
 import { AgreementName } from "../agreement-name";
 import { AgreementSetup } from "../agreement-setup";
 import {
@@ -50,6 +56,11 @@ export interface AgreementDetailProps {
   rulesDirty: MutableRefObject<boolean>;
   run: Run;
   mutate: Mutate;
+  mutateWithResult: (
+    action: string,
+    extra?: Record<string, unknown>,
+  ) => Promise<boolean>;
+  onAgreementChange: (agreement: Agreement) => void;
   refresh: () => Promise<void>;
   loadWorkspace: (id: string) => Promise<void>;
   navigate: (s: Section) => boolean;
@@ -100,6 +111,8 @@ export function AgreementDetail({
   rulesDirty,
   run,
   mutate,
+  mutateWithResult,
+  onAgreementChange,
   refresh,
   loadWorkspace,
   navigate,
@@ -120,12 +133,42 @@ export function AgreementDetail({
   setDocumentId,
   setExtraction,
 }: AgreementDetailProps) {
+  // Splits live in Payments and the document in Agreement: old links land there.
+  const shown = visibleTab(tab);
+  useEffect(() => {
+    const target =
+      tab === AgreementTab.Document
+        ? "agreement-document"
+        : tab === AgreementTab.Allocations
+          ? "agreement-splits"
+          : "";
+    if (target)
+      document
+        .getElementById(target)
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [tab]);
+  const onStatusAction = (action: StageAction) => {
+    if (action === StageAction.GetPaid) {
+      changeAgreementTab(AgreementTab.Payments);
+      requestAnimationFrame(() =>
+        document
+          .getElementById("get-paid")
+          ?.scrollIntoView({ behavior: "smooth", block: "start" }),
+      );
+    } else if (
+      action === StageAction.Approve ||
+      action === StageAction.SeeRequest
+    )
+      changeAgreementTab(AgreementTab.Terms);
+  };
   return (
     <>
       <>
         <AgreementHeader
           key={JSON.stringify([selected.workspaceId, selected.id])}
           agreement={selected}
+          userId={user.id}
+          onStatusAction={onStatusAction}
           onBack={() => navigate(Section.Agreements)}
           onViewPayouts={() => navigate(Section.Payouts)}
           renameSuggested={!!extraction?.suggestedTitle}
@@ -164,16 +207,16 @@ export function AgreementDetail({
         <div
           role="tabpanel"
           id="agreement-panel"
-          aria-labelledby={`agreement-tab-${tab}`}
+          aria-labelledby={`agreement-tab-${shown}`}
           tabIndex={0}
         >
           {selected.value.reviewHold && (
             <Notice warning>
-              Payments need review. Allocations remain recorded; outgoing
-              payouts are paused. No automatic clawback is assumed.
+              Payouts are paused while we check a payment. Nobody's share has
+              changed, and no money is taken back.
             </Notice>
           )}
-          {tab === AgreementTab.Overview && (
+          {shown === AgreementTab.Overview && (
             <AgreementOverviewTab
               selected={selected}
               active={active}
@@ -186,7 +229,7 @@ export function AgreementDetail({
               navigate={navigate}
             />
           )}
-          {tab === AgreementTab.People && (
+          {shown === AgreementTab.People && (
             <AgreementPeopleTab
               selected={selected}
               latest={latest}
@@ -199,54 +242,68 @@ export function AgreementDetail({
               workspace={workspace}
               run={run}
               mutate={mutate}
+              onAgreementChange={onAgreementChange}
               setNotice={setNotice}
             />
           )}
-          {tab === AgreementTab.Terms && (
-            <AgreementTermsTab
-              selected={selected}
-              latest={latest}
-              user={user}
-              base={base}
-              busy={busy}
-              editing={editing}
-              preview={preview}
-              approvedForPayout={approvedForPayout}
-              workspaces={workspaces}
-              workspace={workspace}
-              source={source}
-              documentId={documentId}
-              extraction={extraction}
-              rulesLanding={rulesLanding}
-              draftDirty={draftDirty}
-              rulesDirty={rulesDirty}
-              run={run}
-              mutate={mutate}
-              mayLeaveDraft={mayLeaveDraft}
-              changeAgreementTab={changeAgreementTab}
-              setBusy={setBusy}
-              setError={setError}
-              setNotice={setNotice}
-              setPreview={setPreview}
-              setEditing={setEditing}
-              setApprovedForPayout={setApprovedForPayout}
-              setDraftDirty={setDraftDirty}
-              setSource={setSource}
-              setDocumentId={setDocumentId}
-              setExtraction={setExtraction}
-            />
+          {shown === AgreementTab.Terms && (
+            <div className="ag-agreement">
+              <AgreementTermsTab
+                selected={selected}
+                latest={latest}
+                user={user}
+                base={base}
+                busy={busy}
+                editing={editing}
+                preview={preview}
+                approvedForPayout={approvedForPayout}
+                workspaces={workspaces}
+                workspace={workspace}
+                source={source}
+                documentId={documentId}
+                extraction={extraction}
+                rulesLanding={rulesLanding}
+                draftDirty={draftDirty}
+                rulesDirty={rulesDirty}
+                run={run}
+                mutate={mutate}
+                mutateWithResult={mutateWithResult}
+                mayLeaveDraft={mayLeaveDraft}
+                changeAgreementTab={changeAgreementTab}
+                setBusy={setBusy}
+                setError={setError}
+                setNotice={setNotice}
+                setPreview={setPreview}
+                setEditing={setEditing}
+                setApprovedForPayout={setApprovedForPayout}
+                setDraftDirty={setDraftDirty}
+                setSource={setSource}
+                setDocumentId={setDocumentId}
+                setExtraction={setExtraction}
+              />
+              {!editing && selected.value.versions.length > 0 && (
+                <>
+                  <section
+                    className="ag-agreement-document"
+                    id="agreement-document"
+                    aria-label="The agreement document"
+                  >
+                    <AgreementDocument
+                      key={`${selected.id}:${latest?.id ?? ""}`}
+                      agreement={selected}
+                      base={base}
+                      reviewedVersionId={latest?.id}
+                    />
+                  </section>
+                  <details className="panel ag-history">
+                    <summary>History</summary>
+                    <AgreementVersions agreement={selected} />
+                  </details>
+                </>
+              )}
+            </div>
           )}
-          {tab === AgreementTab.Allocations && (
-            <AgreementAllocations agreement={selected} />
-          )}
-          {tab === AgreementTab.Document && (
-            <AgreementDocument
-              key={selected.id}
-              agreement={selected}
-              base={base}
-            />
-          )}
-          {tab === AgreementTab.Payments && (
+          {shown === AgreementTab.Payments && (
             <AgreementPaymentsTab
               selected={selected}
               active={active}

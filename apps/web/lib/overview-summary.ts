@@ -1,5 +1,6 @@
-import type { Agreement } from "./model";
+import type { Agreement, Rules } from "./model";
 import { contractReviewState } from "./contract-review";
+import { formatMoneyHeadline } from "./preferences";
 
 export interface OverviewPayout {
   id: string;
@@ -21,7 +22,9 @@ const actionStatuses = new Set([
   "BLOCKED",
   "HELD",
   "ONHOLD",
+  "AUTO_HELD",
   "UNCLAIMED",
+  "WAITING_RECIPIENT",
   "OUTCOME_UNKNOWN",
   "REVERSED",
   "REFUNDED",
@@ -29,14 +32,103 @@ const actionStatuses = new Set([
 ]);
 const eventNames: Record<string, string> = {
   CREATED: "created the agreement",
-  VERSION_PROPOSED: "proposed new rules",
-  SENT_FOR_REVIEW: "sent rules for review",
-  APPROVED: "approved rules",
-  CHANGE_REQUESTED: "requested changes",
-  ACTIVATED: "activated approved rules",
-  REVENUE_ALLOCATED: "Payment allocated",
-  PAYMENT_HELD: "Payment placed on hold",
+  VERSION_PROPOSED: "suggested a split",
+  SENT_FOR_REVIEW: "sent the split for approval",
+  APPROVED: "approved the split",
+  CHANGE_REQUESTED: "asked for a change",
+  ACTIVATED: "switched on the split",
+  REVENUE_ALLOCATED: "Payment split",
+  PAYMENT_HELD: "Payment paused for a check",
+  PERSON_ADDED: "added someone to the agreement",
+  PERSON_REMOVED: "removed someone from the agreement",
+  PERSON_JOINED: "joined the agreement",
+  INVITE_REISSUED: "sent a new invite link",
 };
+
+/** Events the system records on its own: no actor name in front. */
+const systemEvents = new Set(["REVENUE_ALLOCATED", "PAYMENT_HELD"]);
+
+/** One activity row as a plain sentence: "Jordan approved the split". */
+export function activitySentence(
+  agreement: Agreement,
+  event: { type: string; actorId: string; details?: unknown },
+  userId: string,
+) {
+  const action = eventNames[event.type] || "updated the agreement";
+  if (event.actorId === "provider" || systemEvents.has(event.type))
+    return action.replace(/^./, (c) => c.toUpperCase());
+  if (
+    event.type === "ACTIVATED" &&
+    (event.details as { automatic?: boolean } | undefined)?.automatic
+  )
+    return "Everyone approved. The split switched on.";
+  const actor =
+    event.actorId === userId
+      ? "You"
+      : agreement.value.members
+          .find((m) => m.userId === event.actorId)
+          ?.displayName.split(/\s+/)[0] || "Someone";
+  return `${actor} ${action}`;
+}
+
+/** "Maya, Jordan and Riley" */
+function list(items: string[]) {
+  return items.length <= 1
+    ? items[0] || ""
+    : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
+}
+
+/** The split in plain sentences, written from the viewer's side. */
+export function splitSentences(
+  agreement: Agreement,
+  rules: Rules,
+  userId: string,
+): string[] {
+  const name = (id: string) =>
+    id === userId
+      ? "you"
+      : agreement.value.members
+          .find((m) => m.userId === id)
+          ?.displayName.split(/\s+/)[0] || "a former member";
+  const pct = (bp: number) => `${bp / 100}%`;
+  const out: string[] = [];
+  const advance = rules.advance;
+  const advanceTo = advance ? name(advance.recipientId) : "";
+  const mine = rules.shares.find((s) => s.userId === userId);
+  const after = advance
+    ? ` of what's left after ${advanceTo === "you" ? "your" : `${advanceTo}'s`} advance is paid back`
+    : " of each payment";
+  if (mine) out.push(`You get ${pct(mine.basisPoints)}${after}.`);
+  const others = rules.shares.filter((s) => s.userId !== userId);
+  if (others.length)
+    out.push(
+      `${mine ? "" : advance ? "After the advance, " : ""}${list(
+        others.map((s) => `${name(s.userId)} gets ${pct(s.basisPoints)}`),
+      )}.`.replace(/^./, (c) => c.toUpperCase()),
+    );
+  if (advance) {
+    const paidBack = agreement.value.recoupedByAdvance[advance.id] || 0;
+    const advanceOwner = advanceTo === "you" ? "your" : `${advanceTo}'s`;
+    out.push(
+      `${formatMoneyHeadline(advance.amountCents)} is allocated toward ${advanceOwner} advance before the split${
+        paidBack > 0
+          ? ` (${formatMoneyHeadline(Math.min(paidBack, advance.amountCents))} allocated so far)`
+          : ""
+      }.`,
+    );
+  }
+  if (rules.feePolicy === "BEFORE_SPLIT")
+    out.push("PayPal's fee comes off before anything is split.");
+  else {
+    const bearer = rules.feeBearerId
+      ? name(rules.feeBearerId)
+      : "the organizer";
+    out.push(
+      `${bearer === "you" ? "You pay" : `${bearer.replace(/^./, (c) => c.toUpperCase())} pays`} PayPal's fee from ${bearer === "you" ? "your" : "their"} share.`,
+    );
+  }
+  return out;
+}
 
 /** Uses only currently authorized aggregates. All-time because payout records have no timestamps. */
 export function overviewSummary(
@@ -101,9 +193,9 @@ export function overviewSummary(
       attention.push({
         key: `${identity(agreement)}:hold`,
         agreement,
-        title: "Payment reconciliation needed",
+        title: "A payment needs checking",
         detail:
-          "Recorded allocations remain visible; payouts are paused for review.",
+          "Payouts are paused until it's sorted. Nobody's share has changed.",
       });
     const latest = value.versions.at(-1);
     if (latest) {
@@ -112,31 +204,30 @@ export function overviewSummary(
         attention.push({
           key: `${identity(agreement)}:review-blockers`,
           agreement,
-          title: "Clarify rules before review",
+          title: "Answer a few questions before sending",
           detail: review.blockers.join(" "),
         });
       else if (review.canSend)
         attention.push({
           key: `${identity(agreement)}:send-review`,
           agreement,
-          title: `Send version ${latest.id} for review`,
-          detail:
-            "All required clarifications are resolved. Participants still need to approve before activation.",
+          title: "Send the split for approval",
+          detail: "Questions are answered. Next, everyone approves.",
         });
       if (review.canActivate)
         attention.push({
           key: `${identity(agreement)}:activate`,
           agreement,
-          title: `Activate version ${latest.id}`,
+          title: "Switch on the new split",
           detail:
-            "Everyone approved this exact version. Activation is still required before it governs payments.",
+            "Everyone approved. Switch it on to start splitting payments.",
         });
       else if (review.canApprove)
         attention.push({
           key: `${identity(agreement)}:approval`,
           agreement,
-          title: `Review version ${latest.id}`,
-          detail: "Your approval is still needed for these rules.",
+          title: "Approve the split",
+          detail: "Your approval is needed.",
         });
       const others =
         latest.status === "AWAITING_APPROVAL"
@@ -149,7 +240,7 @@ export function overviewSummary(
           key: `${identity(agreement)}:waiting`,
           agreement,
           title: `${others.map((m) => m.displayName).join(", ")} ${others.length === 1 ? "has" : "have"} not approved`,
-          detail: `Version ${latest.id} · review people and copy a reminder from the agreement.`,
+          detail: "You can send a reminder from People.",
         });
       else if (
         latest.status === "AWAITING_APPROVAL" &&
@@ -159,26 +250,19 @@ export function overviewSummary(
         waiting.push({
           key: `${identity(agreement)}:waiting-activation`,
           agreement,
-          title: `Waiting for organizer to activate version ${latest.id}`,
+          title: "Waiting for the organizer to switch it on",
           detail:
-            "Everyone approved this exact version. It does not govern payments until the organizer activates it.",
+            "Everyone approved. Waiting for the organizer to switch it on.",
         });
     }
 
     for (const event of value.audit) {
       if (!Number.isFinite(Date.parse(event.at))) continue;
-      const actor =
-        value.members.find((m) => m.userId === event.actorId)?.displayName ||
-        "A participant";
-      const action = eventNames[event.type] || "recorded an agreement update";
       activity.push({
         key: `${identity(agreement)}:${event.sequence}`,
         agreement,
         at: event.at,
-        text:
-          event.actorId === "provider"
-            ? action
-            : `${event.actorId === userId ? "You" : actor} ${action}`,
+        text: activitySentence(agreement, event, userId),
       });
     }
   }
@@ -205,7 +289,7 @@ export function overviewSummary(
         key: `payout:${operationKey}`,
         agreement,
         title: `Payout needs attention: ${agreement.value.members.find((m) => m.userId === payout.user_id)?.displayName || "participant"}`,
-        detail: `Recorded provider state: ${payout.status.toLowerCase().replaceAll("_", " ")}. Check the payout before retrying.`,
+        detail: `Recorded payout state: ${payout.status.toLowerCase().replaceAll("_", " ")}. Open the agreement to review the payout and resolve its blocker.`,
       });
   }
   activity.sort((a, b) => Date.parse(b.at) - Date.parse(a.at));

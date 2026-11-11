@@ -42,11 +42,11 @@ test("review panel gates activation by unanimity and organizer without claiming 
   let state = contractReviewState(agreement, version, "a");
   assert.equal(state.canActivate, false);
   assert.equal(state.canApprove, false);
-  assert.match(state.effect, /Version 1 still governs/);
+  assert.match(state.effect, /Version 1 is still in use/);
   const unanimous = { ...version, approvals: { a: "now", b: "now" } };
   state = contractReviewState(agreement, unanimous, "a");
   assert.equal(state.canActivate, true);
-  assert.equal(state.heading, "Everyone approved. Ready to activate.");
+  assert.equal(state.heading, "Everyone approved. Ready to switch on.");
   assert.equal(
     contractReviewState(agreement, unanimous, "b").canActivate,
     false,
