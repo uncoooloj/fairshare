@@ -178,12 +178,9 @@ export function ContractSourceGuidance({
   return (
     <div className="section">
       <p className="muted">
-        Text-based PDF (up to 20 pages) or DOCX, up to 5 MB, or paste agreement
-        text. Maximum extracted text: 40,000 characters. File text is extracted
-        on Fairshare’s processing servers; originals are saved privately for
-        agreement members. Scanned PDFs need manual text or explicitly selected
-        OCR when the server supports it. OCR is English-only, up to 5 pages, and
-        requires careful review.
+        Upload a PDF or DOCX up to 5 MB, or paste your agreement. We’ll read it
+        and keep the original for everyone in the agreement. Check names and
+        amounts before sharing the terms.
       </p>
       {replacement && (
         <Notice>

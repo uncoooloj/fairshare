@@ -14,7 +14,6 @@ import { ProfileContact } from "./profile-contact";
 import { PaymentAccountsSettings } from "./payment-account-settings";
 import { ActivityLogSettings } from "./activity-log-settings";
 import { formatDate } from "../lib/preferences";
-import { LocalOcrChoice } from "./local-ocr-choice";
 import { AgreementInvoices } from "./agreement-invoices";
 import { ReviewDiscussion, ReviewReminder } from "./review-discussion";
 import { RevenueRules } from "./revenue-rules";
@@ -78,7 +77,6 @@ const workspaceBase = (id: string) => `workspaces/${id}`;
 export default function FairshareApp() {
   const emailDelivery = useEmailDelivery();
   const [settingsTab, setSettingsTab] = useState("Profile");
-  const [useLocalOcr, setUseLocalOcr] = useState(false);
   const [user, setUser] = useState<User | null>(null),
     [ready, setReady] = useState(false),
     [busy, setBusy] = useState(false),
@@ -1113,12 +1111,6 @@ export default function FairshareApp() {
                                         }}
                                       />
                                     </Field>
-                                    <LocalOcrChoice
-                                      base={base}
-                                      value={useLocalOcr}
-                                      onChange={setUseLocalOcr}
-                                      disabled={busy}
-                                    />
                                     <div className="actions">
                                       <label className="button secondary">
                                         Choose PDF, DOCX or text file
@@ -1177,9 +1169,6 @@ export default function FairshareApp() {
                                                       ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                                                       : "application/pdf",
                                                     base64: data,
-                                                    ...(!isDocx && useLocalOcr
-                                                      ? { useLocalOcr: true }
-                                                      : {}),
                                                   },
                                                 );
                                                 const saved = await api(
@@ -1188,7 +1177,7 @@ export default function FairshareApp() {
                                                 setSource(saved.text);
                                                 setDocumentId(doc.documentId);
                                                 setNotice(
-                                                  "Document text extracted locally. Review every amount and name against the saved original before AI processing; OCR can misread characters.",
+                                                  "Your document is ready. Check the names and amounts against the original before sharing the terms.",
                                                 );
                                               } else {
                                                 if (

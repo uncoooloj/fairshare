@@ -5,6 +5,28 @@ export function errorCopy(
   message?: string,
 ): string {
   const messages: Record<string, string> = {
+    OCR_UNAVAILABLE:
+      "We can’t read this scan right now. Try again later, or paste the agreement text.",
+    OCR_BUSY:
+      "We’re reading other documents right now. Please try again in a moment.",
+    OCR_FAILED:
+      "We couldn’t read this scan. Try a clearer copy, or paste the agreement text.",
+    OCR_TIMEOUT:
+      "This scan took too long to read. Try fewer pages, or paste the agreement text.",
+    OCR_PAGE_LIMIT:
+      "Please upload a scan with no more than 5 pages, or paste the agreement text.",
+    OCR_NO_TEXT:
+      "We couldn’t find readable text in this scan. Try a clearer copy, or paste the agreement text.",
+    OCR_ENCRYPTED:
+      "Remove this document’s password before uploading, or paste the agreement text.",
+    OCR_IMAGE_LIMIT:
+      "The images in this scan are too large. Try a smaller file, or paste the agreement text.",
+    OCR_OUTPUT_LIMIT:
+      "This scan contains too much text. Try a shorter document, or paste the relevant agreement text.",
+    OCR_TEXT_LIMIT:
+      "This scan contains too much text. Try a shorter document, or paste the relevant agreement text.",
+    PDF_NO_EXTRACTABLE_TEXT:
+      "We couldn’t read this document. Try a clearer copy, or paste the agreement text.",
     REVISION_CONFLICT:
       "This agreement changed while you were working. Review the latest version before trying again.",
     STALE_VERSION:
