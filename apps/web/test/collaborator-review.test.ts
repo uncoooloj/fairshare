@@ -1,8 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { AgreementTab } from "../lib/model";
 import type { Agreement, Version } from "../lib/model";
 import {
   CollaboratorStage,
@@ -16,6 +18,13 @@ import {
   WrongPart,
   changeRequestReason,
 } from "../components/something-wrong-drawer";
+
+// Match the existing accessibility SSR harness for components with CSS modules.
+const require = createRequire(import.meta.url);
+require.extensions[".css"] = () => {};
+const {
+  AgreementDetail,
+} = require("../components/sections/agreement-detail.tsx");
 
 const source = {
   origin: "SOURCE_CLAUSE",
@@ -70,6 +79,27 @@ function agreement(v: Version, recouped = 0): Agreement {
     },
   };
 }
+
+test("full agreement opens the proposed document instead of older active terms", () => {
+  const proposed = version({ id: 2 });
+  const selected = agreement(proposed);
+  selected.value.versions = [version({ status: "ACTIVE" }), proposed];
+  selected.value.activeVersionId = 1;
+  const html = renderToStaticMarkup(
+    createElement(AgreementDetail, {
+      selected,
+      latest: proposed,
+      active: selected.value.versions[0],
+      user: { id: "riley" },
+      organizer: false,
+      tab: AgreementTab.Document,
+      base: "/workspaces/w/collaborations/a",
+    } as any),
+  );
+  assert.match(html, /The full agreement/);
+  assert.match(html, /<option value="2" selected="">/);
+  assert.doesNotMatch(html, /<option value="1" selected="">/);
+});
 
 test("what you get: share after the advance, in plain words", () => {
   const v = version();

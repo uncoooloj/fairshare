@@ -279,7 +279,12 @@ export function AgreementDetail({
         >
           The full agreement
         </h2>
-        <AgreementDocument agreement={selected} base={base} />
+        <AgreementDocument
+          key={`${selected.id}:${latest?.id ?? ""}`}
+          agreement={selected}
+          base={base}
+          reviewedVersionId={latest?.id}
+        />
       </section>
     );
   return (
