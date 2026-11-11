@@ -148,13 +148,19 @@ export function registerAgreementInvitations(
         "SELECT u.name,m.role FROM memberships m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=? AND m.user_id=?",
       )
       .get(row.workspace_id, row.created_by) as any;
-    // A named seat stays valid after its creator hands over organizing: the agreement still
-    // names that person. Open links stop working once their creator is no longer the organizer.
+    const seat = pendingSeat(agreement.value, row.id);
+    const creatorIsMember =
+      creator?.role === Role.OWNER || creator?.role === Role.MEMBER;
+    const creatorIsOrganizer =
+      agreement.value.members.find((m) => m.userId === row.created_by)?.role ===
+      MemberRole.ORGANIZER;
+    // A named seat binds this token to a person already in the agreement, so it can survive
+    // handover while its creator remains a workspace member. Open links still require their
+    // creator to be both the workspace owner and current agreement organizer.
     if (
-      creator?.role !== Role.OWNER ||
-      (!pendingSeat(agreement.value, row.id) &&
-        agreement.value.members.find((m) => m.userId === row.created_by)
-          ?.role !== MemberRole.ORGANIZER)
+      !(seat
+        ? creatorIsMember
+        : creator?.role === Role.OWNER && creatorIsOrganizer)
     )
       throw new ApiError(
         400,
@@ -162,7 +168,7 @@ export function registerAgreementInvitations(
         "The organizer can no longer grant this invitation.",
       );
     // Named people keep their seat after the rules are sent; open links stop at sending.
-    if (!pendingSeat(agreement.value, row.id) && rulesEverSent(agreement.value))
+    if (!seat && rulesEverSent(agreement.value))
       throw new ApiError(
         409,
         "MEMBERS_LOCKED",

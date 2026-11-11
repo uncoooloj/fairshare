@@ -127,6 +127,7 @@ async function setup() {
     riley,
     sam,
     samLink,
+    workspace,
     url,
     read,
     addPerson,
@@ -327,6 +328,12 @@ test("the new member organizer can reissue or remove existing named seats withou
       400,
       "the replacement revokes the lost link",
     );
+    const preview = await f.app.inject({
+      method: "POST",
+      url: "/api/agreement-invitations/preview",
+      payload: { token: next.invitation.token },
+    });
+    assert.equal(preview.statusCode, 200, preview.body);
     assert.equal(
       (
         await f.call(
@@ -359,6 +366,58 @@ test("the new member organizer can reissue or remove existing named seats withou
       otherWorkspace.statusCode,
       404,
       "a workspace owner cannot manage a seat from another workspace",
+    );
+    const accepted = await f.accept(next.invitation.token, f.sam);
+    assert.equal(accepted.statusCode, 200, accepted.body);
+  } finally {
+    await f.app.close();
+  }
+});
+
+test("named links require their creator to remain a workspace member, while open links require the current owner organizer", async () => {
+  const f = await setup();
+  try {
+    const oldSamId = (await f.read()).value.members.find(
+      (m: any) => m.pending,
+    ).userId;
+    const open = (
+      await f.app.inject({
+        method: "POST",
+        url: `${f.url}/invitation-links`,
+        headers: { authorization: `Bearer ${f.maya.token}` },
+        payload: {},
+      })
+    ).json().invitation;
+    await f.offer(f.jordan.user.id);
+    assert.equal(
+      (await f.call("POST", "/organizer-transfer/accept", f.jordan)).statusCode,
+      200,
+    );
+    const reissued = await f.call(
+      "POST",
+      `/people/${encodeURIComponent(oldSamId)}/invitation`,
+      f.jordan,
+    );
+    assert.equal(reissued.statusCode, 201, reissued.body);
+    const token = reissued.json().invitation.token;
+    const preview = (token: string) =>
+      f.app.inject({
+        method: "POST",
+        url: "/api/agreement-invitations/preview",
+        payload: { token },
+      });
+    assert.equal(
+      (await preview(open.token)).statusCode,
+      400,
+      "an open link never follows an organizer handover",
+    );
+    f.app.store.db
+      .prepare("DELETE FROM memberships WHERE workspace_id=? AND user_id=?")
+      .run(f.workspace.id, f.jordan.user.id);
+    assert.equal(
+      (await preview(token)).statusCode,
+      400,
+      "a named link stops once its creator is no longer a workspace member",
     );
   } finally {
     await f.app.close();
