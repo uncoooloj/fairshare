@@ -1,7 +1,10 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import type { Version } from "../lib/model";
-import { documentCitations } from "../lib/document-citations";
+import {
+  documentCitations,
+  OPEN_CITATION_EVENT,
+} from "../lib/document-citations";
 import { HighlightedSource } from "./source-rule-context";
 
 export function DocumentCitationView({
@@ -26,6 +29,21 @@ export function DocumentCitationView({
     citation.highlight ? [citation.highlight] : [],
   );
   useEffect(() => setSelected(null), [document.documentId, version?.id]);
+  // A rule's clause chip asks for its quote: highlight it when it can be found.
+  useEffect(() => {
+    const open = (event: Event) => {
+      const id = (event as CustomEvent<string>).detail;
+      if (
+        !citations.some((citation) => citation.id === id && citation.highlight)
+      )
+        return;
+      event.preventDefault();
+      setSelected(null);
+      requestAnimationFrame(() => setSelected(id));
+    };
+    window.addEventListener(OPEN_CITATION_EVENT, open);
+    return () => window.removeEventListener(OPEN_CITATION_EVENT, open);
+  }, [citations]);
   const chosen = citations.find((citation) => citation.id === selected);
   return (
     <div className="document-layout">

@@ -1,9 +1,8 @@
-import { statusLabel } from "../../../lib/status-labels";
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import { PostApprovalPayout } from "../../post-approval-payout";
 import { CollaboratorTerms } from "../../collaborator-review";
 import { ReviewDiscussion } from "../../review-discussion";
-import { RuleSteps, RuleStepsLayout } from "../../agreement-workspace";
+import { RecoupmentCard, RevenueRulesCard } from "../../agreement-workspace";
 import {
   Heading,
   PreviewForm,
@@ -250,61 +249,26 @@ export function AgreementTermsTab({
                 </div>
               </section>
             )}
-            <div className="ag-section-head">
-              <div>
-                <div className="ag-title">
-                  <h2 id="agreement-proposal-review" tabIndex={-1}>
-                    Rules in v{latest.id}
-                  </h2>
-                  <span
-                    className={`status-chip ${
-                      latest.id === selected.value.activeVersionId ||
-                      latest.status === "APPROVED"
-                        ? "good"
-                        : ""
-                    }`}
-                  >
-                    {latest.id === selected.value.activeVersionId
-                      ? "In use"
-                      : statusLabel(latest.status)}
-                  </span>
-                </div>
-              </div>
-              <Button
-                variant="secondary"
-                disabled={busy}
-                onClick={() => {
-                  setPreview(null);
-                  if (onRevise) onRevise(requests.at(-1));
-                  else setEditing(true);
-                }}
-              >
-                Change the agreement
-              </Button>
-            </div>
-            <RuleSteps
+            <RevenueRulesCard
               agreement={selected}
-              rules={latest.rules}
-              layout={RuleStepsLayout.Cards}
+              version={latest}
+              headingId="agreement-proposal-review"
+              action={
+                <Button
+                  variant="secondary"
+                  disabled={busy}
+                  onClick={() => {
+                    setPreview(null);
+                    if (onRevise) onRevise(requests.at(-1));
+                    else setEditing(true);
+                  }}
+                >
+                  Change the agreement
+                </Button>
+              }
             />
-            {latest.rules.source.excerpt && (
-              <figure className="ag-source">
-                <figcaption>
-                  {latest.rules.source.origin === "HUMAN_PROPOSAL"
-                    ? "Written by your team"
-                    : "From the agreement"}
-                  {latest.rules.source.clause && (
-                    <span className="clause-chip">
-                      §{" "}
-                      {latest.rules.source.clause.replace(
-                        /^(clause|section)\s+/i,
-                        "",
-                      )}
-                    </span>
-                  )}
-                </figcaption>
-                <blockquote>{latest.rules.source.excerpt}</blockquote>
-              </figure>
+            {latest.id === selected.value.activeVersionId && (
+              <RecoupmentCard agreement={selected} rules={latest.rules} />
             )}
             <ContractReviewPanel
               key={latest.id}
