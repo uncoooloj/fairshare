@@ -3,10 +3,7 @@ import { AgreementPeople } from "../../agreement-people";
 import { AgreementInvitation } from "../../agreement-invitation";
 import { Heading } from "../../agreement-widgets";
 import { Drawer } from "../../allocation-drawer";
-import {
-  cancelOrganizerHandover,
-  organizerHandoverOf,
-} from "../../../lib/agreement-api";
+import { organizerHandoverOf } from "../../../lib/agreement-api";
 import type { Agreement, User, Version } from "../../../lib/model";
 import { Button, Notice } from "../../ui";
 import type { Mutate, Run } from "../types";
@@ -72,12 +69,7 @@ export function AgreementPeopleTab({
             disabled={busy}
             onClick={() =>
               run(async () => {
-                const next = await cancelOrganizerHandover(
-                  selected.workspaceId,
-                  selected.id,
-                  selected.revision,
-                );
-                setSelected?.(next);
+                await mutate("/organizer-transfer", {}, "DELETE");
               })
             }
           >

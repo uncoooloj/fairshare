@@ -108,6 +108,22 @@ export function registerAgreementInvitations(
       throw new ApiError(403, "FORBIDDEN", "Agreement organizer required.");
     return { user, agreement, workspaceId, agreementId };
   }
+  /** A handover may make the agreement organizer a workspace MEMBER. They can keep an
+   * existing named seat usable, but cannot create invitations or gain workspace-owner powers. */
+  function canManagePendingSeat(req: any) {
+    const { workspaceId, agreementId } = req.params;
+    const { user } = app.requireWorkspace(req, workspaceId, [
+      Role.OWNER,
+      Role.MEMBER,
+    ]);
+    const agreement = aggregates.read(workspaceId, agreementId);
+    if (
+      agreement.value.members.find((m) => m.userId === user.id)?.role !==
+      MemberRole.ORGANIZER
+    )
+      throw new ApiError(403, "FORBIDDEN", "Agreement organizer required.");
+    return { user, agreement, workspaceId, agreementId };
+  }
   function validLink(token: unknown) {
     if (typeof token !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(token))
       throw new ApiError(
@@ -345,7 +361,7 @@ export function registerAgreementInvitations(
   });
   // Replace a named person's link (lost or expired). Works after sending; the old link stops working.
   app.post(`${base}/people/:userId/invitation`, async (req: any, reply) => {
-    const { user, workspaceId, agreementId } = canInvite(req);
+    const { user, workspaceId, agreementId } = canManagePendingSeat(req);
     store.limit(`agreement-invite:${user.id}`, 30);
     const revision = expectedRevision((req.body ?? {}).expectedRevision);
     const result = store.tx(() => {
@@ -390,7 +406,7 @@ export function registerAgreementInvitations(
   });
   // Remove someone before the rules are sent; a named person's link is revoked with them.
   app.delete(`${base}/people/:userId`, async (req: any, reply) => {
-    const { user, workspaceId, agreementId } = canInvite(req);
+    const { user, workspaceId, agreementId } = canManagePendingSeat(req);
     const revision = expectedRevision(req.query?.expectedRevision);
     const result = store.tx(() => {
       const agreement = aggregates.updateInsideTransaction(

@@ -513,15 +513,24 @@ export default function FairshareApp() {
     setError("");
     router.replace("/app");
   }
-  async function mutate(action: string, extra: Record<string, unknown> = {}) {
+  async function mutate(
+    action: string,
+    extra: Record<string, unknown> = {},
+    method: "POST" | "DELETE" = "POST",
+  ) {
     const workspaceRequestId = workspaceRequest.current;
     const openRequestId = openRequest.current;
     if (selected?.workspaceId !== currentWorkspace.current) return;
     try {
-      const a = await api<Agreement>(base + action, "POST", {
-        expectedRevision: selected!.revision,
-        ...extra,
-      });
+      const a = await api<Agreement>(
+        method === "DELETE"
+          ? `${base + action}?expectedRevision=${selected!.revision}`
+          : base + action,
+        method,
+        method === "DELETE"
+          ? undefined
+          : { expectedRevision: selected!.revision, ...extra },
+      );
       if (
         workspaceRequestId !== workspaceRequest.current ||
         openRequestId !== openRequest.current

@@ -270,6 +270,134 @@ test("accept swaps roles; the old organizer can no longer add people or send, th
   }
 });
 
+test("the new member organizer can reissue or remove existing named seats without gaining owner invite powers", async () => {
+  const f = await setup();
+  try {
+    const before = await f.read();
+    const oldSamId = before.value.members.find((m: any) => m.pending).userId;
+    const rules = f.rules([
+      [f.maya.user.id, 5000],
+      [f.jordan.user.id, 2000],
+      [f.riley.user.id, 2000],
+      [oldSamId, 1000],
+    ]);
+    assert.equal(
+      (await f.call("POST", "/submit", f.maya, { rules })).statusCode,
+      200,
+    );
+    assert.equal(
+      (await f.call("POST", "/versions/1/approve", f.riley)).statusCode,
+      200,
+    );
+    const approved = await f.read();
+
+    await f.offer(f.jordan.user.id);
+    assert.equal(
+      (await f.call("POST", "/organizer-transfer/accept", f.jordan)).statusCode,
+      200,
+    );
+
+    const reissued = await f.call(
+      "POST",
+      `/people/${encodeURIComponent(oldSamId)}/invitation`,
+      f.jordan,
+    );
+    assert.equal(reissued.statusCode, 201, reissued.body);
+    const next = reissued.json();
+    const newSamId = `pending:${next.invitation.id}`;
+    assert.equal(next.agreement.value.members.at(-1).userId, newSamId);
+    assert.deepEqual(
+      next.agreement.value.versions[0].rules.shares.map((s: any) => [
+        s.userId === newSamId ? oldSamId : s.userId,
+        s.basisPoints,
+      ]),
+      approved.value.versions[0].rules.shares.map((s: any) => [
+        s.userId,
+        s.basisPoints,
+      ]),
+      "reissuing only follows the pending seat",
+    );
+    assert.deepEqual(
+      next.agreement.value.versions[0].approvals,
+      approved.value.versions[0].approvals,
+      "existing approvals stay unchanged",
+    );
+    assert.equal(
+      (await f.accept(f.samLink.token, f.sam)).statusCode,
+      400,
+      "the replacement revokes the lost link",
+    );
+    assert.equal(
+      (
+        await f.call(
+          "POST",
+          `/people/${encodeURIComponent(newSamId)}/invitation`,
+          f.maya,
+        )
+      ).statusCode,
+      403,
+      "the former organizer cannot manage the seat",
+    );
+    const unrelated = await f.app.inject({
+      method: "POST",
+      url: `${f.url}/people/${encodeURIComponent(newSamId)}/invitation`,
+      headers: { authorization: `Bearer ${f.sam.token}` },
+      payload: { expectedRevision: next.agreement.revision },
+    });
+    assert.equal(unrelated.statusCode, 404, "non-members cannot manage seats");
+    const unrelatedWorkspace = f.app.store.createWorkspace(
+      f.sam.user.id,
+      "Unrelated",
+    );
+    const otherWorkspace = await f.app.inject({
+      method: "POST",
+      url: `/api/workspaces/${unrelatedWorkspace.id}/collaborations/${next.agreement.id}/people/${encodeURIComponent(newSamId)}/invitation`,
+      headers: { authorization: `Bearer ${f.sam.token}` },
+      payload: { expectedRevision: next.agreement.revision },
+    });
+    assert.equal(
+      otherWorkspace.statusCode,
+      404,
+      "a workspace owner cannot manage a seat from another workspace",
+    );
+  } finally {
+    await f.app.close();
+  }
+});
+
+test("the new member organizer can remove an existing pending seat before sending", async () => {
+  const f = await setup();
+  try {
+    const pendingId = (await f.read()).value.members.find(
+      (m: any) => m.pending,
+    ).userId;
+    await f.offer(f.jordan.user.id);
+    assert.equal(
+      (await f.call("POST", "/organizer-transfer/accept", f.jordan)).statusCode,
+      200,
+    );
+    const removed = await f.call(
+      "DELETE",
+      `/people/${encodeURIComponent(pendingId)}`,
+      f.jordan,
+    );
+    assert.equal(removed.statusCode, 200, removed.body);
+    assert.equal(
+      removed
+        .json()
+        .agreement.value.members.some((m: any) => m.userId === pendingId),
+      false,
+    );
+    assert.equal(
+      (await f.accept(f.samLink.token, f.sam)).statusCode,
+      400,
+      "removing the seat revokes its link",
+    );
+  } finally {
+    await f.app.close();
+  }
+});
+
 test("money split unchanged after handover while awaiting approval", async () => {
   const f = await setup();
   try {
