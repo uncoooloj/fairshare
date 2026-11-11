@@ -111,6 +111,24 @@ test("polish preserves personal finance and tenant-qualified identities", () => 
   );
 });
 
+test("money labels distinguish allocation from payout completion", () => {
+  const payments = readFileSync(
+    new URL(
+      "../components/sections/agreement-tabs/payments-tab.tsx",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  const workspace = readFileSync(
+    new URL("../components/agreement-workspace.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(payments, /ALLOCATED: "Received and allocated"/);
+  assert.doesNotMatch(payments, /ALLOCATED: "Paid and split"/);
+  assert.match(workspace, /Advance allocation/);
+  assert.match(workspace, /allocated toward the advance/);
+});
+
 test("allocation explanation does not invent an advance for a zero-net payment", () => {
   const source = readFileSync(
     new URL("../components/allocation-calculation.tsx", import.meta.url),

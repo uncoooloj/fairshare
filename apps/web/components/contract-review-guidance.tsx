@@ -215,9 +215,9 @@ export function ContractSourceGuidance({
           first.
         </p>
         <p>
-          You can always read the agreement and download the original file. A
-          refund pauses payouts while it’s checked; nobody’s money is taken back
-          automatically.
+          You can always read the agreement. You can download the original file
+          when it is available. A refund pauses payouts while it’s checked;
+          nobody’s money is taken back automatically.
         </p>
       </details>
     </div>

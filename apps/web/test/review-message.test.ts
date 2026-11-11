@@ -49,3 +49,14 @@ test("a committed review remains shareable if the optional workspace refresh fai
   );
   assert.match(app, /Agreement updated\. Refresh to reload the rest/);
 });
+test("review guidance qualifies original downloads by availability", () => {
+  const guidance = readFileSync(
+    new URL("../components/contract-review-guidance.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(guidance, /download the original file\s+when it is available/);
+  assert.doesNotMatch(
+    guidance,
+    /always read the agreement and download the original file/,
+  );
+});

@@ -21,7 +21,7 @@ const PAYMENT_STATUS: Record<string, string> = {
   CREATING: "Starting",
   AWAITING_BUYER: "Waiting for payer",
   CAPTURING: "Collecting",
-  ALLOCATED: "Paid and split",
+  ALLOCATED: "Received and allocated",
   HELD: "Being checked",
   OUTCOME_UNKNOWN: "Being checked",
 };

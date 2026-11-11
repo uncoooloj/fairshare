@@ -280,9 +280,10 @@ export function AgreementDetail({
                     aria-label="The agreement document"
                   >
                     <AgreementDocument
-                      key={selected.id}
+                      key={`${selected.id}:${latest?.id ?? ""}`}
                       agreement={selected}
                       base={base}
+                      reviewedVersionId={latest?.id}
                     />
                   </section>
                   <details className="panel ag-history">
