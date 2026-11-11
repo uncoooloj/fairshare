@@ -48,6 +48,8 @@ export interface AgreementTermsTabProps {
   extraction: any;
   /** Just created by the wizard with a reading result: open on Proposed rules. */
   rulesLanding?: boolean;
+  /** A collaborator's pending review already shows above the agreement header. */
+  reviewAbove?: boolean;
   draftDirty: boolean;
   rulesDirty: MutableRefObject<boolean>;
   run: Run;
@@ -68,11 +70,70 @@ export interface AgreementTermsTabProps {
   setSource: Dispatch<SetStateAction<string>>;
   setDocumentId: Dispatch<SetStateAction<string>>;
   setExtraction: Dispatch<SetStateAction<any>>;
+  openDocumentRef?: MutableRefObject<HTMLButtonElement | null>;
+  reviewHeadingRef?: MutableRefObject<HTMLHeadingElement | null>;
   /** Change requests waiting on the organizer. */
   requests?: ChangeRequestView[];
   onSeeRequest?: () => void;
-  /** Organizer only: the guided change (replaces the old rules editor once something was sent). */
+  /** Organizer only: the guided change once terms have been sent. */
   onRevise?: (request?: ChangeRequestView) => void;
+}
+
+export type CollaboratorReviewCardProps = Pick<
+  AgreementTermsTabProps,
+  | "selected"
+  | "latest"
+  | "user"
+  | "base"
+  | "busy"
+  | "approvedForPayout"
+  | "mutate"
+  | "mutateWithResult"
+  | "changeAgreementTab"
+  | "setApprovedForPayout"
+> & {
+  openDocumentRef?: MutableRefObject<HTMLButtonElement | null>;
+  reviewHeadingRef?: MutableRefObject<HTMLHeadingElement | null>;
+};
+
+/** A collaborator's What you get card, wired to approve and flag a problem. */
+export function CollaboratorReviewCard({
+  selected,
+  latest,
+  user,
+  base,
+  busy,
+  approvedForPayout,
+  mutate,
+  mutateWithResult,
+  changeAgreementTab,
+  setApprovedForPayout,
+  openDocumentRef,
+  reviewHeadingRef,
+}: CollaboratorReviewCardProps) {
+  return (
+    <CollaboratorTerms
+      agreement={selected}
+      version={latest}
+      userId={user.id}
+      base={base}
+      busy={busy}
+      justApproved={approvedForPayout === selected.id}
+      onApprove={async () => {
+        if (!latest) return;
+        if (await mutateWithResult(`/versions/${latest.id}/approve`))
+          setApprovedForPayout(selected.id);
+      }}
+      onRequestChange={async (reason) => {
+        if (!latest) return;
+        await mutate(`/versions/${latest.id}/request-change`, { reason });
+      }}
+      onOpenDocument={() => changeAgreementTab(AgreementTab.Document)}
+      onPayoutDone={() => setApprovedForPayout("")}
+      openDocumentRef={openDocumentRef}
+      reviewHeadingRef={reviewHeadingRef}
+    />
+  );
 }
 
 /** Terms: the latest proposal and its review, or the source and rules draft. */
@@ -91,6 +152,7 @@ export function AgreementTermsTab({
   documentId,
   extraction,
   rulesLanding = false,
+  reviewAbove = false,
   draftDirty,
   rulesDirty,
   run,
@@ -108,6 +170,8 @@ export function AgreementTermsTab({
   setSource,
   setDocumentId,
   setExtraction,
+  openDocumentRef,
+  reviewHeadingRef,
   requests = [],
   onSeeRequest,
   onRevise,
@@ -120,25 +184,22 @@ export function AgreementTermsTab({
   if (!isOrganizer)
     return (
       <div className="collab-terms">
-        <CollaboratorTerms
-          agreement={selected}
-          version={latest}
-          userId={user.id}
-          base={base}
-          busy={busy}
-          justApproved={approvedForPayout === selected.id}
-          onApprove={async () => {
-            if (!latest) return;
-            if (await mutateWithResult(`/versions/${latest.id}/approve`))
-              setApprovedForPayout(selected.id);
-          }}
-          onRequestChange={async (reason) => {
-            if (!latest) return;
-            await mutate(`/versions/${latest.id}/request-change`, { reason });
-          }}
-          onOpenDocument={() => changeAgreementTab(AgreementTab.Document)}
-          onPayoutDone={() => setApprovedForPayout("")}
-        />
+        {!reviewAbove && (
+          <CollaboratorReviewCard
+            selected={selected}
+            latest={latest}
+            user={user}
+            base={base}
+            busy={busy}
+            approvedForPayout={approvedForPayout}
+            mutate={mutate}
+            mutateWithResult={mutateWithResult}
+            changeAgreementTab={changeAgreementTab}
+            setApprovedForPayout={setApprovedForPayout}
+            openDocumentRef={openDocumentRef}
+            reviewHeadingRef={reviewHeadingRef}
+          />
+        )}
         {latest && (
           <ReviewDiscussion
             key={`${selected.id}:${latest.id}`}

@@ -23,13 +23,14 @@ import {
   type AgreementAnswers,
   type PersonAnswer,
 } from "../lib/rules-answers";
-import { questionsFor } from "../lib/standard-questions";
+import { MAX_QUESTIONS, questionsFor } from "../lib/standard-questions";
 import { workspaceBase } from "../lib/workspace-base";
 import {
   clearDraftAnswers,
   loadDraftAnswers,
+  restoreQuestions,
   saveDraftAnswers,
-} from "../lib/wizard-draft-store";
+} from "../lib/wizard-persistence";
 import {
   DocumentMode,
   DocumentStep,
@@ -153,7 +154,10 @@ export function mergeQuestions(answers: AgreementAnswers): AgreementAnswers {
     answers,
     answers.questions.filter((q) => !q.answeredChoiceId),
   ).filter((q) => !answered.some((a) => a.id === q.id));
-  return { ...answers, questions: [...answered, ...fresh].slice(0, 3) };
+  return {
+    ...answers,
+    questions: [...fresh, ...answered].slice(0, MAX_QUESTIONS),
+  };
 }
 
 /** Why Check can't continue yet, or undefined. */
@@ -240,7 +244,7 @@ export function AgreementCreationWizard({
     node?.focus();
   }, [stage, questionIndex]);
 
-  // Check, Questions and People choices survive "Keep as draft" on this device.
+  // Check, Questions and People choices survive a reload or "Keep as draft" on this device.
   useEffect(() => {
     if (!answers || !created || stage === WizardStage.SENT) return;
     saveDraftAnswers(created.workspaceId, created.agreementId, answers);
@@ -922,7 +926,7 @@ export function resumedAnswers(
   const held = new Map(
     pendingMembers(agreement).map((m) => [m.pending.invitationId, m]),
   );
-  const people = stored.people.value.map((p) =>
+  const people = stored.answers.people.value.map((p) =>
     p.invitationId && !held.has(p.invitationId)
       ? { ...p, invitationId: undefined }
       : p,
@@ -939,17 +943,25 @@ export function resumedAnswers(
         isSelf: false,
       });
   const merged: AgreementAnswers = {
-    ...stored,
-    people: { ...stored.people, value: people },
+    ...stored.answers,
+    people: { ...stored.answers.people, value: people },
     questions: [],
   };
-  // Local storage holds only question identifiers and selected choices. Rebuild
-  // source questions here so citations and closures stay tied to the current reading.
+  // Answered questions are rebuilt as they were asked (before their answer was applied),
+  // in the stored order. Local storage holds only question identifiers and selected
+  // choices, so citations and closures stay tied to the current reading.
+  const asked = questionsFor(
+    { ...merged, fees: undefined, refunds: undefined },
+    read.answers.questions,
+  );
   let restored: AgreementAnswers = {
     ...merged,
-    questions: questionsFor(merged, read.answers.questions),
+    questions: restoreQuestions(
+      stored.questions.map(({ id }) => ({ id })),
+      [...asked, ...read.answers.questions],
+    ),
   };
-  for (const saved of stored.questionAnswers ?? []) {
+  for (const saved of stored.questions) {
     if (!saved.answeredChoiceId) continue;
     const question = restored.questions.find((item) => item.id === saved.id);
     const choice = question?.choices.find(
@@ -964,7 +976,8 @@ export function resumedAnswers(
     const stillMatches =
       JSON.stringify(applied.people) === JSON.stringify(restored.people) &&
       JSON.stringify(applied.advance) === JSON.stringify(restored.advance) &&
-      JSON.stringify(applied.fees) === JSON.stringify(restored.fees);
+      JSON.stringify(applied.fees) === JSON.stringify(restored.fees) &&
+      JSON.stringify(applied.refunds) === JSON.stringify(restored.refunds);
     if (!stillMatches) continue;
     restored = {
       ...restored,
@@ -977,6 +990,6 @@ export function resumedAnswers(
   }
   return {
     ...read,
-    answers: withDraftName(restored, agreement),
+    answers: withDraftName(mergeQuestions(restored), agreement),
   };
 }

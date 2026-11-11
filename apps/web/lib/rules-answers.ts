@@ -130,12 +130,21 @@ function distribute(total: number, weights: number[]): number[] {
   return rows.map((r) => r.floor);
 }
 
-/** Linked sliders: set one person, spread the rest over the others by their current
- * shares (equally if they were all 0). Integers, never negative, always 10000. */
+/**
+ * Linked sliders: set one person, spread the rest over the others by their current
+ * shares (equally if they were all 0). Integers, never negative.
+ *
+ * `heldKeys` are people already set by hand: they never move, so only the rest absorb the
+ * change. With nobody held it always totals 10000; when everyone else is held nothing else
+ * moves and the total can be off, for the caller to show. `step` (100 = whole percents)
+ * keeps the people who move on that grid whenever what is left divides by it.
+ */
 export function rebalance(
   people: PersonAnswer[],
   changedKey: string,
   basisPoints: number,
+  heldKeys: readonly string[] = [],
+  step = 1,
 ): PersonAnswer[] {
   const changed = people.find((p) => p.key === changedKey);
   if (!changed) return people.map((p) => ({ ...p }));
@@ -145,15 +154,23 @@ export function rebalance(
     TOTAL_BASIS_POINTS,
     Math.max(0, Math.round(Number.isFinite(basisPoints) ? basisPoints : 0)),
   );
-  const others = people.filter((p) => p.key !== changedKey);
-  const spread = distribute(
-    TOTAL_BASIS_POINTS - value,
-    others.map((p) => Math.max(0, p.basisPoints)),
+  const held = people.filter(
+    (p) => p.key !== changedKey && heldKeys.includes(p.key),
   );
-  const next = new Map(others.map((p, i) => [p.key, spread[i]]));
+  const free = people.filter(
+    (p) => p.key !== changedKey && !heldKeys.includes(p.key),
+  );
+  const left = Math.max(0, TOTAL_BASIS_POINTS - value - totalBasisPoints(held));
+  const unit = step > 1 && left % step === 0 ? step : 1;
+  const spread = distribute(
+    left / unit,
+    free.map((p) => Math.max(0, p.basisPoints)),
+  );
+  const next = new Map(free.map((p, i) => [p.key, spread[i] * unit]));
   return people.map((p) => ({
     ...p,
-    basisPoints: p.key === changedKey ? value : next.get(p.key)!,
+    basisPoints:
+      p.key === changedKey ? value : (next.get(p.key) ?? p.basisPoints),
   }));
 }
 

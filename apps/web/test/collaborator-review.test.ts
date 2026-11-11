@@ -1,8 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { AgreementTab } from "../lib/model";
 import type { Agreement, Version } from "../lib/model";
 import {
   CollaboratorStage,
@@ -16,6 +18,13 @@ import {
   WrongPart,
   changeRequestReason,
 } from "../components/something-wrong-drawer";
+
+// Match the existing accessibility SSR harness for components with CSS modules.
+const require = createRequire(import.meta.url);
+require.extensions[".css"] = () => {};
+const {
+  AgreementDetail,
+} = require("../components/sections/agreement-detail.tsx");
 
 const source = {
   origin: "SOURCE_CLAUSE",
@@ -70,6 +79,27 @@ function agreement(v: Version, recouped = 0): Agreement {
     },
   };
 }
+
+test("full agreement opens the proposed document instead of older active terms", () => {
+  const proposed = version({ id: 2 });
+  const selected = agreement(proposed);
+  selected.value.versions = [version({ status: "ACTIVE" }), proposed];
+  selected.value.activeVersionId = 1;
+  const html = renderToStaticMarkup(
+    createElement(AgreementDetail, {
+      selected,
+      latest: proposed,
+      active: selected.value.versions[0],
+      user: { id: "riley" },
+      organizer: false,
+      tab: AgreementTab.Document,
+      base: "/workspaces/w/collaborations/a",
+    } as any),
+  );
+  assert.match(html, /The full agreement/);
+  assert.match(html, /<option value="2" selected="">/);
+  assert.doesNotMatch(html, /<option value="1" selected="">/);
+});
 
 test("what you get: share after the advance, in plain words", () => {
   const v = version();
@@ -242,15 +272,50 @@ test("terms tab hides organizer controls from collaborators", () => {
     tab.indexOf("if (!isOrganizer)"),
     tab.indexOf("Agree on the split"),
   );
-  assert.match(collaborator, /<CollaboratorTerms/);
-  assert.match(collaborator, /\/versions\/\$\{latest\.id\}\/approve/);
-  assert.match(collaborator, /\/versions\/\$\{latest\.id\}\/request-change/);
+  assert.match(collaborator, /<CollaboratorReviewCard/);
   assert.doesNotMatch(
     collaborator,
     /Suggest a change|ContractReviewPanel|setEditing/,
   );
+  const card = tab.slice(
+    tab.indexOf("export function CollaboratorReviewCard"),
+    tab.indexOf("export function AgreementTermsTab"),
+  );
+  assert.match(card, /<CollaboratorTerms/);
   assert.match(
-    collaborator,
+    card,
     /if \(await mutateWithResult\(`\/versions\/\$\{latest\.id\}\/approve`\)\)\s*setApprovedForPayout/,
   );
+  assert.match(card, /\/versions\/\$\{latest\.id\}\/approve/);
+  assert.match(card, /\/versions\/\$\{latest\.id\}\/request-change/);
+});
+
+test("a pending review comes first; the full agreement has a way back", () => {
+  const detail = readFileSync(
+    new URL("../components/sections/agreement-detail.tsx", import.meta.url),
+    "utf8",
+  );
+  // The review renders before the agreement header while it is pending.
+  assert.ok(
+    detail.indexOf("<CollaboratorReviewCard") <
+      detail.indexOf("<AgreementHeader"),
+  );
+  assert.match(detail, /CollaboratorStage\.REVIEW/);
+  // Browser Back and Forward use a scoped marker, with a persistent listener.
+  assert.match(detail, /fullAgreementHistoryState/);
+  assert.match(detail, /isFullAgreementHistoryState/);
+  assert.match(detail, /addEventListener\("popstate"/);
+  assert.match(detail, /window\.history\.back\(\)/);
+  assert.match(detail, /Back to what you get/);
+});
+
+test("on phones the decision bar is pinned above the safe area", () => {
+  const css = readFileSync(
+    new URL("../app/collaborator.css", import.meta.url),
+    "utf8",
+  );
+  const phone = css.slice(css.indexOf("@media (max-width: 640px)"));
+  assert.match(phone, /\.collab-footer \{[^}]*position: fixed/);
+  assert.match(phone, /env\(safe-area-inset-bottom/);
+  assert.match(phone, /body:has\(\.collab-footer\) \{[^}]*padding-bottom/);
 });

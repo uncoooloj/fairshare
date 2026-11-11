@@ -1,0 +1,47 @@
+{
+  "result": {
+    "id": "chatcmpl-2869d64c-e71d-4dea-af68-3f3fda4adecd",
+    "object": "chat.completion",
+    "created": 1794390838,
+    "model": "@cf/openai/gpt-oss-120b",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "{\n  \"facts\": [\n    {\n      \"kind\": \"TERM\",\n      \"subject\": \"starts on March 1, 2026\",\n      \"rawValue\": \"March 1, 2026\",\n      \"quote\": \"This Agreement starts on March 1, 2026 and ends on February 28, 2027, unless the Parties agree in writing to extend it.\"\n    ,\n      \"recoupedBeforeSplit\": null,\n      \"feePolicy\": null,\n      \"refundStep\": null\n    ,\n    \"termBoundary\": \"START\"\n    },\n    {\n      \"kind\": \"TERM\",\n      \"subject\": \"ends on February 28, 2027\",\n      \"rawValue\": \"February 28, 2027\",\n      \"quote\": \"This Agreement starts on March 1, 2026 and ends on February 28, 2027, unless the Parties agree in writing to extend it.\",\n      \"recoupedBeforeSplit\": null,\n      \"feePolicy\": null,\n      \"refundStep\": null,\n      \"termBoundary\": \"END\"\n    },\n    {\n      \"kind\": \"ADVANCE\",\n      \"subject\": \"Ada Obi\",\n      \"rawValue\": \"$2,000\",\n      \"quote\": \"Ada Obi received a $2,000 advance to cover rehearsal space, which is recouped from Net Revenue before the split.\",\n      \"recoupedBeforeSplit\": true,\n      \"feePolicy\": null,\n      \"refundStep\": null,\n      \"termBoundary\": null\n    },\n    {\n      \"kind\": \"SHARE\",\n      \"subject\": \"Ada Obi\",\n      \"rawValue\": \"50%\",\n      \"quote\": \"Ada Obi receives 50% of Net Revenue.\",\n      \"recoupedBeforeSplit\": null,\n      \"feePolicy\": null,\n      \"refundStep\": null,\n      \"termBoundary\": null\n    },\n    {\n      \"kind\": \"SHARE\",\n      \"subject\": \"Tunde Bakare\",\n      \"rawValue\": \"30%\",\n      \"quote\": \"Tunde Bakare receives 30% of Net Revenue.\",\n      \"recoupedBeforeSplit\": null,\n      \"feePolicy\": null,\n      \"refundStep\": null,\n      \"termBoundary\": null\n    },\n    {\n      \"kind\": \"SHARE\",\n      \"subject\": \"Chioma Eze\",\n      \"rawValue\": \"20%\",\n      \"quote\": \"Chioma Eze receives 20% of Net Revenue.\",\n      \"recoupedBeforeSplit\": null,\n      \"feePolicy\": null,\n      \"refundStep\": null,\n      \"termBoundary\": null\n    },\n    {\n      \"kind\": \"FEES\",\n      \"subject\": \"Payment processing fees\",\n      \"rawValue\": \"deducted from Gross Receipts before the split\",\n      \"quote\": \"Payment processing fees are deducted from Gross Receipts before the split.\",\n      \"recoupedBeforeSplit\": null,\n      \"feePolicy\": \"BEFORE_SPLIT\",\n      \"refundStep\": null,\n      \"termBoundary\": null\n    },\n    {\n      \"kind\": \"REFUNDS\",\n      \"subject\": \"Refunds issued to ticket buyers\",\n      \"rawValue\": \"deducted from Gross Receipts before the split\",\n      \"quote\": \"Refunds issued to ticket buyers are deducted from Gross Receipts before the split.\",\n      \"recoupedBeforeSplit\": null,\n      \"feePolicy\": null,\n      \"refundStep\": \"BEFORE_SPLIT\",\n      \"termBoundary\": null\n    },\n    {\n      \"kind\": \"CURRENCY\",\n      \"subject\": \"All amounts under this Agreement are in\",\n      \"rawValue\": \"USD\",\n      \"quote\": \"All amounts under this Agreement are in USD.\",\n      \"recoupedBeforeSplit\": null,\n      \"feePolicy\": null,\n      \"refundStep\": null,\n      \"termBoundary\": null\n    },\n    {\n      \"kind\": \"PERSON\",\n      \"subject\": \"Ada Obi\",\n      \"rawValue\": \"Ada Obi\",\n      \"quote\": \"Signed by Ada Obi, Tunde Bakare and Chioma Eze.\",\n      \"recoupedBeforeSplit\": null,\n      \"feePolicy\": null,\n      \"refundStep\": null,\n      \"termBoundary\": null\n    },\n    {\n      \"kind\": \"PERSON\",\n      \"subject\": \"Tunde Bakare\",\n      \"rawValue\": \"Tunde Bakare\",\n      \"quote\": \"Signed by Ada Obi, Tunde Bakare and Chioma Eze.\",\n      \"recoupedBeforeSplit\": null,\n      \"feePolicy\": null,\n      \"refundStep\": null,\n      \"termBoundary\": null\n    },\n    {\n      \"kind\": \"PERSON\",\n      \"subject\": \"Chioma Eze\",\n      \"rawValue\": \"Chioma Eze\",\n      \"quote\": \"Signed by Ada Obi, Tunde Bakare and Chioma Eze.\",\n      \"recoupedBeforeSplit\": null,\n      \"feePolicy\": null,\n      \"refundStep\": null,\n      \"termBoundary\": null\n    }\n  ],\n  \"issues\": [\n    {\n      \"topic\": \"SPLIT\",\n      \"question\": \"null\",\n      \"quote\": null\n    ,\n      \"readings\": [\n        {\n          \"label\": \"Explicit split\",\n          \"explanation\": \"Shares are clearly defined as percentages of Net Revenue.\",\n          \"setting\": {\n            \"feePolicy\": null,\n            \"feeBearer\": null,\n            \"advanceRecoupedBeforeSplit\": null,\n            \"shares\": [\n              {\"name\": \"Ada Obi\", \"percent\": 50},\n              {\"name\": \"Tunde Bakare\", \"percent\": 30},\n              {\"name\": \"Chioma Eze\", \"percent\": 20}\n            ]\n          }\n        }\n      ,\n        {\n          \"label\": \"Advance recouped\",\n          \"explanation\": \"Advance is taken from Net Revenue before any split.\",\n          \"setting\": {\n            \"feePolicy\": null,\n            \"feeBearer\": null,\n            \"advanceRecoupedBeforeSplit\": true,\n            \"shares\": null\n          }\n        }\n      ,\n        {\n          \"label\": \"Fees before split\",\n          \"explanation\": \"Processing fees are deducted before calculating shares.\",\n          \"setting\": {\n            \"feePolicy\": \"BEFORE_SPLIT\",\n            \"feeBearer\": null,\n            \"advanceRecoupedBeforeSplit\": null,\n            \"shares\": null\n          }\n        }\n      ]\n    }\n  ]\n}",
+          "refusal": null,
+          "annotations": null,
+          "audio": null,
+          "function_call": null,
+          "reasoning": "We need to extract facts. Then produce JSON with fields: facts, share, advance, fees, refunds, term, currency, person, questions, readings, suggestedTitle.\n\nExtract facts: each clause as fact with quote.\n\nShares: three entries.\n\nAdvance: subject Ada Obi, rawValue $2,000, recoupedBeforeSplit true.\n\nFees: payment processing fees are deducted from Gross Receipts before the split. So feePolicy BEFORE_SPLIT, subject maybe \"payment processing fees\", rawValue \"deducted from Gross Receipts before the split\". Need subject and rawValue both appear in same quote. Quote: \"Payment processing fees are deducted from Gross Receipts before the split.\" So subject = \"Payment processing fees\", rawValue = \"deducted from Gross Receipts before the split\". Good.\n\nRefunds: \"Refunds issued to ticket buyers are deducted from Gross Receipts before the split.\" So refundStep BEFORE_SPLIT, subject rawValue same phrase.\n\nTerm: start date March 1, 2026, end date February 28, 2027.\n\nCurrency: USD.\n\nPersons: Ada Obi, Tunde Bakare, Chioma Eze.\n\nQuestions: maybe none because everything clear. No ambiguity. So empty list.\n\nReadings: Provide possible readings but since everything explicit, maybe single reading each. Provide 3 readings: SPLIT reading, ADVANCE reading, FEES reading. Provide settings.\n\nLet's craft.\n\n",
+          "reasoning_content": "We need to extract facts. Then produce JSON with fields: facts, share, advance, fees, refunds, term, currency, person, questions, readings, suggestedTitle.\n\nExtract facts: each clause as fact with quote.\n\nShares: three entries.\n\nAdvance: subject Ada Obi, rawValue $2,000, recoupedBeforeSplit true.\n\nFees: payment processing fees are deducted from Gross Receipts before the split. So feePolicy BEFORE_SPLIT, subject maybe \"payment processing fees\", rawValue \"deducted from Gross Receipts before the split\". Need subject and rawValue both appear in same quote. Quote: \"Payment processing fees are deducted from Gross Receipts before the split.\" So subject = \"Payment processing fees\", rawValue = \"deducted from Gross Receipts before the split\". Good.\n\nRefunds: \"Refunds issued to ticket buyers are deducted from Gross Receipts before the split.\" So refundStep BEFORE_SPLIT, subject rawValue same phrase.\n\nTerm: start date March 1, 2026, end date February 28, 2027.\n\nCurrency: USD.\n\nPersons: Ada Obi, Tunde Bakare, Chioma Eze.\n\nQuestions: maybe none because everything clear. No ambiguity. So empty list.\n\nReadings: Provide possible readings but since everything explicit, maybe single reading each. Provide 3 readings: SPLIT reading, ADVANCE reading, FEES reading. Provide settings.\n\nLet's craft.\n\n"
+        },
+        "logprobs": null,
+        "finish_reason": "stop",
+        "stop_reason": null,
+        "token_ids": null,
+        "routed_experts": null
+      }
+    ],
+    "service_tier": null,
+    "usage": {
+      "prompt_tokens": 1243,
+      "completion_tokens": 1664,
+      "total_tokens": 2907,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "neurons": 153.00428771972656
+    },
+    "prompt_logprobs": null,
+    "prompt_token_ids": null,
+    "prompt_text": null,
+    "kv_transfer_params": null,
+    "ec_transfer_params": null,
+    "metrics": null
+  },
+  "success": true,
+  "errors": [],
+  "messages": []
+}

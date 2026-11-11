@@ -1,0 +1,30 @@
+{
+  "description": "Clean 3-way split of net revenue with a recouped $2,000 advance; everything stated, nothing to ask.",
+  "people": [
+    { "name": "Ada Obi" },
+    { "name": "Tunde Bakare" },
+    { "name": "Chioma Eze" }
+  ],
+  "shares": [
+    { "name": "Ada Obi", "basisPoints": 5000 },
+    { "name": "Tunde Bakare", "basisPoints": 3000 },
+    { "name": "Chioma Eze", "basisPoints": 2000 }
+  ],
+  "advance": {
+    "recipient": "Ada Obi",
+    "amountCents": 200000,
+    "recoupedBeforeSplit": true
+  },
+  "fees": { "feePolicy": "BEFORE_SPLIT", "feeBearer": null },
+  "refunds": { "refundStep": "BEFORE_SPLIT", "chargedTo": null },
+  "term": { "start": "2026-03-01", "end": "2027-02-28" },
+  "sections": {
+    "SPLIT": "READ",
+    "ADVANCE": "READ",
+    "FEES": "READ",
+    "REFUNDS": "READ",
+    "TERM": "READ",
+    "PEOPLE": "READ"
+  },
+  "questions": { "min": 0, "max": 0, "topics": [] }
+}

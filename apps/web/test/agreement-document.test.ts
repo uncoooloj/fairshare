@@ -46,4 +46,8 @@ test("document content is rendered as plain text and download accurately labelle
   assert.match(source, /This is the text we read from your file\./);
   assert.match(source, /File details/);
   assert.match(source, /Fingerprint/);
+  assert.match(
+    source,
+    /Each\s+update\s+keeps\s+the\s+document\s+it\s+was\s+made\s+from/,
+  );
 });

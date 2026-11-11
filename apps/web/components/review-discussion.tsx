@@ -11,6 +11,7 @@ import {
   type Topic,
 } from "../lib/review-discussion";
 import { Button, Field, Notice } from "./ui";
+import { termsLabel } from "../lib/version-summary";
 import { formatExact, formatWhen } from "../lib/dates";
 import { publicWebOrigin } from "../lib/public-web-origin";
 
@@ -36,34 +37,37 @@ export function ReviewDiscussion(props: DiscussionProps) {
   if (!version) return null;
   return (
     <div>
-      <Field label="Showing comments for">
-        <select
-          disabled={posting}
-          value={version.id}
-          onChange={(event) => {
-            if (
-              dirty.current &&
-              !window.confirm(
-                "Discard your unsaved comment and view another version?",
+      {props.agreement.value.versions.length > 1 && (
+        <Field label="Showing comments for">
+          <select
+            disabled={posting}
+            value={version.id}
+            onChange={(event) => {
+              if (
+                dirty.current &&
+                !window.confirm(
+                  "Discard your unsaved comment and view other terms?",
+                )
               )
-            )
-              return;
-            dirty.current = false;
-            props.onDirtyChange(false);
-            setVersionId(Number(event.target.value));
-          }}
-        >
-          {[...props.agreement.value.versions].reverse().map((item) => (
-            <option key={item.id} value={item.id}>
-              Version {item.id}
-              {item.id === props.version.id ? " · latest" : " (older)"}
-            </option>
-          ))}
-        </select>
-      </Field>
+                return;
+              dirty.current = false;
+              props.onDirtyChange(false);
+              setVersionId(Number(event.target.value));
+            }}
+          >
+            {[...props.agreement.value.versions].reverse().map((item) => (
+              <option key={item.id} value={item.id}>
+                {termsLabel(item.id)}
+                {item.id === props.version.id ? " · latest" : " (older)"}
+              </option>
+            ))}
+          </select>
+        </Field>
+      )}
       {version.id !== props.version.id && (
         <Notice>
-          These are comments on an older version. Switch to the latest to reply.
+          These are comments on {termsLabel(version.id).toLowerCase()}. Switch
+          to the latest terms to reply.
         </Notice>
       )}
       <VersionDiscussion
@@ -182,9 +186,9 @@ function VersionDiscussion({
   return (
     <section
       className="section"
-      aria-label={`Discussion for version ${version.id}`}
+      aria-label={`Discussion for ${termsLabel(version.id).toLowerCase()}`}
     >
-      <h3>Discussion · version {version.id}</h3>
+      <h3>Discussion</h3>
       <p className="muted">
         Everyone on the agreement can see comments. To change the split, use
         Request a change.

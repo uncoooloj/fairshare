@@ -1,0 +1,28 @@
+{
+  "description": "Clear split and fees; refunds come off 'future Net Revenue', which is before the split but in a later period. Either no refund reading or BEFORE_SPLIT is acceptable; no questions (refunds are not a question topic).",
+  "people": [
+    { "name": "Omar Haddad" },
+    { "name": "Grace Liu" },
+    { "name": "Nina Petrov" }
+  ],
+  "shares": [
+    { "name": "Omar Haddad", "basisPoints": 4000 },
+    { "name": "Grace Liu", "basisPoints": 3500 },
+    { "name": "Nina Petrov", "basisPoints": 2500 }
+  ],
+  "advance": null,
+  "fees": { "feePolicy": "BEFORE_SPLIT", "feeBearer": null },
+  "refunds": {
+    "oneOf": [null, { "refundStep": "BEFORE_SPLIT", "chargedTo": null }]
+  },
+  "term": { "start": "2026-07-01", "end": "2028-06-30" },
+  "sections": {
+    "SPLIT": "READ",
+    "ADVANCE": "NOT_FOUND",
+    "FEES": "READ",
+    "REFUNDS": { "oneOf": ["NOT_FOUND", "READ"] },
+    "TERM": "READ",
+    "PEOPLE": "READ"
+  },
+  "questions": { "min": 0, "max": 0, "topics": [] }
+}

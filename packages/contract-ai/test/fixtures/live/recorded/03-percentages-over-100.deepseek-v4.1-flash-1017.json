@@ -1,0 +1,31 @@
+{
+  "result": {
+    "id": "chatcmpl-77d31864-d1c0-496c-9b0e-eb05ff11b67a",
+    "object": "chat.completion",
+    "created": 1794392254,
+    "model": "@cf/deepseek-ai/deepseek-v4.1-flash-1017",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "{\n  \"suggestedTitle\": \"SHORT FILM DISTRIBUTION REVENUE AGREEMENT\",\n  \"facts\": [\n    {\n      \"kind\": \"SHARE\",\n      \"subject\": \"Sam Rivera\",\n      \"rawValue\": \"50%\",\n      \"quote\": \"Sam Rivera shall receive 50% of Film Revenue after fees.\"\n    ,\n      \"recoupedBeforeSplit\": null,\n      \"feePolicy\": null,\n      \"refundStep\": null,\n      \"termBoundary\": null\n    },\n    {\n      \"kind\": \"SHARE\",\n      \"subject\": \"Jo Kim\",\n      \"rawValue\": \"30%\",\n      \"quote\": \"Jo Kim shall receive 30% of Film Revenue after fees.\"\n    ,\n      \"recoupedBeforeSplit\": null,\n      \"feePolicy\": null,\n      \"refundStep\": null,\n      \"termBoundary\": null\n    },\n    {\n      \"kind\": \"SHARE\",\n      \"subject\": \"Alex Moreno\",\n      \"rawValue\": \"30%\",\n      \"quote\": \"Alex Moreno shall receive 30% of Film Revenue after fees.\"\n    ,\n      \"recoupedBeforeSplit\": null,\n      \"feePolicy\": null,\n      \"refundStep\": null,\n      \"termBoundary\": null\n    },\n    {\n      \"kind\": \"FEES\",\n      \"subject\": \"Platform fees and payment processing fees are deducted from Film Revenue before any distribution to the Parties\",\n      \"rawValue\": \"Platform fees and payment processing fees are deducted from Film Revenue before any distribution to the Parties\",\n      \"quote\": \"Platform fees and payment processing fees are deducted from Film Revenue before any distribution to the Parties.\"\n    ,\n      \"recoupedBeforeSplit\": null,\n      \"feePolicy\": \"BEFORE_SPLIT\",\n      \"refundStep\": null,\n      \"termBoundary\": null\n    },\n    {\n      \"kind\": \"TERM\",\n      \"subject\": \"May 1, 2026\",\n      \"rawValue\": \"May 1, 2026\",\n      \"quote\": \"This agreement begins on May 1, 2026 and ends on April 30, 2029.\"\n    ,\n      \"recoupedBeforeSplit\": null,\n      \"feePolicy\": null,\n      \"refundStep\": null,\n      \"termBoundary\": \"START\"\n    },\n    {\n      \"kind\": \"TERM\",\n      \"subject\": \"April 30, 2029\",\n      \"rawValue\": \"April 30, 2029\",\n      \"quote\": \"This agreement begins on May 1, 2026 and ends on April 30, 2029.\"\n    ,\n      \"recoupedBeforeSplit\": null,\n      \"feePolicy\": null,\n      \"refundStep\": null,\n      \"termBoundary\": \"END\"\n    },\n    {\n      \"kind\": \"PERSON\",\n      \"subject\": \"Sam Rivera\",\n      \"rawValue\": \"Sam Rivera\",\n      \"quote\": \"Sam Rivera shall receive 50% of Film Revenue after fees.\"\n    ,\n      \"recoupedBeforeSplit\": null,\n      \"feePolicy\": null,\n      \"refundStep\": null,\n      \"termBoundary\": null\n    },\n    {\n      \"kind\": \"PERSON\",\n      \"subject\": \"Jo Kim\",\n      \"rawValue\": \"Jo Kim\",\n      \"quote\": \"Jo Kim shall receive 30% of Film Revenue after fees.\"\n    ,\n      \"recoupedBeforeSplit\": null,\n      \"feePolicy\": null,\n      \"refundStep\": null,\n      \"termBoundary\": null\n    },\n    {\n      \"kind\": \"PERSON\",\n      \"subject\": \"Alex Moreno\",\n      \"rawValue\": \"Alex Moreno\",\n      \"quote\": \"Alex Moreno shall receive 30% of Film Revenue after fees.\"\n    ,\n      \"recoupedBeforeSplit\": null,\n      \"feePolicy\": null,\n      \"refundStep\": null,\n      \"termBoundary\": null\n    }\n  ],\n  \"issues\": [\n    {\n      \"topic\": \"SPLIT\",\n      \"question\": \"The shares add up to 110%, so how should the money be divided?\",\n      \"quote\": \"Sam Rivera shall receive 50% of Film Revenue after fees.\",\n      \"readings\": [\n        {\n          \"label\": \"Keep as written\",\n          \"explanation\": \"Pay each person the stated percentage even though the total exceeds 100%.\",\n          \"setting\": {\n            \"feePolicy\": null,\n            \"feeBearer\": null,\n            \"advanceRecoupedBeforeSplit\": null,\n            \"shares\": [\n              {\"name\": \"Sam Rivera\", \"percent\": 50},\n              {\"name\": \"Jo Kim\", \"percent\": 30},\n              {\"name\": \"Alex Moreno\", \"percent\": 30}\n            ]\n          }\n        },\n        {\n          \"label\": \"Scale down to 100\",\n          \"explanation\": \"Reduce each share proportionally so the total is exactly 100%.\",\n          \"setting\": {\n            \"feePolicy\": null,\n            \"feeBearer\": null,\n            \"advanceRecoupedBeforeSplit\": null,\n            \"shares\": [\n              {\"name\": \"Sam Rivera\", \"percent\": 45},\n              {\"name\": \"Jo Kim\", \"percent\": 27},\n              {\"name\": \"Alex Moreno\", \"percent\": 28}\n            ]\n          }\n        },\n        {\n          \"label\": \"Equal thirds\",\n          \"explanation\": \"Treat the three parties as equal partners at roughly one third each.\",\n          \"setting\": {\n            \"feePolicy\": null,\n            \"feeBearer\": null,\n            \"advanceRecoupedBeforeSplit\": null,\n            \"shares\": [\n              {\"name\": \"Sam Rivera\", \"percent\": 34},\n              {\"name\": \"Jo Kim\", \"percent\": 33},\n              {\"name\": \"Alex Moreno\", \"percent\": 33}\n            ]\n          }\n        }\n      ]\n    }\n  ]\n}"
+        },
+        "finish_reason": "stop",
+        "logprobs": null
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 1274,
+      "completion_tokens": 1266,
+      "total_tokens": 2540,
+      "prompt_tokens_details": {
+        "cached_tokens": 832
+      },
+      "neurons": 150.61744689941406
+    }
+  },
+  "success": true,
+  "errors": [],
+  "messages": []
+}

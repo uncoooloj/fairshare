@@ -336,6 +336,45 @@ test("one bad fact does not discard the good ones; reasons are recorded", async 
   assert.equal(r.sections[ExtractionSection.SPLIT].status, SectionStatus.READ);
 });
 
+test("a recoup claim the quote does not show is kept as not stated, not dropped", () => {
+  for (const claim of [true, false]) {
+    const r = validateDraft(
+      {
+        facts: [
+          fact(
+            FactKind.ADVANCE,
+            "Maya Okafor",
+            "$2,000",
+            "Maya Okafor received a $2,000 advance",
+            { recoupedBeforeSplit: claim },
+          ),
+        ],
+        issues: [],
+      },
+      full,
+    );
+    assert.deepEqual(r.rejections, []);
+    assert.equal(r.facts[0].kind, FactKind.ADVANCE);
+    assert.equal(
+      r.facts[0].kind === FactKind.ADVANCE && r.facts[0].recoupedBeforeSplit,
+      null,
+    );
+    assert.equal(r.sections.ADVANCE.status, SectionStatus.ASK);
+  }
+});
+
+test("quotes match across straight and curly quotation marks, citing the exact source", () => {
+  const text = "Parties: Ada Obi (the “Artist”) and Ben Lee (the ‘Producer’).";
+  const c = locateQuote(
+    text,
+    `Ada Obi (the "Artist") and Ben Lee (the 'Producer')`,
+  );
+  assert.ok(c);
+  assert.equal(c.quote, text.slice(c.start, c.end));
+  assert.ok(c.quote.includes("“Artist”"));
+  assert.equal(locateQuote(text, "Ada Obi (the Artist)"), null);
+});
+
 test("invented amounts, people and unsupported claims are rejected per fact", () => {
   const advanceQuote =
     "Maya Okafor received a $2,000 advance, which is recouped from revenue before the split.";
@@ -343,18 +382,6 @@ test("invented amounts, people and unsupported claims are rejected per fact", ()
     [share("Maya Okafor", "80%"), RejectionReason.VALUE_NOT_IN_QUOTE],
     [share("Sam", "50%"), RejectionReason.SUBJECT_NOT_IN_QUOTE],
     [share("Maya Okafor", "150%"), RejectionReason.VALUE_NOT_IN_QUOTE],
-    [
-      fact(
-        FactKind.ADVANCE,
-        "Maya Okafor",
-        "$2,000",
-        "Maya Okafor received a $2,000 advance",
-        {
-          recoupedBeforeSplit: true,
-        },
-      ),
-      RejectionReason.UNSUPPORTED_BY_QUOTE,
-    ],
     [
       fact(FactKind.ADVANCE, "Maya Okafor", "2,000", advanceQuote),
       RejectionReason.INVALID_AMOUNT,
@@ -628,11 +655,30 @@ test("at most 3 issues, one per topic, most money-relevant first", () => {
     r.rejections.map((x) => [x.index, x.reason]),
     [
       [3, RejectionReason.DUPLICATE_TOPIC],
-      [4, RejectionReason.INVALID_READINGS],
+      // Its bad-sum reading is dropped on its own; the rest is a second SPLIT question.
+      [4, RejectionReason.DUPLICATE_TOPIC],
     ],
   );
   assert.equal(r.sections[ExtractionSection.ADVANCE].status, SectionStatus.ASK);
   assert.equal(r.sections[ExtractionSection.ADVANCE].issueIndex, 1);
+
+  // Alone, the same issue keeps its two valid readings; with only one valid reading it is dropped.
+  const alone = validateDraft({ facts: [], issues: [split] }, d);
+  assert.deepEqual(
+    alone.issues[0].readings.map((x) => x.label),
+    ["Half each", "Maya gets more"],
+  );
+  const oneValid = validateDraft(
+    {
+      facts: [],
+      issues: [advance, { ...split, readings: split.readings.slice(1) }],
+    },
+    d,
+  );
+  assert.deepEqual(
+    oneValid.rejections.map((x) => x.reason),
+    [RejectionReason.INVALID_READINGS],
+  );
 });
 
 // ---------- providers ----------
@@ -701,6 +747,56 @@ test("Cloudflare output that fails validation falls back to Claude", async () =>
   assert.equal(r.provider, ExtractionProvider.ANTHROPIC);
   assert.equal(r.fallbackFrom, ExtractionProvider.CLOUDFLARE);
   assert.equal(r.sections[ExtractionSection.SPLIT].status, SectionStatus.READ);
+});
+
+test("Cloudflare explicitly incomplete chat output falls back to Claude", async () => {
+  for (const finish_reason of ["length", "content_filter"]) {
+    const r = await extractContract(full, {
+      ...config,
+      fetch: async () =>
+        new Response(
+          JSON.stringify({
+            success: true,
+            result: {
+              choices: [
+                {
+                  finish_reason,
+                  message: { content: JSON.stringify(fullDraft) },
+                },
+              ],
+            },
+          }),
+        ),
+      anthropic: {
+        apiKey: anthropicKey,
+        fetch: async () => claudeMessage(fullDraft),
+      },
+    });
+    assert.equal(r.provider, ExtractionProvider.ANTHROPIC);
+    assert.equal(r.fallbackFrom, ExtractionProvider.CLOUDFLARE);
+  }
+});
+
+test("Cloudflare complete chat output remains accepted", async () => {
+  const r = await extractContract(full, {
+    ...config,
+    fetch: async () =>
+      new Response(
+        JSON.stringify({
+          success: true,
+          result: {
+            choices: [
+              {
+                finish_reason: "stop",
+                message: { content: JSON.stringify(fullDraft) },
+              },
+            ],
+          },
+        }),
+      ),
+  });
+  assert.equal(r.provider, ExtractionProvider.CLOUDFLARE);
+  assert.equal(r.status, ExtractionStatus.REVIEW_REQUIRED);
 });
 
 test("Claude alone is used when Cloudflare is not configured", async () => {

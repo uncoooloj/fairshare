@@ -34,61 +34,104 @@ export function equalSplit(people: PersonAnswer[]): PersonAnswer[] {
 }
 
 /**
- * `rebalance`, then keep everyone on whole percents when the changed share is a whole
- * percent, so a slider never leaves the others at 36.44%. Typed decimals stay exact.
+ * Sets one share exactly; only people not in `heldKeys` move to make up the difference.
+ * When the new share is a whole percent, those who move stay on whole percents too, so a
+ * slider never leaves the others at 36.44%. Typed decimals stay exact.
  */
 export function moveShare(
   people: PersonAnswer[],
   key: string,
   basisPoints: number,
+  heldKeys: readonly string[] = [],
 ): PersonAnswer[] {
-  const next = rebalance(people, key, basisPoints);
-  const fixed = next.find((person) => person.key === key);
-  if (!fixed || fixed.basisPoints % 100 !== 0) return next;
-  const others = next.filter((person) => person.key !== key);
-  const units = (FULL - fixed.basisPoints) / 100;
-  const weight = others.reduce((sum, person) => sum + person.basisPoints, 0);
-  const rows = others.map((person, index) => {
-    const exact = weight
-      ? (units * person.basisPoints) / weight
-      : units / others.length;
-    return {
-      key: person.key,
-      index,
-      whole: Math.floor(exact),
-      rest: exact % 1,
-    };
-  });
-  let left = units - rows.reduce((sum, row) => sum + row.whole, 0);
-  for (const row of [...rows].sort(
-    (a, b) => b.rest - a.rest || a.index - b.index,
-  )) {
-    if (left <= 0) break;
-    row.whole += 1;
-    left -= 1;
-  }
-  const shares = new Map(rows.map((row) => [row.key, row.whole * 100]));
-  return next.map((person) =>
-    person.key === key
-      ? person
-      : { ...person, basisPoints: shares.get(person.key)! },
+  return rebalance(
+    people,
+    key,
+    basisPoints,
+    heldKeys.filter((held) => held !== key),
+    basisPoints % 100 === 0 ? 100 : 1,
   );
 }
 
-/** Adds someone with an equal share (whole percent), taken from everyone else in proportion. */
-export function addPerson(people: PersonAnswer[], person: PersonAnswer) {
+/** Adds someone with an equal share (whole percent), taken in proportion from whoever isn't held.
+ * If everyone is held, nothing moves and they start at whatever is left over (often 0%). */
+export function addPerson(
+  people: PersonAnswer[],
+  person: PersonAnswer,
+  heldKeys: readonly string[] = [],
+) {
   const next = [...people, { ...person, basisPoints: 0 }];
+  if (people.every((p) => heldKeys.includes(p.key)))
+    return moveShare(
+      next,
+      person.key,
+      Math.max(0, FULL - totalBasisPoints(people)),
+      heldKeys,
+    );
   return moveShare(
     next,
     person.key,
     Math.round(FULL / next.length / 100) * 100,
+    heldKeys,
   );
 }
 
-/** Removes someone; their share goes back to everyone else in proportion. */
-export function removePerson(people: PersonAnswer[], key: string) {
+/** Removes someone; their share goes back to whoever isn't held, in proportion. */
+export function removePerson(
+  people: PersonAnswer[],
+  key: string,
+  heldKeys: readonly string[] = [],
+) {
   if (people.length <= 1) return people;
-  return moveShare(people, key, 0).filter((person) => person.key !== key);
+  return moveShare(people, key, 0, heldKeys).filter(
+    (person) => person.key !== key,
+  );
+}
+
+/** The drawer's working rows, plus who has been set by hand since it opened. */
+export interface SplitState {
+  people: PersonAnswer[];
+  /** Keys of people whose share was typed or slid; rebalancing never moves them. */
+  set: string[];
+}
+
+/** A typed share: it sticks exactly, and only people not set yet move. */
+export function typeShare(
+  state: SplitState,
+  key: string,
+  basisPoints: number,
+): SplitState {
+  return {
+    people: moveShare(
+      state.people,
+      key,
+      Math.max(0, Math.min(FULL, basisPoints)),
+      state.set,
+    ),
+    set: state.set.includes(key) ? state.set : [...state.set, key],
+  };
+}
+
+/** A slider move: snapped to a whole percent, then like a typed share. */
+export function slideShare(
+  state: SplitState,
+  key: string,
+  basisPoints: number,
+): SplitState {
+  return typeShare(state, key, Math.round(basisPoints / 100) * 100);
+}
+
+/** "Even split": everyone the same and nobody counted as set. */
+export function evenSplit(state: SplitState): SplitState {
+  return { people: equalSplit(state.people), set: [] };
+}
+
+/** Plain-English nudge when the split is off, or undefined when it is 100%. */
+export function totalProblem(people: PersonAnswer[]) {
+  const total = totalBasisPoints(people);
+  return total === FULL
+    ? undefined
+    : `Adds up to ${percentText(total)}%. Make it 100% to continue.`;
 }
 
 export function rosterTone(person: PersonAnswer, people: PersonAnswer[]) {
@@ -104,7 +147,11 @@ function newKey() {
   return `new-${Date.now().toString(36)}-${created}`;
 }
 
-/** Linked sliders for who gets what: moving one share rebalances the rest so it always totals 100%. */
+/**
+ * Linked sliders for who gets what. A typed or slid share sticks; only people not set yet
+ * this time move to keep it at 100%. Once everyone is set nothing moves, and Save waits
+ * until the numbers add up.
+ */
 export function SplitDrawer({
   people: initial,
   lockedKeys = [],
@@ -120,7 +167,8 @@ export function SplitDrawer({
   onSave(people: PersonAnswer[]): void;
   onCancel(): void;
 }) {
-  const [people, setPeople] = useState(initial);
+  const [split, setSplit] = useState<SplitState>({ people: initial, set: [] });
+  const { people } = split;
   const [editing, setEditing] = useState<{ key: string; text: string }>();
   const [adding, setAdding] = useState<string>();
   const [addError, setAddError] = useState<string>();
@@ -128,17 +176,13 @@ export function SplitDrawer({
   const total = totalBasisPoints(people);
   const single = people.length === 1;
   const nameless = people.some((person) => !person.name.trim());
-
-  function move(key: string, basisPoints: number) {
-    setPeople((current) =>
-      moveShare(current, key, Math.max(0, Math.min(FULL, basisPoints))),
-    );
-  }
+  const problem = totalProblem(people);
 
   function type(key: string, text: string) {
     setEditing({ key, text });
     const basisPoints = parsePercent(text);
-    if (basisPoints !== undefined) move(key, basisPoints);
+    if (basisPoints !== undefined)
+      setSplit((current) => typeShare(current, key, basisPoints));
   }
 
   function confirmAdd() {
@@ -155,14 +199,14 @@ export function SplitDrawer({
       setAddError(`${name} is already in the split.`);
       return;
     }
-    setPeople((current) =>
-      addPerson(current, {
-        key: newKey(),
-        name,
-        basisPoints: 0,
-        isSelf: false,
-      }),
-    );
+    setSplit((current) => ({
+      ...current,
+      people: addPerson(
+        current.people,
+        { key: newKey(), name, basisPoints: 0, isSelf: false },
+        current.set,
+      ),
+    }));
     setAdding(undefined);
     setAddError(undefined);
   }
@@ -184,7 +228,7 @@ export function SplitDrawer({
   return (
     <WizardDrawer
       title="Who gets what"
-      lede="Move a slider or type a number. The others adjust so it always adds up to 100%."
+      lede="Type a number or move a slider. Anyone you haven't set yet adjusts so it adds up to 100%."
       saveDisabled={total !== FULL || nameless || adding !== undefined}
       onSave={() => onSave(people)}
       onCancel={onCancel}
@@ -242,7 +286,14 @@ export function SplitDrawer({
                     className="sd-remove"
                     aria-label={`Remove ${person.name}`}
                     onClick={() => {
-                      setPeople((current) => removePerson(current, person.key));
+                      setSplit((current) => ({
+                        people: removePerson(
+                          current.people,
+                          person.key,
+                          current.set,
+                        ),
+                        set: current.set.filter((key) => key !== person.key),
+                      }));
                       setEditing(undefined);
                     }}
                   >
@@ -275,7 +326,10 @@ export function SplitDrawer({
                 style={{ ["--fill" as string]: `${person.basisPoints / 100}%` }}
                 onChange={(event) => {
                   setEditing(undefined);
-                  move(person.key, Number(event.target.value));
+                  const basisPoints = Number(event.target.value);
+                  setSplit((current) =>
+                    slideShare(current, person.key, basisPoints),
+                  );
                 }}
               />
             </li>
@@ -288,6 +342,11 @@ export function SplitDrawer({
           {percentText(total)}%
         </strong>
       </div>
+      {problem ? (
+        <p className="wiz-error sd-problem" role="status">
+          {problem}
+        </p>
+      ) : null}
       {adding === undefined ? (
         <div className="sd-actions">
           {canAdd ? (
@@ -304,11 +363,11 @@ export function SplitDrawer({
               type="button"
               className="wc-link"
               onClick={() => {
-                setPeople((current) => equalSplit(current));
+                setSplit((current) => evenSplit(current));
                 setEditing(undefined);
               }}
             >
-              Split equally
+              Even split
             </button>
           ) : null}
         </div>

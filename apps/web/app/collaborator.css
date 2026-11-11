@@ -200,6 +200,51 @@
   min-height: var(--control-min-height);
 }
 
+/* A pending review sits above the agreement header. */
+.collab-first {
+  margin-bottom: var(--space-6);
+}
+
+/* See the full agreement: its own view with a way back. */
+.collab-full {
+  display: grid;
+  gap: var(--space-2);
+  max-width: 880px;
+}
+
+.collab-back {
+  justify-self: start;
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: center;
+  min-height: var(--control-min-height);
+  margin-bottom: var(--space-2);
+  padding: 0 var(--space-4) 0 var(--space-3);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-pill);
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font: inherit;
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+}
+
+.collab-back:hover {
+  background: var(--color-surface);
+}
+
+.collab-back:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+}
+
+.collab-full-title {
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-title);
+  line-height: 1.2;
+  font-weight: var(--weight-bold);
+}
+
 /* Something's not right. */
 .collab-drawer-backdrop {
   position: fixed;
@@ -342,9 +387,33 @@
     font-size: var(--text-xl);
   }
 
+  /* On phones the decision bar is pinned to the screen, above the home
+     indicator, wherever the page is scrolled. */
   .collab-footer {
-    margin: var(--space-3) calc(var(--space-4) * -1) calc(var(--space-4) * -1);
-    padding: var(--space-3) var(--space-4);
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 30;
+    margin: 0;
+    padding: var(--space-3) var(--space-4)
+      calc(var(--space-3) + env(safe-area-inset-bottom, 0px));
+    padding-right: calc(var(--space-4) + env(safe-area-inset-right, 0px));
+    padding-left: calc(var(--space-4) + env(safe-area-inset-left, 0px));
+    border-radius: 0;
+    box-shadow: 0 -4px 16px #1717170f;
+  }
+
+  /* Room under the page so the pinned bar never covers the last content. */
+  body:has(.collab-footer) {
+    padding-bottom: calc(
+      var(--control-min-height) + 2 * var(--space-3) + var(--space-4) +
+        env(safe-area-inset-bottom, 0px)
+    );
+  }
+
+  .collab-full-title {
+    font-size: var(--text-xl);
   }
 
   .collab-footer .button {
