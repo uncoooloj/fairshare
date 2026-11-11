@@ -9,6 +9,34 @@ const request = (email: string) => ({
   url: "/api/auth/password-reset/request",
   payload: { email },
 });
+const nextTurn = () => new Promise<void>((resolve) => setImmediate(resolve));
+async function waitForResetWindow(
+  t: Parameters<typeof test>[1] extends (t: infer T) => unknown ? T : never,
+  responses: Promise<unknown>[],
+) {
+  const settled = responses.map(() => false);
+  responses.forEach((response, index) => {
+    void response.then(() => {
+      settled[index] = true;
+    });
+  });
+  await nextTurn();
+  await nextTurn();
+  assert.deepEqual(
+    settled,
+    responses.map(() => false),
+    "responses should wait for the reset window",
+  );
+  t.mock.timers.tick(15999);
+  await Promise.resolve();
+  assert.deepEqual(
+    settled,
+    responses.map(() => false),
+    "responses should still be pending before 16 seconds",
+  );
+  t.mock.timers.tick(1);
+  return Promise.all(responses);
+}
 function verified(app: any) {
   const user = app.store.register({
     name: "Maya",
@@ -19,7 +47,7 @@ function verified(app: any) {
   app.store.confirmEmail(user.user.id, proof.token);
   return user;
 }
-test("reset uses hashed one-use email-bound credentials and revokes all sessions", async () => {
+test("reset uses hashed one-use email-bound credentials and revokes all sessions", async (t) => {
   const messages: MailMessage[] = [];
   const app = await buildApp({
     dbPath: ":memory:",
@@ -32,10 +60,15 @@ test("reset uses hashed one-use email-bound credentials and revokes all sessions
     },
   });
   try {
-    const u = verified(app),
-      second = app.store.login(u.user.email, original);
-    const known = await app.inject(request(u.user.email)),
-      unknown = await app.inject(request("unknown@example.test"));
+    const u = verified(app);
+    const second = app.store.login(u.user.email, original);
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const knownPending = app.inject(request(u.user.email));
+    const unknownPending = app.inject(request("unknown@example.test"));
+    const [known, unknown] = await waitForResetWindow(t, [
+      knownPending,
+      unknownPending,
+    ]);
     assert.equal(known.statusCode, 200, known.body);
     assert.deepEqual(known.json(), unknown.json());
     assert.equal(messages.length, 1);
@@ -96,13 +129,15 @@ test("expiry, replacement, password change and email mismatch invalidate reset c
     await app.close();
   }
 });
-test("unverified accounts cannot reset; delivery failures never expose account existence or leave usable tokens", async () => {
+test("unverified accounts cannot reset; delivery failures never expose account existence or leave usable tokens", async (t) => {
+  const messages: MailMessage[] = [];
   const app = await buildApp({
     dbPath: ":memory:",
     publicAppOrigin: "https://app.example.test",
     mailTransport: {
-      async send() {
-        throw new Error("private-provider-detail");
+      async send(message) {
+        messages.push(message);
+        return new Promise<never>(() => {});
       },
     },
   });
@@ -117,8 +152,46 @@ test("unverified accounts cannot reset; delivery failures never expose account e
       app.store.createPasswordReset("unverified@example.test"),
       null,
     );
-    const known = await app.inject(request(u.user.email)),
-      missing = await app.inject(request("missing@example.test"));
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const knownPending = app.inject(request(u.user.email));
+    const missingPending = app.inject(request("missing@example.test"));
+    let knownSettled = false;
+    let missingSettled = false;
+    void knownPending.then(() => {
+      knownSettled = true;
+    });
+    void missingPending.then(() => {
+      missingSettled = true;
+    });
+    await nextTurn();
+    await nextTurn();
+    assert.equal(messages.length, 1);
+    const token = new URLSearchParams(
+      new URL(messages[0].link).hash.slice(1),
+    ).get("token")!;
+    t.mock.timers.tick(14999);
+    await Promise.resolve();
+    assert.equal(knownSettled, false);
+    assert.equal(missingSettled, false);
+    assert.equal(
+      (
+        app.store.db
+          .prepare("SELECT count(*) AS n FROM password_resets")
+          .get() as any
+      ).n,
+      1,
+    );
+    t.mock.timers.tick(1);
+    await nextTurn();
+    assert.equal(knownSettled, false);
+    assert.equal(missingSettled, false);
+    assert.throws(() => app.store.resetPassword(token, next));
+    t.mock.timers.tick(999);
+    await Promise.resolve();
+    assert.equal(knownSettled, false);
+    assert.equal(missingSettled, false);
+    t.mock.timers.tick(1);
+    const [known, missing] = await Promise.all([knownPending, missingPending]);
     assert.deepEqual(known.json(), missing.json());
     assert(!known.body.includes("private-provider"));
     assert.equal(
@@ -129,11 +202,13 @@ test("unverified accounts cannot reset; delivery failures never expose account e
       ).n,
       0,
     );
-    for (let i = 0; i < 2; i++)
+    for (let i = 0; i < 2; i++) {
+      const response = app.inject(request("missing@example.test"));
       assert.equal(
-        (await app.inject(request("missing@example.test"))).statusCode,
+        (await waitForResetWindow(t, [response]))[0].statusCode,
         200,
       );
+    }
     assert.equal(
       (await app.inject(request("missing@example.test"))).statusCode,
       429,
