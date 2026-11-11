@@ -241,7 +241,7 @@
   position: fixed;
   inset: 0 0 0 auto;
   margin: 0;
-  width: min(480px, 100vw);
+  width: min(var(--drawer-width), 100vw);
   max-width: 100vw;
   height: 100dvh;
   max-height: 100dvh;

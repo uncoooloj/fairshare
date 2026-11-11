@@ -43,6 +43,7 @@
   --radius-lg: 12px;
   --radius-pill: 999px;
   --shadow-panel: 0 12px 40px #17171714;
-  --sidebar-width: 240px;
-  --content-max: 1440px;
+  --sidebar-width: 248px;
+  --content-max: 1280px;
+  --drawer-width: 520px;
 }
