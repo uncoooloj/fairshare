@@ -109,8 +109,7 @@ test("document content is rendered as plain text and download accurately labelle
   assert.match(source, /text\/plain;charset=utf-8/);
   assert.match(source, /URL.revokeObjectURL/);
   assert.match(viewer, /This is the text we read from your file\./);
-  assert.match(source, /File details/);
-  assert.match(source, /Fingerprint/);
+  assert.doesNotMatch(source, /File details|Fingerprint/);
   // The caveat paragraph and its label are gone; the tooltip carries it.
   assert.doesNotMatch(source, /Saved agreement text|Each update keeps/);
 });
@@ -122,9 +121,8 @@ test("the Agreement tab leads with the document; downloads live in the header me
   const terms = detail.indexOf("{shown === AgreementTab.Terms && (");
   const documentAt = detail.indexOf("<AgreementDocument", terms);
   const rulesAt = detail.indexOf("<AgreementTermsTab", terms);
-  const detailsAt = detail.indexOf("<DocumentFileDetails", terms);
   assert.ok(documentAt > terms && documentAt < rulesAt);
-  assert.ok(detailsAt > rulesAt);
+  assert.doesNotMatch(detail, /DocumentFileDetails/);
   assert.match(detail, /label: "Download original"/);
   assert.match(detail, /label: "Download text"/);
   assert.match(detail, /onDocument=\{setLoadedDocument\}/);

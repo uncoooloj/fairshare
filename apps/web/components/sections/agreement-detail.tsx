@@ -10,7 +10,6 @@ import { AgreementHeader } from "../agreement-workspace";
 import { AgreementTabs, visibleTab } from "../agreement-tabs";
 import {
   AgreementDocument,
-  DocumentFileDetails,
   downloadDocumentText,
   originalDocumentUrl,
   type LoadedDocument,
@@ -560,7 +559,7 @@ export function AgreementDetail({
           )}
           {shown === AgreementTab.Terms && (
             <div className="ag-agreement">
-              {/* The document comes first; the rules and file details follow. */}
+              {/* The document comes first; the rules follow. */}
               {!editing && selected.value.versions.length > 0 && (
                 <section
                   className="ag-agreement-document"
@@ -619,12 +618,6 @@ export function AgreementDetail({
                 onSeeRequest={() => setRequestOpen(true)}
                 onRevise={revise}
               />
-              {!editing && loadedDocument && (
-                <DocumentFileDetails
-                  agreement={selected}
-                  loaded={loadedDocument}
-                />
-              )}
               {/* Owners see versions in the rail beside the rules. */}
               {!organizer && selected.value.versions.length > 0 && (
                 <details className="panel ag-history">

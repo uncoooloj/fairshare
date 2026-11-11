@@ -72,50 +72,6 @@ export function downloadDocumentText({ document, versionId }: LoadedDocument) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-/** IDs and fingerprint, out of the way behind a disclosure. */
-export function DocumentFileDetails({
-  agreement,
-  loaded: { document, versionId },
-}: {
-  agreement: Agreement;
-  loaded: LoadedDocument;
-}) {
-  const pages = document.provenance?.pages;
-  const version = agreement.value.versions.find((v) => v.id === versionId);
-  return (
-    <details className="panel dv-file-details">
-      <summary>File details</summary>
-      <dl>
-        <dt>Used by</dt>
-        <dd>{version ? termsLabel(version.id) : "Latest draft"}</dd>
-        {pages && (
-          <>
-            <dt>Pages read</dt>
-            <dd>{Array.isArray(pages) ? pages.length : pages}</dd>
-          </>
-        )}
-        <dt>Document ID</dt>
-        <dd>
-          <code>{document.documentId}</code>
-        </dd>
-        {document.sourceHash && (
-          <>
-            <dt>Fingerprint</dt>
-            <dd>
-              <code>{document.sourceHash}</code>
-            </dd>
-          </>
-        )}
-      </dl>
-      <small>
-        {document.provenance?.ocr
-          ? "Scanned. Check against the original."
-          : "Text from PDFs can come out in a different order. Check the wording."}
-      </small>
-    </details>
-  );
-}
-
 export function AgreementDocument({
   agreement,
   base,
@@ -128,8 +84,7 @@ export function AgreementDocument({
   base: string;
   /** The version being reviewed in Terms, which is not always the active one. */
   reviewedVersionId?: number;
-  /** The page shows downloads in its menu and file details below the rules.
-   * Without it, both stay here. */
+  /** The page shows downloads in its menu. Without it, they stay here. */
   onDocument?: (loaded: LoadedDocument | null) => void;
   /** A clause picked before this document mounted, such as from Overview. */
   requestedCitation?: OpenCitationDetail;
@@ -279,10 +234,6 @@ export function AgreementDocument({
                   Download text
                 </Button>
               </div>
-              <DocumentFileDetails
-                agreement={agreement}
-                loaded={{ document, versionId }}
-              />
             </>
           )}
         </>
