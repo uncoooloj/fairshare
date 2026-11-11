@@ -391,15 +391,21 @@ test("a delayed callback cannot replace a newer payout decision or a revoked ses
         | { receiver: string; verified: number }
         | undefined;
       if (action === "save")
-        assert.deepEqual({ ...account }, {
-          receiver: "newer@example.test",
-          verified: 0,
-        });
+        assert.deepEqual(
+          { ...account },
+          {
+            receiver: "newer@example.test",
+            verified: 0,
+          },
+        );
       else if (action === "disconnect")
-        assert.deepEqual({ ...account }, {
-          receiver: "kept@example.test",
-          verified: 0,
-        });
+        assert.deepEqual(
+          { ...account },
+          {
+            receiver: "kept@example.test",
+            verified: 0,
+          },
+        );
       else assert.equal(account, undefined);
     } finally {
       await s.app.close();
@@ -459,7 +465,10 @@ test("legacy payout writers fence a delayed callback", async () => {
           "SELECT paypal_id AS paypalId FROM fairshare_recipients WHERE workspace_id=? AND user_id=?",
         )
         .get(s.w.id, s.maya.user.id) as { paypalId: string } | undefined;
-      assert.equal(legacy?.paypalId, action === "save" ? "NOPQRSTUVWXYZ" : undefined);
+      assert.equal(
+        legacy?.paypalId,
+        action === "save" ? "NOPQRSTUVWXYZ" : undefined,
+      );
     } finally {
       await s.app.close();
     }
@@ -511,13 +520,14 @@ test("startup adds generation to a pre-existing five-column connect-state table"
       .prepare("PRAGMA table_info(fairshare_paypal_connect_states)")
       .all() as { name: string }[];
     assert(columns.some((column) => column.name === "generation"));
-    assert.deepEqual({
-      ...(app.store.db
-        .prepare(
-          "SELECT nonce,user_id AS userId,generation FROM fairshare_paypal_connect_states",
-        )
-        .get() as any),
-    },
+    assert.deepEqual(
+      {
+        ...(app.store.db
+          .prepare(
+            "SELECT nonce,user_id AS userId,generation FROM fairshare_paypal_connect_states",
+          )
+          .get() as any),
+      },
       { nonce: "nonce", userId: "user", generation: 0 },
     );
   } finally {

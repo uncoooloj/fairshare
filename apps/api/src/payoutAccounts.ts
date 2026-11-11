@@ -78,12 +78,14 @@ export function advancePayoutAccountGeneration(db: Database, userId: string) {
 
 export function payoutAccountGeneration(db: Database, userId: string) {
   return (
-    db
-      .prepare(
-        "SELECT generation FROM fairshare_payout_account_generations WHERE user_id=?",
-      )
-      .get(userId) as { generation: number } | undefined
-  )?.generation ?? 0;
+    (
+      db
+        .prepare(
+          "SELECT generation FROM fairshare_payout_account_generations WHERE user_id=?",
+        )
+        .get(userId) as { generation: number } | undefined
+    )?.generation ?? 0
+  );
 }
 
 /** One destination per person. Account-level saves win; a legacy per-workspace
