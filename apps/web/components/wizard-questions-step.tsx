@@ -11,7 +11,6 @@ import type {
 } from "../lib/rules-answers";
 import {
   SAMPLE_GROSS_CENTS,
-  StandardQuestionId,
   choiceEffect,
   sampleFeeCents,
   type PersonEffect,
@@ -191,7 +190,6 @@ export function WizardQuestionsStep({
   }
   if (!question) return null;
 
-  const isRefund = question.id === StandardQuestionId.REFUNDS;
   const feeCents = sampleFeeCents(sampleCents);
   const roster = answers.people.value.map((p) => ({ userId: p.key }));
   const selected = question.choices.find((c) => c.id === selectedId);
@@ -238,25 +236,20 @@ export function WizardQuestionsStep({
           )}
         </blockquote>
       ) : (
-        <p className="wq-silent">Your agreement doesn't say.</p>
+        <p className="wq-silent">
+          Your agreement doesn't say, so it's up to you.
+        </p>
       )}
 
-      {/* Payouts have no refund rule yet, so a refund choice is recorded, never shown in dollars. */}
-      {!isRefund && (
-        <>
-          <SampleAmount cents={sampleCents} onChange={setSampleCents} />
-          <p className="wq-example-line">
-            {`With a ${formatMoneyHeadline(feeCents)} PayPal fee, each person gets:`}
-          </p>
-        </>
-      )}
+      <SampleAmount cents={sampleCents} onChange={setSampleCents} />
+      <p className="wq-example-line">
+        {`With a ${formatMoneyHeadline(feeCents)} PayPal fee, each person gets:`}
+      </p>
 
       <div className="wq-choices" role="radiogroup" aria-labelledby={headingId}>
         {question.choices.map((choice, i) => {
           const checked = choice.id === selectedId;
-          const rows = isRefund
-            ? undefined
-            : choiceEffect(answers, choice, sampleCents, feeCents);
+          const rows = choiceEffect(answers, choice, sampleCents, feeCents);
           return (
             <div
               key={choice.id}
@@ -284,12 +277,6 @@ export function WizardQuestionsStep({
           );
         })}
       </div>
-      {isRefund && (
-        <p className="wq-record-note">
-          We'll record this so everyone agrees. Refunds are handled by the
-          organizer for now.
-        </p>
-      )}
 
       <div className="wq-actions">
         <button type="button" className="button secondary" onClick={onBack}>
