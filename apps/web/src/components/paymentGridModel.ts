@@ -27,6 +27,8 @@ export interface PaymentGridRow {
   currency: "USD";
   status: PaymentGridStatus;
   createdAt?: string;
+  /** Last status change; for a paid payout, when it was sent. */
+  updatedAt?: string;
   trace?: AllocationTrace;
   providerReference?: string;
 }
@@ -96,8 +98,9 @@ export function validatePaymentRows(
       row.amountCents < 0 ||
       row.currency !== "USD" ||
       !Object.values(PaymentGridStatus).includes(row.status) ||
-      (row.createdAt !== undefined &&
-        !Number.isFinite(Date.parse(row.createdAt)))
+      [row.createdAt, row.updatedAt].some(
+        (at) => at !== undefined && !Number.isFinite(Date.parse(at)),
+      )
     ) {
       throw new Error("Invalid payment grid data");
     }

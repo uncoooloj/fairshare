@@ -233,8 +233,15 @@ export function registerPaymentRecovery({
       )
         fail("RECOVERY_CONFLICT", "Provider batch already linked");
       db.prepare(
-        "UPDATE fairshare_payout_ops SET batch_id=?,item_id=?,status=? WHERE id=?",
-      ).run(batchId, verified.itemId, verified.status, payoutId);
+        "UPDATE fairshare_payout_ops SET batch_id=?,item_id=?,updated_at=CASE WHEN status=? THEN updated_at ELSE ? END,status=? WHERE id=?",
+      ).run(
+        batchId,
+        verified.itemId,
+        verified.status,
+        date(),
+        verified.status,
+        payoutId,
+      );
       audit(latest, "PAYOUT_EVIDENCE_LINKED", payoutId, batchId);
       return {
         id: payoutId,
@@ -370,8 +377,8 @@ export function registerPaymentRecovery({
       // A dispatcher that claimed SUBMITTING first makes the check above fail.
       for (const payout of payouts) {
         db.prepare(
-          "UPDATE fairshare_payout_ops SET status='CANCELLED_FOR_REFUND' WHERE id=?",
-        ).run(payout.id);
+          "UPDATE fairshare_payout_ops SET status='CANCELLED_FOR_REFUND',updated_at=? WHERE id=?",
+        ).run(date(), payout.id);
         audit(
           latest,
           "UNSUBMITTED_PAYOUT_CANCELLED_FOR_REFUND",

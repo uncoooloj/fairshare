@@ -18,7 +18,7 @@ import {
 } from "./paymentGridModel";
 
 import { summarizePayouts } from "./payoutSummary";
-import { filterPayouts, payoutCsv } from "./payoutPresentation";
+import { filterPayouts, payoutCsv, payoutDate } from "./payoutPresentation";
 import { PayoutDetails } from "./PayoutDetails";
 import styles from "./payouts.module.css";
 
@@ -159,13 +159,18 @@ export function PaymentGrid({
         sort: "desc",
         comparator: (a?: string, b?: string) =>
           (a ? Date.parse(a) : 0) - (b ? Date.parse(b) : 0),
-        valueFormatter: (p) =>
-          p.value
-            ? new Date(p.value).toLocaleString(undefined, {
-                dateStyle: "medium",
-                timeStyle: "short",
-              })
-            : "Not recorded",
+        valueFormatter: (p) => payoutDate(p.value).label,
+        cellRenderer: ({ value }: { value?: string }) => {
+          const date = payoutDate(value);
+          return date.recorded ? (
+            <span title={date.title}>{date.label}</span>
+          ) : (
+            <span title={date.title}>
+              <span aria-hidden="true">—</span>
+              <span className="sr-only">{date.title}</span>
+            </span>
+          );
+        },
       },
       {
         headerName: "Details",

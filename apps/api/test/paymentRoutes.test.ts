@@ -262,6 +262,67 @@ test("payout dispatch uses exact allocation once and reversal blocks further dis
     await s.app.close();
   }
 });
+test("manual payouts expose createdAt and move updatedAt only on a status change", async () => {
+  const s = await setup();
+  try {
+    const id = (
+      await s.post("/payments", { amountCents: 10000, requestKey: "one" })
+    ).json().id;
+    await s.post(`/payments/${id}/capture`);
+    await s.post("/payouts/dispatch", { captureId: "CAP1" });
+    const db = s.app.store.db;
+    const row = () =>
+      db
+        .prepare(
+          "SELECT status,created_at,updated_at FROM fairshare_payout_ops",
+        )
+        .get() as any;
+    const waiting = row();
+    assert.equal(waiting.status, "WAITING_RECIPIENT");
+    assert.ok(Number.isFinite(Date.parse(waiting.created_at)));
+    assert.equal(waiting.updated_at, waiting.created_at);
+    const old = "2020-01-01T00:00:00.000Z";
+    db.prepare("UPDATE fairshare_payout_ops SET created_at=?,updated_at=?").run(
+      old,
+      old,
+    );
+    await s.app.inject({
+      method: "PUT",
+      url: "/api/auth/payout-account",
+      headers: auth(s.owner.token),
+      payload: { email: "owner.pay@example.test" },
+    });
+    const payoutId = (
+      await s.post("/payouts/dispatch", { captureId: "CAP1" })
+    ).json().payouts[0].id;
+    const pending = row();
+    assert.equal(pending.status, "PENDING");
+    assert.equal(pending.created_at, old);
+    assert.ok(pending.updated_at > old);
+    assert.equal(
+      (await s.post(`/payouts/${payoutId}/reconcile`)).json().status,
+      "SUCCESS",
+    );
+    const paid = row();
+    assert.ok(paid.updated_at >= pending.updated_at);
+    // A repeat read with the same status keeps the sent date.
+    db.prepare("UPDATE fairshare_payout_ops SET updated_at=?").run(old);
+    await s.post(`/payouts/${payoutId}/reconcile`);
+    assert.equal(row().updated_at, old);
+    const listed = (
+      await s.app.inject({
+        method: "GET",
+        url: `${s.base}/payouts`,
+        headers: auth(s.owner.token),
+      })
+    ).json().payouts[0];
+    assert.equal(listed.createdAt, old);
+    assert.equal(listed.updatedAt, old);
+    assert.equal(listed.status, "SUCCESS");
+  } finally {
+    await s.app.close();
+  }
+});
 test("uncertain create is reserved and not automatically replayed", async () => {
   const s = await setup();
   try {

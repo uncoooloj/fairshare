@@ -6,6 +6,7 @@ import type { FairshareApp } from "./app.js";
 import type { PaymentProvider } from "./paymentRoutes.js";
 import {
   ensurePayoutAccountSchema,
+  payoutTimestamp,
   readPayoutDestination,
 } from "./payoutAccounts.js";
 import { PARKED_PAYOUT_STATUSES, payoutHoldReason } from "./payoutHolds.js";
@@ -88,8 +89,11 @@ export function automaticPayouts(
         .update(`${captureId}:${userId}`)
         .digest("hex")
         .slice(0, 30);
+      // A re-reserved parked row keeps its created_at; updated_at moves only
+      // when the status does.
+      const at = payoutTimestamp();
       db.prepare(
-        "INSERT INTO fairshare_payout_ops(id,workspace_id,collaboration_id,capture_id,user_id,recipient_type,recipient_id,amount,status) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(capture_id,user_id) DO UPDATE SET recipient_type=excluded.recipient_type,recipient_id=excluded.recipient_id,status=excluded.status",
+        "INSERT INTO fairshare_payout_ops(id,workspace_id,collaboration_id,capture_id,user_id,recipient_type,recipient_id,amount,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(capture_id,user_id) DO UPDATE SET recipient_type=excluded.recipient_type,recipient_id=excluded.recipient_id,updated_at=CASE WHEN status=excluded.status THEN updated_at ELSE excluded.updated_at END,status=excluded.status",
       ).run(
         id,
         capture.workspace_id,
@@ -100,6 +104,8 @@ export function automaticPayouts(
         recipient?.value ?? "",
         allocation.totalCents,
         status,
+        at,
+        at,
       );
       if (status !== "SUBMITTING") return;
       app.store.audit(
@@ -130,16 +136,16 @@ export function automaticPayouts(
         error.code === "PAYOUT_NOT_CONFIGURED"
       ) {
         db.prepare(
-          "UPDATE fairshare_payout_ops SET status='AUTO_HELD' WHERE id=? AND status='SUBMITTING'",
-        ).run(op.id);
+          "UPDATE fairshare_payout_ops SET status='AUTO_HELD',updated_at=? WHERE id=? AND status='SUBMITTING'",
+        ).run(payoutTimestamp(), op.id);
         app.store.audit("system", op.workspace_id, "PAYOUT_AUTOMATIC_HELD", {
           payoutId: op.id,
         });
         return;
       }
       db.prepare(
-        "UPDATE fairshare_payout_ops SET status='OUTCOME_UNKNOWN' WHERE id=? AND status='SUBMITTING'",
-      ).run(op.id);
+        "UPDATE fairshare_payout_ops SET status='OUTCOME_UNKNOWN',updated_at=? WHERE id=? AND status='SUBMITTING'",
+      ).run(payoutTimestamp(), op.id);
       app.store.audit("system", op.workspace_id, "PAYOUT_OUTCOME_UNKNOWN", {
         payoutId: op.id,
       });
@@ -147,8 +153,8 @@ export function automaticPayouts(
     }
     assertLease();
     db.prepare(
-      "UPDATE fairshare_payout_ops SET batch_id=?,status='PENDING' WHERE id=? AND status='SUBMITTING'",
-    ).run(result.batchId, op.id);
+      "UPDATE fairshare_payout_ops SET batch_id=?,status='PENDING',updated_at=? WHERE id=? AND status='SUBMITTING'",
+    ).run(result.batchId, payoutTimestamp(), op.id);
     app.store.audit("system", op.workspace_id, "PAYOUT_SUBMITTED", {
       payoutId: op.id,
       agreementId: op.collaboration_id,
