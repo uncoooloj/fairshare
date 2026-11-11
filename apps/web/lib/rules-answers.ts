@@ -271,13 +271,6 @@ function feesLine(a: AgreementAnswers): string {
   return "PayPal fees come off the top, before the split.";
 }
 
-/** What happens to the advance on sending. Undefined when there is none or it's unanswered. */
-function advanceLine(a: AgreementAnswers): string | undefined {
-  const advance = a.advance?.value;
-  if (!advance || advance.alreadyPaid !== false) return undefined;
-  return `You'll confirm ${firstName(advanceRecipient(a))}'s ${formatMoneyHeadline(advance.amountCents)} once it's paid. Nothing is split until then.`;
-}
-
 function sendingLine(a: AgreementAnswers): string | undefined {
   const others = a.people.value.filter((p) => !p.isSelf);
   if (!others.length) return undefined;
@@ -293,13 +286,9 @@ export function summarySentences(a: AgreementAnswers): string[] {
   const name = a.name.value.trim();
   const dates = datesLine(a);
   const heading = [name, dates].filter(Boolean).join(" · ");
-  return [
-    heading,
-    splitLine(a),
-    feesLine(a),
-    advanceLine(a),
-    sendingLine(a),
-  ].filter((line): line is string => !!line);
+  return [heading, splitLine(a), feesLine(a), sendingLine(a)].filter(
+    (line): line is string => !!line,
+  );
 }
 
 /** What a blocker needs, so the Send screen can fix it in place. */

@@ -374,15 +374,14 @@ test("the organizer outside the split is left out; odd shares keep their decimal
   assert.equal(summarySentences(solo)[1], "All of it goes to Jordan.");
 });
 
-test("an advance not paid yet is sendable and says what happens next", () => {
+test("an advance not paid yet is sendable and stored as unconfirmed", () => {
   const a = answers();
   a.advance!.value.alreadyPaid = false;
   assert.deepEqual(blockingReasons(a), []);
-  assert.ok(
-    summarySentences(a).includes(
-      "You'll confirm Maya's $2,000 once it's paid. Nothing is split until then.",
-    ),
-  );
+  // The Send screen says what's next; the stored summary stays about the terms.
+  const rules = toRules(a, { documentId: "d", organizerId: "u-maya" });
+  assert.equal(rules.advance?.verified, false);
+  assert.doesNotMatch(rules.source.excerpt, /confirm|Nothing is split/);
 });
 
 test("blocking reasons are plain and specific, each with what fixes it", () => {
