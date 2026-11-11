@@ -37,20 +37,22 @@ export function SplitRuleEditor({
   } catch {
     /* Keep invalid draft local until corrected. */
   }
-  const shares = members.map((member) => {
-    let basisPoints = 0;
-    try {
-      basisPoints = parseShare(draft[member.userId] ?? "");
-    } catch {
-      // An incomplete row has no bar segment until the person corrects it.
-    }
-    return {
-      userId: member.userId,
-      name: member.displayName,
-      basisPoints,
-      tone: toneInRoster(member.userId, members),
-    };
-  });
+  const shares = members
+    .map((member) => {
+      let basisPoints = 0;
+      try {
+        basisPoints = parseShare(draft[member.userId] ?? "");
+      } catch {
+        // An incomplete row has no bar segment until the person corrects it.
+      }
+      return {
+        userId: member.userId,
+        name: member.displayName,
+        basisPoints,
+        tone: toneInRoster(member.userId, members),
+      };
+    })
+    .filter((share) => share.basisPoints > 0);
   return (
     <div
       ref={panel}
@@ -77,10 +79,7 @@ export function SplitRuleEditor({
             not the signed agreement.
           </p>
         </div>
-        <span
-          role="status"
-          className={`f3-total-badge ${total === 10000 ? "is-valid" : ""}`}
-        >
+        <span className={`f3-total-badge ${total === 10000 ? "is-valid" : ""}`}>
           {total === null ? "Check total" : `${total / 100}%`}
         </span>
       </header>
