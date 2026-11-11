@@ -891,6 +891,32 @@ export default function FairshareApp() {
         />
       </>
     );
+  if (flowToken && flowKind === "/verify-email")
+    return (
+      <AccessPrompt
+        standalone
+        kind="verification"
+        email={user.email}
+        busy={busy}
+        error={error}
+        onCancel={dismissAccessFlow}
+        onContinue={() =>
+          run(async () => {
+            const r = await api("auth/verification/confirm", "POST", {
+              token: flowToken,
+            });
+            setUser(r.user);
+            setNotice(
+              r.verificationMode === "DEMO_SIMULATION"
+                ? "Test account email marked verified."
+                : "Email verified.",
+            );
+            setFlowToken("");
+            router.replace("/app");
+          })
+        }
+      />
+    );
   if (showWizard)
     return (
       <AgreementIntake
@@ -945,19 +971,7 @@ export default function FairshareApp() {
             onCancel={isInvitationFlow ? dismissAccessFlow : undefined}
             onContinue={() =>
               run(async () => {
-                if (flowKind === "/verify-email") {
-                  const r = await api("auth/verification/confirm", "POST", {
-                    token: flowToken,
-                  });
-                  setUser(r.user);
-                  setNotice(
-                    r.verificationMode === "DEMO_SIMULATION"
-                      ? "Test account email marked verified."
-                      : "Email verified.",
-                  );
-                } else {
-                  await acceptInvitation(flowToken);
-                }
+                await acceptInvitation(flowToken);
                 setFlowToken("");
                 router.replace("/app");
               })
