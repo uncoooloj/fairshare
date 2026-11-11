@@ -110,12 +110,7 @@ export default function FairshareApp() {
   }
   function mayLeaveDraft() {
     if (busy) return false;
-    if (
-      draftDirty &&
-      !window.confirm(
-        "Discard unsaved agreement changes? Saved source documents and proposals will remain.",
-      )
-    )
+    if (draftDirty && !window.confirm("Discard your unsaved changes?"))
       return false;
     setDraftDirty(false);
     rulesDirty.current = false;
@@ -226,9 +221,7 @@ export default function FairshareApp() {
       setSelected(result.agreement);
       // Collaborators land on what they get and approve.
       setTab(AgreementTab.Terms);
-      setNotice(
-        "You joined this agreement. Joining has not approved any rules or moved money.",
-      );
+      setNotice("You’re in. Have a look at the split.");
       if (workspace === result.workspace.id) {
         try {
           await loadWorkspace(result.workspace.id);
@@ -239,9 +232,7 @@ export default function FairshareApp() {
         }
       }
     } else
-      setNotice(
-        "Invitation accepted. The organizer still needs to add you to an agreement before you can review its rules.",
-      );
+      setNotice("You’re in. The organizer will add you to their agreement.");
   }
   async function loadWorkspace(id: string) {
     if (!id || id !== currentWorkspace.current) return;
@@ -518,15 +509,21 @@ export default function FairshareApp() {
   async function mutateWithResult(
     action: string,
     extra: Record<string, unknown> = {},
+    method: "POST" | "DELETE" = "POST",
   ): Promise<boolean> {
     const workspaceRequestId = workspaceRequest.current;
     const openRequestId = openRequest.current;
     if (selected?.workspaceId !== currentWorkspace.current) return false;
     try {
-      const a = await api<Agreement>(base + action, "POST", {
-        expectedRevision: selected!.revision,
-        ...extra,
-      });
+      const a = await api<Agreement>(
+        method === "DELETE"
+          ? `${base + action}?expectedRevision=${selected!.revision}`
+          : base + action,
+        method,
+        method === "DELETE"
+          ? undefined
+          : { expectedRevision: selected!.revision, ...extra },
+      );
       if (
         workspaceRequestId !== workspaceRequest.current ||
         openRequestId !== openRequest.current
@@ -536,9 +533,7 @@ export default function FairshareApp() {
       try {
         await loadWorkspace(currentWorkspace.current);
       } catch {
-        setNotice(
-          "Agreement updated. Refresh to reload the rest of your workspace.",
-        );
+        setNotice("Updated. Refresh to see the latest.");
       }
       if (
         !mutationIsCurrent(
@@ -565,14 +560,18 @@ export default function FairshareApp() {
           return false;
         setSelected(current);
         throw new Error(
-          "Agreement changed. Latest version loaded; review before trying again.",
+          "Someone else just changed this. Here’s the latest; try again.",
         );
       }
       throw cause;
     }
   }
-  async function mutate(action: string, extra: Record<string, unknown> = {}) {
-    await mutateWithResult(action, extra);
+  async function mutate(
+    action: string,
+    extra: Record<string, unknown> = {},
+    method: "POST" | "DELETE" = "POST",
+  ) {
+    await mutateWithResult(action, extra, method);
   }
   function onAgreementChange(next: Agreement) {
     setSelected((current) => {
@@ -705,7 +704,7 @@ export default function FairshareApp() {
                   setUser(r.user);
                   setNotice(
                     r.verificationMode === "DEMO_SIMULATION"
-                      ? "Demo verification completed. This does not prove email ownership."
+                      ? "Test account email marked verified."
                       : "Email verified.",
                   );
                 } else {
@@ -722,7 +721,7 @@ export default function FairshareApp() {
         section === Section.Payouts ? (
           <Heading
             title="No payouts yet"
-            description="Payouts appear here after a received payment is allocated and payout dispatch is recorded."
+            description="When people get paid, it shows up here."
             action={
               <Button onClick={() => navigate(Section.Agreements)}>
                 Create an agreement

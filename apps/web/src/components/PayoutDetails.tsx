@@ -4,7 +4,7 @@ import { formatDay, formatExact } from "../../lib/dates";
 import { useEffect, useId, useRef } from "react";
 import {
   formatPaymentAmount,
-  paymentStatusLabels,
+  paymentStatusLabel,
   type PaymentGridRow,
 } from "./paymentGridModel";
 import { payoutGuidance } from "./payoutPresentation";
@@ -52,7 +52,7 @@ export function PayoutDetails({
       </strong>
       <p>
         <span className={styles.status} data-status={row.status}>
-          {paymentStatusLabels[row.status]}
+          {paymentStatusLabel(row)}
         </span>
       </p>
       <p className={styles.guidance}>{payoutGuidance[row.status]}</p>
@@ -76,7 +76,7 @@ export function PayoutDetails({
           </dd>
         </div>
         <div>
-          <dt>Provider reference</dt>
+          <dt>PayPal reference</dt>
           <dd>
             <code>{row.providerReference || "Not recorded"}</code>
           </dd>
@@ -88,8 +88,7 @@ export function PayoutDetails({
           <AllocationCalculation trace={row.trace} name={row.recipientName} />
         ) : (
           <p>
-            The source payment, historical rules or matching allocation could
-            not be verified from this record. Open the agreement to review it.
+            We can’t show the maths for this one. Open the agreement to check.
           </p>
         )}
         {onOpenAgreement && (

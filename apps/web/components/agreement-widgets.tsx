@@ -1,3 +1,4 @@
+import { statusLabel } from "../lib/status-labels";
 import { sourceHighlights } from "../lib/source-highlights";
 import { ChevronRightIcon } from "./icons";
 import { HighlightedSource } from "./source-rule-context";
@@ -22,7 +23,11 @@ import {
   type Allocation,
 } from "../lib/model";
 import { Badge, Button, Empty, Field, Notice } from "./ui";
-import { PaymentGridStatus } from "../src/components/paymentGridModel";
+import {
+  PaymentGridStatus,
+  payoutGridStatus,
+} from "../src/components/paymentGridModel";
+import { RECEIVED_DEFINITION, receivedTotals } from "../lib/received";
 import {
   Avatar as ListAvatar,
   AvatarSize as ListAvatarSize,
@@ -228,7 +233,9 @@ export function AgreementList({
                 <th>Status</th>
                 <th>People</th>
                 <th>Split</th>
-                <th className="numeric">Received</th>
+                <th className="numeric" title={RECEIVED_DEFINITION}>
+                  Received
+                </th>
                 <th>
                   <span className="sr-only">Open agreement</span>
                 </th>
@@ -265,9 +272,9 @@ export function AgreementList({
                           ? `v${active.id}`
                           : latest
                             ? `v${latest.id}`
-                            : "No proposed terms"}
+                            : "No split yet"}
                         {active && latest && active.id !== latest.id
-                          ? ` · v${latest.id} ${title(latest.status).toLowerCase()}`
+                          ? ` · v${latest.id} ${statusLabel(latest.status).toLowerCase()}`
                           : ""}
                         {updated && (
                           <span title={listExact(updated)}>
@@ -316,12 +323,7 @@ export function AgreementList({
                       />
                     </td>
                     <td className="numeric">
-                      {money(
-                        a.value.revenue.reduce(
-                          (sum, revenue) => sum + revenue.netCents,
-                          0,
-                        ),
-                      )}
+                      {money(receivedTotals(a.value.revenue).receivedCents)}
                     </td>
                     <td className="ov-chevron-cell" aria-hidden="true">
                       <span className="ov-chevron">
@@ -418,8 +420,9 @@ export function RevenueTable({
     <table>
       <thead>
         <tr>
-          <th>Received</th>
-          <th className="numeric">Net amount</th>
+          <th>Date</th>
+          <th className="numeric">Received</th>
+          <th className="numeric">PayPal fee</th>
           <th>Status</th>
           <th />
         </tr>
@@ -428,7 +431,8 @@ export function RevenueTable({
         {agreement.value.revenue.map((r) => (
           <tr key={r.providerCaptureId}>
             <td>{formatDate(r.at)}</td>
-            <td className="numeric">{money(r.netCents)}</td>
+            <td className="numeric">{money(r.grossCents)}</td>
+            <td className="numeric">{money(r.feeCents)}</td>
             <td>
               <Badge value={r.status} />
             </td>
@@ -442,9 +446,8 @@ export function RevenueTable({
       </tbody>
     </table>
   ) : (
-    <Empty title="No confirmed revenue">
-      Incoming payments will appear once PayPal has confirmed the payment and
-      its fees.
+    <Empty title="No payments yet">
+      Payments show up here once PayPal confirms them.
     </Empty>
   );
 }
@@ -460,10 +463,10 @@ export function AllocationTable({
       <thead>
         <tr>
           <th>Person</th>
-          <th className="numeric">Recoupment</th>
+          <th className="numeric">Advance payback</th>
           <th className="numeric">Share</th>
           <th className="numeric">Fee</th>
-          <th className="numeric">Total allocated</th>
+          <th className="numeric">Total owed</th>
         </tr>
       </thead>
       <tbody>
@@ -516,10 +519,10 @@ export function PreviewForm({
         }
       }}
     >
-      <Field label="Gross payment (USD)">
+      <Field label="Payment amount ($)">
         <input name="gross" defaultValue="3000" inputMode="decimal" required />
       </Field>
-      <Field label="Provider fee (USD)">
+      <Field label="PayPal fee ($)">
         <input name="fee" defaultValue="0" inputMode="decimal" required />
       </Field>
       <Button disabled={busy} variant="secondary">
@@ -1203,17 +1206,7 @@ export function safePayPalUrl(url: string) {
   }
 }
 
+/** Kept for existing callers; the mapping lives with the grid model. */
 export function payoutStatus(status: string): PaymentGridStatus {
-  if (status === "SUCCESS") return PaymentGridStatus.Paid;
-  if (status === "UNCLAIMED") return PaymentGridStatus.Unclaimed;
-  if (["FAILED", "DENIED", "BLOCKED"].includes(status))
-    return PaymentGridStatus.Failed;
-  if (["HELD", "ONHOLD"].includes(status)) return PaymentGridStatus.Held;
-  if (["REFUNDED", "REVERSED", "RETURNED"].includes(status))
-    return PaymentGridStatus.Reversed;
-  if (["SUBMITTING", "PROCESSING"].includes(status))
-    return PaymentGridStatus.Processing;
-  if (["PENDING", "RESERVED"].includes(status))
-    return PaymentGridStatus.Pending;
-  return PaymentGridStatus.Unknown;
+  return payoutGridStatus(status);
 }

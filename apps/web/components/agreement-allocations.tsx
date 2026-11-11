@@ -29,24 +29,23 @@ export function AgreementAllocations({ agreement }: { agreement: Agreement }) {
       `${row.revenue.providerCaptureId}:${row.allocation.userId}` === open,
   );
   return (
-    <section className="panel">
-      <h2>Allocations</h2>
+    <section className="panel ag-card" id="agreement-splits">
+      <h2>Splits</h2>
       <p className="muted">
-        Every share, newest payment first, calculated with the rules in force
-        when the payment arrived. Select a row to see why.
+        Each payment, split by the rules at the time. Tap a name to see the
+        maths.
       </p>
       {!rows.length ? (
         <div className="empty">
-          <h3>No allocations yet</h3>
-          <p>
-            When a payment is confirmed, you’ll see exactly who gets what, and
-            why.
-          </p>
+          <h3>No splits yet</h3>
+          <p>When a payment comes in, you’ll see who gets what, and why.</p>
         </div>
       ) : (
         <div style={{ overflowX: "auto" }}>
           <table className="ledger-table">
-            <caption className="sr-only">Recorded allocation ledger</caption>
+            <caption className="sr-only">
+              Who is owed what from each payment
+            </caption>
             <thead>
               <tr>
                 <th scope="col">Person</th>
@@ -78,7 +77,6 @@ export function AgreementAllocations({ agreement }: { agreement: Agreement }) {
                           {revenue.feeCents
                             ? `${money(revenue.feeCents)} fee`
                             : "No fee"}{" "}
-                          · rules v{revenue.versionId}
                         </span>
                       </th>
                     </tr>
@@ -126,7 +124,7 @@ export function AgreementAllocations({ agreement }: { agreement: Agreement }) {
                           <td>
                             {!trace ? (
                               <span className="status-chip warning">
-                                Needs reconciling
+                                Being checked
                               </span>
                             ) : held ? (
                               <span className="status-chip warning">
@@ -156,7 +154,7 @@ export function AgreementAllocations({ agreement }: { agreement: Agreement }) {
         </div>
       )}
       {selected?.trace && (
-        <Drawer label="Allocation detail" onClose={() => setOpen(null)}>
+        <Drawer label="How this was worked out" onClose={() => setOpen(null)}>
           <AllocationCalculation
             trace={selected.trace}
             name={selected.name}

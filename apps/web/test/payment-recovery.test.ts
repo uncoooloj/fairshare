@@ -32,11 +32,11 @@ test("refund offer blocks unverified capture, existing refund, any reserved payo
   assert.equal(refundBlocked(payment, [], [], false), null);
   assert.match(
     refundBlocked({ ...payment, status: "OUTCOME_UNKNOWN" }, [], [], false)!,
-    /payment is confirmed/,
+    /payment has been split/,
   );
   assert.match(
     refundBlocked({ ...payment, provider_capture_id: null }, [], [], false)!,
-    /payment is confirmed/,
+    /payment has been split/,
   );
   assert.match(
     refundBlocked(
@@ -50,7 +50,7 @@ test("refund offer blocks unverified capture, existing refund, any reserved payo
   for (const status of ["RESERVED", "FAILED", "SUCCESS", "OUTCOME_UNKNOWN"])
     assert.match(
       refundBlocked(payment, [{ capture_id: "cap1", status }], [], false)!,
-      /payout has already started/,
+      /payout has been reserved/,
     );
   assert.match(refundBlocked(payment, [], [], true)!, /hold/);
   assert.equal(
@@ -59,8 +59,8 @@ test("refund offer blocks unverified capture, existing refund, any reserved payo
   );
 });
 test("refund wording never confuses request acceptance with verified completion", () => {
-  assert.match(refundMessage("COMPLETED"), /PayPal confirmed the refund.*hold/);
-  assert.match(refundMessage("OUTCOME_UNKNOWN"), /Don’t send another refund/);
+  assert.match(refundMessage("COMPLETED"), /Refunded\..*paused/);
+  assert.match(refundMessage("OUTCOME_UNKNOWN"), /Don’t refund again/);
   for (const status of ["SUBMITTING", "PENDING", "FAILED", "CANCELLED"])
     assert.match(
       refundMessage(status),
@@ -113,9 +113,78 @@ test("failed recovery refresh hides stale refund actions and clears success noti
   );
   assert.match(source, /await flight\.current/);
   assert.match(source, /setData\(\s*null\s*\);\s*setNotice\(\s*["']{2}\s*\);/);
-  assert.match(source, /Do not resubmit an uncertain transfer/);
+  assert.match(source, /Refresh before you do anything else/);
   assert.match(
     source,
     /setConfirmed\(\s*false\s*\);\s*setError\(\s*["']{2}\s*\);\s*setNotice\(\s*["']{2}\s*\)/,
   );
+});
+
+test("invoice receipts use invoice reconciliation and never checkout refunds", async () => {
+  const { paymentReconcilePath, refundablePayments } = await import(
+    "../lib/payment-recovery"
+  );
+  const receipt = { ...payment, id: "receipt1", invoice_id: "inv1" };
+  assert.equal(paymentReconcilePath(receipt), "invoices/inv1/reconcile");
+  assert.equal(paymentReconcilePath(payment), "payments/p1/reconcile");
+  assert.deepEqual(refundablePayments([receipt, payment]), [payment]);
+  assert.match(
+    refundBlocked(receipt, [], [], false)!,
+    /Invoice refunds must be handled in PayPal/,
+  );
+});
+
+test("refund permits only explicitly never-submitted reservations with no provider identity", () => {
+  for (const status of ["WAITING_RECIPIENT", "AUTO_HELD", "RESERVED", "HELD"]) {
+    const reservation = {
+      capture_id: "cap1",
+      status,
+      batch_id: null,
+      item_id: null,
+    };
+    assert.equal(refundBlocked(payment, [reservation], [], false), null);
+    assert.match(
+      refundBlocked(
+        payment,
+        [{ ...reservation, batch_id: "BATCH" }],
+        [],
+        false,
+      )!,
+      /payout has already started/,
+    );
+    assert.match(
+      refundBlocked(payment, [{ ...reservation, item_id: "ITEM" }], [], false)!,
+      /payout has already started/,
+    );
+  }
+  assert.match(
+    refundBlocked(
+      payment,
+      [
+        {
+          capture_id: "cap1",
+          status: "SUBMITTING",
+          batch_id: null,
+          item_id: null,
+        },
+      ],
+      [],
+      false,
+    )!,
+    /payout has already started/,
+  );
+});
+test("verified event recovery remains agreement scoped and never clears holds", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const source = await readFile(
+    new URL("../components/payment-recovery.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /data\.events\.map/);
+  assert.match(
+    source,
+    /recovery\/events\/\$\{encodeURIComponent\(event\.id\)\}\/reconcile/,
+  );
+  assert.match(source, /Operator\s+review is required/);
+  assert.match(source, /Existing payment holds remain in place/);
 });

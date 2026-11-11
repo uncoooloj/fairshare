@@ -229,10 +229,12 @@ test("payout dispatch uses exact allocation once and reversal blocks further dis
       await s.post("/payments", { amountCents: 10000, requestKey: "one" })
     ).json().id;
     await s.post(`/payments/${id}/capture`);
-    assert.equal(
-      (await s.post("/payouts/dispatch", { captureId: "CAP1" })).statusCode,
-      400,
-    );
+    // No payout email yet: nothing is sent and the response says why.
+    const waiting = await s.post("/payouts/dispatch", { captureId: "CAP1" });
+    assert.equal(waiting.statusCode, 200, waiting.body);
+    assert.equal(waiting.json().payouts[0].status, "WAITING_RECIPIENT");
+    assert.equal(waiting.json().payouts[0].reason, "NEEDS_PAYOUT_EMAIL");
+    assert.equal(s.counts().payoutWrites, 0);
     await s.app.inject({
       method: "PUT",
       url: "/api/auth/payout-account",
@@ -733,6 +735,72 @@ test("capture does not issue provider write after matched adverse webhook arrive
     const r = await s.post(`/payments/${id}/capture`);
     assert.equal(r.statusCode, 400, r.body);
     assert.equal(s.counts().captures, 0);
+  } finally {
+    await s.app.close();
+  }
+});
+test("concurrent webhook processing cannot restore PENDING after another caller finishes", async () => {
+  const s = await setup();
+  try {
+    await s.post("/payments", { amountCents: 10000, requestKey: "race" });
+    const getOrder = s.provider.getOrder;
+    let calls = 0;
+    let firstStarted!: () => void;
+    let secondStarted!: () => void;
+    let releaseFirst!: () => void;
+    let releaseSecond!: () => void;
+    const firstStartedPromise = new Promise<void>((resolve) => {
+      firstStarted = resolve;
+    });
+    const secondStartedPromise = new Promise<void>((resolve) => {
+      secondStarted = resolve;
+    });
+    const firstRelease = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const secondRelease = new Promise<void>((resolve) => {
+      releaseSecond = resolve;
+    });
+    s.provider.getOrder = async () => {
+      calls++;
+      if (calls === 1) {
+        firstStarted();
+        await firstRelease;
+        return getOrder("ORDER1");
+      }
+      secondStarted();
+      await secondRelease;
+      throw new PayPalError("PAYPAL_OUTCOME_UNKNOWN");
+    };
+    const payload = {
+      id: "concurrent-completed",
+      event_type: "PAYMENT.CAPTURE.COMPLETED",
+      resource: {
+        id: "CAP1",
+        supplementary_data: { related_ids: { order_id: "ORDER1" } },
+      },
+    };
+    const first = s.app.inject({
+      method: "POST",
+      url: "/api/paypal/webhook",
+      payload,
+    });
+    await firstStartedPromise;
+    const second = s.app.inject({
+      method: "POST",
+      url: "/api/paypal/webhook",
+      payload,
+    });
+    await secondStartedPromise;
+    releaseFirst();
+    assert.equal((await first).statusCode, 200);
+    releaseSecond();
+    assert.equal((await second).statusCode, 200);
+    const receipt = s.app.store.db
+      .prepare("SELECT status,error FROM fairshare_webhook_inbox WHERE id=?")
+      .get(payload.id) as any;
+    assert.equal(receipt.status, "DONE");
+    assert.equal(receipt.error, null);
   } finally {
     await s.app.close();
   }
@@ -1329,5 +1397,415 @@ test("account-level email is sent as EMAIL; legacy workspace PayPal ID still pay
     } finally {
       await s.app.close();
     }
+  }
+});
+
+test("redelivery repairs an acknowledged ignored v2 decline once without money writes", async () => {
+  const s = await setup();
+  try {
+    const payment = (
+      await s.post("/payments", {
+        amountCents: 10000,
+        requestKey: "old-decline",
+      })
+    ).json();
+    await s.post(`/payments/${payment.id}/capture`);
+    const payload = {
+      id: "old-decline",
+      event_type: "PAYMENT.CAPTURE.DECLINED",
+      resource: { id: "CAP1" },
+    };
+    const { verifyAndPlanWebhook } = await import("@fairshare/payments");
+    const plan = await verifyAndPlanWebhook(s.provider, {}, payload);
+    const db = s.app.store.db;
+    db.prepare("INSERT INTO fairshare_webhook_inbox VALUES(?,?,?,?,NULL)").run(
+      payload.id,
+      plan.fingerprint,
+      JSON.stringify({
+        kind: "IGNORE",
+        eventId: payload.id,
+        eventType: payload.event_type,
+      }),
+      "DONE",
+    );
+    const before = s.counts();
+    for (let i = 0; i < 2; i++) {
+      const result = await s.app.inject({
+        method: "POST",
+        url: "/api/paypal/webhook",
+        payload,
+      });
+      assert.equal(result.statusCode, 200, result.body);
+      assert.equal(result.json().action, "HOLD_CAPTURE");
+    }
+    const row = db
+      .prepare("SELECT * FROM fairshare_webhook_inbox WHERE id=?")
+      .get(payload.id) as any;
+    assert.equal(row.status, "DONE");
+    assert.equal(JSON.parse(row.action).kind, "HOLD_CAPTURE");
+    assert.ok(s.agg.read(s.w.id, "collab").value.reviewHold);
+    assert.deepEqual(s.counts(), before);
+    const altered = await s.app.inject({
+      method: "POST",
+      url: "/api/paypal/webhook",
+      payload: { ...payload, resource: { id: "OTHER" } },
+    });
+    assert.notEqual(altered.statusCode, 200);
+    assert.equal(
+      JSON.parse(
+        (
+          db
+            .prepare("SELECT action FROM fairshare_webhook_inbox WHERE id=?")
+            .get(payload.id) as any
+        ).action,
+      ).providerId,
+      "CAP1",
+    );
+  } finally {
+    await s.app.close();
+  }
+});
+
+test("every unknown signed event returns 400 and keeps a durable pending receipt on retry", async () => {
+  const s = await setup();
+  try {
+    for (const [event_type, expectedStatus, expectedAction] of [
+      ["INVOICING.INVOICE.UNKNOWN", 400, "RECORD_UNMATCHED"],
+      ["BILLING.SUBSCRIPTION.CREATED", 400, "RECORD_UNMATCHED"],
+    ] as const) {
+      const result = await s.app.inject({
+        method: "POST",
+        url: "/api/paypal/webhook",
+        payload: { id: event_type, event_type },
+      });
+      assert.equal(result.statusCode, expectedStatus, result.body);
+      assert.equal(result.json().action, expectedAction);
+      assert.equal(result.json().accepted, false);
+      assert.equal(result.json().error.code, "UNSUPPORTED_WEBHOOK_EVENT");
+      const repeated = await s.app.inject({
+        method: "POST",
+        url: "/api/paypal/webhook",
+        payload: { id: event_type, event_type },
+      });
+      assert.equal(repeated.statusCode, 400);
+      const receipt = s.app.store.db
+        .prepare("SELECT status,error FROM fairshare_webhook_inbox WHERE id=?")
+        .get(event_type) as any;
+      assert.equal(receipt.status, "PENDING");
+      assert.equal(receipt.error, "UNSUPPORTED_WEBHOOK_EVENT");
+    }
+    assert.deepEqual(s.counts(), { writes: 0, captures: 0, payoutWrites: 0 });
+  } finally {
+    await s.app.close();
+  }
+});
+
+test("checkout approval triggers a read only, and reversal before capture blocks the write", async () => {
+  const s = await setup();
+  try {
+    const payment = (
+      await s.post("/payments", {
+        amountCents: 10000,
+        requestKey: "approval-events",
+      })
+    ).json();
+    let reads = 0;
+    s.provider.getOrder = async () => {
+      reads++;
+      return { status: "APPROVED" };
+    };
+    const approval = await s.app.inject({
+      method: "POST",
+      url: "/api/paypal/webhook",
+      payload: {
+        id: "approval",
+        event_type: "CHECKOUT.ORDER.APPROVED",
+        resource: { id: "ORDER1" },
+      },
+    });
+    assert.equal(approval.statusCode, 200, approval.body);
+    assert.equal(reads, 1);
+    assert.equal(s.counts().captures, 0);
+    const reversal = await s.app.inject({
+      method: "POST",
+      url: "/api/paypal/webhook",
+      payload: {
+        id: "approval-reversed",
+        event_type: "CHECKOUT.PAYMENT-APPROVAL.REVERSED",
+        resource: { order_id: "ORDER1" },
+      },
+    });
+    assert.equal(reversal.statusCode, 503);
+    const capture = await s.post(`/payments/${payment.id}/capture`);
+    assert.equal(capture.json().error.code, "PAYMENT_HOLD");
+    assert.equal(s.counts().captures, 0);
+  } finally {
+    await s.app.close();
+  }
+});
+
+test("payout batch events read matching recipient results rather than trusting batch success", async () => {
+  const s = await setup();
+  try {
+    const payment = (
+      await s.post("/payments", {
+        amountCents: 10000,
+        requestKey: "batch-events",
+      })
+    ).json();
+    await s.post(`/payments/${payment.id}/capture`);
+    const db = s.app.store.db;
+    db.prepare(
+      "INSERT INTO fairshare_payout_ops(id,workspace_id,collaboration_id,capture_id,user_id,recipient_id,amount,batch_id,status) VALUES(?,?,?,?,?,?,?,?,?)",
+    ).run(
+      "payout-1",
+      s.w.id,
+      "collab",
+      "CAP1",
+      s.owner.user.id,
+      "MERCHANT1",
+      9700,
+      "BATCH1",
+      "PENDING",
+    );
+    let reads = 0;
+    s.provider.getPayout = async () => {
+      reads++;
+      return { batchId: "BATCH1", itemId: "ITEM1", status: "UNCLAIMED" };
+    };
+    const result = await s.app.inject({
+      method: "POST",
+      url: "/api/paypal/webhook",
+      payload: {
+        id: "batch-success",
+        event_type: "PAYMENT.PAYOUTSBATCH.SUCCESS",
+        resource: { batch_header: { payout_batch_id: "BATCH1" } },
+      },
+    });
+    assert.equal(result.statusCode, 200, result.body);
+    assert.equal(reads, 1);
+    assert.equal(
+      (
+        db
+          .prepare(
+            "SELECT status FROM fairshare_payout_ops WHERE id='payout-1'",
+          )
+          .get() as any
+      ).status,
+      "UNCLAIMED",
+    );
+    assert.equal(s.counts().payoutWrites, 0);
+  } finally {
+    await s.app.close();
+  }
+});
+
+test("refund status notifications reconcile exact reserved refunds and keep terminal conflicts pending", async () => {
+  const s = await setup();
+  try {
+    const db = s.app.store.db;
+    db.prepare(
+      "INSERT INTO fairshare_refund_ops VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+    ).run(
+      "refund-op",
+      s.w.id,
+      "collab",
+      "payment",
+      "CAP1",
+      10000,
+      "refund-key",
+      "REF1",
+      "PENDING",
+      s.owner.user.id,
+      new Date().toISOString(),
+    );
+    s.provider.getRefund = async () => ({
+      id: "REF1",
+      amountCents: 10000,
+      currency: "USD",
+      captureId: "CAP1",
+      reference: "refund-key",
+      status: "FAILED",
+    });
+    const result = await s.app.inject({
+      method: "POST",
+      url: "/api/paypal/webhook",
+      payload: {
+        id: "refund-failed",
+        event_type: "PAYMENT.REFUND.FAILED",
+        resource: { id: "REF1" },
+      },
+    });
+    assert.equal(result.statusCode, 200, result.body);
+    assert.equal(
+      (
+        db
+          .prepare(
+            "SELECT status FROM fairshare_refund_ops WHERE id='refund-op'",
+          )
+          .get() as any
+      ).status,
+      "FAILED",
+    );
+    s.provider.getRefund = async () => ({
+      id: "REF1",
+      amountCents: 10000,
+      currency: "USD",
+      captureId: "CAP1",
+      reference: "refund-key",
+      status: "PENDING",
+    });
+    const late = await s.app.inject({
+      method: "POST",
+      url: "/api/paypal/webhook",
+      payload: {
+        id: "refund-late",
+        event_type: "PAYMENT.REFUND.PENDING",
+        resource: { id: "REF1" },
+      },
+    });
+    assert.equal(late.statusCode, 503);
+    assert.equal(
+      (
+        db
+          .prepare(
+            "SELECT error FROM fairshare_webhook_inbox WHERE id='refund-late'",
+          )
+          .get() as any
+      ).error,
+      "REFUND_STATUS_CONFLICT",
+    );
+    assert.equal(
+      (
+        db
+          .prepare(
+            "SELECT status FROM fairshare_refund_ops WHERE id='refund-op'",
+          )
+          .get() as any
+      ).status,
+      "FAILED",
+    );
+  } finally {
+    await s.app.close();
+  }
+});
+
+test("a multi-transaction dispute holds a known later transaction and retains unmatched evidence", async () => {
+  const s = await setup();
+  try {
+    const payment = (
+      await s.post("/payments", {
+        amountCents: 10000,
+        requestKey: "multi-dispute",
+      })
+    ).json();
+    await s.post(`/payments/${payment.id}/capture`);
+    const result = await s.app.inject({
+      method: "POST",
+      url: "/api/paypal/webhook",
+      payload: {
+        id: "multiple-dispute",
+        event_type: "CUSTOMER.DISPUTE.UPDATED",
+        resource: {
+          disputed_transactions: [
+            { seller_transaction_id: "UNKNOWN" },
+            { seller_transaction_id: "CAP1" },
+          ],
+        },
+      },
+    });
+    assert.equal(result.statusCode, 503);
+    assert.ok(s.agg.read(s.w.id, "collab").value.reviewHold);
+  } finally {
+    await s.app.close();
+  }
+});
+
+test("previously unsupported events can be accepted after an exact signed redelivery adds support", async () => {
+  const s = await setup();
+  try {
+    await s.post("/payments", {
+      amountCents: 10000,
+      requestKey: "new-support",
+    });
+    let reads = 0;
+    s.provider.getOrder = async () => {
+      reads++;
+      return { status: "APPROVED" };
+    };
+    const payload = {
+      id: "added-support",
+      event_type: "CHECKOUT.ORDER.APPROVED",
+      resource: { id: "ORDER1" },
+    };
+    const { verifyAndPlanWebhook } = await import("@fairshare/payments");
+    const planned = await verifyAndPlanWebhook(s.provider, {}, payload);
+    const db = s.app.store.db;
+    db.prepare("INSERT INTO fairshare_webhook_inbox VALUES(?,?,?,?,?)").run(
+      payload.id,
+      planned.fingerprint,
+      JSON.stringify({
+        kind: "RECORD_UNMATCHED",
+        eventId: payload.id,
+        eventType: payload.event_type,
+        reason: "UNSUPPORTED_WEBHOOK_EVENT",
+      }),
+      "PENDING",
+      "UNSUPPORTED_WEBHOOK_EVENT",
+    );
+    for (let i = 0; i < 2; i++) {
+      const result = await s.app.inject({
+        method: "POST",
+        url: "/api/paypal/webhook",
+        payload,
+      });
+      assert.equal(result.statusCode, 200, result.body);
+      assert.equal(result.json().action, "RECONCILE_ORDER");
+    }
+    assert.equal(reads, 1);
+    assert.equal(s.counts().captures, 0);
+    s.badSignature();
+    const invalid = await s.app.inject({
+      method: "POST",
+      url: "/api/paypal/webhook",
+      payload: { id: "unsigned-unknown", event_type: "NEW.UNKNOWN" },
+    });
+    assert.equal(invalid.statusCode, 401);
+    assert.equal(
+      db
+        .prepare(
+          "SELECT id FROM fairshare_webhook_inbox WHERE id='unsigned-unknown'",
+        )
+        .get(),
+      undefined,
+    );
+  } finally {
+    await s.app.close();
+  }
+});
+
+test("legacy sale refund holds its recorded settlement and never guesses the refund ID", async () => {
+  const s = await setup();
+  try {
+    const payment = (
+      await s.post("/payments", {
+        amountCents: 10000,
+        requestKey: "sale-refund",
+      })
+    ).json();
+    await s.post(`/payments/${payment.id}/capture`);
+    const result = await s.app.inject({
+      method: "POST",
+      url: "/api/paypal/webhook",
+      payload: {
+        id: "sale-refund",
+        event_type: "PAYMENT.SALE.REFUNDED",
+        resource: { id: "REF1", sale_id: "CAP1" },
+      },
+    });
+    assert.equal(result.statusCode, 200, result.body);
+    assert.ok(s.agg.read(s.w.id, "collab").value.reviewHold);
+  } finally {
+    await s.app.close();
   }
 });

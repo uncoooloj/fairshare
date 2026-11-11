@@ -8,6 +8,10 @@ export enum PaymentGridStatus {
   Paid = "PAID",
   Failed = "FAILED",
   Reversed = "REVERSED",
+  /** Parked until this person adds a PayPal email. Nothing was sent. */
+  WaitingRecipient = "WAITING_RECIPIENT",
+  /** A send may have reached PayPal; we are reading PayPal's record. */
+  Checking = "CHECKING",
   Unknown = "UNKNOWN",
 }
 export interface PaymentGridRow {
@@ -34,8 +38,40 @@ export const paymentStatusLabels: Record<PaymentGridStatus, string> = {
   PAID: "Paid",
   FAILED: "Failed",
   REVERSED: "Reversed",
-  UNKNOWN: "Needs reconciliation",
+  WAITING_RECIPIENT: "Waiting for PayPal email",
+  CHECKING: "Checking with PayPal",
+  UNKNOWN: "Being checked",
 };
+/** The label for one row; names the person when we are waiting on them. */
+export function paymentStatusLabel(
+  row: Pick<PaymentGridRow, "status" | "recipientName">,
+): string {
+  return row.status === PaymentGridStatus.WaitingRecipient
+    ? `Waiting for ${row.recipientName}'s PayPal email`
+    : paymentStatusLabels[row.status];
+}
+/** Maps a stored payout operation status to what the grid shows. */
+export function payoutGridStatus(status: string): PaymentGridStatus {
+  if (status === "SUCCESS") return PaymentGridStatus.Paid;
+  if (status === "UNCLAIMED") return PaymentGridStatus.Unclaimed;
+  if (["FAILED", "DENIED", "BLOCKED"].includes(status))
+    return PaymentGridStatus.Failed;
+  if (["HELD", "ONHOLD", "AUTO_HELD"].includes(status))
+    return PaymentGridStatus.Held;
+  if (["REFUNDED", "REVERSED", "RETURNED"].includes(status))
+    return PaymentGridStatus.Reversed;
+  if (["SUBMITTING", "PROCESSING"].includes(status))
+    return PaymentGridStatus.Processing;
+  if (["PENDING", "RESERVED"].includes(status))
+    return PaymentGridStatus.Pending;
+  if (status === "WAITING_RECIPIENT") return PaymentGridStatus.WaitingRecipient;
+  if (status === "OUTCOME_UNKNOWN") return PaymentGridStatus.Checking;
+  return PaymentGridStatus.Unknown;
+}
+/** Kept for callers that import it from here; same mapping as `payoutGridStatus`. */
+export function payoutStatus(status: string): PaymentGridStatus {
+  return payoutGridStatus(status);
+}
 export function formatPaymentAmount(cents: number, currency: "USD"): string {
   if (!Number.isSafeInteger(cents) || cents < 0 || currency !== "USD")
     return "Invalid amount";

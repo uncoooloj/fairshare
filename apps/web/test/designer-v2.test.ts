@@ -22,22 +22,10 @@ test("revised agreement filter is labelled, native and wired to existing filter 
   assert.doesNotMatch(source, /className="filter-tabs"/);
   assert.match(source, /No matching agreements/);
 });
-test("only active rules collapse, leaving setup and recoupment actions outside", () => {
+test("overview shows the split in sentences, without setup banners or hedges", () => {
   const app = appSource();
-  const disclosure = readFileSync(
-    new URL("../components/revenue-rules.tsx", import.meta.url),
-    "utf8",
-  );
-  assert.match(disclosure, /useState\(true\)/);
-  assert.match(disclosure, /<summary>Revenue rules<\/summary>/);
-  assert.match(
-    app,
-    /<RevenueRules\s+key=\{\x60\$\{selected\.id\}:\$\{active\.id\}\x60\}\s*>/,
-  );
-  assert.match(app, /<\/RevenueRules>\s*\)\s*:\s*\(\s*<Empty/);
-  assert.match(app, /Set up terms/);
-  assert.match(
-    app,
-    /allocated\s+toward\s+recoupment\.\s+This\s+is\s+not\s+proof\s+of/,
-  );
+  assert.match(app, /splitSentences\(selected, shown\.rules, user\.id\)/);
+  assert.match(app, /Nothing is paid until everyone approves\./);
+  assert.doesNotMatch(app, /Agree on the rules first|Set up terms/);
+  assert.doesNotMatch(app, /This\s+is\s+not\s+proof\s+of/);
 });

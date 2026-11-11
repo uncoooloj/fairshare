@@ -2,6 +2,13 @@ import type { Dispatch, SetStateAction } from "react";
 import { AllocationTable } from "../../agreement-widgets";
 import { api, money, type Agreement, type Revenue } from "../../../lib/model";
 import { Button } from "../../ui";
+import {
+  PaymentConfirmation,
+  automaticPayoutCopy,
+  dispatchSummary,
+  usePaymentSetup,
+  type DispatchResult,
+} from "../../../lib/payment-setup";
 import type { Run } from "../types";
 
 export interface PaymentBreakdownProps {
@@ -28,25 +35,28 @@ export function PaymentBreakdown({
   setBreakdown,
   setNotice,
 }: PaymentBreakdownProps) {
+  const setup = usePaymentSetup(base);
+  const nameOf = (userId: string) =>
+    selected.value.members.find((m) => m.userId === userId)?.displayName ||
+    "this person";
   return (
     <section className="panel breakdown">
       <div className="row">
-        <h2>How this payment was allocated</h2>
+        <h2>How this payment was split</h2>
         <Button variant="quiet" onClick={() => setBreakdown(null)}>
           Close
         </Button>
       </div>
       <p>
-        Gross {money(breakdown.grossCents)} − fees {money(breakdown.feeCents)} ={" "}
-        {money(breakdown.netCents)} available.
+        Received {money(breakdown.grossCents)} − PayPal fee{" "}
+        {money(breakdown.feeCents)} = {money(breakdown.netCents)} to split.
       </p>
       <AllocationTable
         allocations={breakdown.allocations}
         agreement={selected}
       />
       <p className="muted">
-        Applied version {breakdown.versionId}. Recoupment is included in each
-        recipient’s total. An allocation is not proof of payout.
+        Applied version {breakdown.versionId}. Totals include advance payback.
       </p>
       <blockquote>
         {
@@ -56,26 +66,28 @@ export function PaymentBreakdown({
       </blockquote>
       {organizer && (
         <Button
-          disabled={busy || selected.value.reviewHold}
+          disabled={
+            busy ||
+            selected.value.reviewHold ||
+            setup?.paymentConfirmation === PaymentConfirmation.NOT_CONFIGURED ||
+            setup?.payoutsReady === false
+          }
           onClick={() =>
             run(async () => {
-              await api(`${base}/payouts/dispatch`, "POST", {
-                captureId: breakdown.providerCaptureId,
-              });
-              await refresh();
-              setNotice(
-                "Sandbox payout dispatch recorded. Check each item’s status; submission does not mean completion.",
+              const result = await api<{ payouts: DispatchResult[] }>(
+                `${base}/payouts/dispatch`,
+                "POST",
+                { captureId: breakdown.providerCaptureId },
               );
+              await refresh();
+              setNotice(dispatchSummary(result.payouts, nameOf));
             })
           }
         >
-          Send fixed allocations in sandbox
+          Pay everyone (test)
         </Button>
       )}
-      <p className="muted">
-        Technical sandbox dispatch, not a vote on the shares. Automatic
-        scheduling is not enabled yet.
-      </p>
+      <p className="muted">{automaticPayoutCopy(setup)}</p>
     </section>
   );
 }

@@ -1,6 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { overviewSummary, type OverviewPayout } from "../lib/overview-summary";
+import {
+  overviewSummary,
+  splitSentences,
+  type OverviewPayout,
+} from "../lib/overview-summary";
 import type { Agreement } from "../lib/model";
 function fixture(): Agreement {
   return {
@@ -86,6 +90,25 @@ test("totals use successful matched payouts, not submitted batches", () => {
   assert.equal(s.paid, 100);
   assert.equal(s.remaining, 0);
 });
+test("advance summary reports allocated progress while its payout is pending", () => {
+  const a = fixture();
+  const rules = a.value.versions[0].rules;
+  rules.advance = {
+    id: "advance",
+    recipientId: "me",
+    amountCents: 100,
+    verified: true,
+    source: rules.source,
+  };
+  a.value.recoupedByAdvance.advance = 50;
+
+  assert.equal(overviewSummary([a], [payout(a, "PENDING")], "me").paid, 0);
+  assert.ok(
+    splitSentences(a, rules, "me").includes(
+      "$1 is allocated toward your advance before the split ($0.50 allocated so far).",
+    ),
+  );
+});
 test("unknown, unclaimed, reversed and mismatched payouts never inflate paid", () => {
   const a = fixture();
   for (const status of ["OUTCOME_UNKNOWN", "UNCLAIMED", "REVERSED", "REFUNDED"])
@@ -127,9 +150,23 @@ test("holds are visible and activity uses recorded times, newest first", () => {
   });
   const s = overviewSummary([a], [payout(a, "OUTCOME_UNKNOWN")], "me");
   assert.equal(s.attention.length, 3);
-  assert.equal(s.activity[0].text, "Payment placed on hold");
+  assert.equal(s.activity[0].text, "Payment paused for a check");
   assert.equal(s.activity[1].text, "You created the agreement");
   assert.equal(s.remaining, 100);
+});
+test("recipient and automatic payout holds remain visible until resolved", () => {
+  const a = fixture();
+  for (const status of ["WAITING_RECIPIENT", "AUTO_HELD"]) {
+    const summary = overviewSummary([a], [payout(a, status)], "me");
+    const item = summary.attention.find((item) =>
+      item.key.startsWith("payout:"),
+    );
+    assert.ok(item);
+    assert.match(
+      item.detail,
+      new RegExp(status.toLowerCase().replaceAll("_", " ")),
+    );
+  }
 });
 test("empty workspace has honest zero totals and no synthetic activity", () => {
   const s = overviewSummary([], [], "me");
@@ -224,12 +261,12 @@ test("review actions use the authoritative review state", () => {
     other: "2026-11-10T12:00:00Z",
   };
   const organizer = overviewSummary([a], [], "me");
-  assert.match(organizer.attention[0].title, /Activate version 1/);
+  assert.match(organizer.attention[0].title, /Switch on the new split/);
   assert.equal(organizer.attention[0].key, '["w","a"]:activate');
   const collaborator = overviewSummary([a], [], "other");
   assert.match(
     collaborator.waiting[0].title,
-    /Waiting for organizer to activate version 1/,
+    /Waiting for the organizer to switch it on/,
   );
   assert.equal(collaborator.waiting[0].key, '["w","a"]:waiting-activation');
   a.value.versions[0].status = "ACTIVE";
@@ -238,7 +275,7 @@ test("review actions use the authoritative review state", () => {
   const draft = fixture();
   draft.value.versions[0].status = "DRAFT";
   const send = overviewSummary([draft], [], "me");
-  assert.match(send.attention[0].title, /Send version 1 for review/);
+  assert.match(send.attention[0].title, /Send the split for approval/);
   assert.equal(send.attention[0].key, '["w","a"]:send-review');
   draft.value.versions[0].rules.advance = {
     id: "advance",
@@ -248,6 +285,47 @@ test("review actions use the authoritative review state", () => {
     source: draft.value.versions[0].rules.source,
   };
   const blocked = overviewSummary([draft], [], "me");
-  assert.match(blocked.attention[0].detail, /Verify the existing advance/);
+  assert.match(blocked.attention[0].detail, /Confirm the advance amount/);
   assert.equal(blocked.attention[0].key, '["w","a"]:review-blockers');
+});
+
+test("agreement status line is role-aware and needs no organizer switch-on", async () => {
+  const { agreementStatus, AgreementStage, StageAction } = await import(
+    "../lib/agreement-status"
+  );
+  const a = fixture();
+  a.value.members = [
+    { userId: "me", displayName: "Maya Okafor", role: "ORGANIZER" },
+    { userId: "riley", displayName: "Riley Chen", role: "COLLABORATOR" },
+    { userId: "jordan", displayName: "Jordan Reyes", role: "COLLABORATOR" },
+  ];
+  const v = a.value.versions[0];
+  v.status = "AWAITING_APPROVAL";
+  v.approvals = { me: "2026-11-10T12:00:00Z" };
+  assert.equal(
+    agreementStatus(a, "me").line,
+    "Waiting for Riley and Jordan to approve",
+  );
+  const riley = agreementStatus(a, "riley");
+  assert.equal(riley.line, "Waiting for you to approve");
+  assert.equal(riley.action, StageAction.Approve);
+  v.approvals.riley = "2026-11-10T13:00:00Z";
+  assert.equal(agreementStatus(a, "riley").line, "Waiting for Jordan");
+  v.status = "DRAFT";
+  v.approvals = {};
+  v.changeRequests = [
+    { userId: "riley", reason: "Fee", at: "2026-11-10T14:00:00Z" },
+  ];
+  const change = agreementStatus(a, "me");
+  assert.equal(change.line, "Riley asked for a change");
+  assert.equal(change.action, StageAction.SeeRequest);
+  v.changeRequests = [];
+  v.status = "ACTIVE";
+  a.value.activeVersionId = v.id;
+  assert.equal(
+    agreementStatus(a, "me").line,
+    "All set. Payments split automatically.",
+  );
+  assert.equal(agreementStatus(a, "jordan").line, "All set");
+  assert.equal(agreementStatus(a, "jordan").stage, AgreementStage.AllSet);
 });

@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Button, Field, Notice } from "./ui";
 import { validateInvoice, type InvoiceDetails } from "../lib/invoice";
 
@@ -155,8 +155,8 @@ export function InvoiceForm({
               <dd>{preview.dueDate}</dd>
             </dl>
             <p className="muted">
-              Generate a PayPal payment link to copy and share. An invoice is
-              not a payment; revenue is recorded only after payment is verified.
+              We’ll make a PayPal link for you to share. It counts once they
+              pay.
             </p>
           </section>
         )}

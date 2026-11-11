@@ -1,9 +1,11 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { statusLabel } from "../lib/status-labels";
+import React, { useEffect, useRef, useState } from "react";
 import { api, money } from "../lib/model";
 import {
   recoveryRequest,
   refundBlocked,
+  refundablePayments,
   refundMessage,
   createSingleFlight,
 } from "../lib/payment-recovery";
@@ -73,14 +75,15 @@ export function PaymentRecovery({
           // Never offer a refund from stale evidence after a failed refresh.
           setData(null);
           setNotice("");
-          actionError = `${actionError ? `${actionError} ` : ""}Unable to refresh. Refresh recovery information before taking another action. Do not resubmit an uncertain transfer.`;
+          actionError = `${actionError ? `${actionError} ` : ""}Couldn’t refresh. Refresh before you do anything else.`;
         }
         setError(actionError);
         setBusy(false);
       }
     });
   }
-  const payment = payments.find((p) => p.id === chosen);
+  const refundOptions = refundablePayments(payments);
+  const payment = refundOptions.find((p) => p.id === chosen);
   return (
     <section
       className={styles.root}
@@ -89,11 +92,10 @@ export function PaymentRecovery({
     >
       <div className={styles.header}>
         <div>
-          <h3>Recovery & refunds</h3>
+          <h3>Payment problems</h3>
           <p>
-            Resolve uncertain payment statuses using existing PayPal evidence.
-            Checking a reference never sends another payment or clears an
-            agreement hold.
+            If a payment looks stuck, check it against PayPal. Checking never
+            sends money.
           </p>
         </div>
         <span className={styles.sandbox}>Sandbox only</span>
@@ -116,10 +118,54 @@ export function PaymentRecovery({
         </p>
       ) : (
         <>
+          {data.providerHold && (
+            <Notice warning>
+              A verified provider event is awaiting reconciliation. A recheck
+              never clears an existing payment hold.
+            </Notice>
+          )}
+          {!!data.events?.length && (
+            <section aria-label="Provider event recovery">
+              <h4>Provider events needing review</h4>
+              {data.events.map((event: any) => (
+                <div key={event.id} className="actions">
+                  <span>
+                    {event.eventType} · {event.error || event.status}
+                  </span>
+                  <Button
+                    variant="quiet"
+                    disabled={busy}
+                    onClick={() =>
+                      run(async () => {
+                        const result = await api(
+                          `${base}/recovery/events/${encodeURIComponent(event.id)}/reconcile`,
+                          "POST",
+                          {},
+                        );
+                        setNotice(
+                          result.status === "DONE"
+                            ? "Provider event reconciled. Existing payment holds remain in place."
+                            : "The event still needs matching provider evidence. No payment was resent.",
+                        );
+                      })
+                    }
+                  >
+                    Recheck provider event
+                  </Button>
+                </div>
+              ))}
+            </section>
+          )}
+          {data.providerHold && !data.events?.length && (
+            <p>
+              An event cannot yet be matched safely to this agreement. Operator
+              review is required; do not retry a payment or clear the hold.
+            </p>
+          )}
           <details>
-            <summary>Review payment recovery</summary>
+            <summary>Check a stuck payment</summary>
             {!data.payments.length && !data.payouts.length && (
-              <p>No uncertain payment or payout operations recorded.</p>
+              <p>Nothing stuck.</p>
             )}
             {data.payments.map((p: any) => (
               <Evidence
@@ -130,9 +176,7 @@ export function PaymentRecovery({
                 busy={busy}
                 run={run}
                 onResult={() =>
-                  setNotice(
-                    "Provider evidence checked. Review the updated payment status; no new payment was sent.",
-                  )
+                  setNotice("Checked with PayPal. Status updated.")
                 }
               />
             ))}
@@ -146,18 +190,21 @@ export function PaymentRecovery({
                 run={run}
                 onResult={() =>
                   setNotice(
-                    "Provider evidence checked. Submission or pending status is not completion.",
+                    "Checked with PayPal. Pending doesn’t mean paid yet.",
                   )
                 }
               />
             ))}
           </details>
           <details>
-            <summary>Refund an original payment</summary>
+            <summary>Refund a payment</summary>
             <p>
-              Full amount to the original sandbox payer only. Available before
-              any payout reservation. This pauses the agreement and retains
-              liabilities for review.
+              Sends the full amount back to whoever paid. Only before a payout
+              is reserved. Payouts pause while you sort out the shares.
+            </p>
+            <p>
+              Invoice payments are refunded in PayPal only. After refunding one
+              there, use Check status on the invoice to update it here.
             </p>
             <Field label="Payment">
               <select
@@ -169,17 +216,28 @@ export function PaymentRecovery({
                 disabled={busy}
               >
                 <option value="">Choose a payment</option>
-                {payments.map((p) => (
+                {refundOptions.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.id.slice(0, 8)} · {money(p.amount)} · {p.status}
+                    {p.id.slice(0, 8)} · {money(p.amount)} ·{" "}
+                    {statusLabel(p.status)}
                   </option>
                 ))}
               </select>
             </Field>
             {payment &&
-              (refundBlocked(payment, payouts, data.refunds, held) ? (
+              (refundBlocked(
+                payment,
+                payouts,
+                data.refunds,
+                held || !!data.providerHold,
+              ) ? (
                 <Notice warning>
-                  {refundBlocked(payment, payouts, data.refunds, held)}
+                  {refundBlocked(
+                    payment,
+                    payouts,
+                    data.refunds,
+                    held || !!data.providerHold,
+                  )}
                 </Notice>
               ) : (
                 <>
@@ -207,16 +265,12 @@ export function PaymentRecovery({
                       })
                     }
                   >
-                    Submit full sandbox refund
+                    Refund in full
                   </Button>
                 </>
               ))}
           </details>
-          {busy && (
-            <p role="status">
-              Checking payment information… Do not submit another transfer.
-            </p>
-          )}
+          {busy && <p role="status">Checking… don’t send anything else yet.</p>}
           <h4>Refund status</h4>
           {!data.refunds.length && <p>No refunds recorded.</p>}
           {data.refunds.map((r: any) => (
@@ -285,9 +339,9 @@ function Evidence({
   const [value, setValue] = useState(op.provider_order_id || op.batch_id || "");
   const label =
     kind === "payment"
-      ? "Order ID with completed capture"
+      ? "Order ID"
       : kind === "payout"
-        ? "Payout batch ID"
+        ? "Payout ID"
         : "Refund ID";
   return (
     <form
@@ -310,7 +364,7 @@ function Evidence({
       </p>
       <Field
         label={`PayPal sandbox ${label}`}
-        hint="Copy the reference from the matching PayPal test transaction."
+        hint="Find this in PayPal on the matching payment."
       >
         <input
           value={value}

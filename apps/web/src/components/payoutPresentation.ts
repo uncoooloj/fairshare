@@ -1,24 +1,24 @@
 import {
-  paymentStatusLabels,
+  paymentStatusLabel,
   PaymentGridStatus,
   validatePaymentRows,
   type PaymentGridRow,
 } from "./paymentGridModel";
 export const payoutGuidance: Record<PaymentGridStatus, string> = {
-  PAID: "The recorded provider status confirms this payout completed.",
-  PENDING:
-    "This payout is pending. It has not been confirmed complete; do not submit it again.",
-  PROCESSING:
-    "The provider is processing this payout. Wait for a verified status update rather than sending another transfer.",
-  HELD: "This payout is on hold. Review the agreement and existing provider evidence before taking action.",
+  PAID: "PayPal says this arrived.",
+  PENDING: "Pending. Don’t send it again.",
+  PROCESSING: "PayPal is processing this. Don’t send it again.",
+  HELD: "Paused. Check the agreement before doing anything.",
   FAILED:
-    "The recorded payout failed. Review the provider record and agreement recovery options; this screen does not retry transfers.",
-  UNCLAIMED:
-    "The recipient has not claimed this payout. Unclaimed funds are not a completed transfer.",
-  REVERSED:
-    "The provider recorded a reversal. Do not count this payout as paid.",
+    "This payout failed. Check the agreement and payout evidence before taking another action.",
+  UNCLAIMED: "They haven’t collected this in PayPal yet.",
+  REVERSED: "PayPal reversed this, so it doesn’t count as paid.",
+  WAITING_RECIPIENT:
+    "Nothing has been sent. The recipient’s PayPal details need to be added; their payout goes out after that.",
+  CHECKING:
+    "This payout may have reached PayPal. We are checking PayPal's record. Do not send it again.",
   UNKNOWN:
-    "The outcome is uncertain. Verify existing provider evidence before any further action. Do not retry the transfer.",
+    "We’re not sure this went through. Don’t send it again; check it in PayPal.",
 };
 
 function payoutSearchText(row: PaymentGridRow) {
@@ -26,7 +26,7 @@ function payoutSearchText(row: PaymentGridRow) {
     row.agreementName,
     row.recipientName,
     row.providerReference ?? "",
-    paymentStatusLabels[row.status],
+    paymentStatusLabel(row),
   ]
     .join(" ")
     .toLocaleLowerCase();
@@ -58,7 +58,7 @@ export function payoutCsv(rows: readonly PaymentGridRow[]) {
     row.recipientName,
     `${Math.floor(row.amountCents / 100)}.${String(row.amountCents % 100).padStart(2, "0")}`,
     row.currency,
-    paymentStatusLabels[row.status],
+    paymentStatusLabel(row),
     row.createdAt ?? "",
     row.providerReference ?? "",
   ]);
@@ -71,7 +71,7 @@ export function payoutCsv(rows: readonly PaymentGridRow[]) {
       "Currency",
       "Status",
       "Created",
-      "Provider reference",
+      "PayPal reference",
     ],
     ...records,
   ]

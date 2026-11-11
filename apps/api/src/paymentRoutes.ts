@@ -12,25 +12,46 @@ import {
   holdReversedRevenue,
   DomainError,
   MemberRole,
-  AllocationStatus,
 } from "@fairshare/domain";
 import {
   PayPalSandbox,
   PayPalError,
   verifyAndPlanWebhook,
   canRepairRefundPlan,
+  canRepairUnsupportedPlan,
   reconcileCapture,
   WebhookActionKind,
+  RecipientType,
 } from "@fairshare/payments";
 import { AggregateStore } from "./fairshare.js";
 import type { FairshareApp } from "./app.js";
 import { Role } from "./identity.js";
 import { registerPaymentRecovery } from "./paymentRecovery.js";
 import {
+  advancePayoutAccountGeneration,
   ensurePayoutAccountSchema,
   hasAccountPayoutDestination,
   readPayoutDestination,
 } from "./payoutAccounts.js";
+import {
+  PARKED_PAYOUT_STATUSES,
+  payoutHoldMessages,
+  payoutHoldReason,
+  PayoutHoldReason,
+} from "./payoutHolds.js";
+
+/** Why a person's payout was not sent by a manual dispatch. */
+export enum PayoutWaitReason {
+  NEEDS_PAYOUT_EMAIL = "NEEDS_PAYOUT_EMAIL",
+  ON_HOLD = "ON_HOLD",
+}
+function payoutWaitReason(status: string): PayoutWaitReason | undefined {
+  if (status === "WAITING_RECIPIENT")
+    return PayoutWaitReason.NEEDS_PAYOUT_EMAIL;
+  if (status === "HELD" || status === "AUTO_HELD")
+    return PayoutWaitReason.ON_HOLD;
+  return undefined;
+}
 export type PaymentProvider = Pick<
   PayPalSandbox,
   | "createOrder"
@@ -40,12 +61,19 @@ export type PaymentProvider = Pick<
   | "getPayout"
   | "verifyWebhook"
 > &
-  Partial<Pick<PayPalSandbox, "refundCapture" | "getRefund">> &
+  Partial<
+    Pick<
+      PayPalSandbox,
+      "refundCapture" | "getRefund" | "webhookConfigured" | "payoutsReady"
+    >
+  > &
   Partial<InvoiceProvider>;
 export interface PaymentOptions {
   provider?: PaymentProvider;
   publicOrigin?: string;
   automaticPayoutsEnabled?: boolean;
+  /** Receives one configuration error per process. Never passed secrets. */
+  onConfigurationError?: (code: string, message: string) => void;
   reconciliation?: {
     enabled: boolean;
     intervalMs?: number;
@@ -60,6 +88,14 @@ const str = (v: unknown) =>
     ? v
     : fail("INVALID_INPUT", "Bounded nonempty string required");
 const now = () => new Date().toISOString();
+/** Whether PayPal can tell Fairshare a payment or payout went through. */
+export enum PaymentConfirmation {
+  READY = "READY",
+  WEBHOOK_NOT_CONFIGURED = "WEBHOOK_NOT_CONFIGURED",
+  NOT_CONFIGURED = "NOT_CONFIGURED",
+}
+export const WEBHOOK_NOT_CONFIGURED_MESSAGE =
+  "PAYPAL_WEBHOOK_ID is not set. Every PayPal webhook is rejected with 503 until it is configured, so payments and payouts can't be confirmed automatically.";
 export function registerPaymentRoutes(
   app: FairshareApp,
   aggregates: AggregateStore,
@@ -90,6 +126,30 @@ export function registerPaymentRoutes(
   const provider = () =>
     options.provider ??
     fail("PAYPAL_NOT_CONFIGURED", "Sandbox provider is not configured");
+  let webhookErrorReported = false;
+  function reportWebhookNotConfigured() {
+    if (webhookErrorReported) return;
+    webhookErrorReported = true;
+    (
+      options.onConfigurationError ??
+      ((code, message) =>
+        console.error(`payments_configuration_error ${code}: ${message}`))
+    )("PAYPAL_WEBHOOK_NOT_CONFIGURED", WEBHOOK_NOT_CONFIGURED_MESSAGE);
+  }
+  function paymentConfirmation() {
+    if (!options.provider) return PaymentConfirmation.NOT_CONFIGURED;
+    return options.provider.webhookConfigured === false
+      ? PaymentConfirmation.WEBHOOK_NOT_CONFIGURED
+      : PaymentConfirmation.READY;
+  }
+  // Adapters without this optional capability predate setup readiness reporting;
+  // their createPayout implementation remains the capability contract.
+  function payoutsReady() {
+    const configured = options.provider;
+    return configured ? configured.payoutsReady !== false : false;
+  }
+  if (paymentConfirmation() === PaymentConfirmation.WEBHOOK_NOT_CONFIGURED)
+    reportWebhookNotConfigured();
   function access(req: FastifyRequest, organizer = false) {
     const p = req.params as any;
     const { user } = app.requireWorkspace(
@@ -160,7 +220,8 @@ export function registerPaymentRoutes(
         .some(
           (a) =>
             a.kind === WebhookActionKind.HoldCapture &&
-            a.providerId === capture.id,
+            (a.providerId === capture.id ||
+              a.providerIds?.includes(capture.id)),
         );
       if (adverse)
         fail(
@@ -218,11 +279,14 @@ export function registerPaymentRoutes(
   app.get(`${base}/payments`, async (req) => {
     const { p } = access(req);
     return {
-      payments: db
-        .prepare(
-          "SELECT * FROM fairshare_payment_ops WHERE workspace_id=? AND collaboration_id=?",
-        )
-        .all(p.workspaceId, p.collaborationId),
+      payments: [
+        ...db
+          .prepare(
+            "SELECT * FROM fairshare_payment_ops WHERE workspace_id=? AND collaboration_id=?",
+          )
+          .all(p.workspaceId, p.collaborationId),
+        ...invoices.paymentRecords(p.workspaceId, p.collaborationId),
+      ],
     };
   });
   app.post(`${base}/payments`, async (req) => {
@@ -332,7 +396,8 @@ export function registerPaymentRoutes(
             a.kind === WebhookActionKind.HoldCapture &&
             ((a.orderId && a.orderId === fresh.provider_order_id) ||
               (fresh.provider_capture_id &&
-                a.providerId === fresh.provider_capture_id)),
+                (a.providerId === fresh.provider_capture_id ||
+                  a.providerIds?.includes(fresh.provider_capture_id)))),
         );
       if (adverse)
         fail("PAYMENT_HOLD", "Capture blocked by an adverse provider event");
@@ -372,15 +437,18 @@ export function registerPaymentRoutes(
     const paypalId = str((req.body as any)?.paypalId);
     if (!/^[A-Z0-9]{13}$/.test(paypalId))
       fail("INVALID_RECIPIENT", "Sandbox PayPal merchant ID required");
-    if (hasAccountPayoutDestination(db, user.id))
-      fail(
-        "PAYOUT_DESTINATION_CONFLICT",
-        "Manage your account-level payout destination before using this legacy route",
-      );
-    db.prepare(
-      "INSERT INTO fairshare_recipients VALUES(?,?,?) ON CONFLICT(workspace_id,user_id) DO UPDATE SET paypal_id=excluded.paypal_id",
-    ).run(p.workspaceId, user.id, paypalId);
-    app.store.audit(user.id, p.workspaceId, "PAYOUT_ACCOUNT_SAVED");
+    tx(() => {
+      if (hasAccountPayoutDestination(db, user.id))
+        fail(
+          "PAYOUT_DESTINATION_CONFLICT",
+          "Manage your account-level payout destination before using this legacy route",
+        );
+      advancePayoutAccountGeneration(db, user.id);
+      db.prepare(
+        "INSERT INTO fairshare_recipients VALUES(?,?,?) ON CONFLICT(workspace_id,user_id) DO UPDATE SET paypal_id=excluded.paypal_id",
+      ).run(p.workspaceId, user.id, paypalId);
+      app.store.audit(user.id, p.workspaceId, "PAYOUT_ACCOUNT_SAVED");
+    });
     return { configured: true };
   });
   app.get(`${base}/payouts`, async (req) => {
@@ -446,53 +514,89 @@ export function registerPaymentRoutes(
         (r) => r.providerCaptureId === captureId,
       );
       if (!revenue) fail("NOT_FOUND", "Revenue not found");
-      return revenue!.allocations
-        .filter((a) => a.totalCents > 0)
-        .map((a) => {
-          if (a.status !== AllocationStatus.ALLOCATED)
-            fail("PAYMENT_HOLD", "Allocation held");
-          const prior = db
-            .prepare(
-              "SELECT * FROM fairshare_payout_ops WHERE capture_id=? AND user_id=?",
-            )
-            .get(captureId, a.userId) as any;
-          if (prior) return { op: prior, created: false };
-          const recipient = readPayoutDestination(db, a.userId, p.workspaceId);
-          if (!recipient)
-            fail(
-              "RECIPIENT_REQUIRED",
-              "All payout recipients must be configured",
-            );
-          const id = createHash("sha256")
-            .update(`${captureId}:${a.userId}`)
-            .digest("hex")
-            .slice(0, 30);
+      const allocations = revenue!.allocations.filter((a) => a.totalCents > 0);
+      // Agreement-wide holds (review, refund, adverse event, approvals) stop
+      // everyone. A missing payout email only parks that one person.
+      const hold = payoutHoldReason(
+        db,
+        row.value,
+        revenue!,
+        {
+          provider_capture_id: captureId,
+          workspace_id: p.workspaceId,
+          collaboration_id: p.collaborationId,
+        },
+        allocations,
+      );
+      if (hold) fail("PAYMENT_HOLD", payoutHoldMessages[hold]);
+      const read = (id: string) =>
+        db
+          .prepare("SELECT * FROM fairshare_payout_ops WHERE id=?")
+          .get(id) as any;
+      return allocations.map((a) => {
+        const prior = db
+          .prepare(
+            "SELECT * FROM fairshare_payout_ops WHERE capture_id=? AND user_id=?",
+          )
+          .get(captureId, a.userId) as any;
+        // The unique (capture_id,user_id) row is the only reservation; anything
+        // past the parked states has reached, or may have reached, PayPal.
+        if (prior && !PARKED_PAYOUT_STATUSES.includes(prior.status))
+          return prior;
+        if (prior && prior.amount !== a.totalCents)
+          fail("PAYOUT_MISMATCH", "Reserved payout differs from allocation");
+        const recipient = readPayoutDestination(db, a.userId, p.workspaceId);
+        const status = recipient ? "RESERVED" : "WAITING_RECIPIENT";
+        if (prior) {
           db.prepare(
-            "INSERT INTO fairshare_payout_ops(id,workspace_id,collaboration_id,capture_id,user_id,recipient_type,recipient_id,amount,status) VALUES(?,?,?,?,?,?,?,?,?)",
+            `UPDATE fairshare_payout_ops SET status=?,recipient_type=?,recipient_id=? WHERE id=? AND status IN (${PARKED_PAYOUT_STATUSES.map(() => "?").join(",")})`,
           ).run(
-            id,
-            p.workspaceId,
-            p.collaborationId,
-            captureId,
-            a.userId,
-            recipient!.type,
-            recipient!.value,
-            a.totalCents,
-            "RESERVED",
+            status,
+            recipient?.type ?? prior.recipient_type,
+            recipient?.value ?? prior.recipient_id,
+            prior.id,
+            ...PARKED_PAYOUT_STATUSES,
           );
-          return {
-            op: db
-              .prepare("SELECT * FROM fairshare_payout_ops WHERE id=?")
-              .get(id) as any,
-            created: true,
-          };
-        });
+          return read(prior.id);
+        }
+        const id = createHash("sha256")
+          .update(`${captureId}:${a.userId}`)
+          .digest("hex")
+          .slice(0, 30);
+        db.prepare(
+          "INSERT INTO fairshare_payout_ops(id,workspace_id,collaboration_id,capture_id,user_id,recipient_type,recipient_id,amount,status) VALUES(?,?,?,?,?,?,?,?,?)",
+        ).run(
+          id,
+          p.workspaceId,
+          p.collaborationId,
+          captureId,
+          a.userId,
+          recipient?.type ?? RecipientType.PAYPAL_ID,
+          recipient?.value ?? "",
+          a.totalCents,
+          status,
+        );
+        return read(id);
+      });
     });
-    const results = [];
-    for (const item of ops) {
-      const op = item.op;
+    const results: {
+      id: string;
+      userId: string;
+      status: string;
+      reason?: PayoutWaitReason;
+    }[] = [];
+    const push = (op: any, status: string) =>
+      results.push({
+        id: op.id,
+        userId: op.user_id,
+        status,
+        ...(payoutWaitReason(status)
+          ? { reason: payoutWaitReason(status)! }
+          : {}),
+      });
+    for (const op of ops) {
       if (op.status !== "RESERVED") {
-        results.push({ id: op.id, status: op.status });
+        push(op, op.status);
         continue;
       } // No retry of an uncertain write.
       const permitted = tx(() => {
@@ -501,10 +605,29 @@ export function registerPaymentRoutes(
           .get(op.id) as { status: string };
         if (current.status !== "RESERVED") return false;
         const row = aggregates.read(p.workspaceId, p.collaborationId);
-        if (row.value.reviewHold) {
+        const revenue = row.value.revenue.find(
+          (r) => r.providerCaptureId === captureId,
+        );
+        const hold =
+          revenue &&
+          payoutHoldReason(
+            db,
+            row.value,
+            revenue,
+            {
+              provider_capture_id: captureId,
+              workspace_id: p.workspaceId,
+              collaboration_id: p.collaborationId,
+            },
+            revenue.allocations.filter((a) => a.totalCents > 0),
+          );
+        if (!revenue || hold) {
           db.prepare(
-            "UPDATE fairshare_payout_ops SET status='HELD' WHERE id=?",
-          ).run(op.id);
+            "UPDATE fairshare_payout_ops SET status=? WHERE id=? AND status='RESERVED'",
+          ).run(
+            hold === PayoutHoldReason.ADVERSE_EVENT ? "AUTO_HELD" : "HELD",
+            op.id,
+          );
           return false;
         }
         // Claim only operations that have never reached the provider. A second
@@ -520,7 +643,7 @@ export function registerPaymentRoutes(
         const current = db
           .prepare("SELECT status FROM fairshare_payout_ops WHERE id=?")
           .get(op.id) as { status: string };
-        results.push({ id: op.id, status: current.status });
+        push(op, current.status);
         continue;
       }
       try {
@@ -538,7 +661,7 @@ export function registerPaymentRoutes(
           agreementId: op.collaboration_id,
           payoutId: op.id,
         });
-        results.push({ id: op.id, status: "PENDING" });
+        push(op, "PENDING");
       } catch (e) {
         if (e instanceof PayPalError && e.code === "PAYOUT_NOT_CONFIGURED") {
           // The adapter rejects this before any provider call. Keep the same
@@ -555,7 +678,7 @@ export function registerPaymentRoutes(
           agreementId: op.collaboration_id,
           payoutId: op.id,
         });
-        results.push({ id: op.id, status: "OUTCOME_UNKNOWN" });
+        push(op, "OUTCOME_UNKNOWN");
       }
     }
     return { payouts: results };
@@ -574,6 +697,37 @@ export function registerPaymentRoutes(
     if (!op) fail("NOT_FOUND", "Payout not found");
     return reconcilePayout(op);
   });
+  async function reconcileRefund(op: any, assertLease: () => void = () => {}) {
+    const p = provider();
+    if (!p.getRefund)
+      fail("REFUND_NOT_CONFIGURED", "Sandbox refund provider required");
+    const result = await p.getRefund!(op.provider_refund_id);
+    assertLease();
+    if (
+      result.id !== op.provider_refund_id ||
+      result.amountCents !== op.amount ||
+      result.currency !== "USD" ||
+      result.captureId !== op.capture_id ||
+      result.reference !== op.request_key
+    )
+      fail("REFUND_MISMATCH", "Refund evidence mismatch");
+    tx(() => {
+      const fresh = db
+        .prepare("SELECT * FROM fairshare_refund_ops WHERE id=?")
+        .get(op.id) as any;
+      if (fresh.provider_refund_id !== result.id)
+        fail("RECOVERY_CONFLICT", "Refund evidence changed");
+      if (
+        ["COMPLETED", "FAILED", "CANCELLED"].includes(fresh.status) &&
+        fresh.status !== result.status
+      )
+        fail("REFUND_STATUS_CONFLICT", "Terminal refund status cannot regress");
+      db.prepare("UPDATE fairshare_refund_ops SET status=? WHERE id=?").run(
+        result.status,
+        op.id,
+      );
+    });
+  }
   async function processEvent(id: string, assertLease: () => void = () => {}) {
     assertLease();
     const stored = db
@@ -581,47 +735,107 @@ export function registerPaymentRoutes(
       .get(id) as any;
     if (stored.status === "DONE") return;
     const action = JSON.parse(stored.action);
+    const reconcileInvoiceEvent = async (providerId: string) => {
+      const result = await invoices.reconcileProvider(
+        providerId,
+        assertLease,
+        action.eventType,
+      );
+      if (result.settlementPending)
+        fail(
+          "INVOICE_SETTLEMENT_PENDING",
+          "Invoice settlement still needs provider verification",
+        );
+    };
     try {
-      if (action.kind === WebhookActionKind.ReconcileCapture) {
+      if (
+        action.kind === WebhookActionKind.ReconcileCapture ||
+        action.kind === WebhookActionKind.ReconcileOrder
+      ) {
         const op = db
           .prepare(
             "SELECT * FROM fairshare_payment_ops WHERE provider_order_id=?",
           )
-          .get(action.orderId) as any;
-        if (!op) fail("UNMATCHED_EVENT", "Order not found");
-        const result = await applyCapture(op, assertLease);
-        if (!result.confirmed)
-          fail("CAPTURE_NOT_CONFIRMED", "Provider capture is not completed");
-      } else if (action.kind === WebhookActionKind.HoldCapture) {
-        if (!action.providerId)
-          fail("UNMATCHED_EVENT", "Capture provenance needs verification");
-        const match = db
+          .get(action.orderId ?? null) as any;
+        if (!op && action.invoiceId) {
+          // An INV2 field is a lookup hint only. The invoice path verifies fresh
+          // invoice, merchant, settlement identity and accounting before credit.
+          await reconcileInvoiceEvent(action.invoiceId);
+        } else {
+          if (!op) fail("UNMATCHED_EVENT", "Order not found");
+          const result = await applyCapture(op, assertLease);
+          if (
+            !result.confirmed &&
+            action.eventType !== "CHECKOUT.ORDER.APPROVED"
+          )
+            fail("CAPTURE_NOT_CONFIRMED", "Provider capture is not completed");
+        }
+      } else if (action.kind === WebhookActionKind.ReconcileInvoice) {
+        await reconcileInvoiceEvent(action.providerId);
+      } else if (action.kind === WebhookActionKind.ReconcileRefund) {
+        const op = db
           .prepare(
-            "SELECT * FROM fairshare_captures WHERE provider_capture_id=?",
+            "SELECT * FROM fairshare_refund_ops WHERE provider_refund_id=?",
           )
           .get(action.providerId) as any;
-        if (!match) fail("UNMATCHED_EVENT", "Capture not found");
+        if (!op) fail("UNMATCHED_EVENT", "Refund not found");
+        await reconcileRefund(op, assertLease);
+      } else if (action.kind === WebhookActionKind.HoldCapture) {
+        const captureIds: string[] = action.providerIds?.length
+          ? action.providerIds
+          : action.providerId
+            ? [action.providerId]
+            : [];
+        if (!captureIds.length && action.orderId) {
+          const op = db
+            .prepare(
+              "SELECT provider_capture_id FROM fairshare_payment_ops WHERE provider_order_id=?",
+            )
+            .get(action.orderId) as any;
+          if (op?.provider_capture_id) captureIds.push(op.provider_capture_id);
+        }
+        if (!captureIds.length)
+          fail("UNMATCHED_EVENT", "Capture provenance needs verification");
+        let unmatched = false;
         tx(() => {
-          const row = aggregates.read(
-            match.workspace_id,
-            match.collaboration_id,
-          );
-          aggregates.updateInsideTransaction(
-            match.workspace_id,
-            match.collaboration_id,
-            row.revision,
-            (c) =>
-              holdReversedRevenue(c, action.providerId, action.reason, now()),
-          );
+          for (const captureId of captureIds) {
+            const match = db
+              .prepare(
+                "SELECT * FROM fairshare_captures WHERE provider_capture_id=?",
+              )
+              .get(captureId) as any;
+            if (!match) {
+              unmatched = true;
+              continue;
+            }
+            const row = aggregates.read(
+              match.workspace_id,
+              match.collaboration_id,
+            );
+            aggregates.updateInsideTransaction(
+              match.workspace_id,
+              match.collaboration_id,
+              row.revision,
+              (c) => holdReversedRevenue(c, captureId, action.reason, now()),
+            );
+            invoices.markSettlementHeld(captureId);
+          }
         });
+        // Hold every known transaction even if another dispute transaction needs matching.
+        if (unmatched) fail("UNMATCHED_EVENT", "Capture not found");
       } else if (action.kind === WebhookActionKind.ReconcilePayout) {
-        const op = db
+        const ops = db
           .prepare("SELECT * FROM fairshare_payout_ops WHERE batch_id=?")
-          .get(action.providerId) as any;
-        if (!op) fail("UNMATCHED_EVENT", "Payout not found");
-        await reconcilePayout(op, assertLease);
+          .all(action.providerId) as any[];
+        if (!ops.length) fail("UNMATCHED_EVENT", "Payout not found");
+        for (const op of ops) await reconcilePayout(op, assertLease);
       } else if (action.kind === WebhookActionKind.RecordUnmatched)
-        fail("UNMATCHED_EVENT", "Provider event needs matching");
+        fail(
+          action.reason === "UNSUPPORTED_WEBHOOK_EVENT"
+            ? "UNSUPPORTED_WEBHOOK_EVENT"
+            : "UNMATCHED_EVENT",
+          "Provider event needs matching",
+        );
       assertLease();
       db.prepare(
         "UPDATE fairshare_webhook_inbox SET status='DONE',error=NULL WHERE id=?",
@@ -629,7 +843,7 @@ export function registerPaymentRoutes(
     } catch (e) {
       assertLease();
       db.prepare(
-        "UPDATE fairshare_webhook_inbox SET status='PENDING',error=? WHERE id=?",
+        "UPDATE fairshare_webhook_inbox SET status='PENDING',error=? WHERE id=? AND status<>'DONE'",
       ).run(
         e instanceof DomainError || e instanceof PayPalError
           ? e.code
@@ -643,6 +857,12 @@ export function registerPaymentRoutes(
     try {
       planned = await verifyAndPlanWebhook(provider(), req.headers, req.body);
     } catch (e) {
+      // Still fail closed (503); only make the cause visible to operators.
+      if (
+        e instanceof PayPalError &&
+        e.code === "PAYPAL_WEBHOOK_NOT_CONFIGURED"
+      )
+        reportWebhookNotConfigured();
       paymentError(e);
     }
     tx(() => {
@@ -658,11 +878,12 @@ export function registerPaymentRoutes(
             "Event ID reused with changed payload",
           );
         if (
-          old.status === "PENDING" &&
-          canRepairRefundPlan(JSON.parse(old.action), planned!.action)
+          canRepairUnsupportedPlan(JSON.parse(old.action), planned!.action) ||
+          (old.status === "PENDING" &&
+            canRepairRefundPlan(JSON.parse(old.action), planned!.action))
         ) {
           db.prepare(
-            "UPDATE fairshare_webhook_inbox SET action=? WHERE id=? AND status='PENDING'",
+            "UPDATE fairshare_webhook_inbox SET action=?,status='PENDING',error=NULL WHERE id=?",
           ).run(JSON.stringify(planned!.action), planned!.eventId);
         }
         return;
@@ -678,11 +899,25 @@ export function registerPaymentRoutes(
     });
     await processEvent(planned!.eventId);
     const stored = db
-      .prepare("SELECT status FROM fairshare_webhook_inbox WHERE id=?")
+      .prepare("SELECT status,action FROM fairshare_webhook_inbox WHERE id=?")
       .get(planned!.eventId) as any;
+    const storedAction = JSON.parse(stored.action);
+    const unsupported = storedAction.reason === "UNSUPPORTED_WEBHOOK_EVENT";
     return reply
-      .code(stored.status === "DONE" ? 200 : 503)
-      .send({ accepted: true, status: stored.status });
+      .code(stored.status === "DONE" ? 200 : unsupported ? 400 : 503)
+      .send({
+        accepted: !unsupported,
+        status: stored.status,
+        action: storedAction.kind,
+        ...(unsupported
+          ? {
+              error: {
+                code: "UNSUPPORTED_WEBHOOK_EVENT",
+                message: "Webhook event type is not supported",
+              },
+            }
+          : {}),
+      });
   });
   registerPaymentRecovery({
     app,
@@ -691,11 +926,20 @@ export function registerPaymentRoutes(
     access,
     ownPayment,
     applyCapture,
+    processEvent,
   });
   const invoices = registerInvoiceRoutes(app, aggregates, provider);
   const automatic = options.automaticPayoutsEnabled
     ? automaticPayouts(app, aggregates, provider())
     : undefined;
+  app.get(`${base}/payments/setup`, async (req) => {
+    access(req);
+    return {
+      automaticPayouts: Boolean(automatic) && payoutsReady(),
+      payoutsReady: payoutsReady(),
+      paymentConfirmation: paymentConfirmation(),
+    };
+  });
   const worker = options.reconciliation?.enabled
     ? createReconciliationWorker({
         db,
@@ -768,37 +1012,7 @@ export function registerPaymentRoutes(
             const op = db
               .prepare("SELECT * FROM fairshare_refund_ops WHERE id=?")
               .get(job.id) as any;
-            const p = provider();
-            if (!p.getRefund)
-              fail("REFUND_NOT_CONFIGURED", "Sandbox refund provider required");
-            const result = await p.getRefund!(op.provider_refund_id);
-            assertLease();
-            if (
-              result.id !== op.provider_refund_id ||
-              result.amountCents !== op.amount ||
-              result.currency !== "USD" ||
-              result.captureId !== op.capture_id ||
-              result.reference !== op.request_key
-            )
-              fail("REFUND_MISMATCH", "Refund evidence mismatch");
-            tx(() => {
-              const fresh = db
-                .prepare("SELECT * FROM fairshare_refund_ops WHERE id=?")
-                .get(op.id) as any;
-              if (fresh.provider_refund_id !== result.id)
-                fail("RECOVERY_CONFLICT", "Refund evidence changed");
-              if (
-                ["COMPLETED", "FAILED", "CANCELLED"].includes(fresh.status) &&
-                fresh.status !== result.status
-              )
-                fail(
-                  "REFUND_STATUS_CONFLICT",
-                  "Terminal refund status cannot regress",
-                );
-              db.prepare(
-                "UPDATE fairshare_refund_ops SET status=? WHERE id=?",
-              ).run(result.status, op.id);
-            });
+            await reconcileRefund(op, assertLease);
           }
         },
       })

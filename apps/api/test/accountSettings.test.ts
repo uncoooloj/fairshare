@@ -31,6 +31,7 @@ test("payout email: one per person, validated and lowercased, suggestion never s
     assert.deepEqual((await app.inject({ url: own, headers: asB })).json(), {
       destination: null,
       suggestedEmail: "b@example.test",
+      paypalConnect: false,
     });
     const accounts = `/api/workspaces/${w.id}/payment-accounts?version=2`;
     let list = (await app.inject({ url: accounts, headers: asA })).json();
@@ -122,6 +123,8 @@ test("legacy per-workspace PayPal ID is read as a fallback without rewriting it"
       type: "PAYPAL_ID",
       value: "ABCDEFGHIJKLM",
       updatedAt: null,
+      verified: false,
+      verifiedAt: null,
     });
     assert.equal(result.members[0].status, "READY");
     await app.inject({

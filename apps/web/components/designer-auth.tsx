@@ -194,8 +194,7 @@ export function Auth({
           </button>
           {!login && (
             <p id="password-hint" className={styles.hint}>
-              Use at least 12 characters. Use a synthetic account for sandbox
-              testing.
+              At least 12 characters.
             </p>
           )}
           <button className={styles.primary} disabled={busy}>
@@ -223,11 +222,9 @@ export function Auth({
           </p>
         )}
         <p className={styles.hint}>
-          Email and password sign-in.{" "}
           {emailDelivery
             ? "Recovery requires a verified email."
-            : "Keep your password somewhere safe. Password reset by email isn’t available yet."}{" "}
-          Social sign-in is not available.
+            : "Password reset by email isn’t available yet, so keep your password safe."}
         </p>
       </div>
       <footer className={styles.footer}>Sandbox build. No live money.</footer>
@@ -260,14 +257,13 @@ export function AccessPrompt({
       <p>
         {isInvitation
           ? "You will join using your signed-in account:"
-          : "Confirm this verification link for"}{" "}
+          : "Confirm your email:"}{" "}
         <strong>{email}</strong>.
       </p>
       {isInvitation && (
         <p className={styles.hint}>
-          Joining adds you to the team. The organizer must also add you to the
-          agreement before you can review and approve its rules. It does not
-          approve an agreement or change anyone’s share.
+          After you join, the organizer adds you to the agreement so you can
+          approve the split.
         </p>
       )}
       <button

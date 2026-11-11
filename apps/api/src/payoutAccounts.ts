@@ -17,8 +17,17 @@ export type PayoutDestination = {
   value: string;
   /** null for a legacy per-workspace PayPal ID saved before account-level emails. */
   updatedAt: number | null;
+  /** True only when PayPal itself returned this email ("Connect with PayPal"). */
+  verified: boolean;
+  verifiedAt: number | null;
 };
-type AccountRow = { type: string; value: string; updatedAt: number };
+type AccountRow = {
+  type: string;
+  value: string;
+  updatedAt: number;
+  verified: number;
+  verifiedAt: number | null;
+};
 
 /** Idempotent startup migration. Additive only: legacy workspace rows and
  * already-frozen payout operations keep their PayPal ID meaning. */
@@ -33,6 +42,50 @@ export function ensurePayoutAccountSchema(db: Database) {
     db.exec(
       `ALTER TABLE fairshare_payout_ops ADD COLUMN recipient_type TEXT NOT NULL DEFAULT '${RecipientType.PAYPAL_ID}'`,
     );
+  // "Connect with PayPal": additive, so typed emails stay unverified.
+  const accountColumns = db
+    .prepare("PRAGMA table_info(fairshare_payout_accounts)")
+    .all() as { name: string }[];
+  for (const [name, definition] of [
+    ["verified", "INTEGER NOT NULL DEFAULT 0"],
+    ["payer_id", "TEXT"],
+    ["verified_at", "INTEGER"],
+  ])
+    if (!accountColumns.some((c) => c.name === name))
+      db.exec(
+        `ALTER TABLE fairshare_payout_accounts ADD COLUMN ${name} ${definition}`,
+      );
+  // This survives deleting the destination itself, so a pending OAuth callback
+  // cannot recreate an account after a later person decision.
+  db.exec(
+    "CREATE TABLE IF NOT EXISTS fairshare_payout_account_generations(user_id TEXT PRIMARY KEY,generation INTEGER NOT NULL)",
+  );
+}
+
+/** Advance the durable decision generation for a person's payout destination. */
+export function advancePayoutAccountGeneration(db: Database, userId: string) {
+  db.prepare(
+    "INSERT INTO fairshare_payout_account_generations(user_id,generation) VALUES(?,1) ON CONFLICT(user_id) DO UPDATE SET generation=generation+1",
+  ).run(userId);
+  return (
+    db
+      .prepare(
+        "SELECT generation FROM fairshare_payout_account_generations WHERE user_id=?",
+      )
+      .get(userId) as { generation: number }
+  ).generation;
+}
+
+export function payoutAccountGeneration(db: Database, userId: string) {
+  return (
+    (
+      db
+        .prepare(
+          "SELECT generation FROM fairshare_payout_account_generations WHERE user_id=?",
+        )
+        .get(userId) as { generation: number } | undefined
+    )?.generation ?? 0
+  );
 }
 
 /** One destination per person. Account-level saves win; a legacy per-workspace
@@ -44,7 +97,7 @@ export function readPayoutDestination(
 ): PayoutDestination | null {
   const account = db
     .prepare(
-      "SELECT recipient_type AS type, receiver AS value, updated_at AS updatedAt FROM fairshare_payout_accounts WHERE user_id=?",
+      "SELECT recipient_type AS type, receiver AS value, updated_at AS updatedAt, verified, verified_at AS verifiedAt FROM fairshare_payout_accounts WHERE user_id=?",
     )
     .get(userId) as AccountRow | undefined;
   if (account && isValidRecipient(account.type, account.value))
@@ -52,6 +105,8 @@ export function readPayoutDestination(
       type: account.type as RecipientType,
       value: account.value,
       updatedAt: account.updatedAt,
+      verified: account.verified === 1,
+      verifiedAt: account.verified === 1 ? account.verifiedAt : null,
     };
   if (!workspaceId) return null;
   const legacy = tableExists(db, "fairshare_recipients")
@@ -66,6 +121,8 @@ export function readPayoutDestination(
         type: RecipientType.PAYPAL_ID,
         value: legacy.value as string,
         updatedAt: null,
+        verified: false,
+        verifiedAt: null,
       }
     : null;
 }
@@ -95,7 +152,10 @@ export function hasAccountPayoutDestination(db: Database, userId: string) {
 }
 
 /** Self-only routes. The one place a payout destination is written. */
-export function registerPayoutAccountRoutes(app: FairshareApp) {
+export function registerPayoutAccountRoutes(
+  app: FairshareApp,
+  paypalConnect = false,
+) {
   const db = app.store.db;
   ensurePayoutAccountSchema(db);
   const path = "/api/auth/payout-account";
@@ -110,6 +170,8 @@ export function registerPayoutAccountRoutes(app: FairshareApp) {
         destination: readPayoutDestination(db, user.id, workspaceId),
         // A suggestion only: nothing is saved until the person presses Save.
         suggestedEmail: normalizePayoutEmail(user.email),
+        // Whether "Connect with PayPal" is offered. Never any credential.
+        paypalConnect,
       };
     },
   );
@@ -124,18 +186,27 @@ export function registerPayoutAccountRoutes(app: FairshareApp) {
       );
     const updatedAt = app.store.now();
     app.store.tx(() => {
+      advancePayoutAccountGeneration(db, user.id);
       db.prepare(
-        "INSERT INTO fairshare_payout_accounts(user_id,recipient_type,receiver,updated_at) VALUES(?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET recipient_type=excluded.recipient_type,receiver=excluded.receiver,updated_at=excluded.updated_at",
+        // A typed email is never PayPal-verified, even if it matches the old one.
+        "INSERT INTO fairshare_payout_accounts(user_id,recipient_type,receiver,updated_at,verified,payer_id,verified_at) VALUES(?,?,?,?,0,NULL,NULL) ON CONFLICT(user_id) DO UPDATE SET recipient_type=excluded.recipient_type,receiver=excluded.receiver,updated_at=excluded.updated_at,verified=0,payer_id=NULL,verified_at=NULL",
       ).run(user.id, RecipientType.EMAIL, email, updatedAt);
       app.store.audit(user.id, null, "PAYOUT_ACCOUNT_SAVED");
     });
     return {
-      destination: { type: RecipientType.EMAIL, value: email, updatedAt },
+      destination: {
+        type: RecipientType.EMAIL,
+        value: email,
+        updatedAt,
+        verified: false,
+        verifiedAt: null,
+      },
     };
   });
   app.delete(path, async (req) => {
     const user = app.requireSession(req);
     app.store.tx(() => {
+      advancePayoutAccountGeneration(db, user.id);
       db.prepare("DELETE FROM fairshare_payout_accounts WHERE user_id=?").run(
         user.id,
       );

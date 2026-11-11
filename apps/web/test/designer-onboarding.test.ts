@@ -20,7 +20,7 @@ test("onboarding never claims provider success or adds unsupported OAuth links",
   assert.doesNotMatch(source, /Example: \$3,000 payment/);
   assert.match(
     source,
-    /It\s+does\s+not\s+approve an agreement\s+or\s+change anyone’s share\./,
+    /the\s+organizer\s+adds\s+you\s+to\s+the\s+agreement\s+so\s+you\s+can\s+approve\s+the\s+split\./,
   );
   assert.doesNotMatch(source, /WorkspaceOnboarding|Workspace name/);
   assert.match(source, /if\s*\(\s*!busy\s*\)\s*onContinue\(\s*\)/);

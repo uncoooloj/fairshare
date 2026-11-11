@@ -70,7 +70,7 @@ export function ActivityLogSettings({ workspace }: { workspace: string }) {
     <section className="settings-pane">
       <SettingsPaneHeader
         title="Activity log"
-        description="Every approval, edit, allocation, adjustment and payout you can access. Read-only."
+        description="Everything that’s happened on your agreements."
       />
       <div className="settings-filters">
         <label>
