@@ -284,9 +284,24 @@ test("review actions use the authoritative review state", () => {
     verified: false,
     source: draft.value.versions[0].rules.source,
   };
-  const blocked = overviewSummary([draft], [], "me");
-  assert.match(blocked.attention[0].detail, /Confirm the advance amount/);
-  assert.equal(blocked.attention[0].key, '["w","a"]:review-blockers');
+  const sendWithUnpaidAdvance = overviewSummary([draft], [], "me");
+  assert.match(
+    sendWithUnpaidAdvance.attention[0].title,
+    /Send the split for approval/,
+  );
+  assert.equal(sendWithUnpaidAdvance.attention[0].key, '["w","a"]:send-review');
+
+  const waitingForAdvance = fixture();
+  waitingForAdvance.value.versions[0].rules.advance =
+    draft.value.versions[0].rules.advance;
+  waitingForAdvance.value.versions[0].approvals = {
+    me: "2026-11-10T12:00:00Z",
+    other: "2026-11-10T12:00:00Z",
+  };
+  const confirm = overviewSummary([waitingForAdvance], [], "me");
+  assert.match(confirm.attention[0].title, /Confirm the advance/);
+  assert.match(confirm.attention[0].detail, /advance was paid/);
+  assert.equal(confirm.attention[0].key, '["w","a"]:confirm-advance');
 });
 
 test("agreement status line is role-aware and needs no organizer switch-on", async () => {
@@ -302,15 +317,23 @@ test("agreement status line is role-aware and needs no organizer switch-on", asy
   const v = a.value.versions[0];
   v.status = "AWAITING_APPROVAL";
   v.approvals = { me: "2026-11-10T12:00:00Z" };
+  a.value.audit = [];
+  const waiting = agreementStatus(a, "me");
+  assert.equal(waiting.line, "Waiting for Riley and Jordan");
   assert.equal(
-    agreementStatus(a, "me").line,
-    "Waiting for Riley and Jordan to approve",
+    waiting.note,
+    "It switches on by itself once everyone approves.",
   );
+  assert.equal(waiting.action, StageAction.Nudge, "organizers can nudge");
   const riley = agreementStatus(a, "riley");
   assert.equal(riley.line, "Waiting for you to approve");
   assert.equal(riley.action, StageAction.Approve);
   v.approvals.riley = "2026-11-10T13:00:00Z";
-  assert.equal(agreementStatus(a, "riley").line, "Waiting for Jordan");
+  assert.equal(
+    agreementStatus(a, "riley").line,
+    "Maya approved · waiting for Jordan",
+  );
+  assert.equal(agreementStatus(a, "riley").action, StageAction.None);
   v.status = "DRAFT";
   v.approvals = {};
   v.changeRequests = [
@@ -325,6 +348,11 @@ test("agreement status line is role-aware and needs no organizer switch-on", asy
   assert.equal(
     agreementStatus(a, "me").line,
     "All set. Payments split automatically.",
+  );
+  assert.equal(
+    agreementStatus(a, "me").action,
+    StageAction.None,
+    "nothing to do once it's all set",
   );
   assert.equal(agreementStatus(a, "jordan").line, "All set");
   assert.equal(agreementStatus(a, "jordan").stage, AgreementStage.AllSet);

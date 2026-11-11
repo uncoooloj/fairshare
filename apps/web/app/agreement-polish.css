@@ -777,3 +777,73 @@ button.ag-rule-source:hover {
   color: var(--color-warning, #b45309);
   font-weight: var(--weight-medium, 500);
 }
+
+/* Per-person Copy link / Share, and the nudge drawer (people-share). */
+.ag-people .ag-row-actions {
+  width: auto;
+}
+.ag-row-actions-inner {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: var(--space-2, 8px);
+}
+.person-share-buttons {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.person-share .button {
+  white-space: nowrap;
+}
+.person-share-notice {
+  margin: 4px 0 0;
+  font-size: var(--text-xs);
+}
+.person-share textarea {
+  width: 100%;
+  margin-top: 6px;
+}
+.ag-status-note {
+  color: var(--color-muted);
+  font-weight: normal;
+}
+.ag-confirm-advance {
+  margin-top: 8px;
+}
+.nudge-list {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 20px;
+}
+.nudge-message {
+  margin: 6px 0 10px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--color-line);
+  font-style: normal;
+}
+.ag-people-count {
+  margin: 0 0 var(--space-2, 8px);
+}
+.ag-th-hint {
+  cursor: help;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+.nudge-message,
+.person-share textarea {
+  overflow-wrap: anywhere;
+}
+/* Keeps the hidden "Actions" header inside the scrolling table on phones. */
+.ag-people-table.people-table-scroll {
+  position: relative;
+}
+.ag-new-link-confirm {
+  margin: var(--space-2, 8px) 0;
+}
+.person-share-confirm p {
+  margin: 0 0 6px;
+  font-size: var(--text-xs);
+  max-width: 18rem;
+}

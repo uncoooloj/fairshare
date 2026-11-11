@@ -1,5 +1,6 @@
 import type { Agreement, Rules } from "./model";
 import { contractReviewState } from "./contract-review";
+import { readyButForAdvance } from "./advance-status";
 import { formatMoneyHeadline } from "./preferences";
 
 export interface OverviewPayout {
@@ -226,6 +227,14 @@ export function overviewSummary(
           title: "Switch on the new split",
           detail:
             "Everyone approved. Switch it on to start splitting payments.",
+        });
+      else if (organizer && readyButForAdvance(agreement))
+        attention.push({
+          key: `${identity(agreement)}:confirm-advance`,
+          agreement,
+          title: "Confirm the advance",
+          detail:
+            "Everyone approved. Confirm the advance was paid to start splitting payments.",
         });
       else if (review.canApprove)
         attention.push({

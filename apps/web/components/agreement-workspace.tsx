@@ -1,6 +1,13 @@
 "use client";
-import { useRef, useState, type ReactNode } from "react";
-import { money, type Agreement, type Rules, type Version } from "../lib/model";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  ApiError,
+  api,
+  money,
+  type Agreement,
+  type Rules,
+  type Version,
+} from "../lib/model";
 import { formatMoneyHeadline } from "../lib/preferences";
 import { statusLabel } from "../lib/status-labels";
 import { CitationId, OPEN_CITATION_EVENT } from "../lib/document-citations";
@@ -16,6 +23,10 @@ import {
 } from "../lib/agreement-status";
 import { Button } from "./ui";
 import { ActionMenu, type MenuItem } from "./action-menu";
+import { NudgeDrawer } from "./person-share";
+import { unconfirmedAdvance } from "../lib/advance-status";
+import { confirmAdvancePaid } from "../lib/agreement-api";
+import { forgetStaleInviteTokens } from "../lib/share-link";
 
 export enum RuleKind {
   Fees = "PayPal fee",
@@ -378,20 +389,28 @@ export function StatusLine({
       ? "Review and approve"
       : status.action === StageAction.SeeRequest
         ? "See request"
-        : status.action === StageAction.GetPaid
-          ? "Get paid"
-          : "";
+        : status.action === StageAction.Nudge
+          ? "Nudge"
+          : status.action === StageAction.ConfirmAdvance
+            ? "Confirm it’s paid"
+            : "";
   return (
     <div
       className={`ag-status ${status.tone ? `is-${status.tone}` : ""}`}
       role="status"
     >
       <span className="ag-status-dot" aria-hidden="true" />
-      <p className="ag-status-line">{status.line}</p>
+      <p className="ag-status-line">
+        {status.line}
+        {status.note && <span className="ag-status-note"> {status.note}</span>}
+      </p>
       {label && (
         <Button
           variant={
-            status.action === StageAction.SeeRequest ? "secondary" : "primary"
+            status.action === StageAction.SeeRequest ||
+            status.action === StageAction.Nudge
+              ? "secondary"
+              : "primary"
           }
           onClick={() => onAction(status.action)}
         >
@@ -410,6 +429,7 @@ export function AgreementHeader({
   onViewPayouts,
   rename,
   renameSuggested = false,
+  onAgreementChange,
 }: {
   agreement: Agreement;
   /** The viewer: the status line is written from their side. */
@@ -421,10 +441,64 @@ export function AgreementHeader({
   rename?: (open: boolean, close: () => void) => ReactNode;
   /** A suggested name keeps the review prompt visible without the menu. */
   renameSuggested?: boolean;
+  /** Newer agreement after a link is created or the advance is confirmed. */
+  onAgreementChange?: (agreement: Agreement) => void;
 }) {
   const menuButton = useRef<HTMLButtonElement>(null);
   const [renaming, setRenaming] = useState(false);
+  const [nudging, setNudging] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [confirmBusy, setConfirmBusy] = useState(false);
+  const [confirmError, setConfirmError] = useState("");
   const status = agreementStatus(agreement, userId);
+  const advance = unconfirmedAdvance(agreement);
+  useEffect(() => {
+    forgetStaleInviteTokens(agreement);
+  }, [agreement.workspaceId, agreement.id, agreement.revision]);
+  const statusAction = (action: StageAction) => {
+    if (action === StageAction.Nudge) setNudging(true);
+    else if (action === StageAction.ConfirmAdvance) {
+      setConfirmError("");
+      setConfirming(true);
+    } else onStatusAction(action);
+  };
+  async function confirmPaid() {
+    if (!advance || confirmBusy) return;
+    setConfirmBusy(true);
+    setConfirmError("");
+    try {
+      const next = await confirmAdvancePaid(
+        agreement.workspaceId,
+        agreement.id,
+        agreement.revision,
+        advance.advanceId,
+      );
+      onAgreementChange?.(next);
+      setConfirming(false);
+    } catch (cause) {
+      if (cause instanceof ApiError && cause.code === "REVISION_CONFLICT") {
+        try {
+          const current = await api<Agreement>(
+            `workspaces/${encodeURIComponent(agreement.workspaceId)}/collaborations/${encodeURIComponent(agreement.id)}`,
+          );
+          onAgreementChange?.(current);
+        } catch {
+          // Keep the retry message when the refresh itself is unavailable.
+        }
+        setConfirmError(
+          "Someone else just changed this. Here’s the latest; try again.",
+        );
+      } else {
+        setConfirmError(
+          cause instanceof Error
+            ? cause.message
+            : "Couldn’t confirm it. Try again.",
+        );
+      }
+    } finally {
+      setConfirmBusy(false);
+    }
+  }
   const meta = versionMeta(agreement);
   const menuItems: MenuItem[] = [
     ...(rename
@@ -463,7 +537,46 @@ export function AgreementHeader({
           items={menuItems}
         />
       </div>
-      <StatusLine status={status} onAction={onStatusAction} />
+      <StatusLine status={status} onAction={statusAction} />
+      {confirming &&
+        advance &&
+        status.action === StageAction.ConfirmAdvance && (
+          <div
+            className="ag-confirm-advance"
+            role="group"
+            aria-label="Confirm the advance"
+          >
+            <p>
+              Only confirm once the {money(advance.amountCents)} has actually
+              been paid. The split switches on right away.
+            </p>
+            {confirmError && <p role="alert">{confirmError}</p>}
+            <div className="row">
+              <Button
+                type="button"
+                disabled={confirmBusy}
+                onClick={() => void confirmPaid()}
+              >
+                {confirmBusy ? "Confirming…" : "Yes, it’s paid"}
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setConfirming(false)}
+              >
+                Not yet
+              </Button>
+            </div>
+          </div>
+        )}
+      {nudging && (
+        <NudgeDrawer
+          agreement={agreement}
+          userId={userId}
+          onClose={() => setNudging(false)}
+          onAgreementChange={onAgreementChange}
+        />
+      )}
       {rename &&
         (renaming || renameSuggested) &&
         rename(renaming, () => {
