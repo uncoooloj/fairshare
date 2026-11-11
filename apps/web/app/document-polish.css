@@ -79,6 +79,9 @@
   background: var(--color-canvas);
   overflow: hidden;
 }
+.dv-layout-no-clauses {
+  grid-template-columns: minmax(0, 1fr);
+}
 .dv-viewer {
   min-width: 0;
   display: flex;
