@@ -688,6 +688,7 @@ export function AgreementCreationWizard({
           }}
           mode={checkMode}
           equalSplitGuessed={equalSplitGuessed}
+          onUploadAgain={() => setStage(WizardStage.UPLOAD)}
         />
         {created?.lowConfidence && (
           <p className="wiz-warning" role="note">
@@ -785,7 +786,15 @@ export function AgreementCreationWizard({
           {busy ? "Sending…" : "Send for approval"}
         </button>
       </>,
-      <WizardSendStep answers={answers} error={error || undefined} />,
+      <WizardSendStep
+        answers={answers}
+        error={error || undefined}
+        onChange={(next) => {
+          setError("");
+          setAnswers(next);
+        }}
+        onFixPeople={() => setStage(WizardStage.PEOPLE)}
+      />,
     );
 
   if (stage === WizardStage.SENT && answers && agreement)

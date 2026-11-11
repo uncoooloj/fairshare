@@ -9,9 +9,11 @@ import {
 } from "../../../packages/domain/src/index";
 import {
   AnswerSource,
+  BlockerKind,
   FeeChoice,
   RefundChoice,
   blockingReasons,
+  sendBlockers,
   emptyAnswers,
   exampleSplit,
   rebalance,
@@ -245,13 +247,18 @@ test("toRules fills hidden fields and keys pending people by invitation", () => 
   assert.equal(rules.source.origin, "HUMAN_PROPOSAL");
   assert.equal(rules.source.documentId, "doc-1");
   assert.equal(rules.source.clause, "Midnight Sessions");
-  assert.match(
-    rules.source.excerpt,
-    /Refund preference recorded for organizer review: shared split\./,
-  );
+  assert.doesNotMatch(rules.source.excerpt, /[Rr]efund/);
   assert.ok(rules.source.excerpt.length <= 10000);
   assert.equal(rules.advance?.recipientId, "u-maya");
   assert.equal(rules.advance?.verified, true);
+  // "Not yet": sent as an advance still to be confirmed.
+  const notYet = answers();
+  notYet.advance!.value.alreadyPaid = false;
+  assert.equal(
+    toRules(notYet, { documentId: "d", organizerId: "u-maya" }).advance
+      ?.verified,
+    false,
+  );
 
   const before = toRules(answers(), { documentId: "d", organizerId: "u-maya" });
   assert.equal(before.feePolicy, "BEFORE_SPLIT");
@@ -324,9 +331,8 @@ test("toRules refuses people who can't be referenced yet", () => {
 test("summary sentences follow the spec copy", () => {
   assert.deepEqual(summarySentences(answers()), [
     "Midnight Sessions · Oct 1, 2026 to Sep 30, 2027",
-    "Maya is paid back $2,000 first. Then the rest is split 50 / 30 / 20.",
-    "PayPal fees come off the top.",
-    "Refund preference recorded for organizer review: shared split.",
+    "Maya is paid back $2,000 first. Then the rest is split Maya 50%, Jordan 30% and Riley 20%.",
+    "PayPal fees come off the top, before the split.",
     "Sending to Jordan (jordan@x) and Riley (riley@y)",
   ]);
   const other = answers({
@@ -337,34 +343,84 @@ test("summary sentences follow the spec copy", () => {
   });
   assert.deepEqual(summarySentences(other), [
     "Midnight Sessions · From Oct 1, 2026, no end date",
-    "The money is split 50 / 30 / 20.",
-    "Maya covers the PayPal fees.",
-    "Refund preference recorded for organizer review: advance.",
+    "The money is split Maya 50%, Jordan 30% and Riley 20%.",
+    "PayPal fees come out of Maya's share.",
     "Sending to Jordan (jordan@x) and Riley (riley@y)",
   ]);
 });
 
-test("blocking reasons are plain and specific", () => {
+test("the organizer outside the split is left out; odd shares keep their decimals", () => {
+  const a = answers({ fees: undefined });
+  a.people.value = [
+    { ...a.people.value[0], basisPoints: 0 },
+    { ...a.people.value[1], basisPoints: 3334 },
+    { ...a.people.value[2], basisPoints: 3333 },
+    person("sam", 3333, { name: "Sam", email: "sam@z" }),
+  ];
+  const lines = summarySentences(a);
+  assert.equal(
+    lines[1],
+    "Maya is paid back $2,000 first. Then the rest is split Jordan 33.34%, Riley 33.33% and Sam 33.33%.",
+  );
+  assert.doesNotMatch(lines.join(" "), /\b0 \/|Maya 0/);
+  // Unstated fees read as the default the rules store.
+  assert.equal(lines[2], "PayPal fees come off the top, before the split.");
+  const solo = answers({ advance: undefined });
+  solo.people.value = [
+    { ...solo.people.value[0], basisPoints: 0 },
+    { ...solo.people.value[1], basisPoints: 10000 },
+    { ...solo.people.value[2], basisPoints: 0 },
+  ];
+  assert.equal(summarySentences(solo)[1], "All of it goes to Jordan.");
+});
+
+test("an advance not paid yet is sendable and says what happens next", () => {
+  const a = answers();
+  a.advance!.value.alreadyPaid = false;
+  assert.deepEqual(blockingReasons(a), []);
+  assert.ok(
+    summarySentences(a).includes(
+      "You'll confirm Maya's $2,000 once it's paid. Nothing is split until then.",
+    ),
+  );
+});
+
+test("blocking reasons are plain and specific, each with what fixes it", () => {
   assert.deepEqual(blockingReasons(answers()), []);
   const a = answers({
     fees: undefined,
     advance: doc({ recipientKey: "maya", amountCents: 200000 }),
-    questions: [{ id: "refunds", text: "Refunds?", choices: [] }],
+    questions: [
+      {
+        id: "fees",
+        text: "We can't have Jordan pay the PayPal fee yet. Who covers it?",
+        choices: [],
+      },
+    ],
   });
   a.people.value[2] = person("riley", 2000, { name: "Riley" });
-  assert.deepEqual(blockingReasons(a), [
-    "Answer the refunds question",
-    "Tell us who covers the PayPal fees",
-    "Tell us if Maya has paid the $2,000",
-    "Add Riley's email",
-  ]);
+  assert.deepEqual(
+    sendBlockers(a).map((b) => [b.kind, b.text]),
+    [
+      [
+        BlockerKind.QUESTION,
+        "We can't have Jordan pay the PayPal fee yet. Who covers it?",
+      ],
+      [BlockerKind.ADVANCE_PAID, "Has Maya already paid the $2,000?"],
+      [BlockerKind.PEOPLE, "Add Riley's email"],
+    ],
+  );
   const b = answers({ name: doc("  ") });
   b.people.value[1] = person("jordan", 1000, { name: "Jordan", email: "nope" });
   assert.deepEqual(blockingReasons(b), [
-    "Give the agreement a name",
+    "Name the agreement",
     "Make the split add up to 100%",
     "Check Jordan's email",
   ]);
+  const gone = answers({
+    advance: doc({ recipientKey: "nobody", amountCents: 200000 }),
+  });
+  assert.deepEqual(blockingReasons(gone), ["Who put in the $2,000?"]);
 });
 
 test("emptyAnswers starts with just the organizer at 100%", () => {

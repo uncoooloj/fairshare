@@ -43,7 +43,8 @@ export enum FeeChoice {
   BEFORE_SPLIT = "BEFORE_SPLIT",
   ORGANIZER_SHARE = "ORGANIZER_SHARE",
 }
-/** Stored in the clarification text only (the engine has no refund rule). */
+/** Kept so saved drafts and older summaries still read; nothing asks it any more. Refunds
+ * aren't a choice: any refund pauses payouts while it's checked. */
 export enum RefundChoice {
   SPLIT = "SPLIT",
   ADVANCE = "ADVANCE",
@@ -69,7 +70,7 @@ export interface AgreementAnswers {
   /** Includes the organizer (isSelf). */
   people: Cited<PersonAnswer[]>;
   advance?: Cited<AdvanceAnswer>;
-  /** undefined = not stated, becomes a Question. */
+  /** undefined = not stated: the default, fees come off the top before the split. */
   fees?: Cited<FeeChoice>;
   /** The actual person whose share pays organizer fees in the prior rules. */
   feeBearerId?: string;
@@ -235,47 +236,46 @@ function advanceRecipient(a: AgreementAnswers) {
   return a.people.value.find((p) => p.key === key);
 }
 
+/** "Jordan 50%, Riley 30% and Sam 20%": people at 0% are left out. */
+function sharesText(people: PersonAnswer[]): string {
+  return listNames(
+    people
+      .filter((p) => p.basisPoints > 0)
+      .map((p) => `${firstName(p)} ${percent(p.basisPoints)}%`),
+  );
+}
+
 function splitLine(a: AgreementAnswers): string {
-  const people = a.people.value;
-  const split = people.map((p) => percent(p.basisPoints)).join(" / ");
+  const sharing = a.people.value.filter((p) => p.basisPoints > 0);
   const advance = a.advance?.value;
+  const rest =
+    sharing.length === 1
+      ? `goes to ${firstName(sharing[0])}`
+      : `is split ${sharesText(sharing)}`;
   if (advance) {
     const who = firstName(advanceRecipient(a));
-    const rest =
-      people.length === 1
-        ? `Then the rest goes to ${firstName(people[0])}.`
-        : `Then the rest is split ${split}.`;
-    return `${who} is paid back ${formatMoneyHeadline(advance.amountCents)} first. ${rest}`;
+    return `${who} is paid back ${formatMoneyHeadline(advance.amountCents)} first. Then the rest ${rest}.`;
   }
-  if (people.length === 1) return `All of it goes to ${firstName(people[0])}.`;
-  return `The money is split ${split}.`;
+  if (sharing.length === 1)
+    return `All of it goes to ${firstName(sharing[0])}.`;
+  return `The money ${rest}.`;
 }
 
-function feesLine(a: AgreementAnswers): string | undefined {
-  switch (a.fees?.value) {
-    case FeeChoice.BEFORE_SPLIT:
-      return "PayPal fees come off the top.";
-    case FeeChoice.ORGANIZER_SHARE:
-      return `${firstName(
-        a.people.value.find((p) => p.key === a.feeBearerId) ??
-          organizerOf(a.people.value),
-      )} covers the PayPal fees.`;
-    default:
-      return undefined;
-  }
+/** Fees not settled by anyone come off the top: that is what `toRules` stores. */
+function feesLine(a: AgreementAnswers): string {
+  if (a.fees?.value === FeeChoice.ORGANIZER_SHARE)
+    return `PayPal fees come out of ${firstName(
+      a.people.value.find((p) => p.key === a.feeBearerId) ??
+        organizerOf(a.people.value),
+    )}'s share.`;
+  return "PayPal fees come off the top, before the split.";
 }
 
-function refundsLine(a: AgreementAnswers): string | undefined {
-  switch (a.refunds?.value) {
-    case RefundChoice.SPLIT:
-      return "Refund preference recorded for organizer review: shared split.";
-    case RefundChoice.ADVANCE:
-      return a.advance
-        ? `Refund preference recorded for organizer review: ${firstName(advanceRecipient(a))}'s advance.`
-        : "Refund preference recorded for organizer review: advance.";
-    default:
-      return undefined;
-  }
+/** What happens to the advance on sending. Undefined when there is none or it's unanswered. */
+function advanceLine(a: AgreementAnswers): string | undefined {
+  const advance = a.advance?.value;
+  if (!advance || advance.alreadyPaid !== false) return undefined;
+  return `You'll confirm ${firstName(advanceRecipient(a))}'s ${formatMoneyHeadline(advance.amountCents)} once it's paid. Nothing is split until then.`;
 }
 
 function sendingLine(a: AgreementAnswers): string | undefined {
@@ -297,48 +297,68 @@ export function summarySentences(a: AgreementAnswers): string[] {
     heading,
     splitLine(a),
     feesLine(a),
-    refundsLine(a),
+    advanceLine(a),
     sendingLine(a),
   ].filter((line): line is string => !!line);
 }
 
-function questionReason(q: Question): string {
-  const id = q.id.toLowerCase();
-  if (id.includes("refund")) return "Answer the refunds question";
-  if (id.includes("fee")) return "Answer the fees question";
-  return `Answer "${q.text.trim()}"`;
+/** What a blocker needs, so the Send screen can fix it in place. */
+export enum BlockerKind {
+  NAME = "name",
+  PEOPLE = "people",
+  SPLIT = "split",
+  QUESTION = "question",
+  ADVANCE_WHO = "advance_who",
+  ADVANCE_PAID = "advance_paid",
 }
 
-/** Why the agreement can't be sent yet, as plain sentences. Empty means ready. */
-export function blockingReasons(a: AgreementAnswers): string[] {
-  const reasons: string[] = [];
+export interface Blocker {
+  kind: BlockerKind;
+  text: string;
+  /** For QUESTION: which one. */
+  questionId?: string;
+}
+
+/** Why the agreement can't be sent yet, each with what fixes it. Empty means ready. An
+ * advance that isn't paid yet doesn't block: it is confirmed later, before switch-on. */
+export function sendBlockers(a: AgreementAnswers): Blocker[] {
+  const out: Blocker[] = [];
+  const add = (kind: BlockerKind, text: string, questionId?: string) => {
+    if (!out.some((b) => b.text === text))
+      out.push({ kind, text, ...(questionId ? { questionId } : {}) });
+  };
   const people = a.people.value;
-  if (!a.name.value.trim()) reasons.push("Give the agreement a name");
-  if (people.some((p) => !p.name.trim())) reasons.push("Add everyone's name");
+  if (!a.name.value.trim()) add(BlockerKind.NAME, "Name the agreement");
+  if (people.some((p) => !p.name.trim()))
+    add(BlockerKind.PEOPLE, "Add everyone's name");
   if (!people.length || totalBasisPoints(people) !== TOTAL_BASIS_POINTS)
-    reasons.push("Make the split add up to 100%");
-  const unanswered = a.questions.filter((q) => !q.answeredChoiceId);
-  for (const q of unanswered) reasons.push(questionReason(q));
-  if (!a.fees && !unanswered.some((q) => q.id.toLowerCase().includes("fee")))
-    reasons.push("Tell us who covers the PayPal fees");
+    add(BlockerKind.SPLIT, "Make the split add up to 100%");
+  // Same rule as the unresolved questions `toRules` writes, which the server refuses.
+  for (const q of a.questions.filter((q) => !q.answeredChoiceId))
+    if (q.text.trim()) add(BlockerKind.QUESTION, q.text.trim(), q.id);
   if (a.advance) {
     const recipient = advanceRecipient(a);
     const amount = formatMoneyHeadline(a.advance.value.amountCents);
-    if (!recipient) reasons.push("Choose who paid upfront");
+    if (!recipient) add(BlockerKind.ADVANCE_WHO, `Who put in the ${amount}?`);
     else if (a.advance.value.alreadyPaid === undefined)
-      reasons.push(`Tell us if ${firstName(recipient)} has paid the ${amount}`);
-    else if (!a.advance.value.alreadyPaid)
-      reasons.push(
-        `${firstName(recipient)} needs to have paid the ${amount} before you send`,
+      add(
+        BlockerKind.ADVANCE_PAID,
+        `Has ${firstName(recipient)} already paid the ${amount}?`,
       );
   }
   for (const p of people) {
     if (p.isSelf || p.userId || p.invitationId) continue;
     const email = p.email?.trim();
-    if (!email) reasons.push(`Add ${firstName(p)}'s email`);
-    else if (!EMAIL.test(email)) reasons.push(`Check ${firstName(p)}'s email`);
+    if (!email) add(BlockerKind.PEOPLE, `Add ${firstName(p)}'s email`);
+    else if (!EMAIL.test(email))
+      add(BlockerKind.PEOPLE, `Check ${firstName(p)}'s email`);
   }
-  return [...new Set(reasons)];
+  return out;
+}
+
+/** Why the agreement can't be sent yet, as plain sentences. Empty means ready. */
+export function blockingReasons(a: AgreementAnswers): string[] {
+  return sendBlockers(a).map((b) => b.text);
 }
 
 function summaryExcerpt(a: AgreementAnswers) {

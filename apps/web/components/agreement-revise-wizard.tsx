@@ -22,11 +22,7 @@ import {
   type AgreementAnswers,
   type Question,
 } from "../lib/rules-answers";
-import {
-  feeQuestion,
-  questionsFor,
-  refundQuestion,
-} from "../lib/standard-questions";
+import { feeQuestion, questionsFor } from "../lib/standard-questions";
 import { workspaceBase } from "../lib/workspace-base";
 import { checkProblem, detailsPatch } from "./agreement-creation-wizard";
 import { partPhrase, type ChangeRequestView } from "./change-request-drawer";
@@ -57,22 +53,16 @@ export const REQUEST_CARD: Record<WrongPart, CheckCard> = {
   [WrongPart.OTHER]: CheckCard.TOP,
 };
 
-/** A fees or refunds request asks that question again, starting from today's answer. */
+/** A fees request asks that question again, starting from today's answer. Refunds aren't
+ * a choice, so a refunds request is only shown as a note. */
 function requestedQuestion(
   answers: AgreementAnswers,
   request?: ChangeRequestView,
 ): Question | undefined {
   const question =
-    request?.part === WrongPart.FEES
-      ? feeQuestion(answers)
-      : request?.part === WrongPart.REFUNDS
-        ? refundQuestion(answers)
-        : undefined;
+    request?.part === WrongPart.FEES ? feeQuestion(answers) : undefined;
   if (!question || !request) return undefined;
-  const current =
-    request.part === WrongPart.FEES
-      ? answers.fees?.value
-      : answers.refunds?.value;
+  const current = answers.fees?.value;
   return {
     ...question,
     quote: request.note,
