@@ -5,6 +5,7 @@ import {
 } from "./agreement-invitation";
 import { useEmailDelivery } from "../lib/email-capability";
 import { useDisplayPreferences } from "./settings-preferences";
+import { Button } from "./ui";
 import { Logo, Heading, Auth } from "./agreement-widgets";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -337,6 +338,10 @@ export default function FairshareApp() {
     }
   }, [ready, user]);
   useEffect(() => {
+    if (!ready) return;
+    document.title = user ? `${section} · Fairshare` : "Log in · Fairshare";
+  }, [ready, user, section]);
+  useEffect(() => {
     if (user)
       run(async () => {
         await loadWorkspaces();
@@ -458,18 +463,24 @@ export default function FairshareApp() {
         )
       )}
       {isInvitationFlow ? null : needsWorkspace ? (
-        <>
-          {section === Section.Payouts && (
-            <Heading
-              title="No payouts yet"
-              description="Start with an agreement. Payouts appear after approved rules and recorded payments."
-            />
-          )}
-          <AgreementIntake first busy={busy} onCreate={createFromAgreement} />
-          <p className="muted">
-            Already invited? Open Settings to accept your invitation.
-          </p>
-        </>
+        section === Section.Payouts ? (
+          <Heading
+            title="No payouts yet"
+            description="Your payouts will appear here once an agreement receives a payment."
+            action={
+              <Button onClick={() => navigate(Section.Agreements)}>
+                Create an agreement
+              </Button>
+            }
+          />
+        ) : (
+          <>
+            <AgreementIntake first busy={busy} onCreate={createFromAgreement} />
+            <p className="muted">
+              Already invited? Open Settings to accept your invitation.
+            </p>
+          </>
+        )
       ) : (
         <>
           {section === Section.Overview && !selected && (
