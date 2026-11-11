@@ -262,6 +262,8 @@ function readingQuestion(
                 : `reading-${i}`,
             label: r.label,
             explanation: r.explanation,
+            available: (a: AgreementAnswers) =>
+              !!applyPatch(a, r.patch, advance),
             apply: (a: AgreementAnswers) =>
               applyPatch(a, r.patch, advance) ?? a,
           },
@@ -522,8 +524,8 @@ export function answersFromExtraction(
     ...(feesAnswer ? { fees: feesAnswer } : {}),
   };
 
-  // Questions from the reading, money first. Fees are only asked when the document wants
-  // something Fairshare can't do; otherwise they come off the top. Refunds are never asked.
+  // Keep questions the reading actually raised, including fees. A default is not
+  // an answer to an ambiguous clause. Refunds remain outside this rules engine.
   const raised: Question[] = [];
   const askOf = (section: RulesSection) => {
     const s = sections[section];
@@ -554,6 +556,26 @@ export function answersFromExtraction(
       advanceQuestion(advanceFound, documentText);
     raised.push(q);
   }
+  const feesAsk = askOf(RulesSection.FEES);
+  if (feesAsk?.question) {
+    const q = readingQuestion(
+      StandardQuestionId.FEES,
+      feesAsk.question,
+      answers,
+      advanceFound,
+      documentText,
+    );
+    raised.push(
+      q ?? {
+        ...feeQuestion(answers),
+        text: feesAsk.question.question,
+        quote: feesAsk.question.quote,
+        clause: clauseFor(documentText, feesAsk.question.quote),
+        proposalNote:
+          "We can't apply every interpretation of this clause. These are payment rules you can propose instead; check them with everyone.",
+      },
+    );
+  }
   if (feeBearerElsewhere && fees.status === DraftStatus.SHOWN) {
     const standard = feeQuestion(answers);
     raised.push({
@@ -564,7 +586,14 @@ export function answersFromExtraction(
     });
   }
 
-  const questions = questionsFor(answers, raised);
+  const questions = questionsFor(
+    answers,
+    raised.map((question) => ({
+      ...question,
+      requiresExplicitAnswer: true,
+      documentId: typeof e?.documentId === "string" ? e.documentId : undefined,
+    })),
+  );
   const serverStatus = (s: RulesSection) => e?.sections?.[s]?.status;
   // Fees and refunds never need the organizer unless a question was raised above.
   const unclear = SECTIONS.some(

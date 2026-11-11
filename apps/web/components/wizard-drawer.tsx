@@ -13,6 +13,7 @@ export function WizardDrawer({
   lede,
   saveLabel = "Save",
   saveDisabled = false,
+  hideFooter = false,
   onSave,
   onCancel,
   children,
@@ -21,6 +22,8 @@ export function WizardDrawer({
   lede?: string;
   saveLabel?: string;
   saveDisabled?: boolean;
+  /** Embedded decision steps supply their own explicit apply/cancel controls. */
+  hideFooter?: boolean;
   onSave(): void;
   onCancel(): void;
   children: ReactNode;
@@ -73,18 +76,24 @@ export function WizardDrawer({
           {lede ? <p className="wd-lede">{lede}</p> : null}
           {children}
         </div>
-        <footer className="wd-footer">
-          <button type="button" className="button secondary" onClick={onCancel}>
-            Cancel
-          </button>
-          <button
-            type="submit"
-            className="button primary"
-            disabled={saveDisabled}
-          >
-            {saveLabel}
-          </button>
-        </footer>
+        {!hideFooter && (
+          <footer className="wd-footer">
+            <button
+              type="button"
+              className="button secondary"
+              onClick={onCancel}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="button primary"
+              disabled={saveDisabled}
+            >
+              {saveLabel}
+            </button>
+          </footer>
+        )}
       </form>
     </dialog>
   );

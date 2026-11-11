@@ -2,6 +2,7 @@
 
 import { useId, useRef, useState, type KeyboardEvent } from "react";
 import { parseCents } from "../lib/model";
+import { reopenChangedQuestions } from "../lib/rules-answers";
 import { formatMoney, formatMoneyHeadline } from "../lib/preferences";
 import { toneInRoster } from "../lib/person";
 import type {
@@ -52,7 +53,8 @@ export function answerQuestion(
   index: number,
   choice: QuestionChoice,
 ): AgreementAnswers {
-  const applied = choice.apply(answers);
+  if (choice.available && !choice.available(answers)) return answers;
+  const applied = reopenChangedQuestions(answers, choice.apply(answers));
   return {
     ...applied,
     questions: applied.questions.map((q, i) =>
@@ -192,15 +194,18 @@ export function WizardQuestionsStep({
 
   const feeCents = sampleFeeCents(sampleCents);
   const roster = answers.people.value.map((p) => ({ userId: p.key }));
-  const selected = question.choices.find((c) => c.id === selectedId);
+  const choices = question.choices.filter(
+    (choice) => !choice.available || choice.available(answers),
+  );
+  const selected = choices.find((c) => c.id === selectedId);
 
   const select = (choiceIndex: number) => {
-    const choice = question.choices[choiceIndex];
+    const choice = choices[choiceIndex];
     setSelectedId(choice.id);
     cardRefs.current[choiceIndex]?.focus();
   };
   const onKeyDown = (e: KeyboardEvent, choiceIndex: number) => {
-    const count = question.choices.length;
+    const count = choices.length;
     if (e.key === "ArrowDown" || e.key === "ArrowRight") {
       e.preventDefault();
       select((choiceIndex + 1) % count);
@@ -214,7 +219,7 @@ export function WizardQuestionsStep({
   };
   const focusIndex = Math.max(
     0,
-    question.choices.findIndex((c) => c.id === selectedId),
+    choices.findIndex((c) => c.id === selectedId),
   );
 
   return (
@@ -237,17 +242,30 @@ export function WizardQuestionsStep({
         </blockquote>
       ) : (
         <p className="wq-silent">
-          Your agreement doesn't say, so it's up to you.
+          We couldn't locate a clear answer in the agreement. Check the source
+          with everyone before choosing.
         </p>
       )}
 
+      <p className="wq-proposal-note">
+        {question.proposalNote ??
+          "These are possible fixes, not a decision about what is fair. Compare what each person gets, then choose a proposal for everyone to review."}{" "}
+        Your original contract stays unchanged. Everyone must approve the
+        proposed rules before they can take effect.
+      </p>
+      {choices.length < question.choices.length && (
+        <p className="muted">
+          Some options no longer fit the people or terms you entered. Go back to
+          check them, or leave this question open.
+        </p>
+      )}
       <SampleAmount cents={sampleCents} onChange={setSampleCents} />
       <p className="wq-example-line">
         {`With a ${formatMoneyHeadline(feeCents)} PayPal fee, each person gets:`}
       </p>
 
       <div className="wq-choices" role="radiogroup" aria-labelledby={headingId}>
-        {question.choices.map((choice, i) => {
+        {choices.map((choice, i) => {
           const checked = choice.id === selectedId;
           const rows = choiceEffect(answers, choice, sampleCents, feeCents);
           return (

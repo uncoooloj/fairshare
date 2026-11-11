@@ -7,6 +7,8 @@ export interface DocumentCitation {
   reference: Source;
   /** A caller-provided rule summary, used before a draft has a Version. */
   summary?: string;
+  /** A question, not an agreed rule; use an attention treatment in both readers. */
+  attention?: boolean;
   highlight?: SourceHighlight;
   page?: number;
   unavailable?: string;
@@ -254,4 +256,15 @@ export function pageBlocks(
     start = end + 1;
   }
   return blocks;
+}
+
+/** Cycle every clause owning the clicked segment, including nested/overlapping questions. */
+export function nextCitationId(
+  ids: string[],
+  selected: string | null,
+): string | undefined {
+  const clauses = ids.filter((id) => !id.startsWith(SEARCH_PREFIX));
+  return clauses.length
+    ? clauses[(clauses.indexOf(selected ?? "") + 1) % clauses.length]
+    : undefined;
 }

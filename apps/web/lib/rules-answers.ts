@@ -54,6 +54,8 @@ export interface QuestionChoice {
   label: string;
   explanation: string;
   apply(a: AgreementAnswers): AgreementAnswers;
+  /** A changed roster can make an earlier interpretation impossible to apply. */
+  available?(a: AgreementAnswers): boolean;
 }
 export interface Question {
   id: string;
@@ -62,6 +64,12 @@ export interface Question {
   clause?: string;
   choices: QuestionChoice[];
   answeredChoiceId?: string;
+  /** A source-backed ambiguity must not disappear when an unrelated field is edited. */
+  requiresExplicitAnswer?: boolean;
+  /** Source identity for locating an unclear clause, never inferred from matching words. */
+  documentId?: string;
+  /** Why choices are proposals rather than supported interpretations of the source. */
+  proposalNote?: string;
 }
 export interface AgreementAnswers {
   name: Cited<string>;
@@ -78,6 +86,41 @@ export interface AgreementAnswers {
   feeBearerChoice?: "KEEP" | "ORGANIZER";
   refunds?: Cited<RefundChoice>;
   questions: Question[];
+}
+
+/** A later manual edit cannot retain a confirmation of different financial terms. */
+export function reopenChangedQuestions(
+  before: AgreementAnswers,
+  after: AgreementAnswers,
+): AgreementAnswers {
+  const value = (a: AgreementAnswers, id: string) => {
+    if (id === "fees") return [a.fees?.value, a.feeBearerId, a.feeBearerChoice];
+    if (id === "split")
+      return a.people.value.map((p) => [
+        p.key,
+        p.name,
+        p.basisPoints,
+        p.isSelf,
+      ]);
+    if (id === "advance")
+      return a.advance
+        ? [a.advance.value.recipientKey, a.advance.value.amountCents]
+        : null;
+    return null;
+  };
+  return {
+    ...after,
+    questions: after.questions.map((question) =>
+      question.answeredChoiceId &&
+      (JSON.stringify(value(before, question.id)) !==
+        JSON.stringify(value(after, question.id)) ||
+        question.choices
+          .find((choice) => choice.id === question.answeredChoiceId)
+          ?.available?.(after) === false)
+        ? { ...question, answeredChoiceId: undefined }
+        : question,
+    ),
+  };
 }
 
 export const TOTAL_BASIS_POINTS = 10000;
