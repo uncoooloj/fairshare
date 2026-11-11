@@ -847,12 +847,15 @@ export function RulesEditor({
   const [splitDraft, setSplitDraft] = useState<Record<string, string> | null>(
     null,
   );
-  useEffect(() => {
-    setSplitDraft(null);
-  }, [agreement.revision]);
   const selectedFact = highlights.find((fact) => fact.id === selectedCitation);
-  function editSplit() {
+  const splitOpenerRef = useRef<HTMLElement | null>(null);
+  const splitWasOpen = useRef(false);
+  function closeSplitEditor() {
+    setSplitDraft(null);
+  }
+  function editSplit(opener: HTMLElement) {
     if (!formRef.current) return;
+    splitOpenerRef.current = opener;
     const fields = new FormData(formRef.current);
     setSplitDraft(
       Object.fromEntries(
@@ -866,6 +869,16 @@ export function RulesEditor({
   const [draftRevision, setDraftRevision] = useState(0);
   const formRef = useRef<HTMLFormElement>(null);
   const splitDrawerRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (splitWasOpen.current && !splitDraft) {
+      splitOpenerRef.current?.focus({ preventScroll: true });
+      splitOpenerRef.current = null;
+    }
+    splitWasOpen.current = !!splitDraft;
+  }, [splitDraft]);
+  useEffect(() => {
+    closeSplitEditor();
+  }, [agreement.revision]);
   const [prefilled, setPrefilled] = useState(false);
   const suggestions = suggestedShares(
     extraction,
@@ -1030,7 +1043,7 @@ export function RulesEditor({
                 type="button"
                 variant="secondary"
                 disabled={!!splitDraft}
-                onClick={editSplit}
+                onClick={(event) => editSplit(event.currentTarget)}
               >
                 Edit proposed split
               </Button>
@@ -1049,7 +1062,7 @@ export function RulesEditor({
                 if (event.key === "Escape") {
                   event.preventDefault();
                   event.stopPropagation();
-                  setSplitDraft(null);
+                  closeSplitEditor();
                   return;
                 }
                 if (event.key !== "Tab") return;
@@ -1090,7 +1103,7 @@ export function RulesEditor({
                   );
                   if (fact) setSelectedCitation(fact.id);
                 }}
-                onCancel={() => setSplitDraft(null)}
+                onCancel={closeSplitEditor}
                 onApply={(values) => {
                   for (const [id, value] of Object.entries(values)) {
                     const input = formRef.current?.elements.namedItem(id);
@@ -1106,7 +1119,7 @@ export function RulesEditor({
                   }
                   onDirty?.();
                   setDraftRevision((value) => value + 1);
-                  setSplitDraft(null);
+                  closeSplitEditor();
                 }}
               />
             </aside>
@@ -1116,7 +1129,7 @@ export function RulesEditor({
           type="button"
           variant="secondary"
           disabled={!!splitDraft}
-          onClick={editSplit}
+          onClick={(event) => editSplit(event.currentTarget)}
         >
           Edit revenue split
         </Button>
