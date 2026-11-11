@@ -157,9 +157,9 @@ export function SomethingWrongDrawer({
               }
             }}
           >
-            <h2 id={titleId}>What’s not right?</h2>
+            <h2 id={titleId}>Request changes</h2>
             <fieldset className="collab-parts">
-              <legend className="visually-hidden">Which part is wrong</legend>
+              <legend className="collab-rule-label">Rule</legend>
               {Object.values(WrongPart).map((value) => (
                 <label key={value} className="collab-part">
                   <input
@@ -175,8 +175,7 @@ export function SomethingWrongDrawer({
               ))}
             </fieldset>
             <label htmlFor={noteId} className="collab-note-label">
-              Tell {organizerName} what should change{" "}
-              <span className="muted">(required)</span>
+              Comment <span className="muted">(required)</span>
             </label>
             <textarea
               id={noteId}
@@ -207,7 +206,7 @@ export function SomethingWrongDrawer({
                 Cancel
               </Button>
               <Button type="submit" disabled={disabled || !note.trim()}>
-                {sending ? "Sending…" : "Send"}
+                {sending ? "Sending…" : "Send request"}
               </Button>
             </div>
           </form>
