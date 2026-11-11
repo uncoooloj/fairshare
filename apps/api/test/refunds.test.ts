@@ -838,6 +838,44 @@ test("a refund in flight fails after a reversal: the part set aside for it is re
     assert.equal(s.mock.counts.payoutWrites, 0);
   }));
 
+for (const outcome of ["COMPLETED", "FAILED"])
+  test(`a partial reversal with a refund in flight is taken in full now; the refund then ${outcome}`, () =>
+    run(async (s) => {
+      const { id, captureId } = await s.pay();
+      s.mock.config.refundStatus = "PENDING";
+      const pending = await s.post(`/payments/${id}/refund`, {
+        confirmRefund: true,
+        amountCents: 3000,
+        requestKey: "in-flight",
+      });
+      // 4000 reversed with 3000 in flight cannot overlap it: 10000 - 3000 leaves 7000.
+      await reversalEvent(s, "rev", captureId, 4000);
+      const grossTaken = () =>
+        s
+          .agreement()
+          .value.revenue.find((r) => r.providerCaptureId === captureId)!
+          .refunds!.reduce((sum, r) => sum + r.grossCents, 0);
+      assert.equal(grossTaken(), 4000);
+      assert.equal(
+        (
+          s.app.store.db
+            .prepare("SELECT count(*) AS n FROM fairshare_reversal_holdbacks")
+            .get() as any
+        ).n,
+        0,
+      );
+      s.mock.refunds.get(pending.json().providerRefundId)!.status = outcome;
+      await s.post(`/refunds/${pending.json().id}/reconcile`);
+      // PayPal took 7000 when the refund completes, 4000 when it fails.
+      assert.equal(grossTaken(), outcome === "COMPLETED" ? 7000 : 4000);
+      assert.deepEqual(
+        s.totals(captureId),
+        outcome === "COMPLETED"
+          ? { maya: 1620, riley: 1080 }
+          : { maya: 3420, riley: 2280 },
+      );
+    }));
+
 test("a refund cut down by a reversal replays without conflict", () =>
   run(async (s) => {
     const { captureId } = await s.pay();

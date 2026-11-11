@@ -318,8 +318,8 @@ export function settleRefundOp(
   return { applied: outcome.applied, held: true };
 }
 /** Call inside a transaction. Applies the reversal PayPal reported on a payment: its stated
- * amount (or everything left), less Fairshare refunds still going through, which are set aside
- * for those refunds. Returns the cents applied now. */
+ * amount (or everything left). Only the part that must overlap Fairshare refunds still going
+ * through (stated + in flight - left) is set aside for them. Returns the cents applied now. */
 export function applyReversal(
   db: Database,
   aggregates: AggregateStore,
@@ -333,7 +333,14 @@ export function applyReversal(
     input.captureId,
   );
   const wanted = Math.min(input.statedCents ?? left, left);
-  let setAside = Math.min(wanted, inFlightRefundCents(db, input.captureId));
+  // Only the overlap that is possible: a reversal smaller than what in-flight refunds leave
+  // cannot include their money, so all of it is taken now.
+  const inFlight = inFlightRefundCents(db, input.captureId);
+  let setAside = Math.min(
+    wanted,
+    inFlight,
+    Math.max(0, wanted + inFlight - left),
+  );
   const now = wanted - setAside;
   for (const op of db
     .prepare(
