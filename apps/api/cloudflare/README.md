@@ -28,8 +28,9 @@ leases; no process polling loop is started. The authority creates an alarm only
 when a configured provider exists and `PAYPAL_RECONCILIATION_ENABLED=true`.
 A private `DOCUMENT_PARSER` binding is required for PDF/DOCX. With
 `OCR_ENABLED=true`, the parser reads native PDF text first and automatically tries
-scan reading once only when the PDF has no extractable text; there is no per-upload
-OCR consent control. Limits, parser failures and timeouts do not fall back. This
+scan reading once only when the PDF has no extractable text. Older API clients can
+explicitly request `useLocalOcr: true`; that legacy request uses OCR directly and
+returns `OCR_UNAVAILABLE` when disabled. Limits, parser failures and timeouts do not fall back. This
 document-reading path is separate from the explicit per-extraction consent that
 sends agreement text to Cloudflare AI for rule suggestions. Missing parser fails
 with 503 without partial intake writes. See `../parser-container/README.md`.

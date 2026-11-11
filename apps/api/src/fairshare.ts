@@ -399,8 +399,14 @@ export function registerFairshareRoutes(
       if (b.mimeType !== "application/pdf")
         throw new DomainError("INVALID_PDF", "Upload a PDF document.");
       const bytes = decodePdfBase64(b.base64);
+      if (b.useLocalOcr === true && !options.localOcrEnabled)
+        throw new DomainError(
+          "OCR_UNAVAILABLE",
+          "OCR is not enabled. Paste text or ask the server operator to enable it.",
+        );
       const parsed = await readUploadedPdf(readers, bytes, {
         ocrEnabled: !!options.localOcrEnabled,
+        forceOcr: b.useLocalOcr === true,
       });
       // Recheck membership after asynchronous parsing; revoked sessions/members must not persist documents.
       access(req);

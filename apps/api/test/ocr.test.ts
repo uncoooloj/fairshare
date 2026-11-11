@@ -87,7 +87,7 @@ test("OCR is disabled by default and a legacy client hint never starts it", asyn
       },
     });
     assert.equal(result.statusCode, 400);
-    assert.equal(result.json().error.code, "PDF_NO_EXTRACTABLE_TEXT");
+    assert.equal(result.json().error.code, "OCR_UNAVAILABLE");
     assert.equal(
       (await app.inject({ url: path, headers })).json().documents.length,
       0,

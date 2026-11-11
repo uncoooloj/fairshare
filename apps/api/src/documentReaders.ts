@@ -19,8 +19,11 @@ export const localDocumentReaders: DocumentReaders = {
 export async function readUploadedPdf(
   readers: DocumentReaders,
   bytes: Buffer,
-  options: { ocrEnabled: boolean },
+  options: { ocrEnabled: boolean; forceOcr?: boolean },
 ) {
+  // Retain the existing explicit API option for older clients. Callers validate
+  // availability before reaching this helper; never bypass the server setting.
+  if (options.forceOcr && options.ocrEnabled) return readers.ocr(bytes);
   try {
     return await readers.pdf(bytes);
   } catch (error) {
