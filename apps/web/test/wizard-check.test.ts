@@ -21,9 +21,14 @@ import {
 import {
   addPerson,
   equalSplit,
+  evenSplit,
   moveShare,
   parsePercent,
   removePerson,
+  slideShare,
+  totalProblem,
+  typeShare,
+  type SplitState,
 } from "../components/split-drawer";
 
 const person = (
@@ -213,4 +218,129 @@ test("split drawer maths always totals 100%", () => {
   assert.equal(parsePercent("12.5%"), 1250);
   assert.equal(parsePercent("101"), undefined);
   assert.equal(parsePercent("abc"), undefined);
+});
+
+/** Types a number the way a person does: one keystroke at a time. */
+function typed(state: SplitState, key: string, text: string): SplitState {
+  let next = state;
+  for (let i = 1; i <= text.length; i++) {
+    const basisPoints = parsePercent(text.slice(0, i));
+    if (basisPoints !== undefined) next = typeShare(next, key, basisPoints);
+  }
+  return next;
+}
+const shares = (state: SplitState) => state.people.map((p) => p.basisPoints);
+const fresh = (n: number): SplitState => ({
+  people: equalSplit(
+    ["a", "b", "c", "d"].slice(0, n).map((k) => person(k, k.toUpperCase(), 0)),
+  ),
+  set: [],
+});
+
+test("typing 50, 30, 20 gives exactly 50/30/20 in any order", () => {
+  const orders = [
+    ["a", "b", "c"],
+    ["a", "c", "b"],
+    ["b", "a", "c"],
+    ["b", "c", "a"],
+    ["c", "a", "b"],
+    ["c", "b", "a"],
+  ];
+  const want: Record<string, string> = { a: "50", b: "30", c: "20" };
+  for (const order of orders) {
+    let state = fresh(3);
+    for (const key of order) state = typed(state, key, want[key]);
+    assert.deepEqual(shares(state), [5000, 3000, 2000], order.join(""));
+    assert.equal(totalProblem(state.people), undefined);
+  }
+});
+
+test("after two typed numbers the third is already right; nothing set moves", () => {
+  let state = typed(fresh(3), "a", "50");
+  assert.deepEqual(shares(state), [5000, 2500, 2500]);
+  state = typed(state, "b", "30");
+  assert.deepEqual(shares(state), [5000, 3000, 2000]);
+  // Everyone set: changing one moves nobody else and Save waits.
+  state = typed(state, "c", "19");
+  assert.deepEqual(shares(state), [5000, 3000, 1900]);
+  assert.equal(
+    totalProblem(state.people),
+    "Adds up to 99%. Make it 100% to continue.",
+  );
+  state = typed(state, "a", "60");
+  assert.equal(
+    totalProblem(state.people),
+    "Adds up to 109%. Make it 100% to continue.",
+  );
+  // Even split resets everything, including who counts as set.
+  state = evenSplit(state);
+  assert.deepEqual(shares(state), [3334, 3333, 3333]);
+  assert.deepEqual(state.set, []);
+  assert.deepEqual(shares(typed(state, "c", "20")), [4000, 4000, 2000]);
+});
+
+test("slider then typing: sliders snap to whole percents and respect set people", () => {
+  let state = slideShare(fresh(3), "a", 4730);
+  assert.deepEqual(shares(state), [4700, 2700, 2600]);
+  // Dragging on through many values only moves people not set yet.
+  for (const v of [4800, 4900, 5049]) state = slideShare(state, "a", v);
+  assert.deepEqual(shares(state), [5000, 2500, 2500]);
+  state = typed(state, "b", "30");
+  assert.deepEqual(shares(state), [5000, 3000, 2000]);
+  state = slideShare(state, "c", 2300);
+  assert.deepEqual(shares(state), [5000, 3000, 2300]);
+  assert.equal(
+    totalProblem(state.people),
+    "Adds up to 103%. Make it 100% to continue.",
+  );
+  state = typed(state, "c", "20");
+  assert.deepEqual(shares(state), [5000, 3000, 2000]);
+});
+
+test("four-way split: typed numbers stick and the rest share what is left", () => {
+  let state = typed(fresh(4), "b", "40");
+  assert.deepEqual(shares(state), [2000, 4000, 2000, 2000]);
+  state = typed(state, "d", "10");
+  assert.deepEqual(shares(state), [2500, 4000, 2500, 1000]);
+  state = typed(state, "a", "35.5");
+  assert.deepEqual(shares(state), [3550, 4000, 1450, 1000]);
+  state = typed(state, "c", "14.5");
+  assert.deepEqual(shares(state), [3550, 4000, 1450, 1000]);
+  assert.equal(totalProblem(state.people), undefined);
+  for (const p of state.people) {
+    assert.ok(Number.isInteger(p.basisPoints) && p.basisPoints >= 0);
+  }
+});
+
+test("over 100% never pushes anyone negative", () => {
+  let state = typed(fresh(3), "a", "80");
+  state = typed(state, "b", "70");
+  assert.deepEqual(shares(state), [8000, 7000, 0]);
+  assert.equal(
+    totalProblem(state.people),
+    "Adds up to 150%. Make it 100% to continue.",
+  );
+});
+
+test("adding or removing someone only moves people not set yet", () => {
+  const state = typed(fresh(3), "a", "50");
+  const added = addPerson(state.people, person("d", "D", 0), state.set);
+  assert.deepEqual(
+    added.map((p) => p.basisPoints),
+    [5000, 1300, 1200, 2500],
+  );
+  const allSet = typed(typed(state, "b", "30"), "c", "20");
+  const late = addPerson(allSet.people, person("d", "D", 0), allSet.set);
+  assert.deepEqual(
+    late.map((p) => p.basisPoints),
+    [5000, 3000, 2000, 0],
+  );
+  assert.deepEqual(
+    removePerson(allSet.people, "c", allSet.set).map((p) => p.basisPoints),
+    [5000, 3000],
+  );
+  assert.deepEqual(
+    removePerson(state.people, "c", state.set).map((p) => p.basisPoints),
+    [5000, 5000],
+  );
 });

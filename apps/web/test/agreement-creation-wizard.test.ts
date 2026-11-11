@@ -26,7 +26,7 @@ import { CheckMode } from "../components/wizard-check-step";
 import { emptyAnswers, FeeChoice, AnswerSource } from "../lib/rules-answers";
 import { StandardQuestionId } from "../lib/standard-questions";
 import type { Agreement } from "../lib/model";
-import { saveDraftAnswers } from "../lib/wizard-draft-store";
+import { saveDraftAnswers } from "../lib/wizard-persistence";
 import { appSource } from "./app-source";
 import {
   MIDNIGHT,
