@@ -129,8 +129,7 @@ export function MfaSettings({ onSignOut }: { onSignOut: () => void }) {
         <p>Loading security settings…</p>
       ) : !status.available ? (
         <p>
-          Authenticator setup and verification are unavailable until the
-          operator configures secure key storage.{" "}
+          Authenticator setup isn’t ready yet. Please try again later.{" "}
           {status.enabled ? "Your authenticator remains enabled." : ""}
         </p>
       ) : setup ? (

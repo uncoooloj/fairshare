@@ -32,11 +32,11 @@ test("refund offer blocks unverified capture, existing refund, any reserved payo
   assert.equal(refundBlocked(payment, [], [], false), null);
   assert.match(
     refundBlocked({ ...payment, status: "OUTCOME_UNKNOWN" }, [], [], false)!,
-    /verified/,
+    /payment is confirmed/,
   );
   assert.match(
     refundBlocked({ ...payment, provider_capture_id: null }, [], [], false)!,
-    /verified/,
+    /payment is confirmed/,
   );
   assert.match(
     refundBlocked(
@@ -50,7 +50,7 @@ test("refund offer blocks unverified capture, existing refund, any reserved payo
   for (const status of ["RESERVED", "FAILED", "SUCCESS", "OUTCOME_UNKNOWN"])
     assert.match(
       refundBlocked(payment, [{ capture_id: "cap1", status }], [], false)!,
-      /reserved/,
+      /payout has already started/,
     );
   assert.match(refundBlocked(payment, [], [], true)!, /hold/);
   assert.equal(
@@ -59,10 +59,13 @@ test("refund offer blocks unverified capture, existing refund, any reserved payo
   );
 });
 test("refund wording never confuses request acceptance with verified completion", () => {
-  assert.match(refundMessage("COMPLETED"), /verified.*completed.*hold/);
-  assert.match(refundMessage("OUTCOME_UNKNOWN"), /Do not retry/);
+  assert.match(refundMessage("COMPLETED"), /PayPal confirmed the refund.*hold/);
+  assert.match(refundMessage("OUTCOME_UNKNOWN"), /Don’t send another refund/);
   for (const status of ["SUBMITTING", "PENDING", "FAILED", "CANCELLED"])
-    assert.match(refundMessage(status), /not confirmed complete/);
+    assert.match(
+      refundMessage(status),
+      /hasn’t completed|hasn’t confirmed completion/,
+    );
 });
 
 test("rapid repeated actions are ignored while a provider request is pending", async () => {

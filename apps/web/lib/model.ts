@@ -1,3 +1,4 @@
+import { errorCopy } from "./error-copy";
 export enum Section {
   Overview = "Overview",
   Agreements = "Agreements",
@@ -128,7 +129,7 @@ export async function api<T = any>(
   const data = await res.json().catch(() => ({}));
   if (!res.ok)
     throw new ApiError(
-      data.error?.message || `Request failed (${res.status}).`,
+      errorCopy(res.status, data.error?.code, data.error?.message),
       res.status,
       data.error?.code,
     );

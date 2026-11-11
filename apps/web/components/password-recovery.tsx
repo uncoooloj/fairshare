@@ -30,7 +30,7 @@ export function PasswordRecovery({ reset = false }: { reset?: boolean }) {
             ? "Your reset link can be used once. All signed-in sessions will be signed out."
             : emailDelivery
               ? "Enter your verified account email. We will request a secure reset link."
-              : "Email password recovery is unavailable in this environment. If you are still signed in, change your password in Settings → Profile. We cannot provide a reset link without verifying account ownership."}
+              : "Password reset by email isn’t available yet. If you’re still signed in on another device, change your password in Settings → Profile."}
         </p>
         {notice && <p role="status">{notice}</p>}
         {error && (

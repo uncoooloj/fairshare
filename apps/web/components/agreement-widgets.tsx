@@ -367,8 +367,8 @@ export function RevenueTable({
     </table>
   ) : (
     <Empty title="No confirmed revenue">
-      Incoming payments will appear once the provider has confirmed the payment
-      and its fees.
+      Incoming payments will appear once PayPal has confirmed the payment and
+      its fees.
     </Empty>
   );
 }
@@ -505,8 +505,8 @@ export function AIReview({
     <section className="section">
       <h3>Read the agreement</h3>
       <p className="muted">
-        Suggestions are not active rules. Confirm every interpretation against
-        the original text.
+        Review the suggested terms alongside your agreement before sharing them
+        with everyone.
       </p>
       <label className="check">
         <input
@@ -514,7 +514,7 @@ export function AIReview({
           checked={consent}
           onChange={(e) => setConsent(e.target.checked)}
         />
-        I authorize processing this agreement with Cloudflare for extraction.
+        Allow Fairshare to read this agreement and suggest terms.
       </label>
       <Button
         variant="secondary"
@@ -529,8 +529,8 @@ export function AIReview({
           <h4>Suggested terms</h4>
           {extraction.reason && (
             <Notice warning>
-              {title(extraction.reason)}. Continue with manual review; no
-              AI-derived rules were activated.
+              We couldn’t suggest all the terms. You can try again or add them
+              yourself below. Your agreement hasn’t changed.
             </Notice>
           )}
           {extraction.facts?.map((fact: any, i: number) => (
@@ -559,14 +559,9 @@ export function AIReview({
               )}
             </Notice>
           ))}
-          <small>
-            {extraction.provider
-              ? `Provider: ${extraction.provider} · ${extraction.model}`
-              : "Manual review required"}
-          </small>
           <p className="muted">
-            Enter the reviewed terms below. AI never activates or approves a
-            version.
+            Check and edit the terms below. Everyone will review them before
+            they take effect.
           </p>
         </div>
       )}

@@ -1339,7 +1339,7 @@ export default function FairshareApp() {
                           <Heading
                             small
                             title="Incoming payments"
-                            description="Confirmed provider data is used to calculate each allocation. Browser returns are not proof of payment."
+                            description="Payments appear here once PayPal confirms them. Each share follows the agreed terms."
                           />
                           <AgreementInvoices
                             key={selected.id}
@@ -1426,8 +1426,9 @@ export default function FairshareApp() {
                           </table>
                           {!payments.length && (
                             <Empty title="No incoming payments yet">
-                              An active, unanimously approved version and a
-                              configured sandbox provider are required.
+                              Once everyone approves your agreement, activate it
+                              and create an invoice to receive your first
+                              payment.
                             </Empty>
                           )}
                           {organizer && (
@@ -1574,7 +1575,7 @@ export default function FairshareApp() {
                       })
                     }
                   >
-                    Refresh provider statuses
+                    Refresh payment statuses
                   </Button>
                 )}
               </>
