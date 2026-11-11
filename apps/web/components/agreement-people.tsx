@@ -72,7 +72,7 @@ export function AgreementPeople({
     setLoading(true);
     setError("");
     api<{ members: Readiness[] }>(
-      `workspaces/${encodeURIComponent(currentAgreement.workspaceId)}/payment-accounts`,
+      `workspaces/${encodeURIComponent(currentAgreement.workspaceId)}/payment-accounts?version=2`,
     )
       .then((result) => {
         if (active) setDestinations(result.members);
