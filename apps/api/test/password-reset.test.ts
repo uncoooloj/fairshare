@@ -193,7 +193,6 @@ test("unverified accounts cannot reset; delivery failures never expose account e
     t.mock.timers.tick(1);
     const [known, missing] = await Promise.all([knownPending, missingPending]);
     assert.deepEqual(known.json(), missing.json());
-    assert(!known.body.includes("private-provider"));
     assert.equal(
       (
         app.store.db
@@ -213,6 +212,36 @@ test("unverified accounts cannot reset; delivery failures never expose account e
       (await app.inject(request("missing@example.test"))).statusCode,
       429,
     );
+  } finally {
+    await app.close();
+  }
+});
+test("provider failures stay generic for the full reset window and invalidate tokens", async (t) => {
+  const messages: MailMessage[] = [];
+  const app = await buildApp({
+    dbPath: ":memory:",
+    publicAppOrigin: "https://app.example.test",
+    mailTransport: {
+      async send(message) {
+        messages.push(message);
+        throw new Error("private-provider-detail");
+      },
+    },
+  });
+  try {
+    const u = verified(app);
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const [known, missing] = await waitForResetWindow(t, [
+      app.inject(request(u.user.email)),
+      app.inject(request("missing@example.test")),
+    ]);
+    assert.deepEqual(known.json(), missing.json());
+    assert(!known.body.includes("private-provider"));
+    assert.equal(messages.length, 1);
+    const token = new URLSearchParams(
+      new URL(messages[0].link).hash.slice(1),
+    ).get("token")!;
+    assert.throws(() => app.store.resetPassword(token, next));
   } finally {
     await app.close();
   }
