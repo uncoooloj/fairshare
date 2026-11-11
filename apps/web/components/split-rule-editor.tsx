@@ -39,6 +39,7 @@ export function SplitRuleEditor({
     <div
       ref={panel}
       className="split-rule-editor panel"
+      data-local-rule-edit
       role="region"
       aria-label="Edit split rule"
       onKeyDown={(event) => {
