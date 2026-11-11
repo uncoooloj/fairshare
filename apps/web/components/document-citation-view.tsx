@@ -1,12 +1,18 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import type { Version } from "../lib/model";
-import { documentCitations } from "../lib/document-citations";
+import {
+  documentCitations,
+  matchesCitationTarget,
+  OPEN_CITATION_EVENT,
+  type OpenCitationDetail,
+} from "../lib/document-citations";
 import { HighlightedSource } from "./source-rule-context";
 
 export function DocumentCitationView({
   version,
   document,
+  pendingCitation,
 }: {
   version?: Version;
   document: {
@@ -16,6 +22,7 @@ export function DocumentCitationView({
       pages?: number | { page: number; start: number; end: number }[];
     };
   };
+  pendingCitation?: OpenCitationDetail;
 }) {
   const [selected, setSelected] = useState<string | null>(null);
   const citations = useMemo(
@@ -26,6 +33,40 @@ export function DocumentCitationView({
     citation.highlight ? [citation.highlight] : [],
   );
   useEffect(() => setSelected(null), [document.documentId, version?.id]);
+  useEffect(() => {
+    if (
+      !pendingCitation ||
+      !matchesCitationTarget(
+        pendingCitation,
+        version?.id,
+        document.documentId,
+      ) ||
+      !citations.some(
+        (citation) => citation.id === pendingCitation.id && citation.highlight,
+      )
+    )
+      return;
+    setSelected(null);
+    const frame = requestAnimationFrame(() => setSelected(pendingCitation.id));
+    return () => cancelAnimationFrame(frame);
+  }, [citations, document.documentId, pendingCitation, version?.id]);
+  // Legacy callers can still ask the currently selected document to highlight by ID.
+  useEffect(() => {
+    const open = (event: Event) => {
+      const detail = (event as CustomEvent<string | OpenCitationDetail>).detail;
+      if (typeof detail !== "string") return;
+      const id = detail;
+      if (
+        !citations.some((citation) => citation.id === id && citation.highlight)
+      )
+        return;
+      event.preventDefault();
+      setSelected(null);
+      requestAnimationFrame(() => setSelected(id));
+    };
+    window.addEventListener(OPEN_CITATION_EVENT, open);
+    return () => window.removeEventListener(OPEN_CITATION_EVENT, open);
+  }, [citations]);
   const chosen = citations.find((citation) => citation.id === selected);
   return (
     <div className="document-layout">
