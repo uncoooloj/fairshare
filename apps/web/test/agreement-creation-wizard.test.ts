@@ -40,6 +40,7 @@ import {
 } from "../lib/wizard-persistence";
 import {
   inviteIsLive,
+  liveInviteLink,
   shareMethod,
   ShareMethod,
 } from "../components/wizard-sent-step";
@@ -103,12 +104,11 @@ test("the wizard opens on Upload with the spec's copy and one privacy line", () 
   assert.equal(
     (
       html.match(
-        /We use AI to read it and suggest the split\. Nothing is shared with anyone else\./g,
+        /Read my agreement sends it to AI \(Cloudflare Workers AI, with an Anthropic fallback\) to suggest the split\./g,
       ) || []
     ).length,
     1,
   );
-  assert.doesNotMatch(html, /Cloudflare|Anthropic|Workers AI/);
   assert.doesNotMatch(html, /sandbox|Agreement name|Details/i);
 });
 
@@ -973,6 +973,41 @@ test("the stepper says which question you're on; Share falls back to copy", () =
   assert.equal(inviteIsLive("token", 1001, 1000), true);
   assert.equal(inviteIsLive("token", 1000, 1000), false);
   assert.equal(inviteIsLive("token", undefined, 1000), false);
+  const invite = {
+    key: "invite-1",
+    name: "Riley Chen",
+    email: "riley@example.test",
+    token: "token",
+    expiresAt: 1000,
+  };
+  assert.equal(
+    liveInviteLink(invite, "https://fairshare.test", 999),
+    "https://fairshare.test/invitation#token=agreement%3Atoken",
+    "a mounted row may render while its link is live",
+  );
+  assert.equal(
+    liveInviteLink(invite, "https://fairshare.test", 1000),
+    undefined,
+    "the Copy and Share handlers must recheck at the click boundary",
+  );
+  const sentStep = readFileSync(
+    new URL("../components/wizard-sent-step.tsx", import.meta.url),
+    "utf8",
+  );
+  const copy = sentStep
+    .split("async function copy()")[1]
+    .split("async function share()")[0];
+  const share = sentStep
+    .split("async function share()")[1]
+    .split("return (")[0];
+  assert.match(
+    copy,
+    /const currentLink = liveInviteLink\(invite, location\.origin\)/,
+  );
+  assert.match(
+    share,
+    /const currentLink = liveInviteLink\(invite, location\.origin\)/,
+  );
 });
 
 test("not an agreement: no footer Continue, and uploading again discards the first draft", () => {

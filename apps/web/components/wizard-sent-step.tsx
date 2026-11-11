@@ -27,6 +27,17 @@ export function inviteLink(token: string) {
   return `${publicWebOrigin(location.origin)}/invitation#token=${encodeURIComponent(AGREEMENT_INVITE_PREFIX + token)}`;
 }
 
+/** Recheck immediately before an action: a link can expire while this screen is open. */
+export function liveInviteLink(
+  invite: SentInvite,
+  origin: string,
+  now = Date.now(),
+) {
+  return inviteIsLive(invite.token, invite.expiresAt, now)
+    ? `${publicWebOrigin(origin)}/invitation#token=${encodeURIComponent(AGREEMENT_INVITE_PREFIX + invite.token)}`
+    : undefined;
+}
+
 /** "Jordan", "Jordan and Riley", "Jordan, Riley and Sam". */
 export function joinNames(names: string[]) {
   if (names.length <= 1) return names[0] ?? "";
@@ -55,17 +66,21 @@ enum RowState {
   IDLE = "idle",
   COPIED = "copied",
   SHOW_LINK = "show-link",
+  EXPIRED = "expired",
 }
 
 function InviteRow({ invite }: { invite: SentInvite }) {
   const [state, setState] = useState(RowState.IDLE);
-  const link = inviteIsLive(invite.token, invite.expiresAt)
-    ? inviteLink(invite.token!)
-    : "";
+  const link = liveInviteLink(invite, location.origin) || "";
 
   async function copy() {
+    const currentLink = liveInviteLink(invite, location.origin);
+    if (!currentLink) {
+      setState(RowState.EXPIRED);
+      return;
+    }
     try {
-      await navigator.clipboard.writeText(link);
+      await navigator.clipboard.writeText(currentLink);
       setState(RowState.COPIED);
     } catch {
       // No clipboard access: show the link so it can be copied by hand.
@@ -74,10 +89,15 @@ function InviteRow({ invite }: { invite: SentInvite }) {
   }
 
   async function share() {
+    const currentLink = liveInviteLink(invite, location.origin);
+    if (!currentLink) {
+      setState(RowState.EXPIRED);
+      return;
+    }
     const data: ShareData = {
       title: "Approve our split",
       text: `${firstName(invite.name)}, here's your link to review and approve the split.`,
-      url: link,
+      url: currentLink,
     };
     if (shareMethod(globalThis.navigator, data) === ShareMethod.COPY)
       return copy();
@@ -96,7 +116,11 @@ function InviteRow({ invite }: { invite: SentInvite }) {
         <strong>{invite.name}</strong>
         <small>{invite.email}</small>
       </span>
-      {link ? (
+      {state === RowState.EXPIRED ? (
+        <small className="wiz-hint">
+          This link expired. Create a new link from the agreement’s People tab.
+        </small>
+      ) : link ? (
         <span className="wiz-invite-link">
           {state === RowState.SHOW_LINK && (
             <input

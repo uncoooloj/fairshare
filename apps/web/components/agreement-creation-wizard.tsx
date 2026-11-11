@@ -90,7 +90,7 @@ export interface WizardResume {
 }
 
 const PRIVACY_LINE =
-  "We use AI to read it and suggest the split. Nothing is shared with anyone else.";
+  "Read my agreement sends it to AI (Cloudflare Workers AI, with an Anthropic fallback) to suggest the split.";
 
 /** Screens a reopened draft can land on. Upload and Reading are behind it; Sent means it's gone. */
 const RESUMABLE = new Set<string>([

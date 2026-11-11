@@ -109,8 +109,19 @@ export function knownPersonLink(
 export interface IssuedLink {
   agreement: Agreement;
   link: string;
+  expiresAt: number;
   /** The person's seat ID after the reissue (`pending:<new invitation>`). */
   userId: string;
+}
+
+/** A freshly issued link is usable only until the backend-provided expiry. */
+export function liveIssuedLink(
+  issued: Pick<IssuedLink, "link" | "expiresAt"> | undefined,
+  now = Date.now(),
+) {
+  return issued && Number.isFinite(issued.expiresAt) && issued.expiresAt > now
+    ? issued.link
+    : undefined;
 }
 
 const inFlight = new Map<string, Promise<IssuedLink>>();
@@ -142,6 +153,7 @@ export function issueInviteLink(
       return {
         agreement: result.agreement,
         link: personInviteLink(result.invitation.token, origin),
+        expiresAt: result.invitation.expiresAt,
         userId: `pending:${result.invitation.id}`,
       };
     })
