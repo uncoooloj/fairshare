@@ -6,6 +6,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { Notice } from "../components/ui";
 import { tabDestination } from "../lib/tab-navigation";
+import { appSource } from "./app-source";
 const require = createRequire(import.meta.url);
 require.extensions[".css"] = () => {};
 const { AIReview } = require("../components/agreement-widgets.tsx");
@@ -27,7 +28,7 @@ test("tab exploration does not consume native activation or vertical scrolling",
 });
 test("tab markup and panel have connected names, roving tab stop and manual activation", () => {
   const tabs = source("../components/agreement-tabs.tsx");
-  const app = source("../components/fairshare-app.tsx");
+  const app = appSource();
   assert.match(tabs, /role="tablist"\s*aria-label="Agreement sections"/);
   assert.match(tabs, /tabIndex=\{value === tab \? 0 : -1\}/);
   assert.match(
@@ -41,7 +42,7 @@ test("tab markup and panel have connected names, roving tab stop and manual acti
   assert.match(tabs, /buttons.current\[next\]\?\.focus\(\)/);
 });
 test("keyboard skip target is present", () => {
-  const app = source("../components/fairshare-app.tsx");
+  const app = appSource();
   assert.match(app, /href="#main-content"/);
   assert.match(app, /id="main-content"\s*tabIndex=\{-1\}/);
 });

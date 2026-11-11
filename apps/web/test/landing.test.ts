@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { appSource } from "./app-source";
 const read = (path: string) =>
   readFileSync(new URL(path, import.meta.url), "utf8");
 
@@ -25,7 +26,7 @@ test("login and workspace retain the existing app and invitation entry points", 
   for (const route of ["login", "app", "invitation", "verify-email"]) {
     assert.match(read(`../app/${route}/page.tsx`), /<FairshareApp/);
   }
-  const app = read("../components/fairshare-app.tsx");
+  const app = appSource();
   assert.match(app, /user && location\.pathname === "\/login"/);
   assert.match(app, /!user && location\.pathname === "\/app"/);
   assert.match(app, /import \{ useRouter \} from "next\/navigation"/);

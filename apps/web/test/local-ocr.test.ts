@@ -1,11 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { appSource } from "./app-source";
 const read = (name: string) =>
   readFileSync(new URL(`../components/${name}.tsx`, import.meta.url), "utf8");
 test("upload paths let the server choose how to read a document without an OCR checkbox", () => {
-  for (const name of ["agreement-intake", "fairshare-app"]) {
-    const source = read(name);
+  for (const source of [read("agreement-intake"), appSource()]) {
     assert.doesNotMatch(
       source,
       /LocalOcrChoice|setOcr|setUseLocalOcr|Use OCR|useLocalOcr:/,

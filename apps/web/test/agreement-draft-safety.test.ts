@@ -2,10 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { isRulesDraftChange } from "../lib/rule-impact";
-const app = readFileSync(
-  new URL("../components/fairshare-app.tsx", import.meta.url),
-  "utf8",
-);
+import { appSource } from "./app-source";
+const app = appSource();
 const widgets = readFileSync(
   new URL("../components/agreement-widgets.tsx", import.meta.url),
   "utf8",

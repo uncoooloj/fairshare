@@ -5,6 +5,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { AgreementIntake } from "../components/agreement-intake";
 import { SandboxCheckoutForm } from "../components/sandbox-checkout-form";
+import { appSource } from "./app-source";
 
 test("intake starts with one input method, with paste available without losing either draft", () => {
   const html = renderToStaticMarkup(
@@ -62,9 +63,6 @@ test("checkout review enforces API amount bounds and resets per agreement", () =
     "utf8",
   );
   assert.match(source, /cents\s*<\s*1\s*\|\|\s*cents\s*>\s*1_000_000/);
-  const app = readFileSync(
-    new URL("../components/fairshare-app.tsx", import.meta.url),
-    "utf8",
-  );
+  const app = appSource();
   assert.match(app, /<AgreementInvoices\s+key=\{selected\.id\}/);
 });

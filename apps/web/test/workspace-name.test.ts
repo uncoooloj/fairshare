@@ -5,6 +5,7 @@ import {
   initialWorkspaceName,
   workspaceNameDraft,
 } from "../lib/workspace-name";
+import { appSource } from "./app-source";
 
 test("workspace rename is initialized to the existing workspace name", () => {
   assert.deepEqual(initialWorkspaceName("Artist collaboration"), {
@@ -51,10 +52,7 @@ test("confirmed saved name becomes clean, and returning to server name clears di
   );
 });
 test("internal group naming is not exposed as agreement settings", () => {
-  const app = readFileSync(
-    new URL("../components/fairshare-app.tsx", import.meta.url),
-    "utf8",
-  );
+  const app = appSource();
   assert.doesNotMatch(
     app,
     /WorkspaceNameForm|Rename your workspace|<h2>Workspace/,

@@ -1,14 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { appSource } from "./app-source";
 const panel = readFileSync(
   new URL("../components/notification-panel.tsx", import.meta.url),
   "utf8",
 );
-const app = readFileSync(
-  new URL("../components/fairshare-app.tsx", import.meta.url),
-  "utf8",
-);
+const app = appSource();
 
 test("notification panel uses the authenticated feed and distinguishes loading, error and empty", () => {
   assert.match(panel, /auth\/notifications/);

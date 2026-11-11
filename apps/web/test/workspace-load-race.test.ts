@@ -1,11 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { appSource } from "./app-source";
 
-const source = readFileSync(
-  new URL("../components/fairshare-app.tsx", import.meta.url),
-  "utf8",
-);
+const source = appSource();
 
 test("workspace changes fence in-flight reads and clear workspace-scoped state", () => {
   assert.equal((source.match(/setWorkspace\(/g) || []).length, 1);
