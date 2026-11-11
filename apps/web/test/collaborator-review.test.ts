@@ -240,14 +240,14 @@ test("terms tab hides organizer controls from collaborators", () => {
   );
   const collaborator = tab.slice(
     tab.indexOf("if (!isOrganizer)"),
-    tab.indexOf("Terms everyone can understand"),
+    tab.indexOf("Agree on the split"),
   );
   assert.match(collaborator, /<CollaboratorTerms/);
   assert.match(collaborator, /\/versions\/\$\{latest\.id\}\/approve/);
   assert.match(collaborator, /\/versions\/\$\{latest\.id\}\/request-change/);
   assert.doesNotMatch(
     collaborator,
-    /Propose revised terms|ContractReviewPanel|setEditing/,
+    /Suggest a change|ContractReviewPanel|setEditing/,
   );
   assert.match(
     collaborator,

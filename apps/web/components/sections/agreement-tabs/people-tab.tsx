@@ -43,7 +43,7 @@ export function AgreementPeopleTab({
       <Heading
         small
         title="People in this agreement"
-        description="Add everyone before drafting rules. Each person approves their own account’s decision."
+        description="Add everyone before you set the split. Each person approves for themselves."
       />
       <AgreementPeople
         key={`${selected.workspaceId}:${selected.id}`}
@@ -56,7 +56,7 @@ export function AgreementPeopleTab({
       />
       {organizer && !selected.value.versions.length && (
         <section className="section">
-          <h3>Add someone you already work with</h3>
+          <h3>People you’ve worked with</h3>
           {members
             .filter(
               (m) => !selected.value.members.some((s) => s.userId === m.id),

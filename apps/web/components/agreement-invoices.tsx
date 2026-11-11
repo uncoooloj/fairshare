@@ -1,4 +1,5 @@
 "use client";
+import { statusLabel } from "../lib/status-labels";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../lib/model";
 import { safeInvoiceUrl, type InvoiceDetails } from "../lib/invoice";
@@ -66,7 +67,7 @@ export function AgreementInvoices({
     );
     if (!invoice?.id)
       throw new Error(
-        "No invoice confirmation received. Retry with the same details to check this request.",
+        "We didn’t hear back. Try again with the same details; you won’t be billed twice.",
       );
     setInvoices((current) => [
       invoice,
@@ -76,13 +77,11 @@ export function AgreementInvoices({
     if (invoice.status === "SHARED" && safeInvoiceUrl(invoice.shareUrl)) {
       sessionStorage.removeItem(storageKey);
       setCreating(false);
-      setNotice(
-        "Invoice ready. Copy the link and share it with your customer. No email was sent.",
-      );
+      setNotice("Invoice ready. Copy the link and send it to your customer.");
       requestAnimationFrame(() => resultHeading.current?.focus());
     } else {
       throw new Error(
-        "Invoice recorded, but its payment link is not ready. Check status below before trying again.",
+        "The invoice is saved but its link isn’t ready. Check status before trying again.",
       );
     }
   }
@@ -103,10 +102,7 @@ export function AgreementInvoices({
           </Button>
         )}
       </div>
-      <p className="muted">
-        Request payment against this agreement, then share a payment link with
-        your customer.
-      </p>
+      <p className="muted">Bill someone and send them a payment link.</p>
       {notice && (
         <div role="status">
           <Notice>{notice}</Notice>
@@ -136,10 +132,7 @@ export function AgreementInvoices({
       {loading ? (
         <p role="status">Loading invoices…</p>
       ) : !invoices.length ? (
-        <p className="muted">
-          No invoices yet. Buyer-paid invoices remain pending settlement
-          verification and never create an allocation automatically.
-        </p>
+        <p className="muted">No invoices yet.</p>
       ) : (
         <div className="table-wrap">
           <table>
@@ -167,7 +160,10 @@ export function AgreementInvoices({
                     })}
                   </td>
                   <td>{invoice.dueDate}</td>
-                  <td>{statusLabels[invoice.status] || invoice.status}</td>
+                  <td>
+                    {statusLabels[invoice.status] ||
+                      statusLabel(invoice.status)}
+                  </td>
                   <td>
                     <div className="actions">
                       {safeInvoiceUrl(invoice.shareUrl) && (

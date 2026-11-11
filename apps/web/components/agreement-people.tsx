@@ -94,7 +94,7 @@ export function AgreementPeople({
       .catch(() => {
         if (active) {
           setDestinations(null);
-          setError("Couldn’t load payout readiness. Refresh to try again.");
+          setError("Couldn’t load PayPal status. Refresh to try again.");
         }
       })
       .finally(() => {
@@ -192,7 +192,7 @@ export function AgreementPeople({
           disabled={loading}
           onClick={() => setRefresh((value) => value + 1)}
         >
-          Refresh readiness
+          Refresh
         </Button>
       </div>
       {error && <p role="alert">{error}</p>}
@@ -307,12 +307,8 @@ export function AgreementPeople({
                         )}
                         <p className="muted">
                           {currentAgreement.value.versions.length
-                            ? "This agreement’s participant list is locked because a proposal exists."
-                            : "Participants can be added before the first proposal. Removing participants or changing the organizer is not supported."}
-                        </p>
-                        <p className="muted">
-                          Access permissions cannot change while a person
-                          belongs to an agreement.
+                            ? "People can’t be added once a split has been proposed."
+                            : "Add people before proposing a split. You can’t remove people yet."}
                         </p>
                       </div>
                     </details>

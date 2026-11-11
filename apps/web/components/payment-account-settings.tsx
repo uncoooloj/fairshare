@@ -100,8 +100,8 @@ export function PaymentAccountsSettings({
     return (
       <section className="settings-pane">
         <SettingsPaneHeader
-          title="Payment accounts"
-          description="Where money comes in and where shares go out."
+          title="PayPal"
+          description="Where payments come in and shares go out."
         />
         <p>Upload your first agreement before adding a payout email.</p>
       </section>
@@ -109,8 +109,8 @@ export function PaymentAccountsSettings({
   return (
     <section className="settings-pane">
       <SettingsPaneHeader
-        title="Payment accounts"
-        description="Where money comes in and where shares go out."
+        title="PayPal"
+        description="Where payments come in and shares go out."
       />
       {message && <p role="status">{message}</p>}
       {!data ? (
@@ -121,16 +121,14 @@ export function PaymentAccountsSettings({
             <h3>Receiving payments</h3>
             <p className="muted">
               {data.providerConfigured
-                ? "PayPal sandbox credentials are configured. Received payments follow your active agreement rules."
-                : "PayPal sandbox credentials are not configured. Payments can’t be received until setup is complete."}
+                ? "PayPal (test) is connected."
+                : "PayPal isn’t connected yet, so you can’t take payments."}
             </p>
             <div className="settings-provider">
               <WalletIcon />
               <div>
                 <strong>PayPal</strong>
-                <span className="muted">
-                  Sandbox checkout · test money only
-                </span>
+                <span className="muted">Test payments only</span>
               </div>
               <span
                 className={`status-chip ${data.providerConfigured ? "good" : "warning"}`}
@@ -278,14 +276,14 @@ export function PaymentAccountsSettings({
                             onClick={async () => {
                               try {
                                 await navigator.clipboard.writeText(
-                                  `Hi ${m.name}, please open Fairshare, open our agreement, and add your PayPal email under Settings → Payment accounts so your agreed share can be paid. ${publicWebOrigin(location.origin)}/app`,
+                                  `Hi ${m.name}, please open Fairshare, open our agreement, and add your PayPal email under Settings → PayPal so your agreed share can be paid. ${publicWebOrigin(location.origin)}/app`,
                                 );
                                 setMessage(
                                   "Reminder copied. Share it directly with this collaborator. No email was sent.",
                                 );
                               } catch {
                                 setMessage(
-                                  "Couldn’t copy the message. Ask this person to add their PayPal email in Settings → Payment accounts.",
+                                  "Couldn’t copy the message. Ask this person to add their PayPal email in Settings → PayPal.",
                                 );
                               }
                             }}

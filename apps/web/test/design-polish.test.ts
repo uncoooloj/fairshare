@@ -88,7 +88,7 @@ test("polish preserves personal finance and tenant-qualified identities", () => 
     /JSON\.stringify\(\[event\.agreement\.workspaceId, event\.agreement\.id\]\)/,
   );
   assert.match(overview, /Your allocated share/);
-  assert.match(overview, /only your share where you collaborate/);
+  assert.match(overview, /your own share on the rest/);
   assert.match(overview, /payoutsComplete/);
   const card = read("agreement-workspace");
   assert.match(card, /overviewSummary\([\s\S]*payoutsComplete/);

@@ -17,8 +17,16 @@ test("setup does not guess completion or mutate financial state", () => {
   );
   assert.doesNotMatch(source, /fetch\(|api\(|\/activate|\/payments|\/payouts/);
 });
-test("setup explains explicit activation and sandbox rather than promising live movement", () => {
-  assert.match(source, /organizer activates it/);
+test("setup explains unanimous approval and sandbox rather than promising live movement", () => {
+  assert.match(
+    source,
+    /Everyone approves the same version before payments begin/,
+  );
+  assert.match(
+    source,
+    /Once everyone approves, these terms are used for payments/,
+  );
+  assert.doesNotMatch(source, /organizer activates it/);
   assert.match(source, /does not move money/);
   assert.match(source, /accepted members before proposing/);
 });
