@@ -13,6 +13,7 @@ export enum PaymentGridStatus {
 export interface PaymentGridRow {
   id: string;
   agreementId: string;
+  agreementKey: string;
   agreementName: string;
   recipientName: string;
   amountCents: number;
@@ -48,6 +49,7 @@ export function validatePaymentRows(
       !row.id ||
       ids.has(row.id) ||
       !row.agreementId ||
+      !row.agreementKey ||
       !row.agreementName ||
       !row.recipientName ||
       !Number.isSafeInteger(row.amountCents) ||

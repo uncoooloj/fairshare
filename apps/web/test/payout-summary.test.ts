@@ -8,6 +8,7 @@ import {
 const row = (status: S, amountCents = 100): PaymentGridRow => ({
   id: status,
   agreementId: "a",
+  agreementKey: '["w","a"]',
   agreementName: "Agreement",
   recipientName: "Person",
   amountCents,

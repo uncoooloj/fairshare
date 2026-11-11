@@ -137,12 +137,13 @@ export function registerPreferences(app: FairshareApp) {
       preferences = readPreferences(store, user.id);
     const rows = store.db
       .prepare(
-        "SELECT c.value FROM fairshare_collaborations c JOIN memberships m ON m.workspace_id=c.workspace_id WHERE m.user_id=?",
+        "SELECT c.workspace_id,c.value FROM fairshare_collaborations c JOIN memberships m ON m.workspace_id=c.workspace_id WHERE m.user_id=?",
       )
-      .all(user.id) as { value: string }[];
+      .all(user.id) as { workspace_id: string; value: string }[];
     const events: {
       id: string;
       kind: NotificationKind;
+      workspaceId: string;
       agreementId: string;
       agreementName: string;
       at: string | null;
@@ -152,7 +153,7 @@ export function registerPreferences(app: FairshareApp) {
     for (const row of rows) {
       const c = JSON.parse(row.value) as Collaboration;
       if (!c.members.some((member) => member.userId === user.id)) continue;
-      agreements.set(c.id, c);
+      agreements.set(`${row.workspace_id}:${c.id}`, c);
       for (const event of c.audit) {
         const kind = notificationKindForAuditEvent(event.type);
         if (!kind || !preferences.notifications[kind].inApp) continue;
@@ -166,8 +167,9 @@ export function registerPreferences(app: FairshareApp) {
         )
           continue;
         events.push({
-          id: `${c.id}:${event.sequence}`,
+          id: `${row.workspace_id}:${c.id}:${event.sequence}`,
           kind,
+          workspaceId: row.workspace_id,
           agreementId: c.id,
           agreementName: c.name,
           at: event.at,
@@ -177,21 +179,25 @@ export function registerPreferences(app: FairshareApp) {
     }
     const payouts = store.db
       .prepare(
-        "SELECT id,collaboration_id,status FROM fairshare_payout_ops WHERE user_id=?",
+        "SELECT id,workspace_id,collaboration_id,status FROM fairshare_payout_ops WHERE user_id=?",
       )
       .all(user.id) as {
       id: string;
+      workspace_id: string;
       collaboration_id: string;
       status: string;
     }[];
     for (const payout of payouts) {
-      const agreement = agreements.get(payout.collaboration_id);
+      const agreement = agreements.get(
+        `${payout.workspace_id}:${payout.collaboration_id}`,
+      );
       const kind = notificationKindForPayoutStatus(payout.status);
       if (!agreement || !kind || !preferences.notifications[kind].inApp)
         continue;
       events.push({
         id: `payout:${payout.id}:${payout.status}`,
         kind,
+        workspaceId: payout.workspace_id,
         agreementId: agreement.id,
         agreementName: agreement.name,
         at: null,

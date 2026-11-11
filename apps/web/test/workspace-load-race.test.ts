@@ -55,7 +55,7 @@ test("workspace changes fence in-flight reads and clear workspace-scoped state",
   );
   assert.equal(
     (workspace.match(/if \(!isCurrent\(\)\) return/g) || []).length,
-    3,
+    4,
   );
 
   const agreement = source
@@ -63,7 +63,7 @@ test("workspace changes fence in-flight reads and clear workspace-scoped state",
     .split("async function refresh")[0];
   assert.match(
     agreement,
-    /if \(a\.workspaceId !== currentWorkspace\.current\) return/,
+    /if \(a\.workspaceId !== currentWorkspace\.current\)\s*commitWorkspace\(a\.workspaceId\)/,
   );
   assert.match(agreement, /const request = \+\+openRequest\.current/);
   assert.equal(
@@ -76,7 +76,7 @@ test("workspace changes fence in-flight reads and clear workspace-scoped state",
   );
   assert.ok(
     source.includes(
-      "function navigate(s: Section) {\n    if (!mayLeaveDraft()) return;\n    openRequest.current++;",
+      "function navigate(s: Section) {\n    if (!mayLeaveDraft()) return false;\n    openRequest.current++;",
     ),
   );
 
@@ -154,7 +154,7 @@ test("delayed payout loads cannot overwrite or clear a newer workspace", () => {
     .split("async function loadWorkspace(id: string) {")[1]
     .split("async function openAgreement")[0];
   const afterWorkspaceRead = workspace.indexOf(
-    "setAgreements(r.collaborations)",
+    "setAgreements(visibleAgreements)",
   );
   const clear = workspace.indexOf("setPayouts([])", afterWorkspaceRead);
   const successGuard = workspace.indexOf("if (!isCurrent()) return", clear);

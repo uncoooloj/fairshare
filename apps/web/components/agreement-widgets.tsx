@@ -190,7 +190,7 @@ export function AgreementList({
                 );
                 const shares = (active || latest)?.rules.shares;
                 return (
-                  <tr key={a.id}>
+                  <tr key={`${a.workspaceId}:${a.id}`}>
                     <td>
                       <button
                         className="text-button strong agreement-name"
@@ -506,8 +506,8 @@ export function AIReview({
     <section className="section">
       <h3>Read the agreement</h3>
       <p className="muted">
-        Review the suggested terms alongside your agreement before sharing them
-        with everyone.
+        Suggestions are not active rules. Check every interpretation against the
+        original agreement before sharing it with everyone.
       </p>
       <label className="check">
         <input
@@ -515,7 +515,8 @@ export function AIReview({
           checked={consent}
           onChange={(e) => setConsent(e.target.checked)}
         />
-        Allow Fairshare to read this agreement and suggest terms.
+        I authorize Fairshare to send this agreement to Cloudflare AI to suggest
+        terms.
       </label>
       <Button
         variant="secondary"
@@ -565,9 +566,14 @@ export function AIReview({
               )}
             </Notice>
           ))}
+          <small>
+            {extraction.provider
+              ? `Provider: ${extraction.provider} · ${extraction.model}`
+              : "Manual review required"}
+          </small>
           <p className="muted">
-            Check and edit the terms below. Everyone will review them before
-            they take effect.
+            Check and edit the terms below. AI never activates or approves a
+            version.
           </p>
         </div>
       )}
