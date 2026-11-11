@@ -127,7 +127,7 @@ test("holds are visible and activity uses recorded times, newest first", () => {
   });
   const s = overviewSummary([a], [payout(a, "OUTCOME_UNKNOWN")], "me");
   assert.equal(s.attention.length, 3);
-  assert.equal(s.activity[0].text, "Payment placed on hold");
+  assert.equal(s.activity[0].text, "Payment paused for a check");
   assert.equal(s.activity[1].text, "You created the agreement");
   assert.equal(s.remaining, 100);
 });
@@ -224,12 +224,12 @@ test("review actions use the authoritative review state", () => {
     other: "2026-11-10T12:00:00Z",
   };
   const organizer = overviewSummary([a], [], "me");
-  assert.match(organizer.attention[0].title, /Activate version 1/);
+  assert.match(organizer.attention[0].title, /Switch on the new split/);
   assert.equal(organizer.attention[0].key, '["w","a"]:activate');
   const collaborator = overviewSummary([a], [], "other");
   assert.match(
     collaborator.waiting[0].title,
-    /Waiting for organizer to activate version 1/,
+    /Waiting for the organizer to switch it on/,
   );
   assert.equal(collaborator.waiting[0].key, '["w","a"]:waiting-activation');
   a.value.versions[0].status = "ACTIVE";
@@ -238,7 +238,7 @@ test("review actions use the authoritative review state", () => {
   const draft = fixture();
   draft.value.versions[0].status = "DRAFT";
   const send = overviewSummary([draft], [], "me");
-  assert.match(send.attention[0].title, /Send version 1 for review/);
+  assert.match(send.attention[0].title, /Send the split for approval/);
   assert.equal(send.attention[0].key, '["w","a"]:send-review');
   draft.value.versions[0].rules.advance = {
     id: "advance",
@@ -250,4 +250,45 @@ test("review actions use the authoritative review state", () => {
   const blocked = overviewSummary([draft], [], "me");
   assert.match(blocked.attention[0].detail, /Verify the existing advance/);
   assert.equal(blocked.attention[0].key, '["w","a"]:review-blockers');
+});
+
+test("agreement status line is role-aware and needs no organizer switch-on", async () => {
+  const { agreementStatus, AgreementStage, StageAction } = await import(
+    "../lib/agreement-status"
+  );
+  const a = fixture();
+  a.value.members = [
+    { userId: "me", displayName: "Maya Okafor", role: "ORGANIZER" },
+    { userId: "riley", displayName: "Riley Chen", role: "COLLABORATOR" },
+    { userId: "jordan", displayName: "Jordan Reyes", role: "COLLABORATOR" },
+  ];
+  const v = a.value.versions[0];
+  v.status = "AWAITING_APPROVAL";
+  v.approvals = { me: "2026-11-10T12:00:00Z" };
+  assert.equal(
+    agreementStatus(a, "me").line,
+    "Waiting for Riley and Jordan to approve",
+  );
+  const riley = agreementStatus(a, "riley");
+  assert.equal(riley.line, "Waiting for you to approve");
+  assert.equal(riley.action, StageAction.Approve);
+  v.approvals.riley = "2026-11-10T13:00:00Z";
+  assert.equal(agreementStatus(a, "riley").line, "Waiting for Jordan");
+  v.status = "DRAFT";
+  v.approvals = {};
+  v.changeRequests = [
+    { userId: "riley", reason: "Fee", at: "2026-11-10T14:00:00Z" },
+  ];
+  const change = agreementStatus(a, "me");
+  assert.equal(change.line, "Riley asked for a change");
+  assert.equal(change.action, StageAction.SeeRequest);
+  v.changeRequests = [];
+  v.status = "ACTIVE";
+  a.value.activeVersionId = v.id;
+  assert.equal(
+    agreementStatus(a, "me").line,
+    "All set. Payments split automatically.",
+  );
+  assert.equal(agreementStatus(a, "jordan").line, "All set");
+  assert.equal(agreementStatus(a, "jordan").stage, AgreementStage.AllSet);
 });

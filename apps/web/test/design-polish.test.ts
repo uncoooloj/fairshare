@@ -95,8 +95,8 @@ test("polish preserves personal finance and tenant-qualified identities", () => 
   assert.match(card, /roster\.filter\(\(m\) => m\.userId === userId\)/);
   assert.match(card, /display\(summary\.paid\)/);
   assert.match(card, /payoutsUnavailable/);
-  assert.match(card, /Loading payout records/);
-  assert.match(card, /Payout status is unavailable\. Refresh to try again/);
+  assert.match(card, /Loading totals/);
+  assert.match(card, /Couldn't load payouts\. Refresh to try again/);
   assert.doesNotMatch(card, /payoutStatus\(p\.status\)/);
   const app = appSource();
   assert.match(app, /p\.agreement\.workspaceId\s*===\s*selected\.workspaceId/);
