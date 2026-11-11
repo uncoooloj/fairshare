@@ -45,6 +45,17 @@ export function ensureRefundSchema(db: Database, tx: <T>(fn: () => T) => T) {
     db.exec(
       "CREATE TABLE IF NOT EXISTS fairshare_reversal_holdbacks(refund_op_id TEXT PRIMARY KEY,capture_id TEXT NOT NULL,cents INTEGER NOT NULL)",
     );
+    // A webhook can be replayed after the split and holdback effects committed but before its
+    // inbox row is marked DONE. Keep that replay identity with the financial effects.
+    db.exec(
+      "CREATE TABLE IF NOT EXISTS fairshare_reversal_ops(id TEXT PRIMARY KEY,capture_id TEXT NOT NULL,applied_cents INTEGER NOT NULL)",
+    );
+    // `client_key` predates an explicit refund intent. Keep it unchanged for compatibility and
+    // record the intent separately for new operations, so a partial caller choosing `full` cannot
+    // be mistaken for the implicit full-refund retry key.
+    db.exec(
+      "CREATE TABLE IF NOT EXISTS fairshare_refund_intents(refund_op_id TEXT PRIMARY KEY,intent TEXT NOT NULL)",
+    );
     db.exec(
       "CREATE TABLE IF NOT EXISTS fairshare_disputes(id TEXT NOT NULL,workspace_id TEXT NOT NULL,collaboration_id TEXT NOT NULL,status TEXT NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(id,workspace_id,collaboration_id))",
     );
@@ -319,13 +330,30 @@ export function settleRefundOp(
 }
 /** Call inside a transaction. Applies the reversal PayPal reported on a payment: its stated
  * amount (or everything left). Only the part that must overlap Fairshare refunds still going
- * through (stated + in flight - left) is set aside for them. Returns the cents applied now. */
+ * through (stated + in flight - left) is set aside for them. */
 export function applyReversal(
   db: Database,
   aggregates: AggregateStore,
-  input: { captureId: string; statedCents?: number; at: string },
+  input: {
+    reversalId: string;
+    captureId: string;
+    statedCents?: number;
+    at: string;
+  },
   agreement: { workspace_id: string; collaboration_id: string },
-): number {
+): { appliedCents: number; replayed: boolean } {
+  const prior = db
+    .prepare(
+      "SELECT capture_id,applied_cents FROM fairshare_reversal_ops WHERE id=?",
+    )
+    .get(input.reversalId) as
+    | { capture_id: string; applied_cents: number }
+    | undefined;
+  if (prior) {
+    if (prior.capture_id !== input.captureId)
+      fail("REVERSAL_CONFLICT", "Reversal event does not match its capture");
+    return { appliedCents: prior.applied_cents, replayed: true };
+  }
   const left = unrefundedCents(
     aggregates,
     agreement.workspace_id,
@@ -342,6 +370,9 @@ export function applyReversal(
     Math.max(0, wanted + inFlight - left),
   );
   const now = wanted - setAside;
+  db.prepare(
+    "INSERT INTO fairshare_reversal_ops(id,capture_id,applied_cents) VALUES(?,?,?)",
+  ).run(input.reversalId, input.captureId, now);
   for (const op of db
     .prepare(
       `SELECT id,amount FROM fairshare_refund_ops WHERE capture_id=? AND ${UNSETTLED_REFUND_SQL} ORDER BY created_at,rowid`,
@@ -363,7 +394,7 @@ export function applyReversal(
       feeReturnedCents: 0,
       at: input.at,
     });
-  return now;
+  return { appliedCents: now, replayed: false };
 }
 /** Fairshare refunds on a payment still going through, which a reversal must leave for them. */
 export function inFlightRefundCents(db: Database, captureId: string): number {

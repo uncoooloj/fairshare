@@ -901,12 +901,13 @@ export function registerPaymentRoutes(
             }
             // PayPal took the payment back: it comes out of the split like a refund with the fee
             // kept, and payouts pause for review.
-            const reversed =
+            const reversal =
               action.eventType === "PAYMENT.CAPTURE.REVERSED"
                 ? applyReversal(
                     db,
                     aggregates,
                     {
+                      reversalId: id,
                       captureId,
                       statedCents: action.amountCents,
                       at: now(),
@@ -916,7 +917,7 @@ export function registerPaymentRoutes(
                 : 0;
             // Nothing to take out now (already refunded, or set aside for refunds in flight):
             // still pause the agreement.
-            if (!reversed) {
+            if (!reversal || (!reversal.replayed && !reversal.appliedCents)) {
               const row = aggregates.read(
                 match.workspace_id,
                 match.collaboration_id,

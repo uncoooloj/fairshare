@@ -442,6 +442,115 @@ test("provider refund replays never reverse twice, including one Fairshare start
     );
   }));
 
+test("a partial refund using the implicit full key cannot impersonate a full-refund retry", () =>
+  run(async (s) => {
+    const { id } = await s.pay();
+    s.mock.config.refundStatus = "PENDING";
+    const partial = await s.post(`/payments/${id}/refund`, {
+      confirmRefund: true,
+      amountCents: 3000,
+      requestKey: "full",
+    });
+    assert.equal(partial.statusCode, 200, partial.body);
+    const full = await s.post(`/payments/${id}/refund`, {
+      confirmFullRefund: true,
+    });
+    assert.equal(full.statusCode, 400, full.body);
+    assert.equal(full.json().error.code, "IDEMPOTENCY_CONFLICT");
+    assert.equal(s.mock.counts.refundWrites, 1);
+  }));
+
+test("provider webhook settlement during submission is not regressed by the submitting request", () =>
+  run(async (s) => {
+    const { id, captureId } = await s.pay();
+    let requestKey = "";
+    s.mock.provider.getRefund = async (refundId) => ({
+      id: refundId,
+      status: "COMPLETED",
+      amountCents: 10000,
+      currency: "USD",
+      captureId,
+      reference: requestKey,
+    });
+    s.mock.provider.refundCapture = async (
+      _capture,
+      amountCents,
+      currency,
+      key,
+    ) => {
+      requestKey = key;
+      const settled = await s.refundEvent(
+        "refund-during-submit",
+        "REF1",
+        captureId,
+      );
+      assert.equal(settled.statusCode, 200, settled.body);
+      return { id: "REF1", status: "COMPLETED", amountCents, currency };
+    };
+    const response = await s.post(`/payments/${id}/refund`, {
+      confirmFullRefund: true,
+    });
+    assert.equal(response.statusCode, 200, response.body);
+    assert.equal(response.json().status, "COMPLETED");
+    assert.equal(
+      (
+        s.app.store.db
+          .prepare("SELECT status FROM fairshare_refund_ops")
+          .get() as any
+      ).status,
+      "COMPLETED",
+    );
+  }));
+
+test("provider webhook failure during submission survives the submitter catch", () =>
+  run(async (s) => {
+    const { id, captureId } = await s.pay();
+    let requestKey = "";
+    s.mock.provider.getRefund = async (refundId) => ({
+      id: refundId,
+      status: "FAILED",
+      amountCents: 10000,
+      currency: "USD",
+      captureId,
+      reference: requestKey,
+    });
+    s.mock.provider.refundCapture = async (
+      _capture,
+      _amountCents,
+      _currency,
+      key,
+    ) => {
+      requestKey = key;
+      // The provider has assigned REF1 and delivers its terminal webhook before the request
+      // response reaches Fairshare. The webhook path itself then verifies the refund by inject.
+      s.app.store.db
+        .prepare(
+          "UPDATE fairshare_refund_ops SET provider_refund_id=? WHERE request_key=?",
+        )
+        .run("REF1", key);
+      const settled = await s.webhook(
+        "refund-failed-during-submit",
+        "PAYMENT.REFUND.FAILED",
+        { id: "REF1" },
+      );
+      assert.equal(settled.statusCode, 200, settled.body);
+      throw new Error("provider transport closed after webhook delivery");
+    };
+    const response = await s.post(`/payments/${id}/refund`, {
+      confirmFullRefund: true,
+    });
+    assert.equal(response.statusCode, 200, response.body);
+    assert.equal(response.json().status, "FAILED");
+    assert.equal(
+      (
+        s.app.store.db
+          .prepare("SELECT status FROM fairshare_refund_ops")
+          .get() as any
+      ).status,
+      "FAILED",
+    );
+  }));
+
 test("a provider refund racing a payout dispatch: shares in flight count as paid out, the rest stop", () =>
   run(async (s) => {
     const { captureId } = await s.pay();
@@ -836,6 +945,46 @@ test("a refund in flight fails after a reversal: the part set aside for it is re
     await s.setEmails();
     await s.post("/payouts/dispatch", { captureId });
     assert.equal(s.mock.counts.payoutWrites, 0);
+  }));
+
+test("replaying a reversal after its effects committed does not enlarge its holdback", () =>
+  run(async (s) => {
+    const { id, captureId } = await s.pay();
+    s.mock.config.refundStatus = "PENDING";
+    const pending = await s.post(`/payments/${id}/refund`, {
+      confirmRefund: true,
+      amountCents: 3000,
+      requestKey: "in-flight",
+    });
+    await reversalEvent(s, "reversal-replay", captureId, 8000);
+    const holdback = () =>
+      s.app.store.db
+        .prepare("SELECT cents FROM fairshare_reversal_holdbacks")
+        .get() as any;
+    assert.equal(holdback().cents, 1000);
+    s.app.store.db
+      .prepare("UPDATE fairshare_webhook_inbox SET status='PENDING' WHERE id=?")
+      .run("reversal-replay");
+    const replay = await reversalEvent(s, "reversal-replay", captureId, 8000);
+    assert.equal(replay.statusCode, 200, replay.body);
+    assert.equal(holdback().cents, 1000);
+    s.mock.refunds.get(pending.json().providerRefundId)!.status = "FAILED";
+    await s.post(`/refunds/${pending.json().id}/reconcile`);
+    const refunds = s
+      .agreement()
+      .value.revenue.find((r) => r.providerCaptureId === captureId)!.refunds!;
+    assert.equal(
+      refunds.reduce((sum, refund) => sum + refund.grossCents, 0),
+      8000,
+    );
+    assert.equal(
+      (
+        s.app.store.db
+          .prepare("SELECT count(*) AS n FROM fairshare_reversal_holdbacks")
+          .get() as any
+      ).n,
+      0,
+    );
   }));
 
 for (const outcome of ["COMPLETED", "FAILED"])

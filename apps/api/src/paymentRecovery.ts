@@ -443,7 +443,15 @@ export function registerPaymentRecovery({
         )
         .get(op.id, key) as any;
       if (prior) {
-        if (!full && prior.amount !== input.amountCents)
+        const intent = db
+          .prepare(
+            "SELECT intent FROM fairshare_refund_intents WHERE refund_op_id=?",
+          )
+          .get(prior.id) as { intent: string } | undefined;
+        if (
+          (intent && intent.intent !== (full ? "FULL" : "PARTIAL")) ||
+          (!full && prior.amount !== input.amountCents)
+        )
           fail(
             "IDEMPOTENCY_CONFLICT",
             "Request key reused with a different refund",
@@ -520,6 +528,9 @@ export function registerPaymentRecovery({
         date(),
         key,
       );
+      db.prepare(
+        "INSERT INTO fairshare_refund_intents(refund_op_id,intent) VALUES(?,?)",
+      ).run(refundId, full ? "FULL" : "PARTIAL");
       // The unsettled refund row is the reservation: payoutHoldReason stops this payment's
       // payouts from here until PayPal settles it. A dispatcher that reserved first fails above.
       audit(
@@ -546,25 +557,53 @@ export function registerPaymentRecovery({
         refund.request_key,
       );
     } catch {
-      db.prepare(
-        "UPDATE fairshare_refund_ops SET status='OUTCOME_UNKNOWN' WHERE id=?",
-      ).run(refund.id);
+      tx(() => {
+        const fresh = db
+          .prepare("SELECT status FROM fairshare_refund_ops WHERE id=?")
+          .get(refund.id) as any;
+        if (!["COMPLETED", "FAILED", "CANCELLED"].includes(fresh.status))
+          db.prepare(
+            "UPDATE fairshare_refund_ops SET status='OUTCOME_UNKNOWN' WHERE id=?",
+          ).run(refund.id);
+      });
       return refundView(ctx, refund.id);
     }
+    const terminal = tx(() => {
+      const fresh = db
+        .prepare("SELECT status FROM fairshare_refund_ops WHERE id=?")
+        .get(refund.id) as any;
+      return ["COMPLETED", "FAILED", "CANCELLED"].includes(fresh.status);
+    });
+    if (terminal) return refundView(ctx, refund.id);
     // Preserve a known provider identifier even if access was revoked during the external write.
     if (
       !result.id ||
       result.amountCents !== refund.amount ||
       result.currency !== "USD"
     ) {
-      db.prepare(
-        "UPDATE fairshare_refund_ops SET status='OUTCOME_UNKNOWN' WHERE id=?",
-      ).run(refund.id);
+      tx(() => {
+        const fresh = db
+          .prepare("SELECT status FROM fairshare_refund_ops WHERE id=?")
+          .get(refund.id) as any;
+        if (!["COMPLETED", "FAILED", "CANCELLED"].includes(fresh.status))
+          db.prepare(
+            "UPDATE fairshare_refund_ops SET status='OUTCOME_UNKNOWN' WHERE id=?",
+          ).run(refund.id);
+      });
       fail("REFUND_MISMATCH", "Provider result requires investigation");
     }
-    db.prepare(
-      "UPDATE fairshare_refund_ops SET provider_refund_id=?,status='PENDING' WHERE id=?",
-    ).run(result.id, refund.id);
+    const settledBeforeVerify = tx(() => {
+      const fresh = db
+        .prepare("SELECT status FROM fairshare_refund_ops WHERE id=?")
+        .get(refund.id) as any;
+      if (["COMPLETED", "FAILED", "CANCELLED"].includes(fresh.status))
+        return true;
+      db.prepare(
+        "UPDATE fairshare_refund_ops SET provider_refund_id=?,status='PENDING' WHERE id=?",
+      ).run(result.id, refund.id);
+      return false;
+    });
+    if (settledBeforeVerify) return refundView(ctx, refund.id);
     access(req, true);
     return verifyRefund(req, refund, result.id);
   });
