@@ -39,9 +39,9 @@ const theme = themeQuartz.withParams({
   headerBackgroundColor: "var(--color-surface)",
   fontFamily: "inherit",
   fontSize: 14,
-  headerFontSize: 12,
-  rowHeight: 58,
-  headerHeight: 44,
+  headerFontSize: 14,
+  rowHeight: 72,
+  headerHeight: 64,
   wrapperBorderRadius: 12,
 });
 /** Above this many rows the grid pages; at or below it, no pagination shows at all. */
@@ -380,7 +380,7 @@ export function PaymentGrid({
           </button>
         </div>
       ) : (
-        <div className={styles.grid}>
+        <div className={`${styles.grid} fairshare-data-grid`}>
           <AgGridReact<PaymentGridRow>
             theme={theme}
             rowData={loading ? [] : filteredRows}

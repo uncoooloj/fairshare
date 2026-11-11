@@ -50,6 +50,10 @@ import {
   fullAgreementHistoryState,
   isFullAgreementHistoryState,
 } from "../../lib/full-agreement-history";
+import {
+  OPEN_CITATION_EVENT,
+  type OpenCitationDetail,
+} from "../../lib/document-citations";
 
 export interface AgreementDetailProps {
   selected: Agreement;
@@ -171,6 +175,19 @@ export function AgreementDetail({
   const [loadedDocument, setLoadedDocument] = useState<LoadedDocument | null>(
     null,
   );
+  const [overviewCitation, setOverviewCitation] = useState<
+    | {
+        workspaceId: string;
+        agreementId: string;
+        detail: OpenCitationDetail;
+      }
+    | undefined
+  >();
+  const requestedCitation =
+    overviewCitation?.workspaceId === selected.workspaceId &&
+    overviewCitation.agreementId === selected.id
+      ? overviewCitation.detail
+      : undefined;
   const fullHeading = useRef<HTMLHeadingElement>(null);
   const openDocument = useRef<HTMLButtonElement>(null);
   const reviewHeading = useRef<HTMLHeadingElement>(null);
@@ -188,6 +205,40 @@ export function AgreementDetail({
   useEffect(() => {
     if (reviewAbove) window.scrollTo({ top: 0 });
   }, [reviewAbove]);
+  useEffect(() => {
+    if (
+      overviewCitation &&
+      (overviewCitation.workspaceId !== selected.workspaceId ||
+        overviewCitation.agreementId !== selected.id)
+    )
+      setOverviewCitation(undefined);
+  }, [overviewCitation, selected.id, selected.workspaceId]);
+  useEffect(() => {
+    const openFromAnotherTab = (event: Event) => {
+      const detail = (event as CustomEvent<string | OpenCitationDetail>).detail;
+      if (shown === AgreementTab.Terms || typeof detail === "string" || !detail)
+        return;
+      if (!mayLeaveDraft()) return;
+      event.preventDefault();
+      setOverviewCitation({
+        workspaceId: selected.workspaceId,
+        agreementId: selected.id,
+        detail,
+      });
+      setTab(AgreementTab.Terms);
+      setBreakdown(null);
+    };
+    window.addEventListener(OPEN_CITATION_EVENT, openFromAnotherTab);
+    return () =>
+      window.removeEventListener(OPEN_CITATION_EVENT, openFromAnotherTab);
+  }, [
+    mayLeaveDraft,
+    selected.id,
+    selected.workspaceId,
+    setBreakdown,
+    setTab,
+    shown,
+  ]);
   useEffect(() => {
     const onPop = (event: PopStateEvent) => {
       if (
@@ -398,9 +449,19 @@ export function AgreementDetail({
                     label: "Upload amended agreement",
                     note: "Owner only. Starts a new version and everyone approves again.",
                     onSelect: () => {
+                      if (!mayLeaveDraft()) return;
                       setPreview(null);
+                      // An amendment needs its own immutable source. Keep the
+                      // approved version and its document intact while the
+                      // organizer starts a fresh local draft.
+                      setSource("");
+                      setDocumentId("");
+                      setExtraction(null);
+                      setDraftDirty(false);
+                      rulesDirty.current = false;
                       setEditing(true);
-                      changeAgreementTab(AgreementTab.Terms);
+                      setTab(AgreementTab.Terms);
+                      setBreakdown(null);
                     },
                   },
                 ]
@@ -513,6 +574,10 @@ export function AgreementDetail({
                     base={base}
                     reviewedVersionId={latest?.id}
                     onDocument={setLoadedDocument}
+                    requestedCitation={requestedCitation}
+                    onRequestedCitationHandled={() =>
+                      setOverviewCitation(undefined)
+                    }
                   />
                 </section>
               )}

@@ -19,6 +19,7 @@ import "./collaborator.css";
 import "./guided-revise.css";
 import "./paypal-connect.css";
 import "./review-discussion.css";
+import "./table-system.css";
 export const metadata: Metadata = {
   title: "Fairshare · The money follows the agreement",
   description: "Agreements, clear allocations and traceable payouts.",

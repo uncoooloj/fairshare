@@ -1,13 +1,8 @@
 import type { Dispatch, SetStateAction } from "react";
-import { MoneyCard } from "../../agreement-workspace";
+import { MoneyCard, RevenueRulesCard } from "../../agreement-workspace";
 import { RevenueTable } from "../../agreement-widgets";
-import { SplitBar } from "../../person";
 import { formatDate } from "../../../lib/preferences";
-import { toneInRoster } from "../../../lib/person";
-import {
-  activitySentence,
-  splitSentences,
-} from "../../../lib/overview-summary";
+import { activitySentence } from "../../../lib/overview-summary";
 import {
   AgreementTab,
   Section,
@@ -44,26 +39,25 @@ export function AgreementOverviewTab({
   navigate,
   onChangeSplit,
 }: AgreementOverviewTabProps) {
-  // Before the split is switched on, describe the one waiting for approval.
+  // Money always follows the active rules. Before first approval, show the
+  // pending version so people can review what they are being asked to approve.
   const shown = active ?? selected.value.versions.at(-1);
-  const roster = selected.value.members;
-  const name = (id: string) =>
-    roster.find((m) => m.userId === id)?.displayName || "Former member";
   return (
     <div className="detail-columns ag-overview">
       <div className="ag-stack">
-        <section className="panel ag-card ag-summary" aria-label="The split">
-          <div className="ag-card-head">
-            <h2>The split</h2>
-            {shown && (
-              <span className="ag-card-actions">
+        {shown ? (
+          <RevenueRulesCard
+            agreement={selected}
+            version={shown}
+            action={
+              <>
                 {onChangeSplit && (
                   <button
                     type="button"
                     className="text-button"
                     onClick={onChangeSplit}
                   >
-                    Change the split
+                    Change the agreement
                   </button>
                 )}
                 <button
@@ -73,34 +67,15 @@ export function AgreementOverviewTab({
                 >
                   Read the agreement →
                 </button>
-              </span>
-            )}
-          </div>
-          {shown ? (
-            <>
-              <SplitBar
-                segments={shown.rules.shares.map((s) => ({
-                  userId: s.userId,
-                  name: name(s.userId),
-                  basisPoints: s.basisPoints,
-                  tone: toneInRoster(s.userId, roster),
-                }))}
-              />
-              <ul className="ag-summary-lines">
-                {splitSentences(selected, shown.rules, user.id).map((line) => (
-                  <li key={line}>{line}</li>
-                ))}
-              </ul>
-              {!active && (
-                <p className="muted ag-fine">
-                  Nothing is paid until everyone approves.
-                </p>
-              )}
-            </>
-          ) : (
+              </>
+            }
+          />
+        ) : (
+          <section className="panel ag-card" aria-label="Revenue rules">
+            <h2>Revenue rules</h2>
             <p className="muted">No split yet. Agree on one in Agreement.</p>
-          )}
-        </section>
+          </section>
+        )}
         <section className="panel ag-card ag-payments-card">
           <div className="ag-card-head">
             <h2>Recent payments</h2>
