@@ -32,7 +32,8 @@ test("invitation confirmation suppresses competing application forms; creation r
     source,
     /setCreating\(false\);\s*setWorkspace\(e.target.value\)/,
   );
-  assert.equal(source.match(/workspaceRole=\{workspaceRole\}/g)?.length, 2);
+  // Overview no longer repeats the agreements table; only the Agreements list renders it.
+  assert.equal(source.match(/workspaceRole=\{workspaceRole\}/g)?.length, 1);
 });
 
 test("expired or unwanted invitations can be dismissed without consuming them", () => {

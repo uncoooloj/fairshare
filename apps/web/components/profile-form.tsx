@@ -1,6 +1,8 @@
 "use client";
 import { useRef, useState } from "react";
-import { Button, Field } from "./ui";
+import { Button } from "./ui";
+import { PasswordForm } from "./agreement-widgets";
+import { SettingsRow } from "./settings-preferences";
 
 /** Account display name only. Agreement identities and approved rules are unchanged. */
 export function ProfileForm({
@@ -18,7 +20,7 @@ export function ProfileForm({
   const pending = useRef(false);
   return (
     <form
-      className="inline-form"
+      className="settings-row-form"
       onSubmit={async (event) => {
         event.preventDefault();
         const value = draft.trim();
@@ -43,11 +45,12 @@ export function ProfileForm({
         }
       }}
     >
-      <Field
-        label="Display name"
-        hint="Updates your account only, not names recorded in existing agreements."
+      <SettingsRow
+        label={<label htmlFor="settings-display-name">Name</label>}
+        hint="Existing agreement names stay as recorded."
       >
         <input
+          id="settings-display-name"
           name="name"
           autoComplete="name"
           required
@@ -56,13 +59,47 @@ export function ProfileForm({
           onChange={(event) => setDraft(event.target.value)}
           disabled={saving}
         />
-      </Field>
-      <Button
-        disabled={busy || saving || !draft.trim() || draft.trim() === name}
-      >
-        {saving ? "Saving…" : "Save name"}
-      </Button>
+        {draft.trim() !== name && (
+          <Button disabled={busy || saving || !draft.trim()}>
+            {saving ? "Saving…" : "Save name"}
+          </Button>
+        )}
+      </SettingsRow>
       {error && <p role="alert">{error}</p>}
     </form>
+  );
+}
+
+/** Password row: the existing change-password form stays one click away. */
+export function PasswordRow({
+  busy,
+  onSubmit,
+}: {
+  busy: boolean;
+  onSubmit: (currentPassword: string, newPassword: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="settings-row-group">
+      <SettingsRow
+        label="Password"
+        hint="Changing it signs you out everywhere."
+      >
+        <Button
+          type="button"
+          variant="secondary"
+          aria-expanded={open}
+          aria-controls="settings-password-form"
+          onClick={() => setOpen((value) => !value)}
+        >
+          {open ? "Cancel" : "Change password"}
+        </Button>
+      </SettingsRow>
+      {open && (
+        <div id="settings-password-form" className="settings-row-reveal">
+          <PasswordForm busy={busy} onSubmit={onSubmit} />
+        </div>
+      )}
+    </div>
   );
 }

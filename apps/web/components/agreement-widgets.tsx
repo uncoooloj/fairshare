@@ -21,10 +21,24 @@ import {
 } from "../lib/model";
 import { Badge, Button, Empty, Field, Notice } from "./ui";
 import { PaymentGridStatus } from "../src/components/paymentGridModel";
+import { Avatar as ListAvatar, AvatarSize as ListAvatarSize, SplitBar as ListSplitBar } from "./person";
+import { toneInRoster as listTone } from "../lib/person";
+import { formatDay as listDay, formatExact as listExact } from "../lib/dates";
 export function Logo() {
   return (
     <div className="logo">
-      <span aria-hidden="true">▰</span>Fairshare
+      <svg
+        className="logo-mark"
+        width="22"
+        height="22"
+        viewBox="0 0 22 22"
+        aria-hidden="true"
+      >
+        <rect x="1" y="3" width="20" height="4" rx="2" />
+        <rect x="1" y="9" width="14" height="4" rx="2" />
+        <rect x="1" y="15" width="8" height="4" rx="2" />
+      </svg>
+      Fairshare
     </div>
   );
 }
@@ -137,11 +151,31 @@ export function AgreementList({
   const emptyState = agreementEmptyState(workspaceRole);
   if (!agreements.length)
     return <Empty title={emptyState.title}>{emptyState.description}</Empty>;
+  const statusTone: Record<string, string> = {
+    Approved: "good",
+    "In review": "warning",
+    "Needs attention": "danger",
+    Draft: "neutral",
+  };
+  const lastUpdated = (a: Agreement) =>
+    a.value.audit.reduce<string | undefined>(
+      (latest, event) =>
+        !latest || Date.parse(event.at) > Date.parse(latest) ? event.at : latest,
+      undefined,
+    );
   return (
-    <section className="agreement-list" aria-label="Agreements">
-      <div className="list-toolbar">
-        <label className="search-field">
+    <section className="agreement-list ov-list-page" aria-label="Agreements">
+      <div className="list-toolbar ov-toolbar">
+        <label className="search-field ov-search">
           <span className="sr-only">Search agreements</span>
+          <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none">
+            <path
+              d="m20 20-4.2-4.2M17 11a6 6 0 1 1-12 0 6 6 0 0 1 12 0Z"
+              stroke="currentColor"
+              strokeWidth="1.75"
+              strokeLinecap="round"
+            />
+          </svg>
           <input
             type="search"
             placeholder="Search agreements"
@@ -149,7 +183,15 @@ export function AgreementList({
             onChange={(e) => setQuery(e.target.value)}
           />
         </label>
-        <label className="agreement-status-filter">
+        <label className="agreement-status-filter ov-status-filter">
+          <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none">
+            <path
+              d="M4 6h16M7 12h10m-7 6h4"
+              stroke="currentColor"
+              strokeWidth="1.75"
+              strokeLinecap="round"
+            />
+          </svg>
           <span>Status:</span>
           <select
             aria-label="Filter agreements by status"
@@ -167,7 +209,7 @@ export function AgreementList({
         </label>
       </div>
       {filtered.length ? (
-        <div className="table-scroll">
+        <div className="table-scroll ov-table">
           <table>
             <thead>
               <tr>
@@ -188,68 +230,77 @@ export function AgreementList({
                   (v) => v.id === a.value.activeVersionId,
                 );
                 const shares = (active || latest)?.rules.shares;
+                const members = a.value.members;
+                const status = agreementStatus(a);
+                const updated = lastUpdated(a);
                 return (
-                  <tr key={a.id}>
+                  <tr
+                    key={a.id}
+                    className="ov-row"
+                    onClick={() => onOpen(a)}
+                  >
                     <td>
                       <button
                         className="text-button strong agreement-name"
-                        onClick={() => onOpen(a)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onOpen(a);
+                        }}
                       >
                         {a.value.name}
                       </button>
                       <div className="agreement-meta">
                         {active
-                          ? `v${active.id} active`
+                          ? `v${active.id}`
                           : latest
                             ? `v${latest.id}`
                             : "No proposed terms"}
                         {active && latest && active.id !== latest.id
-                          ? ` · v${latest.id} ${title(latest.status)}`
+                          ? ` · v${latest.id} ${title(latest.status).toLowerCase()}`
                           : ""}
-                      </div>
-                    </td>
-                    <td>
-                      <Badge
-                        value={
-                          a.value.reviewHold
-                            ? "REVIEW_REQUIRED"
-                            : active
-                              ? "APPROVED"
-                              : latest?.status || "DRAFT"
-                        }
-                      />
-                    </td>
-                    <td>
-                      <div className="avatar-stack">
-                        {a.value.members.slice(0, 3).map((m) => (
-                          <PersonAvatar key={m.userId} name={m.displayName} />
-                        ))}
-                        {a.value.members.length > 3 && (
-                          <span
-                            className="person-avatar"
-                            aria-label={`${a.value.members.length - 3} more people`}
-                          >
-                            +{a.value.members.length - 3}
+                        {updated && (
+                          <span title={listExact(updated)}>
+                            {` · Updated ${listDay(updated)}`}
                           </span>
                         )}
                       </div>
                     </td>
                     <td>
-                      <span
-                        className="split-summary"
-                        title={shares
-                          ?.map(
-                            (share) =>
-                              `${a.value.members.find((m) => m.userId === share.userId)?.displayName || "Participant"}: ${share.basisPoints / 100}%`,
-                          )
-                          .join(", ")}
-                      >
-                        {shares?.length
-                          ? shares
-                              .map((share) => `${share.basisPoints / 100}%`)
-                              .join(" / ")
-                          : "Not set"}
+                      <span className={`status-chip ${statusTone[status] || "neutral"}`}>
+                        {status}
                       </span>
+                    </td>
+                    <td>
+                      <div className="avatar-stack">
+                        {members.slice(0, 4).map((m) => (
+                          <ListAvatar
+                            key={m.userId}
+                            name={m.displayName}
+                            tone={listTone(m.userId, members)}
+                            size={ListAvatarSize.SMALL}
+                          />
+                        ))}
+                        {members.length > 4 && (
+                          <span
+                            className="person-avatar size-sm ov-more"
+                            aria-label={`${members.length - 4} more people`}
+                          >
+                            +{members.length - 4}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td>
+                      <ListSplitBar
+                        segments={(shares || []).map((share) => ({
+                          userId: share.userId,
+                          name:
+                            members.find((m) => m.userId === share.userId)
+                              ?.displayName || "Participant",
+                          basisPoints: share.basisPoints,
+                          tone: listTone(share.userId, members),
+                        }))}
+                      />
                     </td>
                     <td className="numeric">
                       {money(
@@ -259,14 +310,16 @@ export function AgreementList({
                         ),
                       )}
                     </td>
-                    <td>
-                      <button
-                        className="text-button"
-                        aria-label={`Open ${a.value.name}`}
-                        onClick={() => onOpen(a)}
-                      >
-                        →
-                      </button>
+                    <td className="ov-chevron-cell" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" className="ov-chevron">
+                        <path
+                          d="m9 6 6 6-6 6"
+                          stroke="currentColor"
+                          strokeWidth="1.75"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
                     </td>
                   </tr>
                 );
@@ -275,9 +328,25 @@ export function AgreementList({
           </table>
         </div>
       ) : (
-        <Empty title="No matching agreements">
-          Try another name or status filter.
-        </Empty>
+        <div className="ov-no-results">
+          <Empty
+            title="No matching agreements"
+            action={
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setQuery("");
+                  setFilter("All");
+                }}
+              >
+                Clear filters
+              </Button>
+            }
+          >
+            Nothing matches {query ? `“${query}”` : "this filter"}
+            {filter !== "All" ? ` with status ${filter}` : ""}.
+          </Empty>
+        </div>
       )}
     </section>
   );

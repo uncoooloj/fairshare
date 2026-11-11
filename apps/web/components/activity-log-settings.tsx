@@ -2,7 +2,10 @@
 import { useEffect, useState } from "react";
 import { api } from "../lib/model";
 import { Button } from "./ui";
-import { formatDate } from "../lib/preferences";
+import { formatExact, formatWhen } from "../lib/dates";
+import { toneForId } from "../lib/person";
+import { Avatar, AvatarSize } from "./person";
+import { SettingsPaneHeader } from "./settings-preferences";
 type Option = { id: string; name: string };
 type Log = {
   events: {
@@ -63,12 +66,12 @@ export function ActivityLogSettings({ workspace }: { workspace: string }) {
     };
   }, [workspace, actor, action, agreement, days, offset, refresh]);
   return (
-    <section className="panel">
-      <h2>Activity log</h2>
-      <p className="muted">
-        Account and accessible agreement activity. Read-only.
-      </p>
-      <div className="toolbar">
+    <section className="settings-pane">
+      <SettingsPaneHeader
+        title="Activity log"
+        description="Every approval, edit, allocation, adjustment and payout you can access. Read-only."
+      />
+      <div className="settings-filters">
         <label>
           Who
           <select
@@ -136,7 +139,8 @@ export function ActivityLogSettings({ workspace }: { workspace: string }) {
           </select>
         </label>
         <Button
-          variant="secondary"
+          type="button"
+          variant="quiet"
           disabled={loading}
           onClick={() => setRefresh((n) => n + 1)}
         >
@@ -150,48 +154,73 @@ export function ActivityLogSettings({ workspace }: { workspace: string }) {
       ) : (
         data && (
           <>
-            <div className="table-wrap">
+            <div className="settings-table">
               <table>
                 <thead>
                   <tr>
-                    <th>Who</th>
-                    <th>What</th>
-                    <th>Agreement</th>
-                    <th>When</th>
+                    <th scope="col">Who</th>
+                    <th scope="col">What</th>
+                    <th scope="col">Agreement</th>
+                    <th scope="col">When</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {data.events.map((e) => (
-                    <tr key={e.id}>
-                      <td>{e.actorName}</td>
-                      <td>{label(e.action)}</td>
-                      <td>{e.agreementName ?? "Account / workspace"}</td>
-                      <td>
-                        <time dateTime={new Date(e.createdAt).toISOString()}>
-                          {formatDate(e.createdAt)}
-                        </time>
-                      </td>
-                    </tr>
-                  ))}
+                  {data.events.map((e) => {
+                    const at = new Date(e.createdAt).toISOString();
+                    return (
+                      <tr key={e.id}>
+                        <td>
+                          <span className="settings-person">
+                            <Avatar
+                              name={e.actorName}
+                              tone={toneForId(e.actorName)}
+                              size={AvatarSize.SMALL}
+                              label={false}
+                            />
+                            {e.actorName}
+                          </span>
+                        </td>
+                        <td>{label(e.action)}</td>
+                        <td>{e.agreementName ?? "Account / workspace"}</td>
+                        <td className="settings-when">
+                          <time dateTime={at} title={formatExact(at)}>
+                            {formatWhen(at)}
+                          </time>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
+              {!data.events.length && (
+                <p className="settings-table-empty">
+                  No activity matches these filters.
+                </p>
+              )}
             </div>
-            {!data.events.length && <p>No activity matches these filters.</p>}
-            <p className="muted">{data.total} matching events</p>
-            <Button
-              variant="secondary"
-              disabled={!offset}
-              onClick={() => setOffset((n) => Math.max(0, n - 50))}
-            >
-              Previous
-            </Button>
-            <Button
-              variant="secondary"
-              disabled={data.nextOffset === null}
-              onClick={() => setOffset(data.nextOffset ?? offset)}
-            >
-              Next
-            </Button>
+            <div className="settings-pager">
+              <span className="muted">
+                {data.total} matching {data.total === 1 ? "event" : "events"}
+              </span>
+              <span>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={!offset}
+                  onClick={() => setOffset((n) => Math.max(0, n - 50))}
+                >
+                  Previous
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={data.nextOffset === null}
+                  onClick={() => setOffset(data.nextOffset ?? offset)}
+                >
+                  Next
+                </Button>
+              </span>
+            </div>
           </>
         )
       )}

@@ -4,6 +4,14 @@ import { approvalLabel, payoutReadinessLabel } from "../lib/people-readiness";
 import { canRemind } from "../lib/review-discussion";
 import { ReviewReminder } from "./review-discussion";
 import { Button } from "./ui";
+import { Avatar } from "./person";
+import { toneInRoster } from "../lib/person";
+
+function chipTone(label: string) {
+  if (label === "Approved") return "good";
+  if (/Awaiting|Changes|Needs|not verified/.test(label)) return "warning";
+  return "neutral";
+}
 
 type Destination = { id: string; status: string; accountHint: string | null };
 export function AgreementPeople({
@@ -44,9 +52,34 @@ export function AgreementPeople({
       active = false;
     };
   }, [agreement.workspaceId, refresh]);
+  const members = agreement.value.members;
+  const approved = version
+    ? members.filter((m) => Object.hasOwn(version.approvals, m.userId)).length
+    : 0;
   return (
-    <section aria-label="Agreement participants">
-      <div className="row">
+    <section aria-label="Agreement participants" className="ag-people">
+      {version && (
+        <div className="panel ag-card ag-approval-progress">
+          <strong>
+            {approved} of {members.length} have approved v{version.id}
+          </strong>
+          <div
+            className={`ag-progress ${approved === members.length ? "is-complete" : "is-brand"}`}
+            role="progressbar"
+            aria-label="People who approved"
+            aria-valuemin={0}
+            aria-valuemax={members.length}
+            aria-valuenow={approved}
+          >
+            <span
+              style={{
+                width: `${members.length ? (approved / members.length) * 100 : 0}%`,
+              }}
+            />
+          </div>
+        </div>
+      )}
+      <div className="row ag-people-toolbar">
         <p className="muted">
           Payout destinations are private to each person. A saved ID is not
           proof of account ownership or payout eligibility.
@@ -61,50 +94,83 @@ export function AgreementPeople({
         </Button>
       </div>
       {error && <p role="alert">{error}</p>}
-      <div className="people-table-scroll">
+      <div className="people-table-scroll ag-people-table">
         <table>
           <thead>
             <tr>
               <th scope="col">Person</th>
-              <th scope="col">Agreement role</th>
+              <th scope="col">Role</th>
               <th scope="col">
-                {version ? `Version ${version.id} review` : "Review"}
+                {version ? `v${version.id} approval` : "Approval"}
               </th>
-              <th scope="col">Payout destination</th>
-              <th scope="col">Actions</th>
+              <th scope="col">Payout account</th>
+              <th scope="col">
+                <span className="visually-hidden">Actions</span>
+              </th>
             </tr>
           </thead>
           <tbody>
-            {agreement.value.members.map((member) => {
+            {members.map((member) => {
               const destination = destinations?.find(
                 (item) => item.id === member.userId,
               );
+              const approval = approvalLabel(version, member.userId);
+              const readiness = loading
+                ? "Loading…"
+                : payoutReadinessLabel(destination?.status);
               return (
                 <tr key={member.userId}>
                   <th scope="row">
-                    <span className="avatar small" aria-hidden="true">
-                      {member.displayName[0]}
+                    <span className="ag-person-cell">
+                      <Avatar
+                        name={member.displayName}
+                        tone={toneInRoster(member.userId, members)}
+                        label={false}
+                      />
+                      <span>
+                        {member.displayName}
+                        {member.userId === userId && (
+                          <small className="muted"> (you)</small>
+                        )}
+                      </span>
                     </span>
-                    {member.displayName}
-                    {member.userId === userId ? " (you)" : ""}
                   </th>
                   <td>
                     {member.role === "ORGANIZER" ? "Organizer" : "Collaborator"}
                   </td>
-                  <td>{approvalLabel(version, member.userId)}</td>
                   <td>
-                    {loading
-                      ? "Loading…"
-                      : payoutReadinessLabel(destination?.status)}
-                    {!loading && destination?.accountHint && (
-                      <small className="muted">{destination.accountHint}</small>
-                    )}
+                    <span className={`status-chip ${chipTone(approval)}`}>
+                      {approval}
+                    </span>
                   </td>
                   <td>
-                    <details className="people-actions">
-                      <summary aria-label={`Actions for ${member.displayName}`}>
-                        Actions
+                    <span className={`status-chip ${chipTone(readiness)}`}>
+                      {readiness}
+                    </span>
+                    {!loading && destination?.accountHint && (
+                      <small className="muted ag-hint">
+                        {destination.accountHint}
+                      </small>
+                    )}
+                  </td>
+                  <td className="ag-row-actions">
+                    <details className="people-actions ag-menu">
+                      <summary
+                        className="icon-button"
+                        aria-label={`Actions for ${member.displayName}`}
+                      >
+                        <svg
+                          width="16"
+                          height="16"
+                          viewBox="0 0 16 16"
+                          aria-hidden="true"
+                        >
+                          <circle cx="3" cy="8" r="1.4" fill="currentColor" />
+                          <circle cx="8" cy="8" r="1.4" fill="currentColor" />
+                          <circle cx="13" cy="8" r="1.4" fill="currentColor" />
+                        </svg>
                       </summary>
+                      <div className="ag-menu-list">
                       {version &&
                         canRemind(
                           agreement,
@@ -149,6 +215,7 @@ export function AgreementPeople({
                         Workspace permissions cannot change while a person
                         belongs to an agreement.
                       </p>
+                      </div>
                     </details>
                   </td>
                 </tr>

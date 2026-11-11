@@ -11,6 +11,7 @@ import {
   type Topic,
 } from "../lib/review-discussion";
 import { Button, Field, Notice } from "./ui";
+import { formatExact, formatWhen } from "../lib/dates";
 
 type DiscussionProps = {
   base: string;
@@ -156,8 +157,11 @@ function VersionDiscussion({
       <span className="muted">
         {" "}
         · {discussionTopics[comment.ruleKey]} ·{" "}
-        <time dateTime={new Date(comment.createdAt).toISOString()}>
-          {new Date(comment.createdAt).toLocaleString()}
+        <time
+          dateTime={new Date(comment.createdAt).toISOString()}
+          title={formatExact(comment.createdAt)}
+        >
+          {formatWhen(comment.createdAt)}
         </time>
       </span>
       <p style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
