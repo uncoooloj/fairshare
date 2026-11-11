@@ -10,6 +10,7 @@ import {
 import { joinNames } from "../lib/agreement-status";
 import {
   ApiError,
+  Currency,
   api,
   type Agreement,
   type Rules,
@@ -109,13 +110,26 @@ export function revisedSubmissionWasCommitted(
   rules: Rules,
   details?: Record<string, unknown>,
 ): boolean {
-  const detailsMatch = Object.entries(details ?? {}).every(([key, value]) =>
-    key === "name"
-      ? recovered.value.name === value
-      : (recovered.value.details as Record<string, unknown> | undefined)?.[
-          key
-        ] === value,
-  );
+  const patch = details as
+    | { name?: string; effectiveFrom?: string; effectiveTo?: string | null }
+    | undefined;
+  const expectedDetails = {
+    currency: before.value.details?.currency ?? Currency.USD,
+    effectiveFrom: before.value.details?.effectiveFrom,
+    effectiveTo: before.value.details?.effectiveTo,
+  };
+  if (patch?.effectiveFrom !== undefined)
+    expectedDetails.effectiveFrom = patch.effectiveFrom;
+  if (patch?.effectiveTo !== undefined)
+    expectedDetails.effectiveTo = patch.effectiveTo;
+  const recoveredDetails = recovered.value.details ?? {
+    currency: Currency.USD,
+  };
+  const detailsMatch =
+    recovered.value.name === (patch?.name ?? before.value.name) &&
+    recoveredDetails.currency === expectedDetails.currency &&
+    recoveredDetails.effectiveFrom === expectedDetails.effectiveFrom &&
+    recoveredDetails.effectiveTo === expectedDetails.effectiveTo;
   return (
     detailsMatch &&
     recovered.value.versions

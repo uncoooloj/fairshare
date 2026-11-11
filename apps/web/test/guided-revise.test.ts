@@ -23,7 +23,7 @@ import {
   revisedRules,
 } from "../lib/answers-from-rules";
 import { agreementStatus, AgreementStage } from "../lib/agreement-status";
-import type { Agreement, Rules } from "../lib/model";
+import { Currency, type Agreement, type Rules } from "../lib/model";
 import {
   AnswerSource,
   FeeChoice,
@@ -532,6 +532,38 @@ test("revise submit recovery adopts only this attempt's exact sent rules", () =>
   );
   assert.equal(
     revisedSubmissionWasCommitted(before, committed, submitted, details),
+    false,
+  );
+  assert.equal(
+    revisedSubmissionWasCommitted(
+      before,
+      {
+        ...matchingDetails,
+        value: {
+          ...matchingDetails.value,
+          details: {
+            ...matchingDetails.value.details!,
+            effectiveTo: "2026-12-31",
+          },
+        },
+      },
+      submitted,
+      details,
+    ),
+    false,
+  );
+  assert.equal(
+    revisedSubmissionWasCommitted(
+      before,
+      {
+        ...committed,
+        value: {
+          ...committed.value,
+          details: { currency: Currency.USD, effectiveFrom: "2026-11-30" },
+        },
+      },
+      submitted,
+    ),
     false,
   );
   assert.equal(
