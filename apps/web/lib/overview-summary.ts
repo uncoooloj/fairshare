@@ -79,6 +79,7 @@ export function overviewSummary(
   for (const agreement of authorized) {
     const value = agreement.value;
     const member = value.members.find((m) => m.userId === userId);
+    const organizer = member?.role === "ORGANIZER";
     for (const revenue of value.revenue)
       for (const row of revenue.allocations) {
         if (!organizer && row.userId !== userId) continue;
