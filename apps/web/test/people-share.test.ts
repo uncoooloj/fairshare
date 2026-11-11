@@ -222,7 +222,7 @@ test("People tab and status header make no invitation POSTs until a button is pr
         organizer: true,
       }),
     );
-    assert.match(people, /Copy link for Jordan/);
+    assert.match(people, /Copy message for Jordan/);
     // No token on this device: an honest "Get a new link", never a silent reissue.
     assert.match(people, /Get a new link for Riley/);
     assert.doesNotMatch(people, /(Copy|Share) link for Riley/);
@@ -240,6 +240,7 @@ test("People tab and status header make no invitation POSTs until a button is pr
       }),
     );
     assert.match(header, />Nudge</);
+    assert.doesNotMatch(header, /<aside[^>]*aria-label="Nudge"/);
     const drawer = renderToStaticMarkup(
       createElement(NudgeDrawer, {
         agreement: a,

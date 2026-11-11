@@ -27,7 +27,6 @@ import {
 } from "../lib/agreement-status";
 import { Button } from "./ui";
 import { ActionMenu, type MenuItem } from "./action-menu";
-import { NudgeDrawer } from "./person-share";
 import { unconfirmedAdvance } from "../lib/advance-status";
 import { confirmAdvancePaid } from "../lib/agreement-api";
 import { forgetStaleInviteTokens } from "../lib/share-link";
@@ -520,7 +519,6 @@ export function AgreementHeader({
 }) {
   const menuButton = useRef<HTMLButtonElement>(null);
   const [renaming, setRenaming] = useState(false);
-  const [nudging, setNudging] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [confirmBusy, setConfirmBusy] = useState(false);
   const [confirmError, setConfirmError] = useState("");
@@ -530,8 +528,7 @@ export function AgreementHeader({
     forgetStaleInviteTokens(agreement);
   }, [agreement.workspaceId, agreement.id, agreement.revision]);
   const statusAction = (action: StageAction) => {
-    if (action === StageAction.Nudge) setNudging(true);
-    else if (action === StageAction.ConfirmAdvance) {
+    if (action === StageAction.ConfirmAdvance) {
       setConfirmError("");
       setConfirming(true);
     } else onStatusAction(action);
@@ -655,14 +652,6 @@ export function AgreementHeader({
             </div>
           </div>
         )}
-      {nudging && (
-        <NudgeDrawer
-          agreement={agreement}
-          userId={userId}
-          onClose={() => setNudging(false)}
-          onAgreementChange={onAgreementChange}
-        />
-      )}
       {rename &&
         (renaming || renameSuggested) &&
         rename(renaming, () => {
