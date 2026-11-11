@@ -533,6 +533,17 @@ export default function FairshareApp() {
       router.replace("/login");
   }, [ready, user, router]);
   useEffect(() => {
+    if (!ready) return;
+    document.title =
+      flowToken && flowKind === "/invitation"
+        ? "Invitation · Fairshare"
+        : flowToken && flowKind === "/verify-email"
+          ? "Verify email · Fairshare"
+          : user
+            ? `${section} · Fairshare`
+            : "Log in · Fairshare";
+  }, [ready, user, section, flowKind, flowToken]);
+  useEffect(() => {
     if (user)
       run(async () => {
         await loadWorkspaces();
@@ -801,23 +812,29 @@ export default function FairshareApp() {
           )
         )}
         {isInvitationFlow ? null : needsWorkspace ? (
-          <>
-            {section === Section.Payouts && (
-              <Heading
-                title="No payouts yet"
-                description="Start with an agreement. Payouts appear after approved rules and recorded payments."
-              />
-            )}
-            <AgreementIntake
-              first
-              busy={busy}
-              onCreate={createFromAgreement}
-              onBusyChange={setBusy}
+          section === Section.Payouts ? (
+            <Heading
+              title="No payouts yet"
+              description="Payouts appear here after a received payment is allocated and payout dispatch is recorded."
+              action={
+                <Button onClick={() => navigate(Section.Agreements)}>
+                  Create an agreement
+                </Button>
+              }
             />
-            <p className="muted">
-              Already invited? Open Settings to accept your invitation.
-            </p>
-          </>
+          ) : (
+            <>
+              <AgreementIntake
+                first
+                busy={busy}
+                onCreate={createFromAgreement}
+                onBusyChange={setBusy}
+              />
+              <p className="muted">
+                Already invited? Open Settings to accept your invitation.
+              </p>
+            </>
+          )
         ) : (
           <>
             {section === Section.Overview && !selected && (

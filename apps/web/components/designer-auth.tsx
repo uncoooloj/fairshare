@@ -133,8 +133,8 @@ export function Auth({
           )}
           {login && (
             <p className={styles.hint}>
-              If your test account has hackathon MFA simulation enabled, enter
-              any nonempty value below. Simulation is not account protection.
+              If you enabled an extra sign-in step, use the code or instructions
+              from your account settings.
             </p>
           )}
           {login && (
