@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useId, useRef } from "react";
 import type { ReactNode } from "react";
+import { CloseButton } from "./close-button";
 
 /** Modal side sheet on the native dialog: focus trap, Escape and backdrop close come from the platform. */
 export function Drawer({
@@ -36,15 +37,11 @@ export function Drawer({
       <div className="side-drawer-body">
         <header className="side-drawer-header">
           <h2 id={heading}>{label}</h2>
-          <button
-            type="button"
-            className="icon-button"
+          <CloseButton
             onClick={onClose}
             autoFocus
-            aria-label={`Close ${label.toLowerCase()}`}
-          >
-            ×
-          </button>
+            label={`Close ${label.toLowerCase()}`}
+          />
         </header>
         {children}
       </div>

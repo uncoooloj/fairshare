@@ -35,7 +35,7 @@ The Anthropic call uses the official SDK (`@anthropic-ai/sdk`, pinned) with stru
 
 - `facts[]`: each `{ kind, subject, rawValue, citation: { start, end, quote } }` plus kind-specific fields:
   - `SHARE` → `basisPoints`. The name and the percentage must be in the same quote, and in a quote with several percentages the first one after the name must be this one ("respectively" is never paired).
-  - `ADVANCE` → recipient in `subject`, `amountCents`, `recoupedBeforeSplit: boolean | null` (true/false only if the quote says so).
+  - `ADVANCE` → recipient in `subject`, `amountCents`, `recoupedBeforeSplit: boolean | null` (true only when the quote itself says the advance is repaid before the split).
   - `FEES` → `feePolicy` (`BEFORE_SPLIT` = fees off first / shares of net; `ORGANIZER_SHARE` = shares of gross, `feeBearer` pays), same values as the domain `FeePolicy`.
   - `REFUNDS` → `refundStep` (`BEFORE_SPLIT` or `FROM_PARTY_SHARE` with `chargedTo`). Display only: Rules has no refund field.
   - `TERM` → `boundary` (`START`/`END`) and `date` (YYYY-MM-DD, parsed in code from written dates; numeric day/month forms are rejected).
@@ -67,7 +67,7 @@ Every fact and issue is validated independently. Invalid ones are dropped with a
 
 ## Verification status
 
-Deterministic tests cover both providers, the fallback path and the validation rules, and replay real Workers AI responses recorded on 2026-11-11 (`test/fixtures/live/recorded/`).
+Deterministic tests cover both providers, the fallback path and the validation rules. Recorded Workers AI responses captured on 2026-11-11 are replayed offline from `test/fixtures/live/recorded/`; that validates the current parser against those stored responses, not current provider behavior.
 
 Live eval (`npm run eval:live -w @fairshare/contract-ai`, see `scripts/live-eval.ts`): six synthetic agreements under `test/fixtures/live/` with hand-written expected readings, scored per field (people, shares, advance, fees, refunds, term, section statuses, questions, verbatim quotes). On 2026-11-11 the model bake-off on the v4 prompt scored:
 
@@ -80,4 +80,4 @@ Live eval (`npm run eval:live -w @fairshare/contract-ai`, see `scripts/live-eval
 | llama-3.3-70b-instruct-fp8-fast | 58%            | 6/6        | 29 s           | $0.0024                 |
 | gemma-4-26b-a4b-it              | 32%            | 0/6        | 116 s          | n/a (ran out of tokens) |
 
-DeepSeek V4.1 Flash became the default; with prompt v5, `reasoning_effort: none`, curly-quoted source text and the validation fixes it currently scores 57/60 on the six recorded synthetic fixtures at 4–16 s per agreement. A prior 59/60 figure used a relaxed amendment expectation. The recorded amendment fixture misses its explicit Production Advance recoupment: the model separates it from the amount, validation preserves the amount as unknown, and the scorer counts the advance and its section as misses. A start date given only through a defined term ("the Effective Date") is also dropped. The Anthropic fallback has not been exercised live. These are synthetic documents; run the eval on real agreements before claiming accuracy on them.
+DeepSeek V4.1 Flash became the default based on the bake-off above. The recorded fixtures are synthetic and replayed offline; this repository does not use them as proof of current latency, cost, provider availability, or real-agreement accuracy. The Anthropic fallback has not been exercised live. Run the live eval on authorized synthetic input before making current provider-performance claims.

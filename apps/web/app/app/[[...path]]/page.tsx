@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import FairshareApp from "../../components/fairshare-app";
+import FairshareApp from "../../../components/fairshare-app";
 export const metadata: Metadata = {
   title: "Agreements · Fairshare",
   robots: { index: false, follow: false },

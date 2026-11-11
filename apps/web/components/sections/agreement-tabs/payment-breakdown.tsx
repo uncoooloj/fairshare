@@ -1,6 +1,7 @@
 import type { Dispatch, SetStateAction } from "react";
 import { AllocationTable } from "../../agreement-widgets";
 import { api, money, type Agreement, type Revenue } from "../../../lib/model";
+import { CloseButton } from "../../close-button";
 import { Button } from "../../ui";
 import {
   PaymentConfirmation,
@@ -43,9 +44,10 @@ export function PaymentBreakdown({
     <section className="panel breakdown">
       <div className="row">
         <h2>How this payment was split</h2>
-        <Button variant="quiet" onClick={() => setBreakdown(null)}>
-          Close
-        </Button>
+        <CloseButton
+          label="Close payment split"
+          onClick={() => setBreakdown(null)}
+        />
       </div>
       <p>
         Received {money(breakdown.grossCents)} − PayPal fee{" "}

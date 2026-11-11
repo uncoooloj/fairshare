@@ -138,10 +138,13 @@ export function AgreementList({
   agreements,
   onOpen,
   workspaceRole,
+  isDraft = () => false,
 }: {
   workspaceRole?: string;
   agreements: Agreement[];
   onOpen: (a: Agreement) => void;
+  /** Never-sent drafts: a Draft badge and "Finish setting up" instead of the chevron. */
+  isDraft?: (a: Agreement) => boolean;
 }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("All");
@@ -249,7 +252,8 @@ export function AgreementList({
                 );
                 const shares = (active || latest)?.rules.shares;
                 const members = a.value.members;
-                const status = agreementStatus(a);
+                const draft = isDraft(a);
+                const status = draft ? "Draft" : agreementStatus(a);
                 const updated = lastUpdated(a);
                 return (
                   <tr
@@ -268,11 +272,13 @@ export function AgreementList({
                         {a.value.name}
                       </button>
                       <div className="agreement-meta">
-                        {active
-                          ? `v${active.id}`
-                          : latest
-                            ? `v${latest.id}`
-                            : "No split yet"}
+                        {draft
+                          ? "Not sent yet"
+                          : active
+                            ? `v${active.id}`
+                            : latest
+                              ? `v${latest.id}`
+                              : "No split yet"}
                         {active && latest && active.id !== latest.id
                           ? ` · v${latest.id} ${statusLabel(latest.status).toLowerCase()}`
                           : ""}
@@ -325,11 +331,26 @@ export function AgreementList({
                     <td className="numeric">
                       {money(receivedTotals(a.value.revenue).receivedCents)}
                     </td>
-                    <td className="ov-chevron-cell" aria-hidden="true">
-                      <span className="ov-chevron">
-                        <ChevronRightIcon />
-                      </span>
-                    </td>
+                    {draft ? (
+                      <td className="ov-draft-cell">
+                        <Button
+                          variant="secondary"
+                          aria-label={`Finish setting up ${a.value.name}`}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onOpen(a);
+                          }}
+                        >
+                          Finish setting up
+                        </Button>
+                      </td>
+                    ) : (
+                      <td className="ov-chevron-cell" aria-hidden="true">
+                        <span className="ov-chevron">
+                          <ChevronRightIcon />
+                        </span>
+                      </td>
+                    )}
                   </tr>
                 );
               })}

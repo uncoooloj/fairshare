@@ -495,6 +495,7 @@ test("verified invoice settlement allocates actual net once and appears in incom
     assert.equal(first.statusCode, 200, first.body);
     assert.equal(first.json().invoice.status, "PAID");
     assert.equal(first.json().invoice.settlementStatus, "VERIFIED");
+    assert.equal(first.json().invoice.hasCapture, true);
     assert.equal(first.json().invoice.paidAmountCents, 10000);
     assert.equal(first.json().invoice.dueAmountCents, 0);
     assert.equal(first.json().invoice.paidDate, "2026-11-11");
@@ -720,6 +721,7 @@ test("an invoice refund before allocation remains a durable hold after the event
     paid(s, p);
     const r = await s.post(`/invoices/${id}/reconcile`);
     assert.equal(r.json().invoice.settlementStatus, "HELD");
+    assert.equal(r.json().invoice.hasCapture, false);
     assert.equal(r.json().invoice.settlementError, "PAYMENT_HOLD");
     assert.equal(s.agg.read(s.w.id, "collab").value.revenue.length, 0);
   } finally {

@@ -189,19 +189,36 @@ test("release gate fails closed without an acceptance variable", () => {
   assert.match(result.stderr, /genuine hosted acceptance receipt/);
 });
 
-test("push-to-main releases retain gates while pull requests cannot publish", () => {
+test("manual releases retain safeguards while pushes and pull requests cannot publish", () => {
   const workflow = readFileSync(
     new URL("../../.github/workflows/deploy.yml", import.meta.url),
     "utf8",
   );
-  assert.match(workflow, /push:\s+branches: \[main\]/);
+  assert.doesNotMatch(workflow, /^  push:/m);
+  assert.match(workflow, /workflow_dispatch:/);
   assert.match(workflow, /pull_request:/);
   assert.match(workflow, /vars\.FAIRSHARE_PERSISTENCE_ACCEPTANCE/);
   assert.match(
     workflow,
     /github\.event_name != 'pull_request' && github\.ref == 'refs\/heads\/main'/,
   );
-  assert.match(workflow, /cancel-in-progress: false/);
+  assert.match(
+    workflow,
+    /cancel-in-progress: \$\{\{ github\.event_name == 'pull_request' \}\}/,
+  );
+  for (const command of [
+    "npm run format:check",
+    "npm test",
+    "npm run typecheck",
+    "npm run build",
+  ]) {
+    assert.match(
+      workflow,
+      new RegExp(
+        `if: github\\.event_name != 'pull_request'\\n\\s+run: ${command.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}`,
+      ),
+    );
+  }
   // Hosted origins belong in Wrangler bindings, not in the local test runner.
   assert.doesNotMatch(workflow, /^\s+FAIRSHARE_(?:API_URL|WEB_ORIGIN):/m);
   assert.match(workflow, /--no-bundle --keep-vars/);
@@ -220,6 +237,34 @@ test("push-to-main releases retain gates while pull requests cannot publish", ()
   );
   assert.match(workflow, /git ls-remote origin refs\/heads\/main/);
   assert.match(workflow, /if: steps\.current\.outputs\.deploy == 'true'/);
+});
+
+test("CI retains every test lane in two aggregated jobs", () => {
+  const workflow = readFileSync(
+    new URL("../../.github/workflows/ci.yml", import.meta.url),
+    "utf8",
+  );
+  assert.match(workflow, /^  tests:\n/m);
+  assert.match(workflow, /^  quality_and_build:\n/m);
+  for (const command of [
+    "--test-shard=1/2 test/*.test.ts",
+    "--test-shard=2/2 test/*.test.ts",
+    "@fairshare/web",
+    "@fairshare/cloudflare-storage",
+    "@fairshare/contract-ai",
+    "@fairshare/domain",
+    "@fairshare/payments",
+    "npm run format:check",
+    "npm run typecheck",
+    "npm run build",
+  ])
+    assert.ok(workflow.includes(command), command);
+  assert.match(
+    workflow,
+    /\(\n\s+set -e\n\s+npm run test --workspace @fairshare\/web/,
+  );
+  assert.match(workflow, /wait "\$pid" \|\| status=1/);
+  assert.match(workflow, /needs: \[tests, quality_and_build\]/);
 });
 
 test("persistence waiver is manual-main-only and guards both gate invocations", () => {
