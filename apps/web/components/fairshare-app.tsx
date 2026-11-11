@@ -563,6 +563,27 @@ export default function FairshareApp() {
   async function mutate(action: string, extra: Record<string, unknown> = {}) {
     await mutateWithResult(action, extra);
   }
+  function onAgreementChange(next: Agreement) {
+    setSelected((current) => {
+      if (
+        !current ||
+        current.workspaceId !== next.workspaceId ||
+        current.id !== next.id ||
+        next.revision < current.revision
+      )
+        return current;
+      return next;
+    });
+    setAgreements((current) =>
+      current.map((agreement) =>
+        agreement.workspaceId === next.workspaceId &&
+        agreement.id === next.id &&
+        next.revision >= agreement.revision
+          ? next
+          : agreement,
+      ),
+    );
+  }
   if (!ready)
     return (
       <main className="boot" aria-live="polite">
@@ -764,6 +785,7 @@ export default function FairshareApp() {
               run={run}
               mutate={mutate}
               mutateWithResult={mutateWithResult}
+              onAgreementChange={onAgreementChange}
               refresh={refresh}
               loadWorkspace={loadWorkspace}
               navigate={navigate}

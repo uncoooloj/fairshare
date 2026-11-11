@@ -54,6 +54,7 @@ export interface AgreementDetailProps {
     action: string,
     extra?: Record<string, unknown>,
   ) => Promise<boolean>;
+  onAgreementChange: (agreement: Agreement) => void;
   refresh: () => Promise<void>;
   loadWorkspace: (id: string) => Promise<void>;
   navigate: (s: Section) => boolean;
@@ -105,6 +106,7 @@ export function AgreementDetail({
   run,
   mutate,
   mutateWithResult,
+  onAgreementChange,
   refresh,
   loadWorkspace,
   navigate,
@@ -204,6 +206,7 @@ export function AgreementDetail({
               workspace={workspace}
               run={run}
               mutate={mutate}
+              onAgreementChange={onAgreementChange}
               setNotice={setNotice}
             />
           )}

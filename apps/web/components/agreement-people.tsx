@@ -31,18 +31,25 @@ export function personInviteLink(token: string, origin: string) {
   return `${publicWebOrigin(origin)}/invitation#token=${encodeURIComponent(AGREEMENT_INVITE_PREFIX + token)}`;
 }
 
+export const isCurrentReissue = (
+  startingRevision: number,
+  latestRevision: number,
+) => startingRevision === latestRevision;
+
 export function AgreementPeople({
   agreement,
   version,
   userId,
   base,
   organizer = false,
+  onAgreementChange,
 }: {
   agreement: Agreement;
   version?: Version;
   userId: string;
   base: string;
   organizer?: boolean;
+  onAgreementChange?: (agreement: Agreement) => void;
 }) {
   const agreementIdentity = JSON.stringify([
     agreement.workspaceId,
@@ -50,6 +57,7 @@ export function AgreementPeople({
     base,
   ]);
   const agreementIdentityRef = useRef(agreementIdentity);
+  const latestRevisionRef = useRef(agreement.revision);
   const [currentAgreement, setCurrentAgreement] = useState(agreement);
   const [destinations, setDestinations] = useState<Readiness[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -63,7 +71,9 @@ export function AgreementPeople({
     link: string;
   } | null>(null);
   useEffect(() => {
-    setCurrentAgreement(agreement);
+    setCurrentAgreement((current) =>
+      agreement.revision >= current.revision ? agreement : current,
+    );
   }, [agreement]);
   useEffect(() => {
     agreementIdentityRef.current = agreementIdentity;
@@ -94,6 +104,11 @@ export function AgreementPeople({
       active = false;
     };
   }, [currentAgreement.workspaceId, refresh]);
+  latestRevisionRef.current = Math.max(
+    latestRevisionRef.current,
+    agreement.revision,
+    currentAgreement.revision,
+  );
   const members = currentAgreement.value.members as AgreementMember[];
   const currentVersion = version
     ? (currentAgreement.value.versions.find((item) => item.id === version.id) ??
@@ -106,6 +121,7 @@ export function AgreementPeople({
   const sent = currentAgreement.value.versions.length > 0;
   async function reissue(member: AgreementMember) {
     const requestIdentity = agreementIdentity;
+    const startingRevision = currentAgreement.revision;
     setReissuing(member.userId);
     setInviteError("");
     try {
@@ -115,14 +131,24 @@ export function AgreementPeople({
         currentAgreement.revision,
         member.userId,
       );
-      if (agreementIdentityRef.current !== requestIdentity) return;
+      if (
+        agreementIdentityRef.current !== requestIdentity ||
+        !isCurrentReissue(startingRevision, latestRevisionRef.current)
+      )
+        return;
+      latestRevisionRef.current = result.agreement.revision;
       setCurrentAgreement(result.agreement);
+      onAgreementChange?.(result.agreement);
       setIssuedInvite({
         name: member.displayName,
         link: personInviteLink(result.invitation.token, location.origin),
       });
     } catch (cause) {
-      if (agreementIdentityRef.current !== requestIdentity) return;
+      if (
+        agreementIdentityRef.current !== requestIdentity ||
+        !isCurrentReissue(startingRevision, latestRevisionRef.current)
+      )
+        return;
       setInviteError(
         cause instanceof Error
           ? cause.message
@@ -262,7 +288,7 @@ export function AgreementPeople({
                           <Button
                             type="button"
                             variant="quiet"
-                            disabled={reissuing === member.userId}
+                            disabled={Boolean(reissuing)}
                             onClick={() => void reissue(member)}
                           >
                             {reissuing === member.userId
