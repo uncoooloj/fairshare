@@ -2,6 +2,7 @@ import { sourceHighlights } from "../lib/source-highlights";
 import { HighlightedSource } from "./source-rule-context";
 import { SplitRuleEditor } from "./split-rule-editor";
 import { RuleImpactReview } from "./rule-impact-review";
+import { isRulesDraftChange } from "../lib/rule-impact";
 import { agreementEmptyState } from "../lib/agreement-empty-state";
 import { formatDate } from "../lib/preferences";
 import { ClarificationDecisions } from "./clarification-decisions";
@@ -636,7 +637,8 @@ export function RulesEditor({
         <h3>Source agreement</h3>
         <p className="muted">
           Compare each proposed term with the saved text. This is extracted
-          text; the original file is available in Document.
+          text; Document shows its saved provenance and any retained original
+          file.
         </p>
         <p className="muted">
           Select a highlighted clause to review its extracted term on the right.
@@ -666,14 +668,11 @@ export function RulesEditor({
         ref={formRef}
         inert={busy}
         onChange={(event) => {
-          if ((event.target as HTMLElement).closest("[data-local-rule-edit]"))
-            return;
-          onDirty?.();
+          if (isRulesDraftChange(event.target)) onDirty?.();
         }}
         onChangeCapture={(event) => {
-          if ((event.target as HTMLElement).closest("[data-local-rule-edit]"))
-            return;
-          setDraftRevision((value) => value + 1);
+          if (isRulesDraftChange(event.target))
+            setDraftRevision((value) => value + 1);
         }}
         className="section rules-editor"
         onSubmit={(e) => {
@@ -722,14 +721,25 @@ export function RulesEditor({
                 new Set(f.getAll("resolvedAiQuestion").map(String)),
               ),
             };
-            if (advance)
+            if (advance) {
+              const id = old?.advance?.id || crypto.randomUUID();
+              const recipientId = String(f.get("recipient"));
+              const amountCents = parseCents(String(f.get("advance")));
+              const advanceSource =
+                old?.advance &&
+                old.advance.id === id &&
+                old.advance.recipientId === recipientId &&
+                old.advance.amountCents === amountCents
+                  ? old.advance.source
+                  : ref;
               rules.advance = {
-                id: old?.advance?.id || crypto.randomUUID(),
-                recipientId: String(f.get("recipient")),
-                amountCents: parseCents(String(f.get("advance"))),
+                id,
+                recipientId,
+                amountCents,
                 verified: f.get("verified") === "on",
-                source: ref,
+                source: advanceSource,
               };
+            }
             onSave(rules);
           } catch (e) {
             setError((e as Error).message);

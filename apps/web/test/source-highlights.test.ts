@@ -102,10 +102,9 @@ test("split edits stay local until apply", async () => {
     "utf8",
   );
   assert.match(editor, /data-local-rule-edit/);
-  assert.equal(
-    (rules.match(/closest\("\[data-local-rule-edit\]"\)/g) || []).length,
-    2,
-  );
+  assert.match(rules, /if \(isRulesDraftChange\(event.target\)\)/);
+  const { isRulesDraftChange } = await import("../lib/rule-impact");
+  assert.equal(isRulesDraftChange({ closest: () => ({}) }), false);
   const apply = rules
     .split("onApply={(values) => {")[1]
     .split("}}\n          />")[0];
