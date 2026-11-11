@@ -1,5 +1,5 @@
 import { sourceHighlights } from "../lib/source-highlights";
-import { ChevronRightIcon } from "./icons";
+import { ChevronRightIcon, PaymentIcon } from "./icons";
 import { HighlightedSource } from "./source-rule-context";
 import { SplitRuleEditor } from "./split-rule-editor";
 import { RuleImpactReview } from "./rule-impact-review";
@@ -611,7 +611,7 @@ export function RevenueTable({
       </tbody>
     </table>
   ) : (
-    <Empty title="No payments yet">
+    <Empty title="No payments yet" icon={<PaymentIcon size={36} />}>
       Payments show up here once PayPal confirms them.
     </Empty>
   );
