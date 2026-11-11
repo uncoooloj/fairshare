@@ -202,6 +202,17 @@ export default function FairshareApp() {
   const organizer =
     selected?.value.members.find((m) => m.userId === user?.id)?.role ===
     "ORGANIZER";
+  function creationMarker(agreement: Pick<Agreement, "workspaceId" | "id">) {
+    return `fairshare:creation:${agreementIdentityKey(agreement)}`;
+  }
+  function hasCreationMarker(agreement: Agreement) {
+    if (sessionStorage.getItem(creationMarker(agreement))) return true;
+    const sameId = agreements.filter((item) => item.id === agreement.id);
+    return (
+      sameId.length === 1 &&
+      sessionStorage.getItem(`fairshare:creation:${agreement.id}`) !== null
+    );
+  }
   async function run(fn: () => Promise<void>) {
     setBusy(true);
     setError("");
@@ -344,9 +355,8 @@ export default function FairshareApp() {
       setTab(AgreementTab.Overview);
       setSelected(fresh);
       setCreationAgreementId(
-        !fresh.value.versions.length &&
-          sessionStorage.getItem(`fairshare:creation:${fresh.id}`)
-          ? fresh.id
+        !fresh.value.versions.length && hasCreationMarker(fresh)
+          ? agreementIdentityKey(fresh)
           : "",
       );
       setPayments(p.payments);
@@ -396,14 +406,15 @@ export default function FairshareApp() {
       commitWorkspace(result.workspace.id);
       setAgreements((current) => [
         result.agreement,
-        ...current.filter((item) => item.id !== result.agreement.id),
+        ...current.filter(
+          (item) =>
+            item.workspaceId !== result.agreement.workspaceId ||
+            item.id !== result.agreement.id,
+        ),
       ]);
       setSelected(result.agreement);
-      setCreationAgreementId(result.agreement.id);
-      sessionStorage.setItem(
-        `fairshare:creation:${result.agreement.id}`,
-        "pending",
-      );
+      setCreationAgreementId(agreementIdentityKey(result.agreement));
+      sessionStorage.setItem(creationMarker(result.agreement), "pending");
       // Member refresh must not make a committed upload appear to fail.
       const intakeWorkspaceId = result.workspace.id;
       const intakeWorkspaceRequest = workspaceRequest.current;
@@ -424,6 +435,10 @@ export default function FairshareApp() {
             return;
           setMembers([]);
         });
+      void loadWorkspace(intakeWorkspaceId).catch(() => {
+        // The intake is committed; a failed optional global refresh must not
+        // make it look unsuccessful or erase the adopted agreement.
+      });
       setCreating(false);
       setSection(Section.Agreements);
       setTab(AgreementTab.Terms);
@@ -837,7 +852,7 @@ export default function FairshareApp() {
             )}
             {selected && section === Section.Agreements && (
               <>
-                {creationAgreementId === selected.id &&
+                {creationAgreementId === agreementIdentityKey(selected) &&
                 !selected.value.versions.length ? (
                   <AgreementCreationWizard
                     key={selected.id}
@@ -867,9 +882,7 @@ export default function FairshareApp() {
                       setSection(Section.Agreements);
                     }}
                     onComplete={() => {
-                      sessionStorage.removeItem(
-                        `fairshare:creation:${selected.id}`,
-                      );
+                      sessionStorage.removeItem(creationMarker(selected));
                       setCreationAgreementId("");
                       setTab(AgreementTab.Terms);
                       setNotice(

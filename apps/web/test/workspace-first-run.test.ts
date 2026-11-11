@@ -30,6 +30,11 @@ test("atomic creation adopts the returned workspace and document before optional
   );
   assert.match(creation, /api\(\s*"agreements\/intake",\s*"POST"/);
   assert.match(creation, /commitWorkspace\(result.workspace.id\)/);
+  assert.match(creation, /void loadWorkspace\(intakeWorkspaceId\)/);
+  assert.match(
+    creation,
+    /item\.workspaceId !== result\.agreement\.workspaceId \|\|\s*item\.id !== result\.agreement\.id/,
+  );
   assert.match(creation, /setDocumentId\(result.document.documentId\)/);
   assert.doesNotMatch(creation, /await loadWorkspaces|await openAgreement/);
 });
