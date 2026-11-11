@@ -1,0 +1,196 @@
+/* Agreement review: one workbench, with source evidence and a distinct draft rail.
+   Scoped deliberately: dashboard, billing, and authentication keep their own layouts. */
+.source-rules-review {
+  --review-gutter: 28px;
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 0.9fr);
+  gap: 0;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-lg);
+  background: var(--color-canvas);
+  align-items: start;
+}
+.source-rules-review .review-source {
+  margin: 0;
+  padding: var(--review-gutter);
+  border: 0;
+  border-radius: var(--radius-lg) 0 0 var(--radius-lg);
+  box-shadow: none;
+  background: var(--color-surface);
+  top: 16px;
+}
+.source-rules-review .review-source > h3,
+.source-rules-review .rules-editor > h3 {
+  font-size: 16px;
+  line-height: 24px;
+  letter-spacing: -0.2px;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+.source-rules-review .review-source > .muted {
+  max-width: 46ch;
+  font-size: 12px;
+  line-height: 18px;
+  margin-bottom: 12px;
+}
+.source-rules-review .review-source-text {
+  margin-top: 24px;
+  padding: 28px;
+  max-height: calc(100vh - 240px);
+  min-height: 280px;
+  border: 1px solid var(--color-line);
+  border-radius: 4px;
+  background: var(--color-canvas);
+  font-size: 13px;
+  line-height: 1.85;
+  box-shadow: 0 2px 4px #17171704;
+  scrollbar-width: thin;
+}
+.source-rules-review .rules-editor {
+  margin: 0;
+  padding: var(--review-gutter);
+  border: 0;
+  border-left: 1px solid var(--color-line);
+  border-radius: 0;
+  min-width: 0;
+}
+.source-rules-review .rules-editor > p,
+.source-rules-review .rules-editor .panel > p {
+  font-size: 13px;
+  line-height: 20px;
+  max-width: 58ch;
+}
+.source-rules-review .rules-editor > .panel,
+.source-rules-review .split-rule-editor.panel {
+  box-shadow: none;
+  padding: 20px;
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  background: var(--color-canvas);
+  margin: 20px 0;
+}
+.source-rules-review .rules-editor > .panel h4 {
+  margin: 0 0 12px;
+  font-size: 14px;
+  line-height: 20px;
+}
+.source-rules-review .rules-editor .field {
+  font-size: 12px;
+  line-height: 18px;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+.source-rules-review .rules-editor .form-grid {
+  gap: 12px;
+}
+.source-rules-review .rules-editor fieldset {
+  border: 0;
+  border-top: 1px solid var(--color-line);
+  padding: 20px 0 0;
+  margin: 24px 0;
+  min-width: 0;
+}
+.source-rules-review .rules-editor legend {
+  padding: 0 0 12px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.source-rules-review .rules-editor .notice {
+  padding: 12px 14px;
+  margin: 16px 0;
+  font-size: 12px;
+  line-height: 19px;
+  border-radius: 6px;
+}
+.source-rules-review .rules-editor .notice p:last-child {
+  margin-bottom: 0;
+}
+.source-rules-review .source-citation-links {
+  gap: 6px;
+  padding: 4px 0 16px;
+  margin: 0 0 16px;
+  border-bottom: 1px solid var(--color-line);
+}
+.source-rules-review .source-citation-links .button {
+  font-size: 12px;
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 1px solid var(--color-line);
+  border-radius: 6px;
+  color: var(--color-muted);
+}
+.source-rules-review .source-citation-links .button:hover {
+  border-color: var(--color-brand);
+  color: var(--color-brand);
+  background: var(--color-brand-soft);
+}
+.source-rules-review blockquote {
+  margin: 12px 0;
+  padding: 0 0 0 14px;
+  border-left: 2px solid var(--color-line);
+  color: #525252;
+  line-height: 1.7;
+  font-size: 13px;
+}
+.source-rules-review .split-rule-editor.panel {
+  border-color: #bfdbfe;
+  background: #f8fbff;
+}
+.source-rules-review .split-rule-editor > .row {
+  margin: 20px 0 12px;
+}
+.source-rules-review .rule-impact-review {
+  padding: 20px 0;
+  border: 0;
+  border-top: 1px solid var(--color-line);
+  border-bottom: 1px solid var(--color-line);
+  margin: 24px 0;
+}
+.source-rules-review .rule-impact-review summary {
+  font-size: 13px;
+  line-height: 22px;
+}
+.source-rules-review .rule-impact-review[open] summary {
+  margin-bottom: 16px;
+}
+.source-rules-review .impact-options .panel {
+  box-shadow: none;
+  border-radius: 8px;
+  padding: 16px;
+}
+.source-rules-review .impact-person dd {
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 1100px) {
+  .source-rules-review {
+    --review-gutter: 20px;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .source-rules-review .review-source {
+    position: static;
+    border-radius: 12px 12px 0 0;
+  }
+  .source-rules-review .review-source-text {
+    min-height: 0;
+    max-height: 260px;
+    margin-top: 16px;
+    padding: 20px;
+  }
+  .source-rules-review .rules-editor {
+    border-left: 0;
+    border-top: 1px solid var(--color-line);
+  }
+}
+@media (max-width: 600px) {
+  .source-rules-review {
+    --review-gutter: 16px;
+  }
+  .source-rules-review .rules-editor .form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .source-rules-review .rules-editor :is(input, select, textarea) {
+    font-size: 16px;
+  }
+  .source-rules-review .rules-editor > .panel {
+    padding: 16px;
+  }
+}
