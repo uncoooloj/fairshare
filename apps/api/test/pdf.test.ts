@@ -1,7 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { decodePdfBase64, extractPdf, MAX_PDF_BYTES } from "../src/pdf.js";
+import {
+  decodePdfBase64,
+  extractPdf,
+  MAX_PDF_BYTES,
+  MAX_PDF_PROTOCOL_BYTES,
+} from "../src/pdf.js";
 import { buildApp } from "../src/app.js";
 function pdf(text = "Maya receives 50 percent.", pages = 1): Buffer {
   const objects: string[] = [];
@@ -36,6 +41,33 @@ function pdf(text = "Maya receives 50 percent.", pages = 1): Buffer {
   return Buffer.from(out);
 }
 const has = (code: string) => (e: any) => e?.code === code;
+function pdfWithLines(count: number): Buffer {
+  const stream = `BT /F1 12 Tf 72 ${count * 12 + 72} Td ${Array.from(
+    { length: count },
+    () => "(a) Tj 0 -12 Td",
+  ).join(" ")} ET`;
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [4 0 R] /Count 1 >>",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 100 ${count * 12 + 144}] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>`,
+    `<< /Length ${Buffer.byteLength(stream)} >>\nstream\n${stream}\nendstream`,
+  ];
+  let out = "%PDF-1.4\n";
+  const offsets = [0];
+  objects.forEach((obj, index) => {
+    offsets.push(Buffer.byteLength(out));
+    out += `${index + 1} 0 obj\n${obj}\nendobj\n`;
+  });
+  const xref = Buffer.byteLength(out);
+  out += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  for (const offset of offsets.slice(1))
+    out += `${offset.toString().padStart(10, "0")} 00000 n \n`;
+  return Buffer.from(
+    out +
+      `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`,
+  );
+}
 test("PDF extractor preserves deterministic source text, pages, offsets and file provenance", async () => {
   const bytes = pdf("Maya receives 50 percent.", 2);
   const r = await extractPdf(bytes);
@@ -87,6 +119,12 @@ test("parser subprocess bounded by timeout without leaking document text", async
       e.code === "PDF_EXTRACTION_TIMEOUT" &&
       !e.message.includes("private contract"),
   );
+});
+test("PDF accepts bounded geometry protocol larger than reconstructed text", async () => {
+  const result = await extractPdf(pdfWithLines(6000));
+  assert.equal(result.text.length, 11999);
+  assert.ok(result.text.length < 40000);
+  assert.ok(MAX_PDF_PROTOCOL_BYTES > 300000);
 });
 test("PDF route is authenticated, retains private original alongside extracted source, no automatic AI send", async () => {
   const app = await buildApp({ dbPath: ":memory:" });

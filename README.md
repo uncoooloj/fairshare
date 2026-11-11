@@ -60,7 +60,6 @@ These checks provide source-level and build evidence. They do not prove browser 
 
 - DEMO uses synthetic identities, approvals, and an already-recorded advance. They are fixtures, not evidence of real approvals or funds.
 - AI observations require human review and cannot activate rules or move money.
-- Agreement extraction sends source text to Cloudflare AI only after `consentToCloudflare: true`. `consentToAnthropic: true` is optional, request-only consent for a configured Anthropic fallback after Cloudflare cannot complete the request; neither receipt is stored. Cloudflare AI and Anthropic are third-party processors for the corresponding request.
 - The payment adapter is sandbox-only. Provider acceptance, capture, webhook delivery, refunds, and recipient payout outcomes each need their own evidence.
 - The reconciliation worker exists but is disabled by default and performs reads/reconciliation only; it does not issue money-moving retries.
 - New PDF and DOCX uploads retain an authenticated original alongside extracted text. That private SQLite data is not encrypted at rest by this application.
@@ -68,7 +67,7 @@ These checks provide source-level and build evidence. They do not prove browser 
 - Private workspace invitation links are single-use, 48-hour bearer secrets. They are returned only when an owner creates them, remain in page memory and a URL fragment, and are not proof of mailbox ownership; share and revoke them deliberately.
 - Review discussion records comments without changing rules or approvals.
 - Checkout payment-source labels are organizer-entered metadata, not evidence of external revenue or a confirmed payment.
-- Local scanned-PDF OCR is disabled by default, runs only after a user selects it, and uses Apple Vision/PDFKit with Xcode command-line tools on macOS, or host-installed Poppler and Tesseract on Linux. The optional Cloudflare API sends documents to its private parser Container instead; the upload UI discloses hosted processing. OCR is not a correctness guarantee.
+- Local scanned-PDF OCR is disabled by default. When a host enables it, a textless PDF automatically falls back once from native text extraction to Apple Vision/PDFKit with Xcode command-line tools on macOS, or host-installed Poppler and Tesseract on Linux. The optional Cloudflare API sends documents to its private parser Container instead; the upload UI discloses hosted processing. OCR is not a correctness guarantee.
 - Authenticator MFA needs a separately managed server encryption key; it is not enabled by the synthetic DEMO alone.
 - `HACKATHON_MFA_SIMULATION=true` is a separate, explicitly labeled SANDBOX-only synthetic-account mode. It rejects DEMO, production, and live-PayPal configuration; it applies process-wide to accounts without an existing real authenticator, so use a dedicated synthetic-only database. It does not replace normal authenticator-key requirements or protect real accounts.
 

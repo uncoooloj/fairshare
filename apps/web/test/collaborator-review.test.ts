@@ -249,4 +249,8 @@ test("terms tab hides organizer controls from collaborators", () => {
     collaborator,
     /Propose revised terms|ContractReviewPanel|setEditing/,
   );
+  assert.match(
+    collaborator,
+    /if \(await mutateWithResult\(`\/versions\/\$\{latest\.id\}\/approve`\)\)\s*setApprovedForPayout/,
+  );
 });

@@ -109,11 +109,12 @@ export function chooseJoin(
 /** Lines must be in reading order. Empty lines are dropped. */
 export function layoutPage(input: LayoutLine[]): PageLayout {
   const lineIndexes: number[] = [];
-  const lines: LayoutLine[] = [];
+  const lines: Array<LayoutLine & { softHyphenWrap: boolean }> = [];
   for (const [index, line] of input.entries()) {
+    const softHyphenWrap = /\u00ad\s*$/.test(line.text);
     const text = normalizeExtractedText(line.text).replace(/\n/g, " ");
     if (!text) continue;
-    lines.push({ ...line, text });
+    lines.push({ ...line, text, softHyphenWrap });
     lineIndexes.push(index);
   }
   if (!lines.length) return { text: "", lineRanges: [], lineIndexes };
@@ -132,7 +133,13 @@ export function layoutPage(input: LayoutLine[]): PageLayout {
   let text = lines[0].text;
   const lineRanges: TextRange[] = [{ start: 0, end: text.length }];
   for (let index = 1; index < lines.length; index++) {
-    text += chooseJoin(lines[index - 1], lines[index], page);
+    const previous = lines[index - 1];
+    const current = lines[index];
+    const join =
+      previous.softHyphenWrap && /^\p{L}/u.test(current.text)
+        ? LineJoin.HYPHEN
+        : chooseJoin(previous, current, page);
+    text += join;
     const start = text.length;
     text += lines[index].text;
     lineRanges.push({ start, end: text.length });

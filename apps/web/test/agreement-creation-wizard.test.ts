@@ -6,9 +6,12 @@ import { readFileSync } from "node:fs";
 import {
   AgreementCreationWizard,
   checkProblem,
+  clearPersonInvitation,
   detailsPatch,
   mergeQuestions,
   resumedAnswers,
+  readingResultIsCurrent,
+  submissionWasCommitted,
   STAGE_STEP,
   WizardStage,
 } from "../components/agreement-creation-wizard";
@@ -23,8 +26,14 @@ import { CheckMode } from "../components/wizard-check-step";
 import { emptyAnswers, FeeChoice, AnswerSource } from "../lib/rules-answers";
 import { StandardQuestionId } from "../lib/standard-questions";
 import type { Agreement } from "../lib/model";
-import { saveDraftAnswers } from "../lib/wizard-draft-store";
+import { saveDraftAnswers } from "../lib/wizard-persistence";
 import { appSource } from "./app-source";
+import {
+  MIDNIGHT,
+  Status,
+  fullReading,
+  namesOnlyReading,
+} from "./extraction-v2-fixtures";
 
 const wizard = readFileSync(
   new URL("../components/agreement-creation-wizard.tsx", import.meta.url),
@@ -34,46 +43,14 @@ const owner = { id: "owner", name: "Maya Okafor", email: "maya@example.test" };
 const self = { name: owner.name, userId: owner.id };
 const noop = () => {};
 
-const doc =
-  "Revenue is split 50% to Maya, 30% to Jordan and 20% to Riley. Maya paid a $2,000 advance.";
-const cite = (quote: string) => {
-  const start = doc.indexOf(quote);
-  return { start, end: start + quote.length, quote };
-};
-const extraction = {
-  status: "REVIEW_REQUIRED",
-  documentId: "d",
-  requiresHumanReview: true,
-  executable: false,
-  suggestedTitle: "Midnight Sessions",
-  facts: [
-    {
-      kind: "SHARE",
-      subject: "Maya",
-      rawValue: "50%",
-      citation: cite("50% to Maya"),
-    },
-    {
-      kind: "SHARE",
-      subject: "Jordan",
-      rawValue: "30%",
-      citation: cite("30% to Jordan"),
-    },
-    {
-      kind: "SHARE",
-      subject: "Riley",
-      rawValue: "20%",
-      citation: cite("20% to Riley"),
-    },
-    {
-      kind: "ADVANCE",
-      subject: "Maya",
-      rawValue: "$2,000",
-      citation: cite("Maya paid a $2,000 advance"),
-    },
-  ],
-  issues: [],
-};
+const doc = MIDNIGHT;
+/** The v2 reading with the fees sentence left unread, so fees and refunds are both asked. */
+const extraction = (() => {
+  const reading = fullReading();
+  reading.facts = reading.facts.filter((f: any) => f.kind !== "FEES");
+  reading.sections.FEES.status = Status.ASK;
+  return reading;
+})();
 
 test("four progress dots: Upload · Check · People · Send", () => {
   const html = renderToStaticMarkup(
@@ -108,50 +85,47 @@ test("the wizard opens on Upload with the spec's copy and one privacy line", () 
   assert.match(html, /Read my agreement/);
   assert.match(html, /Set it up myself/);
   assert.equal(
-    (html.match(/Your document is read by AI to suggest the split/g) || [])
-      .length,
+    (html.match(/Read my agreement sends it to AI/g) || []).length,
     1,
   );
+  assert.match(html, /Cloudflare Workers AI, with an Anthropic fallback/);
   assert.doesNotMatch(html, /sandbox|Agreement name|Details/i);
 });
 
-test("today's extraction maps to answers, honestly: full split → FOUND_ALL", () => {
-  const read = answersFromExtraction(extraction, doc, self);
+test("the v2 reading maps to answers, honestly: full split → FOUND_ALL", () => {
+  const read = answersFromExtraction(fullReading(), doc, self);
   assert.equal(read.mode, CheckMode.FOUND_ALL);
   assert.equal(read.answers.name.value, "Midnight Sessions");
   const people = read.answers.people.value;
   assert.deepEqual(
     people.map((p) => [p.name, p.basisPoints, p.isSelf]),
     [
-      ["Maya", 5000, true],
-      ["Jordan", 3000, false],
-      ["Riley", 2000, false],
+      ["Maya Okafor", 5000, true],
+      ["Jordan Reyes", 3000, false],
+      ["Riley Chen", 2000, false],
     ],
   );
   assert.equal(people[0].userId, "owner");
   assert.equal(read.answers.advance?.value.amountCents, 200000);
   assert.equal(read.answers.advance?.value.recipientKey, "owner");
   assert.equal(read.answers.advance?.source, AnswerSource.DOCUMENT);
-  // The document is silent on fees and refunds: both become questions.
+  assert.equal(read.answers.fees?.value, FeeChoice.BEFORE_SPLIT);
+  // The document is silent on refunds: only that is asked. Silent fees are asked too.
   assert.deepEqual(
     read.answers.questions.map((q) => q.id),
+    [StandardQuestionId.REFUNDS],
+  );
+  assert.deepEqual(
+    answersFromExtraction(extraction, doc, self).answers.questions.map(
+      (q) => q.id,
+    ),
     [StandardQuestionId.FEES, StandardQuestionId.REFUNDS],
   );
 });
 
 test("names without percentages start equal; nothing read is MANUAL", () => {
-  const names = answersFromExtraction(
-    {
-      ...extraction,
-      facts: extraction.facts.map((f) =>
-        f.kind === "SHARE"
-          ? { ...f, kind: "RECIPIENT", rawValue: f.subject }
-          : f,
-      ),
-    },
-    doc,
-    self,
-  );
+  const only = namesOnlyReading();
+  const names = answersFromExtraction(only.extraction, only.doc, self);
   assert.equal(names.mode, CheckMode.FOUND_SOME);
   assert.ok(names.equalSplitGuessed);
   assert.deepEqual(
@@ -161,16 +135,6 @@ test("names without percentages start equal; nothing read is MANUAL", () => {
   for (const nothing of [
     null,
     { status: "MANUAL_REQUIRED", reason: "NOT_CONFIGURED", facts: [] },
-    // A quote that isn't in the document is ignored.
-    {
-      ...extraction,
-      facts: [
-        {
-          ...extraction.facts[0],
-          citation: { start: 0, end: 3, quote: "50%" },
-        },
-      ],
-    },
   ]) {
     const read = answersFromExtraction(nothing, doc, self);
     assert.equal(read.mode, CheckMode.MANUAL);
@@ -195,7 +159,7 @@ test("a resumed draft keeps its dates and pending people", () => {
         { userId: "owner", displayName: "Maya Okafor", role: "ORGANIZER" },
         {
           userId: "pending:i1",
-          displayName: "Jordan",
+          displayName: "Jordan Reyes",
           role: "COLLABORATOR",
           pending: { invitationId: "i1", email: "jordan@example.test" },
         },
@@ -206,7 +170,9 @@ test("a resumed draft keeps its dates and pending people", () => {
   const read = answersFromDraft(agreement, extraction, doc, self);
   assert.equal(read.answers.effectiveFrom?.value, "2026-10-01");
   assert.equal(read.answers.effectiveTo?.value, null);
-  const jordan = read.answers.people.value.find((p) => p.name === "Jordan");
+  const jordan = read.answers.people.value.find(
+    (p) => p.name === "Jordan Reyes",
+  );
   assert.equal(jordan?.invitationId, "i1");
   assert.equal(jordan?.email, "jordan@example.test");
   assert.equal(detailsPatch(agreement, read.answers), undefined);
@@ -265,6 +231,107 @@ test("the draft is saved on Read my agreement; people on People; one submit on S
   const submit = send.indexOf("await submitForApproval(");
   assert.ok(rules > 0 && submit > rules);
   assert.doesNotMatch(wizard, /consentToCloudflare|fetch\(/);
+});
+
+test("a lost submit reply is recovered only for this attempt's newly sent rules", () => {
+  const before = {
+    workspaceId: "w",
+    id: "a",
+    revision: 4,
+    value: { versions: [] },
+  } as unknown as Agreement;
+  const rules = {
+    currency: "USD",
+    shares: [{ userId: "owner", basisPoints: 10000 }],
+    feePolicy: "BEFORE_SPLIT",
+    source: {
+      origin: "HUMAN_PROPOSAL",
+      documentId: "d",
+      clause: "",
+      excerpt: "",
+    },
+    unresolvedQuestions: [],
+  } as any;
+  const committed = {
+    ...before,
+    revision: 5,
+    value: {
+      ...before.value,
+      versions: [{ id: 1, status: "AWAITING_APPROVAL", rules }],
+    },
+  } as Agreement;
+  assert.equal(submissionWasCommitted(before, committed, rules), true);
+  assert.equal(
+    submissionWasCommitted(
+      before,
+      {
+        ...committed,
+        value: {
+          ...committed.value,
+          versions: [
+            {
+              ...committed.value.versions[0],
+              rules: { ...rules, feePolicy: "ORGANIZER" },
+            },
+          ],
+        },
+      },
+      rules,
+    ),
+    false,
+  );
+  assert.equal(
+    submissionWasCommitted(
+      before,
+      { ...committed, value: { ...committed.value, versions: [] } },
+      rules,
+    ),
+    false,
+  );
+});
+
+test("manual reading exit keeps manual answers when the old read settles", () => {
+  const manual = answersFromDraft(
+    {
+      workspaceId: "w",
+      id: "a",
+      revision: 1,
+      value: { name: "Draft", members: [], versions: [] },
+    } as unknown as Agreement,
+    null,
+    doc,
+    self,
+  ).answers;
+  const seeded = {
+    ...manual,
+    name: { value: "Manual title", source: AnswerSource.PERSON },
+  };
+  assert.equal(readingResultIsCurrent(2, 1), false);
+  assert.equal(seeded.name.value, "Manual title");
+  assert.equal(readingResultIsCurrent(2, 2), true);
+});
+
+test("removing an edited pending seat clears its stale invitation before retry", () => {
+  const before = {
+    ...emptyAnswers(self),
+    people: {
+      value: [
+        ...emptyAnswers(self).people.value,
+        {
+          key: "jordan",
+          name: "Jordan",
+          email: "new@example.test",
+          invitationId: "old-invite",
+          basisPoints: 0,
+          isSelf: false,
+        },
+      ],
+      source: AnswerSource.PERSON,
+    },
+  };
+  const checkpointed = clearPersonInvitation(before, "jordan");
+  assert.equal(checkpointed.people.value[1].invitationId, undefined);
+  assert.equal(before.people.value[1].invitationId, "old-invite");
 });
 
 test("finishing lands on the agreement Overview; drafts reopen the wizard", () => {
@@ -359,6 +426,144 @@ test("Keep as draft keeps this device's split; resuming reconciles pending peopl
         // Its link no longer exists on the server: it is issued again at People.
         ["Tomi", 0, undefined],
       ],
+    );
+  } finally {
+    delete (globalThis as any).localStorage;
+  }
+});
+
+test("resuming rebuilds an unanswered advance question and replays an answered no", () => {
+  const store = new Map<string, string>();
+  (globalThis as any).localStorage = {
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, value: string) => store.set(key, value),
+    removeItem: (key: string) => store.delete(key),
+  };
+  try {
+    const review = fullReading();
+    review.facts = review.facts.map((fact: any) =>
+      fact.kind === "ADVANCE" ? { ...fact, recoupedBeforeSplit: null } : fact,
+    );
+    review.sections.ADVANCE.status = Status.ASK;
+    const agreement = {
+      workspaceId: "w-advance",
+      id: "a-advance",
+      revision: 1,
+      value: {
+        name: "Advance review",
+        members: [
+          { userId: "owner", displayName: "Maya Okafor", role: "ORGANIZER" },
+        ],
+        versions: [],
+      },
+    } as unknown as Agreement;
+    const resume = {
+      created: {
+        workspaceId: "w-advance",
+        agreementId: "a-advance",
+        documentId: "d",
+        documentText: MIDNIGHT,
+        agreement,
+      },
+      extraction: review,
+    };
+    const initial = answersFromExtraction(review, MIDNIGHT, self).answers;
+    const question = initial.questions.find((item) => item.id === "advance")!;
+    saveDraftAnswers("w-advance", "a-advance", initial);
+    const reopened = resumedAnswers(resume, self).answers;
+    assert.equal(
+      reopened.questions.find((item) => item.id === "advance")?.quote,
+      question.quote,
+    );
+    const no = question.choices.find((item) => item.id === "not-paid-back")!;
+    const answered = no.apply(initial);
+    answered.questions = answered.questions.map((item) =>
+      item.id === question.id ? { ...item, answeredChoiceId: no.id } : item,
+    );
+    saveDraftAnswers("w-advance", "a-advance", answered);
+    const reopenedNo = resumedAnswers(resume, self).answers;
+    assert.equal(reopenedNo.advance, undefined);
+    assert.equal(
+      reopenedNo.questions.find((item) => item.id === "advance")
+        ?.answeredChoiceId,
+      no.id,
+    );
+  } finally {
+    delete (globalThis as any).localStorage;
+  }
+});
+
+test("resuming never overwrites a later manual edit with a saved reading choice", () => {
+  const store = new Map<string, string>();
+  (globalThis as any).localStorage = {
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, value: string) => store.set(key, value),
+    removeItem: (key: string) => store.delete(key),
+  };
+  try {
+    const review = fullReading();
+    review.facts = review.facts.map((fact: any) =>
+      fact.kind === "ADVANCE" ? { ...fact, recoupedBeforeSplit: null } : fact,
+    );
+    review.sections.ADVANCE.status = Status.ASK;
+    const agreement = {
+      workspaceId: "w-manual",
+      id: "a-manual",
+      revision: 1,
+      value: {
+        name: "Advance review",
+        members: [
+          { userId: "owner", displayName: "Maya Okafor", role: "ORGANIZER" },
+        ],
+        versions: [],
+      },
+    } as unknown as Agreement;
+    const resume = {
+      created: {
+        workspaceId: "w-manual",
+        agreementId: "a-manual",
+        documentId: "d",
+        documentText: MIDNIGHT,
+        agreement,
+      },
+      extraction: review,
+    };
+    const initial = answersFromExtraction(review, MIDNIGHT, self).answers;
+    const question = initial.questions.find((item) => item.id === "advance")!;
+    const yes = question.choices.find((item) => item.id === "paid-back-first")!;
+    const manuallyEdited = yes.apply(initial);
+    manuallyEdited.advance = {
+      value: { recipientKey: "owner", amountCents: 123_400 },
+      source: AnswerSource.PERSON,
+    };
+    manuallyEdited.questions = manuallyEdited.questions.map((item) =>
+      item.id === question.id ? { ...item, answeredChoiceId: yes.id } : item,
+    );
+    saveDraftAnswers("w-manual", "a-manual", manuallyEdited);
+    const reopened = resumedAnswers(resume, self).answers;
+    assert.equal(reopened.advance?.value.amountCents, 123_400);
+    assert.equal(
+      reopened.questions.find((item) => item.id === "advance")
+        ?.answeredChoiceId,
+      undefined,
+    );
+    const noRecipient = {
+      ...manuallyEdited,
+      advance: undefined,
+      people: {
+        ...manuallyEdited.people,
+        value: manuallyEdited.people.value.map((person) =>
+          person.key === "owner" ? { ...person, name: "Renamed" } : person,
+        ),
+      },
+    };
+    saveDraftAnswers("w-manual", "a-manual", noRecipient);
+    const reopenedNoRecipient = resumedAnswers(resume, self).answers;
+    assert.equal(reopenedNoRecipient.advance, undefined);
+    assert.equal(
+      reopenedNoRecipient.questions.find((item) => item.id === "advance")
+        ?.answeredChoiceId,
+      undefined,
     );
   } finally {
     delete (globalThis as any).localStorage;

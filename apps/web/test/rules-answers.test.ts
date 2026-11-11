@@ -245,7 +245,10 @@ test("toRules fills hidden fields and keys pending people by invitation", () => 
   assert.equal(rules.source.origin, "HUMAN_PROPOSAL");
   assert.equal(rules.source.documentId, "doc-1");
   assert.equal(rules.source.clause, "Midnight Sessions");
-  assert.match(rules.source.excerpt, /Refunds come off the split\./);
+  assert.match(
+    rules.source.excerpt,
+    /Refund preference recorded for organizer review: shared split\./,
+  );
   assert.ok(rules.source.excerpt.length <= 10000);
   assert.equal(rules.advance?.recipientId, "u-maya");
   assert.equal(rules.advance?.verified, true);
@@ -323,7 +326,7 @@ test("summary sentences follow the spec copy", () => {
     "Midnight Sessions · Oct 1, 2026 to Sep 30, 2027",
     "Maya is paid back $2,000 first. Then the rest is split 50 / 30 / 20.",
     "PayPal fees come off the top.",
-    "Refunds come off the split.",
+    "Refund preference recorded for organizer review: shared split.",
     "Sending to Jordan (jordan@x) and Riley (riley@y)",
   ]);
   const other = answers({
@@ -336,7 +339,7 @@ test("summary sentences follow the spec copy", () => {
     "Midnight Sessions · From Oct 1, 2026, no end date",
     "The money is split 50 / 30 / 20.",
     "Maya covers the PayPal fees.",
-    "Refunds come off the advance.",
+    "Refund preference recorded for organizer review: advance.",
     "Sending to Jordan (jordan@x) and Riley (riley@y)",
   ]);
 });
@@ -377,4 +380,32 @@ test("emptyAnswers starts with just the organizer at 100%", () => {
   ]);
   assert.equal(a.name.source, AnswerSource.PERSON);
   assert.deepEqual(a.questions, []);
+});
+
+test("rebalance never moves held people and can snap the rest to whole percents", () => {
+  const people = [person("a", 3334), person("b", 3333), person("c", 3333)];
+  // Only c is free: it takes exactly what is left.
+  assert.deepEqual(
+    rebalance(people, "b", 3000, ["a"]).map((p) => p.basisPoints),
+    [3334, 3000, 3666],
+  );
+  // Everyone else held: nobody else moves, so the total is off for the caller to show.
+  assert.deepEqual(
+    rebalance(people, "c", 2000, ["a", "b"]).map((p) => p.basisPoints),
+    [3334, 3333, 2000],
+  );
+  // Never negative when the held shares already pass 100%.
+  assert.deepEqual(
+    rebalance(people, "a", 9000, ["b"]).map((p) => p.basisPoints),
+    [9000, 3333, 0],
+  );
+  // step 100 keeps the movers on whole percents when what is left divides evenly.
+  assert.deepEqual(
+    rebalance(people, "a", 4700, [], 100).map((p) => p.basisPoints),
+    [4700, 2700, 2600],
+  );
+  assert.deepEqual(
+    rebalance(people, "a", 4750, [], 100).map((p) => p.basisPoints),
+    [4750, 2625, 2625],
+  );
 });
