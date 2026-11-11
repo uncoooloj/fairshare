@@ -18,17 +18,20 @@ export function AgreementIntake({
   first = false,
   onCreate,
   onCancel,
+  onBusyChange,
 }: {
   busy: boolean;
   first?: boolean;
   onCreate: (input: AgreementIntakeInput) => Promise<void>;
   onCancel?: () => void;
+  onBusyChange?: (busy: boolean) => void;
 }) {
   const [method, setMethod] = useState<"upload" | "paste">("upload");
   const [text, setText] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState("");
   const [ocr, setOcr] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const locked = useRef(false);
   // Retain the key across retry after an uncertain response, but not changed input.
   const requestId = useRef("");
@@ -41,6 +44,8 @@ export function AgreementIntake({
     if (busy || locked.current || (method === "upload" ? !file : !text.trim()))
       return;
     locked.current = true;
+    setSubmitting(true);
+    onBusyChange?.(true);
     setError("");
     try {
       requestId.current ||= crypto.randomUUID();
@@ -85,15 +90,18 @@ export function AgreementIntake({
       );
     } finally {
       locked.current = false;
+      setSubmitting(false);
+      onBusyChange?.(false);
     }
   }
+  const disabled = busy || submitting;
   return (
     <div className="creation-wizard">
       <header className="creation-header">
         <h1>New agreement</h1>
       </header>
       <CreationStepper step={0} />
-      <form className="creation-body" onSubmit={submit} aria-busy={busy}>
+      <form className="creation-body" onSubmit={submit} aria-busy={disabled}>
         <span className="eyebrow">
           {first ? "YOUR FIRST AGREEMENT" : "NEW AGREEMENT"}
         </span>
@@ -103,8 +111,12 @@ export function AgreementIntake({
           and check everything before interpreting the rules. You can edit the
           name afterward.
         </p>
-        {error && <Notice warning>{error}</Notice>}
-        <fieldset disabled={busy} aria-label="Agreement input method">
+        {error && (
+          <Notice warning announcement="assertive">
+            {error}
+          </Notice>
+        )}
+        <fieldset disabled={disabled} aria-label="Agreement input method">
           <legend>How would you like to add it?</legend>
           <label>
             <input
@@ -139,7 +151,7 @@ export function AgreementIntake({
             <input
               type="file"
               accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
-              disabled={busy}
+              disabled={disabled}
               onChange={(event) => {
                 changed();
                 setFile(event.target.files?.[0] || null);
@@ -156,7 +168,7 @@ export function AgreementIntake({
               <input
                 type="checkbox"
                 checked={ocr}
-                disabled={busy}
+                disabled={disabled}
                 onChange={(event) => {
                   changed();
                   setOcr(event.target.checked);
@@ -173,7 +185,7 @@ export function AgreementIntake({
             <textarea
               rows={9}
               maxLength={40000}
-              disabled={busy || method !== "paste"}
+              disabled={disabled || method !== "paste"}
               value={text}
               onChange={(event) => {
                 changed();
@@ -195,16 +207,16 @@ export function AgreementIntake({
             <Button
               type="button"
               variant="secondary"
-              disabled={busy}
+              disabled={disabled}
               onClick={onCancel}
             >
               Cancel
             </Button>
           )}
           <Button
-            disabled={busy || (method === "upload" ? !file : !text.trim())}
+            disabled={disabled || (method === "upload" ? !file : !text.trim())}
           >
-            {busy ? "Reading agreement…" : "Save document & continue"}
+            {disabled ? "Reading agreement…" : "Save document & continue"}
           </Button>
         </div>
       </form>
