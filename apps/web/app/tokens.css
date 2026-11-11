@@ -38,6 +38,11 @@
   --control-line-height: 22px;
   --control-padding-y: 10px;
   --control-padding-x: 12px;
+  --table-header-height: 64px;
+  --table-row-min-height: 72px;
+  --table-cell-padding-x: 30px;
+  --table-header-font-size: 14px;
+  --table-header-letter-spacing: 0.04em;
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 12px;
