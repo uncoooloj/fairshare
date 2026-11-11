@@ -73,6 +73,29 @@ export function rememberInviteToken(
   }
 }
 
+/** Drops tokens for people who have joined (or whose link was replaced). Local only. */
+export function forgetStaleInviteTokens(agreement: Agreement) {
+  const key = storageKey(agreement.workspaceId, agreement.id);
+  const open = new Set(
+    (agreement.value.members as AgreementMember[])
+      .filter(isPendingMember)
+      .map((m) => m.pending!.invitationId),
+  );
+  const tokens = readTokens(agreement.workspaceId, agreement.id);
+  const kept = Object.fromEntries(
+    Object.entries(tokens).filter(([invitationId]) => open.has(invitationId)),
+  );
+  if (Object.keys(kept).length === Object.keys(tokens).length) return;
+  memory.set(key, kept);
+  try {
+    if (Object.keys(kept).length)
+      localStorage.setItem(key, JSON.stringify(kept));
+    else localStorage.removeItem(key);
+  } catch {
+    // Storage blocked; memory is already trimmed.
+  }
+}
+
 /** The link we already have for this person, without calling the server. Pending people
  * have one only if this device created it. */
 export function knownPersonLink(

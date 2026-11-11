@@ -2,13 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { api, type Agreement, type Version } from "../lib/model";
 import { isPendingMember, type AgreementMember } from "../lib/agreement-api";
 import { approvalLabel, payoutReadinessLabel } from "../lib/people-readiness";
-import { issueInviteLink } from "../lib/share-link";
+import { forgetStaleInviteTokens, issueInviteLink } from "../lib/share-link";
 import { Button } from "./ui";
 import { Drawer } from "./allocation-drawer";
 import { PayoutEmailStep } from "./payout-email-step";
 import { Avatar } from "./person";
 import { toneInRoster } from "../lib/person";
-import { PersonShare } from "./person-share";
+import { oldLinkWarning, PersonShare } from "./person-share";
 
 export { personInviteLink } from "../lib/share-link";
 
@@ -57,6 +57,7 @@ export function AgreementPeople({
   const [editingOwn, setEditingOwn] = useState(false);
   const [reissuing, setReissuing] = useState("");
   const [inviteNotice, setInviteNotice] = useState("");
+  const [confirmNewLink, setConfirmNewLink] = useState("");
   useEffect(() => {
     setCurrentAgreement((current) =>
       agreement.revision >= current.revision ? agreement : current,
@@ -65,6 +66,7 @@ export function AgreementPeople({
   useEffect(() => {
     agreementIdentityRef.current = agreementIdentity;
     setInviteNotice("");
+    setConfirmNewLink("");
     setReissuing("");
   }, [agreementIdentity]);
   useEffect(() => {
@@ -98,6 +100,10 @@ export function AgreementPeople({
     document.addEventListener("visibilitychange", again);
     return () => document.removeEventListener("visibilitychange", again);
   }, []);
+  useEffect(
+    () => forgetStaleInviteTokens(currentAgreement),
+    [currentAgreement],
+  );
   const members = currentAgreement.value.members as AgreementMember[];
   const currentVersion = version
     ? (currentAgreement.value.versions.find((item) => item.id === version.id) ??
@@ -121,6 +127,7 @@ export function AgreementPeople({
   async function makeNewLink(member: AgreementMember) {
     const requestIdentity = agreementIdentity;
     setReissuing(member.userId);
+    setConfirmNewLink("");
     setInviteNotice("");
     try {
       const result = await issueInviteLink(
@@ -151,6 +158,31 @@ export function AgreementPeople({
       )}
       {error && <p role="alert">{error}</p>}
       {inviteNotice && <p role="status">{inviteNotice}</p>}
+      {(() => {
+        const member = members.find((m) => m.userId === confirmNewLink);
+        if (!member || !isPendingMember(member)) return null;
+        return (
+          <div className="ag-new-link-confirm" role="group">
+            <p>{oldLinkWarning(member)}</p>
+            <div className="row">
+              <Button
+                type="button"
+                disabled={Boolean(reissuing)}
+                onClick={() => void makeNewLink(member)}
+              >
+                {reissuing ? "Making a new link…" : "Make a new link"}
+              </Button>
+              <Button
+                type="button"
+                variant="quiet"
+                onClick={() => setConfirmNewLink("")}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        );
+      })()}
       <div className="people-table-scroll ag-people-table">
         <table>
           <thead>
@@ -267,15 +299,16 @@ export function AgreementPeople({
                                   type="button"
                                   variant="quiet"
                                   disabled={Boolean(reissuing)}
-                                  onClick={() => void makeNewLink(member)}
+                                  onClick={(event) => {
+                                    event.currentTarget
+                                      .closest("details")
+                                      ?.removeAttribute("open");
+                                    setInviteNotice("");
+                                    setConfirmNewLink(member.userId);
+                                  }}
                                 >
-                                  {reissuing === member.userId
-                                    ? "Making a new link…"
-                                    : "Make a new link"}
+                                  Make a new link
                                 </Button>
-                                <p className="muted">
-                                  The old link stops working.
-                                </p>
                               </div>
                             )}
                             {member.userId === userId && (

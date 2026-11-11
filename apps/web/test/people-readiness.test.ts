@@ -66,7 +66,7 @@ test("organizers make a new link only on request, without putting its token in a
   );
   assert.match(source, /organizer && isPendingMember\(member\)/);
   assert.match(source, /Make a new link/);
-  assert.match(source, /The old link stops working\./);
+  assert.match(source, /oldLinkWarning\(member\)/);
   assert.match(source, /onAgreementChange\?\.\(next\)/);
   assert.match(source, /agreementIdentityRef\.current !== requestIdentity/);
 });

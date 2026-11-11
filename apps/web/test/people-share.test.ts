@@ -10,12 +10,19 @@ import {
 } from "../lib/agreement-status";
 import {
   agreementLink,
+  forgetStaleInviteTokens,
   issueInviteLink,
+  rememberInviteToken,
   knownPersonLink,
   nudgeMessage,
 } from "../lib/share-link";
 import type { AgreementMember } from "../lib/agreement-api";
-import { canShareLink, NudgeDrawer } from "../components/person-share";
+import {
+  canShareLink,
+  NudgeDrawer,
+  oldLinkWarning,
+} from "../components/person-share";
+import { readFileSync } from "node:fs";
 import { AgreementPeople } from "../components/agreement-people";
 import { AgreementHeader } from "../components/agreement-workspace";
 
@@ -211,7 +218,9 @@ test("People tab and status header make no invitation POSTs until a button is pr
       }),
     );
     assert.match(people, /Copy link for Jordan/);
-    assert.match(people, /Share link for Riley/);
+    // No token on this device: an honest "Get a new link", never a silent reissue.
+    assert.match(people, /Get a new link for Riley/);
+    assert.doesNotMatch(people, /(Copy|Share) link for Riley/);
     assert.match(people, /Hasn’t joined yet/);
     assert.match(people, /1 of 3 approved/);
     assert.doesNotMatch(people, /approved v1|>Refresh<|can’t be added/);
@@ -237,7 +246,8 @@ test("People tab and status header make no invitation POSTs until a button is pr
       drawer,
       /Hi Jordan, can you review and approve the Midnight Sessions split\? http/,
     );
-    assert.match(drawer, /Copy message for Riley/);
+    assert.match(drawer, /Get a new link for Riley/);
+    assert.doesNotMatch(drawer, /(Copy|Share) message for Riley/);
     const collaborator = renderToStaticMarkup(
       createElement(AgreementPeople, {
         agreement: a,
@@ -276,4 +286,56 @@ test("People tab and status header make no invitation POSTs until a button is pr
   } finally {
     restore();
   }
+});
+
+test("without a token on this device, a new link needs a confirm first", () => {
+  const source = readFileSync(
+    new URL("../components/person-share.tsx", import.meta.url),
+    "utf8",
+  );
+  const act = source.split("async function act(")[1].split("\n  }\n")[0];
+  assert.doesNotMatch(act, /issueInviteLink/, "Copy and Share never reissue");
+  assert.match(act, /if \(busy \|\| !known\) return;/);
+  const confirm = source
+    .split("async function getNewLink(")[1]
+    .split("\n  }\n")[0];
+  assert.match(confirm, /issueInviteLink\(/);
+  assert.match(source, /onClick=\{\(\) => setConfirming\(true\)\}/);
+  assert.match(source, /onClick=\{\(\) => void getNewLink\(\)\}/);
+  const riley = midnight().value.members[2] as AgreementMember;
+  assert.equal(
+    oldLinkWarning(riley),
+    "Riley’s old link will stop working if you already sent it.",
+  );
+});
+
+test("a known token gives Copy and Share; it is dropped once the person joins", () => {
+  const a = midnight();
+  a.id = "a-known";
+  rememberInviteToken("w1", "a-known", "inv-1", "tok-1");
+  rememberInviteToken("w1", "a-known", "inv-old", "tok-old");
+  const riley = a.value.members[2] as AgreementMember;
+  const html = renderToStaticMarkup(
+    createElement(NudgeDrawer, {
+      agreement: a,
+      userId: "maya",
+      onClose: () => {},
+    }),
+  );
+  assert.match(html, /Copy message for Riley/);
+  assert.match(html, /token=agreement%3Atok-1/);
+  forgetStaleInviteTokens(a);
+  assert.match(
+    knownPersonLink(a, riley, "http://x") ?? "",
+    /tok-1/,
+    "still pending",
+  );
+  const joined = structuredClone(a);
+  joined.value.members[2] = {
+    userId: "riley",
+    displayName: "Riley Chen",
+    role: "COLLABORATOR",
+  };
+  forgetStaleInviteTokens(joined);
+  assert.equal(knownPersonLink(a, riley, "http://x"), undefined, "token gone");
 });

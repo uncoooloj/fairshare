@@ -737,3 +737,11 @@
 .ag-people-table.people-table-scroll {
   position: relative;
 }
+.ag-new-link-confirm {
+  margin: var(--space-2, 8px) 0;
+}
+.person-share-confirm p {
+  margin: 0 0 6px;
+  font-size: var(--text-xs);
+  max-width: 18rem;
+}

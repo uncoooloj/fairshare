@@ -23,6 +23,10 @@ const currentOrigin = () =>
   typeof location === "undefined" ? "" : location.origin;
 const firstName = (name: string) => name.trim().split(/\s+/)[0] || name;
 
+/** Shown before any reissue. */
+export const oldLinkWarning = (member: AgreementMember) =>
+  `${firstName(member.displayName)}’s old link will stop working if you already sent it.`;
+
 /** Invite links are the organizer's; anyone can share the agreement link with themselves. */
 export function canShareLink(
   member: AgreementMember,
@@ -55,6 +59,7 @@ export function PersonShare({
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [manual, setManual] = useState("");
+  const [confirming, setConfirming] = useState(false);
   if (!canShareLink(member, viewerId, organizer)) return null;
   const name = firstName(member.displayName);
   const known =
@@ -64,21 +69,35 @@ export function PersonShare({
       ? nudgeMessage(member, agreement.value.name, link)
       : link;
 
-  async function linkNow() {
-    if (known) return known;
-    const result = await issueInviteLink(agreement, member, currentOrigin());
-    setIssued(result.link);
-    onAgreementChange?.(result.agreement);
-    return result.link;
+  /** Only after the organizer confirms: any link they already sent stops working. */
+  async function getNewLink() {
+    if (busy) return;
+    setBusy(true);
+    setNotice("");
+    try {
+      const result = await issueInviteLink(agreement, member, currentOrigin());
+      setIssued(result.link);
+      setConfirming(false);
+      setNotice("New link ready");
+      onAgreementChange?.(result.agreement);
+    } catch (cause) {
+      setNotice(
+        cause instanceof Error && cause.message
+          ? cause.message
+          : "Couldn’t get a link. Try again.",
+      );
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function act(share: boolean) {
-    if (busy) return;
+    if (busy || !known) return;
     setBusy(true);
     setNotice("");
     setManual("");
     try {
-      const link = await linkNow();
+      const link = known;
       const text = textFor(link);
       const outcome = share
         ? await shareText(
@@ -105,6 +124,49 @@ export function PersonShare({
   }
 
   const copyLabel = mode === ShareMode.Nudge ? "Copy message" : "Copy link";
+  // No link on this device: say so, rather than silently replacing one they may have sent.
+  if (!known)
+    return (
+      <div className="person-share">
+        {confirming ? (
+          <div className="person-share-confirm" role="group">
+            <p className="muted">{oldLinkWarning(member)}</p>
+            <div className="person-share-buttons">
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={busy}
+                onClick={() => void getNewLink()}
+              >
+                {busy ? "Getting link…" : "Get a new link"}
+              </Button>
+              <Button
+                type="button"
+                variant="quiet"
+                disabled={busy}
+                onClick={() => setConfirming(false)}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <Button
+            type="button"
+            variant="secondary"
+            aria-label={`Get a new link for ${name}`}
+            onClick={() => setConfirming(true)}
+          >
+            Get a new link
+          </Button>
+        )}
+        {notice && (
+          <p className="muted person-share-notice" role="status">
+            {notice}
+          </p>
+        )}
+      </div>
+    );
   return (
     <div className="person-share">
       <div className="person-share-buttons">
@@ -115,7 +177,7 @@ export function PersonShare({
           aria-label={`${copyLabel} for ${name}`}
           onClick={() => void act(false)}
         >
-          {busy ? "Getting link…" : copyLabel}
+          {copyLabel}
         </Button>
         <Button
           type="button"
@@ -186,10 +248,7 @@ export function NudgeDrawer({
                 <blockquote className="nudge-message">
                   {nudgeMessage(member, agreement.value.name, link)}
                   {!link && (
-                    <span className="muted">
-                      {" "}
-                      (their link is added when you copy)
-                    </span>
+                    <span className="muted"> (no link on this device yet)</span>
                   )}
                 </blockquote>
                 <PersonShare
