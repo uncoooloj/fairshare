@@ -46,7 +46,6 @@
   margin: var(--space-2) 0 0;
   font-size: var(--text-sm);
   color: var(--color-muted);
-  font-variant-numeric: tabular-nums;
 }
 .agreement-rename {
   margin-top: var(--space-4);
@@ -450,6 +449,10 @@
 .ag-terms-rail {
   position: sticky;
   top: var(--space-6);
+}
+/* Quiet button has no fill, so its padding read as an indent. */
+.button.quiet.discussion-refresh {
+  padding-inline: 0;
 }
 .ag-source {
   margin: var(--space-5) 0 0;

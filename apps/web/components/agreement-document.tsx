@@ -76,7 +76,7 @@ export function AgreementDocument({
             Review the exact text behind the proposed rules.
           </p>
         </div>
-        <div className="actions">
+        <div className="actions document-actions">
           {agreement.value.versions.length > 0 && (
             <label className="document-version">
               Source for version
@@ -152,6 +152,15 @@ export function AgreementDocument({
             <pre>{document.text}</pre>
           </article>
           <aside className="panel document-provenance">
+            {version && (
+              <section className="document-clause">
+                <h3>Referenced clause</h3>
+                <span className="clause-chip">
+                  § {version.rules.source.clause}
+                </span>
+                <blockquote>{version.rules.source.excerpt}</blockquote>
+              </section>
+            )}
             <h3>Source details</h3>
             <dl>
               <dt>Used by</dt>
@@ -160,18 +169,6 @@ export function AgreementDocument({
                   ? `Version ${version.id}`
                   : "Latest saved draft source"}
               </dd>
-              <dt>Document ID</dt>
-              <dd>
-                <code>{document.documentId}</code>
-              </dd>
-              {document.sourceHash && (
-                <>
-                  <dt>Source hash</dt>
-                  <dd>
-                    <code>{document.sourceHash}</code>
-                  </dd>
-                </>
-              )}
               {document.provenance?.pages && (
                 <>
                   <dt>Pages read</dt>
@@ -183,13 +180,23 @@ export function AgreementDocument({
                 </>
               )}
             </dl>
-            {version && (
-              <>
-                <h3>Referenced clause</h3>
-                <p>{version.rules.source.clause}</p>
-                <blockquote>{version.rules.source.excerpt}</blockquote>
-              </>
-            )}
+            <details className="document-technical">
+              <summary>Technical details</summary>
+              <dl>
+                <dt>Document ID</dt>
+                <dd>
+                  <code>{document.documentId}</code>
+                </dd>
+                {document.sourceHash && (
+                  <>
+                    <dt>Source hash (SHA-256)</dt>
+                    <dd>
+                      <code>{document.sourceHash}</code>
+                    </dd>
+                  </>
+                )}
+              </dl>
+            </details>
             <small>
               PDF text reading order can differ from its visual layout. Compare
               the wording before approving rules.

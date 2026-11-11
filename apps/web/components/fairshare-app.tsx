@@ -1561,7 +1561,7 @@ export default function FairshareApp() {
                           />
                           {organizer && active && (
                             <SandboxCheckoutForm
-                              key={selected.id}
+                              key={`checkout:${selected.id}`}
                               busy={busy}
                               onSubmit={(amount, source) =>
                                 run(async () => {

@@ -16,7 +16,7 @@ export default function Home() {
       </a>
       <header className={styles.header}>
         <a className={styles.brand} href="/" aria-label="Fairshare home">
-          <LogoMark size={28} /> Fairshare
+          <LogoMark /> Fairshare
         </a>
         <nav aria-label="Public navigation">
           <a href="#how-it-works">How it works</a>

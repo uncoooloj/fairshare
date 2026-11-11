@@ -26,6 +26,17 @@ export function AllocationCalculation({
       }.`
     : `This payment went entirely to the advance.`;
   const base = trace.netCents || 1;
+  const ownsAdvance = a.recoupmentCents > 0;
+  const toneClass = `tone-${tone ?? 0}`;
+  const advanceHolder = ownsAdvance ? name : advanceTo;
+  const showAdvanceClause = Boolean(
+    trace.advanceSource && (ownsAdvance || trace.poolCents === 0),
+  );
+  const showSplitClause = a.shareCents > 0 || !showAdvanceClause;
+  const showTrailingAdvanceClause = Boolean(
+    trace.advanceSource && !showAdvanceClause && trace.recoupedCents > 0,
+  );
+  let step = 1;
   return (
     <section className="calculation" aria-label={`Calculation for ${name}`}>
       <p className="calculation-headline">
@@ -48,7 +59,7 @@ export function AllocationCalculation({
       >
         {trace.recoupedCents > 0 && (
           <span
-            className="waterfall-advance"
+            className={`waterfall-advance ${ownsAdvance ? `is-own ${toneClass}` : ""}`}
             style={{ flexGrow: trace.recoupedCents / base }}
           />
         )}
@@ -66,10 +77,16 @@ export function AllocationCalculation({
       </div>
       <div className="waterfall-legend" aria-hidden="true">
         {trace.recoupedCents > 0 && (
-          <span className="key-advance">Advance</span>
+          <span
+            className={`key-advance ${ownsAdvance ? `is-own ${toneClass}` : ""}`}
+          >
+            {advanceHolder ? `Advance → ${advanceHolder}` : "Advance"}
+          </span>
         )}
         {trace.poolCents > 0 && <span className="key-pool">Split pool</span>}
-        <span className={`key-share tone-${tone ?? 0}`}>{name}</span>
+        {a.shareCents > 0 && (
+          <span className={`key-share ${toneClass}`}>{name}&rsquo;s share</span>
+        )}
       </div>
 
       <h3 className="calculation-label">From payment</h3>
@@ -96,12 +113,16 @@ export function AllocationCalculation({
         </thead>
         <tbody>
           <tr>
-            <td>1</td>
+            <td>{step++}</td>
             <td>
-              Recoup advance
-              {trace.advanceSource?.clause && (
-                <small> · clause {trace.advanceSource.clause}</small>
-              )}
+              <span className="calculation-step-title">
+                Recoup advance
+                {trace.advanceSource?.clause && (
+                  <span className="clause-chip">
+                    § {trace.advanceSource.clause}
+                  </span>
+                )}
+              </span>
               <small>
                 {a.recoupmentCents > 0
                   ? `${name} is paid back first`
@@ -118,19 +139,28 @@ export function AllocationCalculation({
               )}
             </td>
           </tr>
-          <tr>
-            <td>2</td>
-            <td>
-              Split {percent}% of {money(trace.poolCents)}
-              {trace.source.clause && (
-                <small> · clause {trace.source.clause}</small>
-              )}
-            </td>
-            <td className="numeric">{money(a.shareCents)}</td>
-          </tr>
+          {trace.poolCents > 0 ? (
+            <tr>
+              <td>{step++}</td>
+              <td>
+                <span className="calculation-step-title">
+                  Split {percent}% of {money(trace.poolCents)}
+                  {trace.source.clause && (
+                    <span className="clause-chip">§ {trace.source.clause}</span>
+                  )}
+                </span>
+              </td>
+              <td className="numeric">{money(a.shareCents)}</td>
+            </tr>
+          ) : (
+            <tr className="calculation-skipped">
+              <td />
+              <td colSpan={2}>No split from this payment</td>
+            </tr>
+          )}
           {a.feeCents > 0 && (
             <tr>
-              <td>3</td>
+              <td>{step++}</td>
               <td>Recipient fee</td>
               <td className="numeric">−{money(a.feeCents)}</td>
             </tr>
@@ -143,23 +173,44 @@ export function AllocationCalculation({
         </tbody>
       </table>
 
-      <h3 className="calculation-label">Source clause</h3>
-      <figure className="clause-card">
-        <span className="clause-chip">§ {trace.source.clause || "—"}</span>
-        <blockquote>
-          {trace.source.excerpt || "Source excerpt not recorded."}
-        </blockquote>
-        {onOpenDocument && (
-          <button
-            type="button"
-            className="text-button"
-            onClick={onOpenDocument}
-          >
-            Open in document →
-          </button>
-        )}
-      </figure>
-      {trace.advanceSource && (
+      <h3 className="calculation-label">
+        {(showAdvanceClause && showSplitClause) || showTrailingAdvanceClause
+          ? "Source clauses"
+          : "Source clause"}
+      </h3>
+      {showAdvanceClause && trace.advanceSource && (
+        <figure className="clause-card">
+          <span className="clause-chip">§ {trace.advanceSource.clause}</span>
+          <blockquote>{trace.advanceSource.excerpt}</blockquote>
+          {!showSplitClause && onOpenDocument && (
+            <button
+              type="button"
+              className="text-button"
+              onClick={onOpenDocument}
+            >
+              Open in document →
+            </button>
+          )}
+        </figure>
+      )}
+      {showSplitClause && (
+        <figure className="clause-card">
+          <span className="clause-chip">§ {trace.source.clause || "—"}</span>
+          <blockquote>
+            {trace.source.excerpt || "Source excerpt not recorded."}
+          </blockquote>
+          {onOpenDocument && (
+            <button
+              type="button"
+              className="text-button"
+              onClick={onOpenDocument}
+            >
+              Open in document →
+            </button>
+          )}
+        </figure>
+      )}
+      {showTrailingAdvanceClause && trace.advanceSource && (
         <figure className="clause-card">
           <span className="clause-chip">§ {trace.advanceSource.clause}</span>
           <blockquote>{trace.advanceSource.excerpt}</blockquote>
