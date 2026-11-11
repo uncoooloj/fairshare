@@ -66,5 +66,5 @@ test("settings no longer offers generic invitations; scoped ones remain agreemen
     new URL("../components/agreement-invitation.tsx", import.meta.url),
     "utf8",
   );
-  assert.match(scoped, /does not grant access to other agreements/);
+  assert.match(scoped, /Access is limited to this agreement/);
 });

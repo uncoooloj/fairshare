@@ -24,15 +24,12 @@ test("invitation context comes from server, shows signed-in account and explicit
   assert.match(source, /api\("agreement-invitations\/preview", "POST"/);
   assert.match(source, /preview.agreementName/);
   assert.match(source, /preview.inviterName/);
-  assert.match(
-    source,
-    /\{preview.inviterName\} invited you to \{preview.agreementName\}/,
-  );
-  assert.match(source, /asking you to approve how its\s+money is split/);
-  assert.match(source, /Joining as/);
-  assert.match(source, /collaborator on this\s+agreement only/);
-  assert.match(source, /Nothing is paid until everyone approves/);
-  assert.match(source, /"Review"/);
+  assert.match(source, /<Avatar name=\{preview.inviterName\}/);
+  assert.match(source, /asking you to review how the money is split/);
+  assert.match(source, /<strong>\{email\}<\/strong>/);
+  assert.match(source, /Access is limited to this agreement/);
+  assert.match(source, /Accepting this invitation doesn’t approve the terms/);
+  assert.match(source, /"Accept"/);
   assert.match(source, /export function InvitationSignInContext/);
 });
 test("approval success leads to the get-paid step; it saves only on submit and can be skipped", () => {

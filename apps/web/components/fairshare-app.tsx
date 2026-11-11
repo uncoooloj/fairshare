@@ -1056,6 +1056,7 @@ export default function FairshareApp() {
           email={user.email}
           token={flowToken.slice(AGREEMENT_INVITE_PREFIX.length)}
           busy={busy}
+          error={error}
           onCancel={dismissAccessFlow}
           onAccept={() => run(() => acceptInvitation(flowToken))}
         />
