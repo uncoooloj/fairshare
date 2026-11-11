@@ -189,7 +189,7 @@ export function AgreementPaymentsTab({
               : "When everyone has approved, create an invoice to get paid."}
           </Empty>
         )}
-        {organizer && (
+        {organizer && payments.length > 0 && (
           <p className={`ag-fix-link ${held ? "is-held" : ""}`}>
             <button
               type="button"
