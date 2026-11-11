@@ -199,7 +199,7 @@ dialog.side-drawer {
   margin: 0 0 0 auto;
   height: 100dvh;
   max-height: 100dvh;
-  width: min(520px, 100vw);
+  width: min(var(--drawer-width), 100vw);
   max-width: 100vw;
   padding: 0;
   border: 0;
