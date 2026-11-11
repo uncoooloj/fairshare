@@ -39,6 +39,7 @@ import {
   advancePayoutAccountGeneration,
   ensurePayoutAccountSchema,
   hasAccountPayoutDestination,
+  payoutTimestamp,
   readPayoutDestination,
 } from "./payoutAccounts.js";
 import {
@@ -466,7 +467,7 @@ export function registerPaymentRoutes(
         member.userId === user.id && member.role === MemberRole.ORGANIZER,
     );
     const query =
-      "SELECT id,capture_id,user_id,amount,batch_id,status,item_id FROM fairshare_payout_ops WHERE workspace_id=? AND collaboration_id=?";
+      "SELECT id,capture_id,user_id,amount,batch_id,status,item_id,created_at AS createdAt,updated_at AS updatedAt FROM fairshare_payout_ops WHERE workspace_id=? AND collaboration_id=?";
     return {
       payouts: organizer
         ? db.prepare(query).all(p.workspaceId, p.collaborationId)
@@ -566,8 +567,10 @@ export function registerPaymentRoutes(
         const status = recipient ? "RESERVED" : "WAITING_RECIPIENT";
         if (prior) {
           db.prepare(
-            `UPDATE fairshare_payout_ops SET status=?,recipient_type=?,recipient_id=? WHERE id=? AND status IN (${PARKED_PAYOUT_STATUSES.map(() => "?").join(",")})`,
+            `UPDATE fairshare_payout_ops SET updated_at=CASE WHEN status=? THEN updated_at ELSE ? END,status=?,recipient_type=?,recipient_id=? WHERE id=? AND status IN (${PARKED_PAYOUT_STATUSES.map(() => "?").join(",")})`,
           ).run(
+            status,
+            payoutTimestamp(),
             status,
             recipient?.type ?? prior.recipient_type,
             recipient?.value ?? prior.recipient_id,
@@ -580,8 +583,9 @@ export function registerPaymentRoutes(
           .update(`${captureId}:${a.userId}`)
           .digest("hex")
           .slice(0, 30);
+        const at = payoutTimestamp();
         db.prepare(
-          "INSERT INTO fairshare_payout_ops(id,workspace_id,collaboration_id,capture_id,user_id,recipient_type,recipient_id,amount,status) VALUES(?,?,?,?,?,?,?,?,?)",
+          "INSERT INTO fairshare_payout_ops(id,workspace_id,collaboration_id,capture_id,user_id,recipient_type,recipient_id,amount,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
         ).run(
           id,
           p.workspaceId,
@@ -592,6 +596,8 @@ export function registerPaymentRoutes(
           recipient?.value ?? "",
           a.totalCents,
           status,
+          at,
+          at,
         );
         return read(id);
       });
@@ -640,9 +646,10 @@ export function registerPaymentRoutes(
           );
         if (!revenue || hold) {
           db.prepare(
-            "UPDATE fairshare_payout_ops SET status=? WHERE id=? AND status='RESERVED'",
+            "UPDATE fairshare_payout_ops SET status=?,updated_at=? WHERE id=? AND status='RESERVED'",
           ).run(
             hold === PayoutHoldReason.ADVERSE_EVENT ? "AUTO_HELD" : "HELD",
+            payoutTimestamp(),
             op.id,
           );
           return false;
@@ -651,9 +658,9 @@ export function registerPaymentRoutes(
         // dispatcher must not replay an in-flight or uncertain submission.
         const claim = db
           .prepare(
-            "UPDATE fairshare_payout_ops SET status='SUBMITTING' WHERE id=? AND status='RESERVED'",
+            "UPDATE fairshare_payout_ops SET status='SUBMITTING',updated_at=? WHERE id=? AND status='RESERVED'",
           )
-          .run(op.id);
+          .run(payoutTimestamp(), op.id);
         return claim.changes === 1;
       });
       if (!permitted) {
@@ -672,8 +679,8 @@ export function registerPaymentRoutes(
           currency: "USD",
         });
         db.prepare(
-          "UPDATE fairshare_payout_ops SET batch_id=?,status='PENDING' WHERE id=?",
-        ).run(result.batchId, op.id);
+          "UPDATE fairshare_payout_ops SET batch_id=?,status='PENDING',updated_at=? WHERE id=?",
+        ).run(result.batchId, payoutTimestamp(), op.id);
         app.store.audit("provider", op.workspace_id, "PAYOUT_SUBMITTED", {
           agreementId: op.collaboration_id,
           payoutId: op.id,
@@ -684,13 +691,13 @@ export function registerPaymentRoutes(
           // The adapter rejects this before any provider call. Keep the same
           // immutable reservation available after configuration is corrected.
           db.prepare(
-            "UPDATE fairshare_payout_ops SET status='RESERVED' WHERE id=? AND status='SUBMITTING' AND batch_id IS NULL",
-          ).run(op.id);
+            "UPDATE fairshare_payout_ops SET status='RESERVED',updated_at=? WHERE id=? AND status='SUBMITTING' AND batch_id IS NULL",
+          ).run(payoutTimestamp(), op.id);
           throw e;
         }
         db.prepare(
-          "UPDATE fairshare_payout_ops SET status='OUTCOME_UNKNOWN' WHERE id=?",
-        ).run(op.id);
+          "UPDATE fairshare_payout_ops SET status='OUTCOME_UNKNOWN',updated_at=? WHERE id=?",
+        ).run(payoutTimestamp(), op.id);
         app.store.audit("provider", op.workspace_id, "PAYOUT_OUTCOME_UNKNOWN", {
           agreementId: op.collaboration_id,
           payoutId: op.id,
