@@ -174,7 +174,7 @@ export function splitParts(a: Agreement, viewerId?: string): SplitPart[] {
   const shares = (active || a.value.versions.at(-1))?.rules.shares || [];
   const members = a.value.members as AgreementMember[];
   return shares
-    .filter((share) => share.basisPoints > 0)
+    .filter((share) => share.basisPoints >= 0)
     .map((share) => {
       const member = members.find((m) => m.userId === share.userId);
       const name = member?.displayName.trim() || "Someone";

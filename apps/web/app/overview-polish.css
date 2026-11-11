@@ -572,7 +572,7 @@
   white-space: nowrap;
 }
 .ag-split:hover .ag-split-tip,
-.ag-split:focus-visible .ag-split-tip {
+.ag-split:focus .ag-split-tip {
   display: flex;
 }
 .ag-split-tip-row {
@@ -649,7 +649,16 @@
   .ag-list-table .ov-draft-cell button {
     width: 100%;
   }
+  .ag-split {
+    width: 100%;
+  }
   .ag-split-tip {
-    display: none !important;
+    position: static;
+    min-width: 0;
+    max-width: 100%;
+    width: 100%;
+    box-sizing: border-box;
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 }

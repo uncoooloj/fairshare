@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createRequire } from "node:module";
@@ -110,6 +111,29 @@ test("one person reads 'Betty 100%' with no bar", () => {
   assert.doesNotMatch(html, /ag-split-bar/);
 });
 
+test("zero-share members remain in the count and full disclosure", () => {
+  const a = agreement("zero", [
+    ["maya", "Maya Okafor", 10000],
+    ["riley", "Riley Chen", 0],
+  ]);
+  const { splitParts } = widgets();
+  assert.deepEqual(
+    splitParts(a, "maya").map(({ userId, basisPoints }) => [
+      userId,
+      basisPoints,
+    ]),
+    [
+      ["maya", 10000],
+      ["riley", 0],
+    ],
+  );
+  const html = render([a]);
+  assert.equal(splitOf(html), "Maya (you) 100 · Riley 0");
+  const tip = text(html.slice(html.indexOf('role="tooltip"')));
+  assert.match(tip, /Maya Okafor \(you\) 100%/);
+  assert.match(tip, /Riley Chen 0%/);
+});
+
 test("more than three people show the top two and +N; tooltip has all of them", () => {
   const html = render([
     agreement("c", [
@@ -124,6 +148,21 @@ test("more than three people show the top two and +N; tooltip has all of them", 
   const tip = text(html.slice(html.indexOf('role="tooltip"')));
   for (const name of ["Riley 15%", "Sam 10%", "Kemi 10%"])
     assert.ok(tip.includes(name), name);
+});
+
+test("mobile split disclosure stays focusable and contained", () => {
+  const css = readFileSync(
+    new URL("../app/overview-polish.css", import.meta.url),
+    "utf8",
+  );
+  const phone = css.slice(css.lastIndexOf("@media (max-width: 600px)"));
+  assert.match(css, /\.ag-split:focus \.ag-split-tip/);
+  assert.match(phone, /\.ag-split \{[\s\S]*width: 100%;/);
+  assert.match(
+    phone,
+    /\.ag-split-tip \{[\s\S]*position: static;[\s\S]*max-width: 100%;[\s\S]*white-space: normal;[\s\S]*overflow-wrap: anywhere;/,
+  );
+  assert.doesNotMatch(phone, /\.ag-split-tip\s*\{[^}]*display:\s*none/);
 });
 
 test("people who have not joined are muted", () => {
