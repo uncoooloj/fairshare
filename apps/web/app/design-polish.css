@@ -24,7 +24,6 @@
 /* Type: the reference tracks all UI text tighter and never goes past 600. */
 body {
   letter-spacing: var(--tracking-ui);
-  font-feature-settings: "ss01";
 }
 strong,
 b,
@@ -257,10 +256,10 @@ dialog.side-drawer::backdrop {
 }
 .calculation-reason {
   color: var(--color-muted);
-  margin-bottom: var(--space-3);
 }
 .calculation-chips {
   display: flex;
+  margin-top: var(--space-3);
   align-items: center;
   gap: var(--space-3);
   font-size: var(--text-xs);
@@ -276,6 +275,9 @@ dialog.side-drawer::backdrop {
 .waterfall-advance {
   background: #d4d4d4;
   animation: grow var(--motion-base) var(--ease-out) both;
+}
+.waterfall-advance.is-own {
+  background: var(--tone);
 }
 .waterfall-pool {
   position: relative;
@@ -312,6 +314,9 @@ dialog.side-drawer::backdrop {
 }
 .key-advance::before {
   background: #d4d4d4;
+}
+.key-advance.is-own::before {
+  background: var(--tone);
 }
 .key-pool::before {
   background: var(--color-surface);
@@ -354,8 +359,18 @@ dialog.side-drawer::backdrop {
   display: block;
   color: var(--color-subtle);
 }
-.calculation-steps td small:first-of-type:not(:last-child) {
-  display: inline;
+.calculation-step-title {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.calculation-steps small {
+  margin-top: 2px;
+}
+.calculation-skipped td {
+  color: var(--color-subtle);
+  font-style: italic;
 }
 .calculation-total td {
   background: var(--color-surface);
@@ -629,7 +644,9 @@ input[type="file"] {
   background: var(--color-surface);
 }
 .logo {
+  gap: 10px;
   font-size: 22px;
+  font-weight: 600;
   letter-spacing: -0.6px;
 }
 .logo-mark {

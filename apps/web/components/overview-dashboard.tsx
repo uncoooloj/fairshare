@@ -340,7 +340,10 @@ export function OverviewDashboard({
                       />
                     )}
                     <p>
-                      {activityText(event)} ·{" "}
+                      {activityText(event)}
+                      <span className="ov-sep" aria-hidden="true">
+                        {" · "}
+                      </span>
                       <button
                         className="ov-activity-link"
                         onClick={() => onOpen(event.agreement)}

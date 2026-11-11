@@ -1,0 +1,68 @@
+/* Document tab polish: loaded after design-polish.css. */
+
+/* One toolbar: version select and action buttons share a 32px row. */
+.document-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+@media (min-width: 768px) {
+  .document-actions .button {
+    min-height: 32px;
+    height: 32px;
+    padding-top: 0;
+    padding-bottom: 0;
+    font-size: var(--text-sm);
+  }
+}
+
+/* Reader: document-like serif text at a readable measure, sized to content. */
+.document-layout {
+  align-items: start;
+}
+.source-paper {
+  min-height: 0;
+  padding: 40px 48px;
+}
+.source-paper pre {
+  max-width: 68ch;
+  margin: 20px 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  font-family: Charter, "Iowan Old Style", "Source Serif Pro", Georgia, serif;
+  font-size: 16px;
+  line-height: 1.75;
+  color: var(--color-ink, #171717);
+  hyphens: auto;
+}
+@media (max-width: 767px) {
+  .source-paper {
+    padding: 24px 20px;
+  }
+}
+
+/* Rail: lead with the referenced clause, keep identifiers behind a disclosure. */
+.document-provenance h3 {
+  margin: 0 0 var(--space-2);
+}
+.document-clause {
+  margin-bottom: var(--space-5, 24px);
+}
+.document-clause blockquote {
+  margin: var(--space-3, 12px) 0 0;
+}
+.document-technical {
+  margin: 0 0 var(--space-4, 16px);
+}
+.document-technical > summary {
+  font-size: var(--text-sm);
+  color: var(--color-muted);
+}
+.document-technical dl {
+  margin: var(--space-3, 12px) 0 0;
+}
+.document-technical code {
+  font-size: var(--text-xs);
+  word-break: break-all;
+}

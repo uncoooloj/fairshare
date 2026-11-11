@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Button, Field } from "./ui";
 
 export function AgreementName({
@@ -19,10 +19,18 @@ export function AgreementName({
   onClose?: () => void;
 }) {
   const [value, setValue] = useState(suggestion || name);
+  const input = useRef<HTMLInputElement>(null);
   return (
     <details
       className="section agreement-rename"
       open={suggestion || defaultOpen ? true : undefined}
+      onKeyDown={(event) => {
+        if (event.key !== "Escape" || !event.currentTarget.open) return;
+        event.preventDefault();
+        event.stopPropagation();
+        // Closing fires onToggle, which hands control back via onClose.
+        event.currentTarget.open = false;
+      }}
       onToggle={(event) => {
         if (!event.currentTarget.open) onClose?.();
       }}
@@ -46,6 +54,8 @@ export function AgreementName({
       >
         <Field label="Agreement name">
           <input
+            ref={input}
+            autoFocus={defaultOpen}
             value={value}
             maxLength={200}
             disabled={busy}

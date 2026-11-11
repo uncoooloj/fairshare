@@ -105,30 +105,32 @@ export function AgreementIntake({
         {error && <Notice warning>{error}</Notice>}
         <fieldset disabled={busy} aria-label="Agreement input method">
           <legend>How would you like to add it?</legend>
-          <label>
-            <input
-              type="radio"
-              name="inputMethod"
-              checked={method === "upload"}
-              onChange={() => {
-                changed();
-                setMethod("upload");
-              }}
-            />{" "}
-            Upload document
-          </label>
-          <label>
-            <input
-              type="radio"
-              name="inputMethod"
-              checked={method === "paste"}
-              onChange={() => {
-                changed();
-                setMethod("paste");
-              }}
-            />{" "}
-            Paste text
-          </label>
+          <div className="intake-method-options">
+            <label className="intake-method-option">
+              <input
+                type="radio"
+                name="inputMethod"
+                checked={method === "upload"}
+                onChange={() => {
+                  changed();
+                  setMethod("upload");
+                }}
+              />
+              <span>Upload document</span>
+            </label>
+            <label className="intake-method-option">
+              <input
+                type="radio"
+                name="inputMethod"
+                checked={method === "paste"}
+                onChange={() => {
+                  changed();
+                  setMethod("paste");
+                }}
+              />
+              <span>Paste text</span>
+            </label>
+          </div>
         </fieldset>
         <div hidden={method !== "upload"}>
           <span className="field-label" id="upload-agreement-label">
