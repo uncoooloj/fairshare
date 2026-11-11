@@ -14,6 +14,7 @@ import { Avatar } from "./person";
 import { toneForId } from "../lib/person";
 import { allocationTrace } from "../lib/allocation-trace";
 import { NotificationPanel } from "./notification-panel";
+import { GlobalSearch } from "./global-search";
 import { useEmailDelivery } from "../lib/email-capability";
 import {
   useDisplayPreferences,
@@ -667,36 +668,14 @@ export default function FairshareApp() {
       </aside>
       <main className="main" id="main-content" tabIndex={-1}>
         <div className="workspace-bar">
-          <span>Agreement</span>
-          {agreements.length ? (
-            <select
-              aria-label="Open agreement"
-              value={selected ? agreementIdentityKey(selected) : ""}
-              disabled={busy}
-              onChange={(e) => {
-                const agreement = findAgreementByIdentity(
-                  agreements,
-                  e.target.value,
-                );
-                if (!agreement || !mayLeaveDraft()) return;
-                void run(() => openAgreement(agreement));
-              }}
-            >
-              <option value="" disabled>
-                Choose an agreement
-              </option>
-              {agreements.map((agreement) => (
-                <option
-                  key={agreementIdentityKey(agreement)}
-                  value={agreementIdentityKey(agreement)}
-                >
-                  {agreement.value.name}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <strong>Your agreements</strong>
-          )}
+          <GlobalSearch
+            agreements={agreements}
+            disabled={busy}
+            onOpen={(agreement) => {
+              if (!mayLeaveDraft()) return;
+              void run(() => openAgreement(agreement));
+            }}
+          />
           <span className="spacer" />
           <NotificationPanel
             key={`${user.id}:${workspace}`}
