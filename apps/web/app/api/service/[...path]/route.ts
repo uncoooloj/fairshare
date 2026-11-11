@@ -23,6 +23,7 @@ async function handler(
       "auth",
       "workspaces",
       "invitations",
+      "agreement-invitations",
       "agreements",
       "health",
       "settings",
