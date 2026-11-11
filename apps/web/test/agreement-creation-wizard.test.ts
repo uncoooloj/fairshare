@@ -56,6 +56,14 @@ const wizard = readFileSync(
   new URL("../components/agreement-creation-wizard.tsx", import.meta.url),
   "utf8",
 );
+const wizardCss = readFileSync(
+  new URL("../app/wizard.css", import.meta.url),
+  "utf8",
+);
+const wizardCheckCss = readFileSync(
+  new URL("../app/wizard-check.css", import.meta.url),
+  "utf8",
+);
 const owner = { id: "owner", name: "Maya Okafor", email: "maya@example.test" };
 const self = { name: owner.name, userId: owner.id };
 const noop = () => {};
@@ -1072,5 +1080,63 @@ test("not an agreement: no footer Continue, and uploading again discards the fir
   assert.match(
     wizard,
     /onSetUpMyself=\{\(\) => setCheckMode\(CheckMode\.MANUAL\)\}/,
+  );
+});
+
+test("a long source document widens the composed Check frame and stacks before narrow columns", () => {
+  const longDocument = Array.from(
+    { length: 160 },
+    (_, index) => `Clause ${index + 1}: the revenue split remains as agreed.`,
+  ).join("\n");
+  const agreement = {
+    workspaceId: "w",
+    id: "a",
+    revision: 1,
+    value: {
+      name: "Midnight Sessions",
+      members: [
+        { userId: "owner", displayName: owner.name, role: "ORGANIZER" },
+      ],
+      versions: [],
+    },
+  } as unknown as Agreement;
+  const html = renderToStaticMarkup(
+    createElement(AgreementCreationWizard, {
+      owner,
+      resume: {
+        created: {
+          workspaceId: "w",
+          agreementId: "a",
+          documentId: "source",
+          documentText: longDocument,
+          agreement,
+        },
+        extraction: fullReading(),
+      },
+      onCreate: async () => {
+        throw new Error("not called");
+      },
+      onFinish: noop,
+      onKeepDraft: noop,
+      onClose: noop,
+      onBusyChange: noop,
+    }),
+  );
+  assert.ok(longDocument.length >= 3200);
+  assert.match(html, /class="wiz"/);
+  assert.match(html, /class="wiz-stepper"/);
+  assert.match(html, /class="wiz-main"/);
+  assert.match(html, /class="wc-reader"/);
+  assert.match(
+    wizardCss,
+    /\.wiz-scroll:has\(\.wc-reader\)[\s\S]*?padding-left:[\s\S]*?\.wiz-scroll:has\(\.wc-reader\) > \.wiz-stepper,[\s\S]*?max-width: 1280px/,
+  );
+  assert.match(
+    wizardCheckCss,
+    /grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/,
+  );
+  assert.match(
+    wizardCheckCss,
+    /@media \(max-width: 899px\)[\s\S]*?grid-template-columns: minmax\(0, 1fr\)/,
   );
 });
