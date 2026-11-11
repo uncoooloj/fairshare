@@ -17,6 +17,7 @@ interface Env {
   PAYPAL_PAYOUTS_ENABLED?: string;
   PAYPAL_PAYOUTS_ELIGIBILITY_CONFIRMED?: string;
   PAYPAL_RECONCILIATION_ENABLED?: string;
+  PAYPAL_AUTOMATIC_PAYOUTS_ENABLED?: string;
   PUBLIC_API_URL?: string;
   PUBLIC_APP_ORIGIN?: string;
   FAIRSHARE_MFA_ENCRYPTION_KEY?: string;
@@ -88,6 +89,8 @@ export class FairshareAuthority extends DurableObject<Env> {
       publicAppOrigin: env.PUBLIC_APP_ORIGIN,
       payment: {
         provider,
+        automaticPayoutsEnabled:
+          env.PAYPAL_AUTOMATIC_PAYOUTS_ENABLED === "true",
         publicOrigin: env.PUBLIC_API_URL,
         reconciliation: {
           enabled: this.reconciliation,

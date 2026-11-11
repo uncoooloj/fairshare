@@ -2,6 +2,7 @@ import {
   registerInvoiceRoutes,
   type InvoiceProvider,
 } from "./invoiceRoutes.js";
+import { automaticPayouts } from "./automaticPayouts.js";
 import { paymentSource } from "./paymentSource.js";
 import { createReconciliationWorker } from "./reconciliationWorker.js";
 import { randomUUID, createHash } from "node:crypto";
@@ -38,6 +39,7 @@ export type PaymentProvider = Pick<
 export interface PaymentOptions {
   provider?: PaymentProvider;
   publicOrigin?: string;
+  automaticPayoutsEnabled?: boolean;
   reconciliation?: {
     enabled: boolean;
     intervalMs?: number;
@@ -642,12 +644,16 @@ export function registerPaymentRoutes(
     applyCapture,
   });
   const invoices = registerInvoiceRoutes(app, aggregates, provider);
+  const automatic = options.automaticPayoutsEnabled
+    ? automaticPayouts(app, aggregates, provider())
+    : undefined;
   const worker = options.reconciliation?.enabled
     ? createReconciliationWorker({
         db,
         intervalMs: options.reconciliation.intervalMs,
         discover: () => [
           ...invoices.discover(),
+          ...(automatic?.discover() ?? []),
           ...(
             db
               .prepare(
@@ -680,6 +686,10 @@ export function registerPaymentRoutes(
         reconcile: async (job, assertLease) => {
           if (job.kind === "INVOICE") {
             await invoices.reconcile(job.id, assertLease);
+            return;
+          }
+          if (job.kind === "AUTO_PAYOUT") {
+            await automatic!.dispatch(job.id, assertLease);
             return;
           }
           if (job.kind === "PAYMENT") {
