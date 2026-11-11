@@ -10,6 +10,7 @@ export enum AgreementTab {
   People = "People",
   Document = "Document",
   Payments = "Payments",
+  Allocations = "Allocations",
 }
 export interface Member {
   userId: string;
@@ -54,6 +55,7 @@ export interface Version {
 }
 export interface Revenue {
   providerCaptureId: string;
+  currency: "USD";
   grossCents: number;
   feeCents: number;
   netCents: number;

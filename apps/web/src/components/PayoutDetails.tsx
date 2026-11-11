@@ -1,4 +1,5 @@
 "use client";
+import { AllocationCalculation } from "../../components/allocation-calculation";
 import { useEffect, useId, useRef } from "react";
 import {
   formatPaymentAmount,
@@ -82,10 +83,14 @@ export function PayoutDetails({
       </dl>
       <section className={styles.drawerNote}>
         <h3>How was this share calculated?</h3>
-        <p>
-          Shares follow the approved agreement. Open the agreement to review its
-          rules, source clauses and available allocation breakdowns.
-        </p>
+        {row.trace ? (
+          <AllocationCalculation trace={row.trace} />
+        ) : (
+          <p>
+            The source payment, historical rules or matching allocation could
+            not be verified from this record. Open the agreement to review it.
+          </p>
+        )}
         {onOpenAgreement && (
           <button
             className={styles.control}
