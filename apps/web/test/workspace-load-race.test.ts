@@ -20,6 +20,7 @@ test("workspace changes fence in-flight reads and clear workspace-scoped state",
     "setMembers([])",
     "setPayments([])",
     "setPayouts([])",
+    "setPayoutsComplete(false)",
     'setInviteLink("")',
     "setDraftDirty(false)",
   ])
@@ -48,8 +49,12 @@ test("workspace changes fence in-flight reads and clear workspace-scoped state",
   const workspace = source
     .split("async function loadWorkspace(id: string) {")[1]
     .split("async function openAgreement")[0];
+  assert.match(
+    workspace,
+    /const isCurrent = \(\) =>\s*request === workspaceRequest\.current && currentWorkspace\.current === id/,
+  );
   assert.equal(
-    (workspace.match(/request !== workspaceRequest\.current/g) || []).length,
+    (workspace.match(/if \(!isCurrent\(\)\) return/g) || []).length,
     3,
   );
 
@@ -142,4 +147,29 @@ test("an old-render refresh cannot adopt the newly selected workspace", () => {
     source,
     /async function refresh\(\)\s*\{[\s\S]*?if \(workspace !== currentWorkspace\.current\) return;/,
   );
+});
+
+test("delayed payout loads cannot overwrite or clear a newer workspace", () => {
+  const workspace = source
+    .split("async function loadWorkspace(id: string) {")[1]
+    .split("async function openAgreement")[0];
+  const afterWorkspaceRead = workspace.indexOf(
+    "setAgreements(r.collaborations)",
+  );
+  const clear = workspace.indexOf("setPayouts([])", afterWorkspaceRead);
+  const successGuard = workspace.indexOf("if (!isCurrent()) return", clear);
+  const success = workspace.indexOf("setPayouts(all.flat())", successGuard);
+  const failedGuard = workspace.indexOf(
+    "if (!isCurrent()) return",
+    success + 1,
+  );
+  const failure = workspace.indexOf("setPayouts([])", failedGuard);
+  assert.ok(
+    clear > afterWorkspaceRead,
+    "only the current workspace clears payouts",
+  );
+  assert.ok(successGuard > clear && success > successGuard);
+  assert.ok(failedGuard > success && failure > failedGuard);
+  assert.match(workspace, /setPayoutsComplete\(false\)/);
+  assert.match(workspace, /setPayoutsComplete\(true\)/);
 });

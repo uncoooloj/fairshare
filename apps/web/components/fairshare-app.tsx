@@ -1,4 +1,5 @@
 "use client";
+import { OverviewDashboard } from "./overview-dashboard";
 import { AgreementAllocations } from "./agreement-allocations";
 import { allocationTrace } from "../lib/allocation-trace";
 import { useEmailDelivery } from "../lib/email-capability";
@@ -97,6 +98,7 @@ export default function FairshareApp() {
     [members, setMembers] = useState<any[]>([]),
     [payments, setPayments] = useState<any[]>([]),
     [payouts, setPayouts] = useState<any[]>([]),
+    [payoutsComplete, setPayoutsComplete] = useState(false),
     [mode, setMode] = useState("Unavailable");
   const [creationAgreementId, setCreationAgreementId] = useState("");
   const [creating, setCreating] = useState(false),
@@ -125,6 +127,7 @@ export default function FairshareApp() {
     setMembers([]);
     setPayments([]);
     setPayouts([]);
+    setPayoutsComplete(false);
     setSource("");
     setDocumentId("");
     setExtraction(null);
@@ -216,6 +219,7 @@ export default function FairshareApp() {
     const result = await api("invitations/accept", "POST", { token });
     // Adopt the committed membership immediately. Do not make a consumed
     // one-use invitation look unsuccessful if a later workspace fetch fails.
+
     setWorkspaces((current) => [
       ...current.filter((item) => item.id !== result.workspace.id),
       result.workspace,
@@ -231,14 +235,18 @@ export default function FairshareApp() {
   async function loadWorkspace(id: string) {
     if (!id || id !== currentWorkspace.current) return;
     const request = workspaceRequest.current;
+    const isCurrent = () =>
+      request === workspaceRequest.current && currentWorkspace.current === id;
     try {
       const [r, m] = await Promise.all([
         api(`${workspaceBase(id)}/collaborations`),
         api(`${workspaceBase(id)}/members`),
       ]);
-      if (request !== workspaceRequest.current) return;
+      if (!isCurrent()) return;
       setAgreements(r.collaborations);
       setMembers(m.members);
+      setPayouts([]);
+      setPayoutsComplete(false);
       const all = await Promise.all(
         r.collaborations.map(async (a: Agreement) => {
           const p = await api(
@@ -247,10 +255,13 @@ export default function FairshareApp() {
           return p.payouts.map((v: any) => ({ ...v, agreement: a }));
         }),
       );
-      if (request !== workspaceRequest.current) return;
+      if (!isCurrent()) return;
       setPayouts(all.flat());
+      setPayoutsComplete(true);
     } catch (error) {
-      if (request !== workspaceRequest.current) return;
+      if (!isCurrent()) return;
+      setPayouts([]);
+      setPayoutsComplete(false);
       throw error;
     }
   }
@@ -663,28 +674,13 @@ export default function FairshareApp() {
                     )
                   }
                 />
-                <div className="metrics">
-                  <Metric
-                    label="Agreements"
-                    value={String(agreements.length)}
-                  />
-                  <Metric
-                    label="Awaiting approvals"
-                    value={String(
-                      agreements.filter(
-                        (a) =>
-                          a.value.versions.at(-1)?.status ===
-                          "AWAITING_APPROVAL",
-                      ).length,
-                    )}
-                  />
-                  <Metric
-                    label="Payment holds"
-                    value={String(
-                      agreements.filter((a) => a.value.reviewHold).length,
-                    )}
-                  />
-                </div>
+                <OverviewDashboard
+                  agreements={agreements}
+                  payouts={payouts}
+                  payoutsComplete={payoutsComplete}
+                  userId={user.id}
+                  onOpen={(a) => run(() => openAgreement(a))}
+                />
                 <AgreementList
                   agreements={agreements}
                   workspaceRole={workspaceRole}
