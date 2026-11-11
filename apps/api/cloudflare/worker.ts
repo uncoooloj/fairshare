@@ -24,6 +24,8 @@ interface Env {
   CLOUDFLARE_ACCOUNT_ID?: string;
   CLOUDFLARE_API_TOKEN?: string;
   CLOUDFLARE_AI_MODEL?: string;
+  ANTHROPIC_API_KEY?: string;
+  ANTHROPIC_MODEL?: string;
 }
 const MAX_BODY_BYTES = 7 * 1024 * 1024;
 const ALARM_INTERVAL_MS = 30_000;
@@ -101,6 +103,10 @@ export class FairshareAuthority extends DurableObject<Env> {
         accountId: env.CLOUDFLARE_ACCOUNT_ID,
         apiToken: env.CLOUDFLARE_API_TOKEN,
         model: env.CLOUDFLARE_AI_MODEL,
+        anthropic: {
+          apiKey: env.ANTHROPIC_API_KEY,
+          model: env.ANTHROPIC_MODEL,
+        },
         onFailure: (diagnostic) =>
           console.warn("contract_extraction_failed", diagnostic),
       },

@@ -18,14 +18,23 @@ import {
   ReadingStepStatus,
 } from "../lib/reading";
 
-const cited = { citation: { quote: "split 50% to Maya" } };
+const quote = "Maya receives 50% and Jordan receives 50%.";
+const shareFact = (subject: string) => ({
+  kind: "SHARE",
+  subject,
+  rawValue: "50%",
+  basisPoints: 5000,
+  citation: { start: 0, end: quote.length, quote },
+});
 const ready = {
   status: "REVIEW_REQUIRED",
+  documentId: "doc",
   reason: null,
   requiresHumanReview: true,
   executable: false,
-  facts: [cited],
+  facts: [shareFact("Maya"), shareFact("Jordan")],
   issues: [],
+  sections: { SPLIT: { status: "READ" } },
 };
 
 test("reading screen renders the file, four steps, polite status and copy", () => {
@@ -71,7 +80,7 @@ test("timer never completes the last step; only a real result does", () => {
   );
 });
 
-test("only a cited, reviewable, non-executable suggestion is READY", () => {
+test("READY only when the split can be shown; anything else is MANUAL", () => {
   assert.equal(extractionOutcome(ready), ReadingOutcome.READY);
   assert.equal(extractionOutcome(null), ReadingOutcome.MANUAL);
   assert.equal(
@@ -88,11 +97,42 @@ test("only a cited, reviewable, non-executable suggestion is READY", () => {
     ReadingOutcome.MANUAL,
   );
   assert.equal(
-    extractionOutcome({ ...ready, facts: [cited, { citation: null }] }),
+    extractionOutcome({
+      ...ready,
+      facts: [shareFact("Maya"), { citation: null }],
+    }),
     ReadingOutcome.MANUAL,
   );
   assert.equal(
     extractionOutcome({ ...ready, executable: true }),
+    ReadingOutcome.MANUAL,
+  );
+  // Fees or other sections can still be open questions; the split alone makes it READY.
+  assert.equal(
+    extractionOutcome({
+      ...ready,
+      sections: { SPLIT: { status: "READ" }, FEES: { status: "ASK" } },
+    }),
+    ReadingOutcome.READY,
+  );
+  assert.equal(
+    extractionOutcome({ ...ready, sections: { SPLIT: { status: "ASK" } } }),
+    ReadingOutcome.MANUAL,
+  );
+  const members = [
+    { displayName: "Maya Okafor", userId: "u1", role: "ORGANIZER" },
+    { displayName: "Jordan", userId: "u2", role: "COLLABORATOR" },
+  ];
+  assert.equal(
+    extractionOutcome(ready, { source: quote, members }),
+    ReadingOutcome.READY,
+  );
+  assert.equal(
+    extractionOutcome(ready, { source: quote, members: members.slice(0, 1) }),
+    ReadingOutcome.MANUAL,
+  );
+  assert.equal(
+    extractionOutcome(ready, { source: "Different text", members }),
     ReadingOutcome.MANUAL,
   );
 });
