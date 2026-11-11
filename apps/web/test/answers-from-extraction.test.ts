@@ -26,6 +26,7 @@ import {
   cite,
   fullReading,
   namesOnlyReading,
+  briefReading,
   partialReading,
   person,
   reading,
@@ -63,11 +64,8 @@ test("everything read: name, dates, people, advance and fees, each with its clau
   assert.equal(a.advance?.clause, "4.1");
   assert.equal(a.fees?.value, FeeChoice.BEFORE_SPLIT);
   assert.equal(a.fees?.clause, "4.3");
-  // Silent on refunds, and there is an advance: only the refunds question is left.
-  assert.deepEqual(
-    a.questions.map((q) => q.id),
-    [StandardQuestionId.REFUNDS],
-  );
+  // Silent on refunds: nothing is asked (refunds aren't a choice).
+  assert.deepEqual(a.questions, []);
   // The example dollars come from the real split engine.
   const rows = exampleSplit(a, 300_000, 10_500);
   assert.equal(
@@ -180,9 +178,11 @@ test("a partial reading: the split is read, the advance becomes a question with 
   // Not settled, so not repaid first until someone says so.
   assert.equal(a.advance, undefined);
   assert.equal(a.fees, undefined);
-  const ids = a.questions.map((q) => q.id);
-  assert.ok(ids.includes(ReadingQuestionId.ADVANCE));
-  assert.ok(ids.includes(StandardQuestionId.FEES));
+  // Silent fees aren't asked: they come off the top.
+  assert.deepEqual(
+    a.questions.map((q) => q.id),
+    [ReadingQuestionId.ADVANCE],
+  );
   const q = a.questions.find((x) => x.id === ReadingQuestionId.ADVANCE)!;
   assert.equal(q.text, "Is Maya's $2,000 paid back before the split?");
   assert.equal(q.quote, "Maya Okafor paid a $2,000 advance.");
@@ -203,8 +203,20 @@ test("a partial reading: the split is read, the advance becomes a question with 
   assert.notEqual(cents(q.choices[0]), cents(q.choices[1]));
 });
 
-test("no percentages: an equal split to start from, with the spec's line", () => {
-  const { doc, extraction } = namesOnlyReading();
+test("shares named without percentages: an equal split to start from, with the spec's line", () => {
+  const doc =
+    "3. Split\nRevenue is shared between Maya Okafor, Jordan Reyes and Riley Chen.";
+  const quote =
+    "Revenue is shared between Maya Okafor, Jordan Reyes and Riley Chen.";
+  const extraction = reading(doc, {
+    facts: ["Maya Okafor", "Jordan Reyes", "Riley Chen"].map((name) => ({
+      kind: "SHARE",
+      subject: name,
+      rawValue: name,
+      citation: cite(doc, quote),
+    })),
+    sections: { SPLIT: Status.ASK, PEOPLE: Status.READ },
+  });
   const read = answersFromExtraction(extraction, doc, self);
   assert.equal(read.mode, CheckMode.FOUND_SOME);
   assert.ok(read.equalSplitGuessed);
@@ -229,6 +241,41 @@ test("no percentages: an equal split to start from, with the spec's line", () =>
     html,
     /We didn(’|'|&#x27;)t find the percentages\. Here(’|'|&#x27;)s an equal split to start from\./,
   );
+});
+
+test("a brief, not an agreement: nothing filled from guesses, two ways on", () => {
+  const { doc, extraction } = briefReading();
+  const read = answersFromExtraction(extraction, doc, self);
+  assert.equal(read.mode, CheckMode.NOT_AGREEMENT);
+  assert.equal(read.equalSplitGuessed, false);
+  assert.equal(read.answers.name.value, "");
+  assert.deepEqual(
+    read.answers.people.value.map((p) => [p.name, p.basisPoints, p.isSelf]),
+    [["Maya Okafor", 10000, true]],
+  );
+  assert.equal(read.answers.advance, undefined);
+  assert.deepEqual(read.answers.questions, []);
+  // Names from prose only, without the advance, is the same.
+  const names = namesOnlyReading();
+  assert.equal(
+    answersFromExtraction(names.extraction, names.doc, self).mode,
+    CheckMode.NOT_AGREEMENT,
+  );
+  const html = renderToStaticMarkup(
+    createElement(WizardCheckStep, {
+      answers: read.answers,
+      onChange: () => {},
+      mode: read.mode,
+      onUploadAgain: () => {},
+    }),
+  );
+  assert.match(
+    html,
+    /This doesn(’|'|&#x27;)t look like a revenue-share agreement/,
+  );
+  assert.match(html, /Upload a different file/);
+  assert.match(html, /Set it up myself/);
+  assert.doesNotMatch(html, /Who gets what|\$2,000|Jordan/);
 });
 
 test("a split issue becomes a question whose choices set the split", () => {
@@ -395,7 +442,7 @@ test("the organizer is only matched on the full name, never a shared first name"
   );
 });
 
-test("refunds read as 'before the split' are recorded, with their clause", () => {
+test("refunds in the document are never asked about", () => {
   const extraction = fullReading();
   extraction.facts.push({
     kind: "REFUNDS",
@@ -408,11 +455,10 @@ test("refunds read as 'before the split' are recorded, with their clause", () =>
       "Refunds shall be deducted from future Net Revenue.",
     ),
   });
-  extraction.sections.REFUNDS.status = Status.READ;
+  extraction.sections.REFUNDS.status = Status.ASK;
   const read = answersFromExtraction(extraction, MIDNIGHT, self);
-  assert.equal(read.answers.refunds?.value, RefundChoice.SPLIT);
-  assert.equal(read.answers.refunds?.clause, "5.2");
   assert.equal(read.answers.questions.length, 0);
+  assert.equal(read.mode, CheckMode.FOUND_ALL);
 });
 
 test("nothing usable is MANUAL; a misplaced quote is ignored", () => {

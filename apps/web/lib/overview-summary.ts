@@ -37,6 +37,7 @@ const eventNames: Record<string, string> = {
   APPROVED: "approved the split",
   CHANGE_REQUESTED: "asked for a change",
   ACTIVATED: "switched on the split",
+  ADVANCE_CONFIRMED: "confirmed the advance was paid",
   REVENUE_ALLOCATED: "Payment split",
   PAYMENT_HELD: "Payment paused for a check",
   PERSON_ADDED: "added someone to the agreement",
