@@ -1620,3 +1620,34 @@ td:last-child {
     max-height: 260px;
   }
 }
+
+.review-source-text .source-highlight {
+  display: inline;
+  white-space: pre-wrap;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  border: 0;
+  border-radius: 2px;
+  padding: 0;
+  min-height: 0;
+  background: #eff6ff;
+  cursor: pointer;
+}
+.review-source-text .source-highlight[data-selected="true"] {
+  background: #fef08a;
+  box-shadow: 0 0 0 2px #eab308;
+}
+.source-citation-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+.split-rule-editor {
+  border-left: 3px solid #1f4ee8;
+}
+.split-total-invalid {
+  color: #b91c1c;
+  font-weight: 600;
+}
