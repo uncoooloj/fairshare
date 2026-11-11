@@ -1,3 +1,4 @@
+import { agreementEmptyState } from "../lib/agreement-empty-state";
 import { formatDate } from "../lib/preferences";
 import { ClarificationDecisions } from "./clarification-decisions";
 import { proposalQuestions } from "../lib/clarification-draft";
@@ -116,7 +117,9 @@ function agreementStatus(a: Agreement) {
 export function AgreementList({
   agreements,
   onOpen,
+  workspaceRole,
 }: {
+  workspaceRole?: string;
   agreements: Agreement[];
   onOpen: (a: Agreement) => void;
 }) {
@@ -127,13 +130,9 @@ export function AgreementList({
       a.value.name.toLowerCase().includes(query.toLowerCase()) &&
       (filter === "All" || agreementStatus(a) === filter),
   );
+  const emptyState = agreementEmptyState(workspaceRole);
   if (!agreements.length)
-    return (
-      <Empty title="Your first agreement starts here">
-        Create an agreement, bring in your collaborators and make the split
-        clear before money comes in.
-      </Empty>
-    );
+    return <Empty title={emptyState.title}>{emptyState.description}</Empty>;
   return (
     <section className="agreement-list" aria-label="Agreements">
       <div className="list-toolbar">

@@ -13,7 +13,11 @@ test("workspace selector only offers switching when there is a choice", () => {
 test("account settings and invitations remain accessible before workspace creation", () => {
   assert.match(
     app,
-    /!workspace\s*&&\s*section\s*!==\s*Section\.Settings\s*\?\s*\(/,
+    /const needsWorkspace\s*=\s*!workspace\s*&&\s*section\s*!==\s*Section\.Settings/,
+  );
+  assert.match(
+    app,
+    /isInvitationFlow\s*\?\s*null\s*:\s*needsWorkspace\s*\?\s*\(/,
   );
   assert.match(app, /<AgreementIntake\s+first\s+busy=\{busy\}/);
 });
@@ -29,7 +33,7 @@ test("atomic creation adopts the returned workspace and document before optional
 });
 test("first-run payouts explains its empty state without requiring a workspace name", () => {
   const firstRun = app.slice(
-    app.indexOf("!workspace && section"),
+    app.indexOf("{isInvitationFlow ? null : needsWorkspace"),
     app.indexOf("{section === Section.Overview"),
   );
   assert.match(firstRun, /No payouts yet/);
