@@ -1,6 +1,7 @@
 # Cloudflare SQL prototype
 
-**Not deployed.** The optional API Worker injects this adapter into identity,
+The hosted sandbox uses this adapter; see `docs/CLOUDFLARE.md` for the deployed
+source/version snapshot and checkpoint parity limits. The optional API Worker injects this adapter into identity,
 agreement and payment handlers within one SQLite Durable Object; see
 `apps/api/cloudflare/README.md` for verified local runtime coverage and remaining
 deployment gates.

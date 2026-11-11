@@ -6,7 +6,7 @@ COPY package.json package-lock.json ./
 COPY apps/api/package.json apps/api/package.json
 COPY apps/web/package.json apps/web/package.json
 COPY packages ./packages
-RUN npm ci --ignore-scripts
+RUN npm ci --ignore-scripts --workspace @fairshare/api --include-workspace-root
 COPY apps/api/src ./apps/api/src
 COPY apps/api/parser-container/server.ts ./apps/api/parser-container/server.ts
 USER node
