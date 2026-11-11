@@ -182,7 +182,7 @@ nav {
   color: var(--color-muted);
 }
 .app-content {
-  max-width: var(--content-max);
+  width: 100%;
   padding: 32px 40px 56px;
 }
 .workspace-bar select {
@@ -1891,12 +1891,13 @@ button.notification-row.is-unread:hover {
 }
 
 .send-review-dialog {
-  width: min(520px, calc(100vw - 32px));
+  width: min(480px, calc(100vw - 32px));
   max-height: calc(100dvh - 48px);
   overflow: auto;
   border: 1px solid var(--color-line);
-  border-radius: 12px;
-  padding: 28px;
+  border: 0;
+  border-radius: 16px;
+  padding: 24px;
   box-shadow: 0 24px 80px #17171726;
   color: var(--color-ink);
 }
@@ -1910,23 +1911,65 @@ button.notification-row.is-unread:hover {
   gap: 12px;
 }
 .send-review-header h2 {
-  font-size: 20px;
+  margin: 0;
+  font-size: 18px;
   line-height: 28px;
+}
+.send-review-binding {
+  display: flex;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}
+.send-review-binding strong {
+  color: var(--color-ink);
+}
+.send-review-intro {
+  margin: var(--space-4) 0 0;
+}
+.send-review-note {
+  margin: var(--space-4) 0 0;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  line-height: 1.5;
 }
 .send-review-people {
   list-style: none;
-  margin: 20px 0;
+  display: grid;
+  gap: 12px;
+  margin: 20px 0 0;
   padding: 0;
-  border-top: 1px solid var(--color-line);
 }
 .send-review-people li {
   display: flex;
-  justify-content: space-between;
-  padding: 12px 0;
-  border-bottom: 1px solid var(--color-line);
+  gap: 10px;
+  align-items: center;
+  padding: 0;
 }
-.send-review-people strong {
-  font-variant-numeric: tabular-nums;
+.send-review-person-avatar {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--color-brand-soft);
+  color: var(--color-brand);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+}
+.send-review-person-name {
+  font-weight: var(--weight-medium);
+}
+.send-review-dialog textarea {
+  min-height: 88px;
+  resize: vertical;
+}
+.send-review-actions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+  margin-top: var(--space-5);
 }
 @media (max-width: 600px) {
   .send-review-dialog {

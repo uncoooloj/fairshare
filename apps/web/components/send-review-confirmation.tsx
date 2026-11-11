@@ -5,6 +5,16 @@ import { publicWebOrigin } from "../lib/public-web-origin";
 import { CloseButton } from "./close-button";
 import { Button, Field } from "./ui";
 
+function initials(name: string) {
+  return name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
+}
+
 export function SendReviewConfirmation({
   agreement,
   version,
@@ -53,33 +63,34 @@ export function SendReviewConfirmation({
     >
       <div className="send-review-header">
         <h2 id="send-review-title">
-          {sent ? "Ready for everyone’s review" : "Ask everyone to review"}
+          {sent
+            ? "Ready for everyone’s review"
+            : `Send v${version.id} for approval`}
         </h2>
         <CloseButton disabled={pending} onClick={onClose} />
       </div>
-      <p>
-        <strong>{agreement.value.name}</strong> · Version {version.id}
+      <p className="send-review-binding">
+        <strong>{agreement.value.name}</strong>
+        <span>Version {version.id}</span>
       </p>
-      <p className="muted">
+      <p className="send-review-intro">
         {sent
           ? "The proposal is available in Fairshare. Copy a message below to let the other participants know."
-          : "We’ll ask these people to approve. No money moves."}
+          : "They’ll be asked to approve this exact version."}
       </p>
       <ul className="send-review-people" aria-label="Review participants">
-        {agreement.value.members.map((member) => (
-          <li key={member.userId}>
-            <span>
-              {member.displayName}
-              {member.userId === userId ? " (you)" : ""}
-            </span>
-            <strong>
-              {(version.rules.shares.find(
-                (share) => share.userId === member.userId,
-              )?.basisPoints ?? 0) / 100}
-              %
-            </strong>
-          </li>
-        ))}
+        {agreement.value.members
+          .filter((member) => member.userId !== userId)
+          .map((member) => (
+            <li key={member.userId}>
+              <span className="send-review-person-avatar" aria-hidden="true">
+                {initials(member.displayName)}
+              </span>
+              <span className="send-review-person-name">
+                {member.displayName}
+              </span>
+            </li>
+          ))}
       </ul>
       {agreement.value.activeVersionId &&
         agreement.value.activeVersionId !== version.id && (
@@ -88,10 +99,7 @@ export function SendReviewConfirmation({
             everyone approves this one.
           </p>
         )}
-      <Field
-        label="Personal note to include when you share"
-        hint="Optional. Added to the message you copy."
-      >
+      <Field label="Message" hint="Optional. Added to the message you copy.">
         <textarea
           rows={3}
           maxLength={1000}
@@ -101,11 +109,11 @@ export function SendReviewConfirmation({
             setFallback("");
             setCopyState("");
           }}
-          placeholder="For example: Please check the fee treatment before approving."
+          placeholder="Add a note for the other participants"
         />
       </Field>
-      <p className="muted">
-        We don’t send email. Copy the message and send it yourself.
+      <p className="send-review-note">
+        The rules become binding when everyone approves this exact version. We don’t send email; copy the message after sending and share it yourself.
       </p>
       {(requestError || error) && <p role="alert">{requestError || error}</p>}
       {sent ? (
@@ -131,7 +139,7 @@ export function SendReviewConfirmation({
           Copy review message
         </Button>
       ) : (
-        <div className="row">
+        <div className="send-review-actions">
           <Button
             type="button"
             variant="secondary"
@@ -160,7 +168,7 @@ export function SendReviewConfirmation({
               }
             }}
           >
-            {pending ? "Preparing review…" : "Ask for approval"}
+            {pending ? "Preparing review…" : "Send"}
           </Button>
         </div>
       )}

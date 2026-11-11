@@ -1,6 +1,8 @@
 .timeline {
-  border-top: 1px solid var(--border, #e5e7eb);
-  padding-top: 24px;
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 14px;
+  padding: 20px;
+  background: #fff;
 }
 .heading {
   display: flex;
@@ -12,23 +14,37 @@
   margin: 0;
 }
 .version {
-  padding: 20px 0;
+  padding: 18px 0;
   border-bottom: 1px solid var(--border, #e5e7eb);
 }
 .version p {
   margin: 8px 0;
 }
 .compare {
-  margin-top: 16px;
+  margin-top: 14px;
+  padding: 12px;
+  border-radius: 8px;
+  background: #faf9f6;
 }
 .compare summary {
   cursor: pointer;
   color: var(--blue, #1f4ee8);
+  font-weight: 600;
 }
 .columns {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 24px;
+  gap: 12px;
+}
+.columns > div {
+  padding: 12px;
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 8px;
+  background: #fff;
+}
+.columns h4 {
+  margin: 0;
+  font-size: 13px;
 }
 .rules {
   margin: 0;
@@ -65,4 +81,5 @@
 }
 .shareChanges {
   padding-left: 20px;
+  font-size: 13px;
 }
