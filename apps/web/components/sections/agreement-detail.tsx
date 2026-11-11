@@ -13,6 +13,7 @@ import { AgreementVersions } from "../agreement-versions";
 import { StageAction } from "../../lib/agreement-status";
 import { AgreementName } from "../agreement-name";
 import { AgreementSetup } from "../agreement-setup";
+import { OrganizerHandoverBanner } from "../organizer-handover-banner";
 import {
   AgreementTab,
   Section,
@@ -66,6 +67,11 @@ export interface AgreementDetailProps {
   rulesDirty: MutableRefObject<boolean>;
   run: Run;
   mutate: Mutate;
+  mutateWithResult: (
+    action: string,
+    extra?: Record<string, unknown>,
+  ) => Promise<boolean>;
+  onAgreementChange: (agreement: Agreement) => void;
   refresh: () => Promise<void>;
   loadWorkspace: (id: string) => Promise<void>;
   navigate: (s: Section) => boolean;
@@ -116,6 +122,8 @@ export function AgreementDetail({
   rulesDirty,
   run,
   mutate,
+  mutateWithResult,
+  onAgreementChange,
   refresh,
   loadWorkspace,
   navigate,
@@ -287,6 +295,7 @@ export function AgreementDetail({
               busy={busy}
               approvedForPayout={approvedForPayout}
               mutate={mutate}
+              mutateWithResult={mutateWithResult}
               changeAgreementTab={changeAgreementTab}
               setApprovedForPayout={setApprovedForPayout}
               openDocumentRef={openDocument}
@@ -322,6 +331,13 @@ export function AgreementDetail({
                 )
               : undefined
           }
+        />
+        <OrganizerHandoverBanner
+          agreement={selected}
+          userId={user.id}
+          busy={busy}
+          run={run}
+          mutate={mutate}
         />
         <AgreementSetup
           agreement={selected}
@@ -372,6 +388,7 @@ export function AgreementDetail({
               workspace={workspace}
               run={run}
               mutate={mutate}
+              onAgreementChange={onAgreementChange}
               setNotice={setNotice}
             />
           )}
@@ -397,6 +414,7 @@ export function AgreementDetail({
                 rulesDirty={rulesDirty}
                 run={run}
                 mutate={mutate}
+                mutateWithResult={mutateWithResult}
                 mayLeaveDraft={mayLeaveDraft}
                 changeAgreementTab={changeAgreementTab}
                 setBusy={setBusy}
@@ -420,9 +438,10 @@ export function AgreementDetail({
                     aria-label="The agreement document"
                   >
                     <AgreementDocument
-                      key={selected.id}
+                      key={`${selected.id}:${latest?.id ?? ""}`}
                       agreement={selected}
                       base={base}
+                      reviewedVersionId={latest?.id}
                     />
                   </section>
                   <details className="panel ag-history">

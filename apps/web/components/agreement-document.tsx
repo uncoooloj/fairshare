@@ -19,12 +19,17 @@ interface DocumentRecord {
 export function AgreementDocument({
   agreement,
   base,
+  reviewedVersionId,
 }: {
   agreement: Agreement;
   base: string;
+  /** The version being reviewed in Terms, which is not always the active one. */
+  reviewedVersionId?: number;
 }) {
   const initial =
-    agreement.value.activeVersionId ?? agreement.value.versions.at(-1)?.id;
+    reviewedVersionId ??
+    agreement.value.activeVersionId ??
+    agreement.value.versions.at(-1)?.id;
   const [versionId, setVersionId] = useState<number | undefined>(initial);
   const [document, setDocument] = useState<DocumentRecord | null>(null);
   const [loading, setLoading] = useState(true),
@@ -70,13 +75,11 @@ export function AgreementDocument({
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
   return (
-    <section aria-label="Source document">
+    <section aria-label="Your agreement">
       <div className="document-toolbar">
         <div>
-          <h2>Source document</h2>
-          <p className="muted">
-            Review the exact text behind the proposed rules.
-          </p>
+          <h2>Your agreement</h2>
+          <p className="muted">The text the split comes from.</p>
         </div>
         <div className="actions document-actions">
           {agreement.value.versions.length > 1 && (
@@ -111,14 +114,13 @@ export function AgreementDocument({
             onClick={downloadText}
             disabled={loading || !document}
           >
-            Download extracted text
+            Download text
           </Button>
         </div>
       </div>
       <p className="document-disclaimer">
-        This view shows extracted text, not a signature verification. Original
-        downloads are available for new PDF and DOCX uploads. Each update keeps
-        the document it was made from.
+        This is the text we read from your file. Check it against the original.
+        Each update keeps the document it was made from.
       </p>
       {loading ? (
         <div className="panel" role="status">
@@ -136,14 +138,13 @@ export function AgreementDocument({
         </div>
       ) : !document ? (
         <Empty title="No source document yet">
-          Add a PDF, DOCX or text source in Terms. Saved source text will appear
-          here.
+          Add your agreement in Terms and it’ll show here.
         </Empty>
       ) : (
         <>
           <p className="muted">
             {document.provenance?.ocr
-              ? "Scanned document · check against the original"
+              ? "Scanned. Check against the original."
               : "Saved agreement text"}
             {document.provenance?.pages && (
               <>
@@ -163,21 +164,19 @@ export function AgreementDocument({
           />
           <section
             className="panel document-provenance"
-            aria-label="Source details"
+            aria-label="File details"
           >
-            <h3>Source details</h3>
+            <h3>File details</h3>
             <dl>
               <dt>Used by</dt>
-              <dd>
-                {version ? termsLabel(version.id) : "Latest saved draft source"}
-              </dd>
+              <dd>{version ? termsLabel(version.id) : "Latest draft"}</dd>
               <dt>Document ID</dt>
               <dd>
                 <code>{document.documentId}</code>
               </dd>
               {document.sourceHash && (
                 <>
-                  <dt>Source hash</dt>
+                  <dt>Fingerprint</dt>
                   <dd>
                     <code>{document.sourceHash}</code>
                   </dd>
@@ -185,8 +184,8 @@ export function AgreementDocument({
               )}
             </dl>
             <small>
-              PDF text reading order can differ from its visual layout. Compare
-              the wording before approving rules.
+              Text from PDFs can come out in a different order. Check the
+              wording.
             </small>
           </section>
         </>

@@ -1,6 +1,22 @@
 import { createHash } from "node:crypto";
 import mammoth from "mammoth";
 import JSZip from "jszip";
+const LIGATURES = /[ﬀ-ﬆ]/g;
+const INVISIBLE = /[­​-‍⁠﻿]/g;
+const CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g;
+const SPACES = /[\t  -   　]/g;
+// Keep this worker dependency-free when running directly from TypeScript.
+const normalizeExtractedText = (value: string) =>
+  value
+    .replace(/\r\n?/g, "\n")
+    .replace(CONTROL, "")
+    .replace(INVISIBLE, "")
+    .replace(LIGATURES, (ligature) => ligature.normalize("NFKC"))
+    .replace(SPACES, " ")
+    .replace(/ {2,}/g, " ")
+    .replace(/ *\n */g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 const chunks: Buffer[] = [];
 let size = 0;
 process.stdin.on("data", (chunk: Buffer) => {
@@ -58,7 +74,7 @@ process.stdin.on("end", async () => {
       throw new Error("Unsupported DOCX");
     // Raw text only: never render document HTML, execute macros, or fetch linked resources.
     const result = await mammoth.extractRawText({ buffer: bytes });
-    const text = result.value.trim();
+    const text = normalizeExtractedText(result.value);
     if (!text) {
       process.stdout.write(
         JSON.stringify({ ok: false, code: "DOCX_NO_EXTRACTABLE_TEXT" }),

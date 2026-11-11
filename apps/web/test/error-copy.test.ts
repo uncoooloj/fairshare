@@ -22,7 +22,7 @@ test("unexpected errors never leak diagnostics or encourage repeating payments b
     "Database postgres connection refused",
   );
   assert.doesNotMatch(text, /Database|postgres/);
-  assert.match(text, /Refresh to check what was saved/);
+  assert.match(text, /Refresh to see what saved/);
 });
 test("actionable validation messages survive while raw codes do not", () => {
   assert.equal(
@@ -33,5 +33,5 @@ test("actionable validation messages survive while raw codes do not", () => {
     errorCopy(400, "UNKNOWN_CODE", "UNKNOWN_CODE"),
     /UNKNOWN_CODE/,
   );
-  assert.match(errorCopy(409, "REVISION_CONFLICT"), /latest version/);
+  assert.match(errorCopy(409, "REVISION_CONFLICT"), /Check the latest/);
 });

@@ -23,7 +23,7 @@ function RuleSummary({
   const rules = version.rules;
   const name = (id: string) =>
     agreement.value.members.find((member) => member.userId === id)
-      ?.displayName ?? "Former participant";
+      ?.displayName ?? "Removed person";
   const label = (field: ComparisonField, text: string) => (
     <dt className={changed.includes(field) ? styles.changed : undefined}>
       {text}
@@ -46,12 +46,12 @@ function RuleSummary({
       <dd>
         {rules.feePolicy === "BEFORE_SPLIT"
           ? "Deducted before the split"
-          : `Covered by ${rules.feeBearerId ? name(rules.feeBearerId) : "the designated fee bearer"}`}
+          : `Paid by ${rules.feeBearerId ? name(rules.feeBearerId) : "the organizer"}`}
       </dd>
-      {label("advance", "Recoupment")}
+      {label("advance", "Advance")}
       <dd>
         {rules.advance
-          ? `${money(rules.advance.amountCents)} to ${name(rules.advance.recipientId)} · ${rules.advance.verified ? "verified advance" : "unverified advance"}`
+          ? `${money(rules.advance.amountCents)} to ${name(rules.advance.recipientId)} · ${rules.advance.verified ? "confirmed" : "not confirmed"}`
           : "No advance"}
         {rules.advance && (
           <div className="muted">
@@ -62,7 +62,7 @@ function RuleSummary({
       {label("source", "Source clause")}
       <dd>{rules.source.clause}</dd>
 
-      <dt>Interpretation</dt>
+      <dt>Written by</dt>
       <dd>
         {rules.source.origin === "HUMAN_PROPOSAL"
           ? "Edited by a person"
@@ -70,7 +70,7 @@ function RuleSummary({
       </dd>
       {label("source", "Source wording")}
       <dd>{rules.source.excerpt}</dd>
-      {label("questions", "Clarifications")}
+      {label("questions", "Open questions")}
       <dd>
         {rules.unresolvedQuestions.length
           ? rules.unresolvedQuestions.join(" · ")
@@ -120,7 +120,7 @@ export function AgreementVersions({ agreement }: { agreement: Agreement }) {
                 </summary>
                 <p className={styles.changeSummary}>
                   {changed.length
-                    ? `${changed.length} ${changed.length === 1 ? "section changed" : "sections changed"}`
+                    ? `${changed.length} ${changed.length === 1 ? "change" : "changes"}`
                     : "No rule changes"}
                 </p>
                 {shareChanges.length > 0 && (
@@ -132,7 +132,7 @@ export function AgreementVersions({ agreement }: { agreement: Agreement }) {
                       <li key={change.userId}>
                         {agreement.value.members.find(
                           (member) => member.userId === change.userId,
-                        )?.displayName ?? "Former participant"}
+                        )?.displayName ?? "Removed person"}
                         :{" "}
                         {change.before === undefined
                           ? "Not included"
@@ -165,8 +165,8 @@ export function AgreementVersions({ agreement }: { agreement: Agreement }) {
                 </div>
                 <p className="muted">
                   {latest.status === "ACTIVE"
-                    ? `${termsLabel(latest.id)} is in use. New payments split this way; earlier payments keep their original split.`
-                    : "These changes apply only after everyone approves the new terms. Earlier payments keep their original split."}
+                    ? `${termsLabel(latest.id)} is in use. Past payments keep the split they had.`
+                    : "These changes start once everyone approves. Past payments don’t change."}
                 </p>
               </details>
             )}

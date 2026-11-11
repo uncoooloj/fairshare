@@ -1,9 +1,14 @@
 import { registerAgreementInvitations } from "./agreementInvitations.js";
+import { registerOrganizerHandover } from "./organizerHandover.js";
 import type { DocumentReaders } from "./documentReaders.js";
 import type { DatabaseBackend } from "./database.js";
 import { registerProfileRoutes } from "./profileRoutes.js";
 import { registerPreferences } from "./preferences.js";
 import { registerAccountSettings } from "./accountSettings.js";
+import {
+  registerPayPalConnect,
+  type PayPalConnectOptions,
+} from "./paypalConnect.js";
 import { registerAgreementIntake } from "./agreementIntake.js";
 import { verifyLocalOcrTools } from "./ocr.js";
 import { registerReviewCollaboration } from "./reviewCollaboration.js";
@@ -39,6 +44,8 @@ export interface AppOptions extends EmailOptions {
   ai?: CloudflareConfig;
   extract?: typeof extractContract;
   payment?: PaymentOptions;
+  /** "Connect with PayPal" (sandbox Identity). Absent: the button is hidden. */
+  paypalIdentity?: PayPalConnectOptions;
 }
 export type FairshareApp = FastifyInstance & {
   store: IdentityStore;
@@ -73,12 +80,14 @@ function domainErrorStatus(code: string): number {
       "MEMBERS_LOCKED",
       "PENDING_MEMBER",
       "PENDING_MEMBERS",
+      "PAYOUT_DESTINATION_CONFLICT",
       "NOT_A_DRAFT",
       "DUPLICATE_PERSON",
       "NOT_PENDING",
       "ALREADY_MEMBER",
       "ADVANCE_RECIPIENT_CHANGED",
       "ADVANCE_BELOW_RECOUPED",
+      "NO_HANDOVER",
     ].includes(code)
   )
     return 409;
@@ -484,7 +493,13 @@ export async function buildApp(
   });
   registerPaymentRoutes(app, domainRoutes.store, options.payment);
   registerReviewCollaboration(app, domainRoutes.store, options);
-  registerAccountSettings(app, !!options.payment?.provider);
+  registerAccountSettings(
+    app,
+    !!options.payment?.provider,
+    !!options.paypalIdentity,
+  );
+  registerPayPalConnect(app, options.paypalIdentity);
   registerAgreementInvitations(app, domainRoutes.store);
+  registerOrganizerHandover(app, domainRoutes.store, domainRoutes.access);
   return app;
 }

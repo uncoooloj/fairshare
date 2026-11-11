@@ -22,17 +22,17 @@ export function termsStatusLabel(status: Version["status"]) {
 }
 
 function versionDescription(active: boolean, status: Version["status"]) {
-  if (active) return "In use. New payments split this way.";
+  if (active) return "In use for new payments.";
 
   switch (status) {
     case "AWAITING_APPROVAL":
-      return "Waiting for everyone to approve. Nothing is paid this way until then.";
+      return "Waiting for everyone to approve.";
     case "APPROVED":
       return "Everyone approved. Not in use yet.";
     case "DRAFT":
-      return "Not sent yet. Not used to split payments.";
+      return "Not sent yet. Not in use.";
     default:
-      return "Earlier terms. Past payments keep the split they were paid under.";
+      return "Earlier terms. Past payments keep the split they had.";
   }
 }
 

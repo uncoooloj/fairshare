@@ -31,22 +31,21 @@ export function PaymentBreakdown({
   return (
     <section className="panel breakdown">
       <div className="row">
-        <h2>How this payment was allocated</h2>
+        <h2>How this payment was split</h2>
         <Button variant="quiet" onClick={() => setBreakdown(null)}>
           Close
         </Button>
       </div>
       <p>
-        Gross {money(breakdown.grossCents)} − fees {money(breakdown.feeCents)} ={" "}
-        {money(breakdown.netCents)} available.
+        {money(breakdown.grossCents)} paid − {money(breakdown.feeCents)} PayPal
+        fee = {money(breakdown.netCents)} left to split.
       </p>
       <AllocationTable
         allocations={breakdown.allocations}
         agreement={selected}
       />
       <p className="muted">
-        Applied version {breakdown.versionId}. Recoupment is included in each
-        recipient’s total. An allocation is not proof of payout.
+        Applied version {breakdown.versionId}. Totals include advance payback.
       </p>
       <blockquote>
         {
@@ -63,19 +62,13 @@ export function PaymentBreakdown({
                 captureId: breakdown.providerCaptureId,
               });
               await refresh();
-              setNotice(
-                "Sandbox payout dispatch recorded. Check each item’s status; submission does not mean completion.",
-              );
+              setNotice("Payout dispatch recorded. Check Payouts for status.");
             })
           }
         >
-          Send fixed allocations in sandbox
+          Pay everyone (test)
         </Button>
       )}
-      <p className="muted">
-        Technical sandbox dispatch, not a vote on the shares. Automatic
-        scheduling is not enabled yet.
-      </p>
     </section>
   );
 }

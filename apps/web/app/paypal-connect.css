@@ -1,0 +1,67 @@
+/* "Connect with PayPal": PayPal's gold button with the two-blue wordmark,
+   drawn in CSS so no PayPal script or image is loaded. */
+.paypal-connect {
+  display: grid;
+  gap: var(--space-2);
+}
+.paypal-connect-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  width: 100%;
+  max-width: 360px;
+  padding: 0 var(--space-5);
+  border: 0;
+  border-radius: 999px;
+  background: #ffc439;
+  color: #111;
+  font: inherit;
+  font-size: 15px;
+  cursor: pointer;
+}
+.paypal-connect-button:hover:not(:disabled) {
+  filter: brightness(0.95);
+}
+.paypal-connect-button:focus-visible {
+  outline: 2px solid #003087;
+  outline-offset: 2px;
+}
+.paypal-connect-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.paypal-wordmark {
+  font-weight: 700;
+  font-style: italic;
+  letter-spacing: -0.02em;
+}
+.paypal-wordmark-pay {
+  color: #003087;
+}
+.paypal-wordmark-pal {
+  color: #009cde;
+}
+.paypal-or {
+  margin: var(--space-2) 0;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}
+.paypal-connected {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+.paypal-verified {
+  color: var(--color-success);
+  font-weight: var(--weight-medium);
+}
+.paypal-return {
+  display: grid;
+  min-height: 60vh;
+  place-items: center;
+  color: var(--color-muted);
+}

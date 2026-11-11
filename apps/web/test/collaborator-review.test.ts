@@ -240,18 +240,22 @@ test("terms tab hides organizer controls from collaborators", () => {
   );
   const collaborator = tab.slice(
     tab.indexOf("if (!isOrganizer)"),
-    tab.indexOf("Terms everyone can understand"),
+    tab.indexOf("Agree on the split"),
   );
   assert.match(collaborator, /<CollaboratorReviewCard/);
   assert.doesNotMatch(
     collaborator,
-    /Propose revised terms|ContractReviewPanel|setEditing/,
+    /Suggest a change|ContractReviewPanel|setEditing/,
   );
   const card = tab.slice(
     tab.indexOf("export function CollaboratorReviewCard"),
     tab.indexOf("export function AgreementTermsTab"),
   );
   assert.match(card, /<CollaboratorTerms/);
+  assert.match(
+    card,
+    /if \(await mutateWithResult\(`\/versions\/\$\{latest\.id\}\/approve`\)\)\s*setApprovedForPayout/,
+  );
   assert.match(card, /\/versions\/\$\{latest\.id\}\/approve/);
   assert.match(card, /\/versions\/\$\{latest\.id\}\/request-change/);
 });

@@ -1,5 +1,5 @@
 import type { ReactNode, ButtonHTMLAttributes } from "react";
-import { title } from "../lib/model";
+import { statusLabel } from "../lib/status-labels";
 export function Button({
   children,
   variant = "primary",
@@ -25,7 +25,7 @@ export function Badge({ value }: { value: string }) {
   const bad = /FAIL|HOLD|HELD|UNKNOWN|REVIEW_REQUIRED/.test(value);
   return (
     <span className={`badge ${good ? "good" : bad ? "warning" : "neutral"}`}>
-      {title(value)}
+      {statusLabel(value)}
     </span>
   );
 }

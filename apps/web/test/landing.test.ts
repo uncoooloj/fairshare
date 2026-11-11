@@ -13,13 +13,13 @@ test("public landing explains the v2 three-step story without exposing applicati
     "Everyone approves",
     "Payments follow the rules",
     "Illustrative split",
-    "No live money",
+    "no real money",
   ])
     assert.ok(page.includes(copy));
   assert.ok(!page.includes("FairshareApp"));
   assert.match(page, /href="\/login"/);
   assert.match(page, /id="how-it-works"/);
-  assert.match(page, /People approve the rules, not the AI/);
+  assert.match(page, /AI suggests, people decide/);
 });
 
 test("login and workspace retain the existing app and invitation entry points", () => {

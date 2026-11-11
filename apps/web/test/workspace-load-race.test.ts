@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { appSource } from "./app-source";
+import { mutationIsCurrent } from "../lib/mutation-generation";
 
 const source = appSource();
 
@@ -93,11 +94,11 @@ test("workspace changes fence in-flight reads and clear workspace-scoped state",
   );
 
   const mutate = source
-    .split("async function mutate(action: string")[1]
-    .split("if (!ready)")[0];
+    .split("async function mutateWithResult(")[1]
+    .split("async function mutate(action: string")[0];
   assert.match(
     mutate,
-    /if \(selected\?\.workspaceId !== currentWorkspace\.current\) return/,
+    /if \(selected\?\.workspaceId !== currentWorkspace\.current\) return false/,
   );
   assert.ok(
     (mutate.match(/workspaceRequestId !== workspaceRequest\.current/g) || [])
@@ -129,6 +130,12 @@ test("an old-render refresh cannot adopt the newly selected workspace", () => {
     source,
     /async function refresh\(\)\s*\{[\s\S]*?if \(workspace !== currentWorkspace\.current\) return;/,
   );
+});
+
+test("a mutation finishing after its workspace refresh cannot report success after navigation", () => {
+  assert.equal(mutationIsCurrent(4, 9, 4, 9), true);
+  assert.equal(mutationIsCurrent(4, 9, 5, 9), false);
+  assert.equal(mutationIsCurrent(4, 9, 4, 10), false);
 });
 
 test("delayed payout loads cannot overwrite or clear a newer workspace", () => {

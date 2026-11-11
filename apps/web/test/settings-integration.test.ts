@@ -8,7 +8,7 @@ test("five settings sections mount real components and protect workspace-less ac
   const source = appSource();
   for (const label of [
     "Profile",
-    "Payment accounts",
+    "PayPal",
     "Notifications",
     "Currency & display",
     "Activity log",

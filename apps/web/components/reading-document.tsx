@@ -23,15 +23,19 @@ export function ReadingDocument({
   fileName,
   run,
   onDone,
+  onCancel,
 }: {
   fileName: string;
   run: () => Promise<ReadingOutcome>;
   onDone(outcome: ReadingOutcome): void;
+  /** Continue with the committed draft when the read is taking too long. */
+  onCancel?: () => void;
 }) {
   const [active, setActive] = useState(0);
   const [phase, setPhase] = useState(ReadingPhase.RUNNING);
   // One request per mount, even when StrictMode replays effects: the promise outlives the effect.
   const request = useRef<Promise<ReadingOutcome> | null>(null);
+  const settled = useRef(false);
   const done = useRef(onDone);
   done.current = onDone;
 
@@ -46,7 +50,8 @@ export function ReadingDocument({
     let alive = true;
     let finish: ReturnType<typeof setTimeout> | undefined;
     const settle = (outcome: ReadingOutcome) => {
-      if (!alive) return;
+      if (!alive || settled.current) return;
+      settled.current = true;
       setPhase(
         outcome === ReadingOutcome.READY
           ? ReadingPhase.DONE
@@ -71,6 +76,23 @@ export function ReadingDocument({
     );
     return () => clearInterval(timer);
   }, [phase]);
+
+  function cancel() {
+    if (settled.current) return;
+    settled.current = true;
+    setPhase(ReadingPhase.FALLBACK);
+    onCancel?.();
+  }
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      cancel();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  });
 
   return (
     <section className="reading-body" aria-labelledby="reading-title">
@@ -137,6 +159,9 @@ export function ReadingDocument({
         {readingAnnouncement(active, phase)}
       </p>
       <p className="reading-hint">Usually under a minute.</p>
+      <button type="button" className="text-button" onClick={cancel}>
+        Set it up myself instead
+      </button>
     </section>
   );
 }
