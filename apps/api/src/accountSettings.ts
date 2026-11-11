@@ -1,6 +1,7 @@
 import type { FairshareApp } from "./app.js";
 import { ApiError, Role } from "./identity.js";
 import {
+  advancePayoutAccountGeneration,
   hasAccountPayoutDestination,
   payoutReadiness,
   readPayoutDestination,
@@ -28,9 +29,10 @@ type UserNameRow = { id: string; name: string };
 export function registerAccountSettings(
   app: FairshareApp,
   providerConfigured: boolean,
+  paypalConnect = false,
 ) {
   const db = app.store.db;
-  registerPayoutAccountRoutes(app);
+  registerPayoutAccountRoutes(app, paypalConnect);
   const base = "/api/workspaces/:workspaceId/payment-accounts";
   app.get<{
     Params: { workspaceId: string };
@@ -82,6 +84,7 @@ export function registerAccountSettings(
       .all(req.params.workspaceId) as PaymentAccountMember[];
     return {
       providerConfigured,
+      paypalConnect,
       mode: app.store.mode,
       own: readPayoutDestination(db, user.id, req.params.workspaceId),
       members: members.map((m) => ({
@@ -112,6 +115,7 @@ export function registerAccountSettings(
         "Manage your account-level payout destination before using this legacy route.",
       );
     app.store.tx(() => {
+      advancePayoutAccountGeneration(db, user.id);
       db.prepare(
         "INSERT INTO fairshare_recipients VALUES(?,?,?) ON CONFLICT(workspace_id,user_id) DO UPDATE SET paypal_id=excluded.paypal_id",
       ).run(req.params.workspaceId, user.id, paypalId);
@@ -133,6 +137,7 @@ export function registerAccountSettings(
           "Manage your account-level payout destination before using this legacy route.",
         );
       app.store.tx(() => {
+        advancePayoutAccountGeneration(db, user.id);
         db.prepare(
           "DELETE FROM fairshare_recipients WHERE workspace_id=? AND user_id=?",
         ).run(req.params.workspaceId, user.id);

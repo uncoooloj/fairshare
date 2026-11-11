@@ -4,6 +4,10 @@ import type { DatabaseBackend } from "./database.js";
 import { registerProfileRoutes } from "./profileRoutes.js";
 import { registerPreferences } from "./preferences.js";
 import { registerAccountSettings } from "./accountSettings.js";
+import {
+  registerPayPalConnect,
+  type PayPalConnectOptions,
+} from "./paypalConnect.js";
 import { registerAgreementIntake } from "./agreementIntake.js";
 import { verifyLocalOcrTools } from "./ocr.js";
 import { registerReviewCollaboration } from "./reviewCollaboration.js";
@@ -39,6 +43,8 @@ export interface AppOptions extends EmailOptions {
   ai?: CloudflareConfig;
   extract?: typeof extractContract;
   payment?: PaymentOptions;
+  /** "Connect with PayPal" (sandbox Identity). Absent: the button is hidden. */
+  paypalIdentity?: PayPalConnectOptions;
 }
 export type FairshareApp = FastifyInstance & {
   store: IdentityStore;
@@ -485,7 +491,12 @@ export async function buildApp(
   });
   registerPaymentRoutes(app, domainRoutes.store, options.payment);
   registerReviewCollaboration(app, domainRoutes.store, options);
-  registerAccountSettings(app, !!options.payment?.provider);
+  registerAccountSettings(
+    app,
+    !!options.payment?.provider,
+    !!options.paypalIdentity,
+  );
+  registerPayPalConnect(app, options.paypalIdentity);
   registerAgreementInvitations(app, domainRoutes.store);
   return app;
 }
