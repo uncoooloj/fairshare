@@ -2,13 +2,11 @@
   "$schema": "../../node_modules/wrangler/config-schema.json",
   "name": "fairshare-api-sandbox",
   "main": "dist-cloudflare/worker.mjs",
+  "no_bundle": true,
   "compatibility_date": "2026-11-01",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
   "preview_urls": false,
-  "build": {
-    "command": "node cloudflare/build.mjs"
-  },
   "durable_objects": {
     "bindings": [
       {
@@ -38,12 +36,12 @@
   "vars": {
     "OCR_ENABLED": "true",
     "HACKATHON_MFA_SIMULATION": "false",
-    "PAYPAL_PAYOUTS_ENABLED": "true",
-    "PAYPAL_PAYOUTS_ELIGIBILITY_CONFIRMED": "true",
-    "PAYPAL_RECONCILIATION_ENABLED": "true",
+    "PAYPAL_PAYOUTS_ENABLED": "false",
+    "PAYPAL_PAYOUTS_ELIGIBILITY_CONFIRMED": "false",
+    "PAYPAL_RECONCILIATION_ENABLED": "false",
     "PUBLIC_API_URL": "https://fairshare-api-sandbox.udaleamehoj.workers.dev",
     "PUBLIC_APP_ORIGIN": "https://usefairshare.app",
-    "PAYPAL_AUTOMATIC_PAYOUTS_ENABLED": "true"
+    "PAYPAL_AUTOMATIC_PAYOUTS_ENABLED": "false"
   },
   "observability": {
     "enabled": false

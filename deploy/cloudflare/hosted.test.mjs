@@ -7,6 +7,8 @@ const config = JSON.parse(
 test("hosted configuration preserves sandbox authority and parser", () => {
   assert.equal(config.name, "fairshare-api-sandbox");
   assert.equal(config.keep_vars, true);
+  assert.equal(config.no_bundle, true);
+  assert.equal(config.build, undefined);
   assert.equal(config.vars.PUBLIC_APP_ORIGIN, "https://usefairshare.app");
   assert.match(config.vars.PUBLIC_API_URL, /fairshare-api-sandbox/);
   assert.equal(config.containers[0].max_instances, 1);
@@ -21,5 +23,5 @@ test("hosted configuration preserves sandbox authority and parser", () => {
     "PAYPAL_RECONCILIATION_ENABLED",
     "PAYPAL_AUTOMATIC_PAYOUTS_ENABLED",
   ])
-    assert.equal(config.vars[key], "true");
+    assert.equal(config.vars[key], "false");
 });
