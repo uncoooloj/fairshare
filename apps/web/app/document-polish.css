@@ -66,3 +66,398 @@
   font-size: var(--text-xs);
   word-break: break-all;
 }
+
+/* Agreement document viewer: a paper page with cited clauses beside it. */
+.dv-version {
+  margin-bottom: var(--space-3);
+}
+.dv-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  background: var(--color-canvas);
+  overflow: hidden;
+}
+.dv-viewer {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.dv-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: 44px;
+  padding: 0 var(--space-4);
+  border-bottom: 1px solid var(--color-line);
+}
+.dv-file {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-ink);
+}
+.dv-file > svg {
+  flex: none;
+  color: var(--color-muted);
+}
+.dv-file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dv-info {
+  position: relative;
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--color-line);
+  border-radius: 50%;
+  font-size: 10px;
+  font-weight: var(--weight-bold);
+  font-style: italic;
+  color: var(--color-muted);
+  cursor: help;
+}
+.dv-info::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 8px);
+  transform: translateX(-50%);
+  z-index: 10;
+  width: max-content;
+  max-width: 240px;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--color-ink);
+  color: var(--color-canvas);
+  font-size: var(--text-xs);
+  font-style: normal;
+  font-weight: var(--weight-normal);
+  line-height: 1.4;
+  white-space: normal;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms;
+}
+.dv-info:hover::after,
+.dv-info:focus-visible::after {
+  opacity: 1;
+}
+.dv-tools,
+.dv-pager,
+.dv-zoom {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--color-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.dv-tools {
+  gap: var(--space-3);
+}
+.dv-zoom {
+  padding: 0 var(--space-3);
+  border-left: 1px solid var(--color-line);
+  border-right: 1px solid var(--color-line);
+}
+.dv-zoom > span {
+  min-width: 40px;
+  text-align: center;
+}
+.dv-tool {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--color-muted);
+  cursor: pointer;
+}
+.dv-tool:hover:not(:disabled) {
+  background: var(--color-surface);
+  color: var(--color-ink);
+}
+.dv-tool:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.dv-search {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--color-line);
+}
+.dv-search input {
+  flex: 1;
+  min-height: 32px;
+  height: 32px;
+  font-size: var(--text-sm);
+}
+.dv-search-count {
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+.dv-body {
+  flex: 1;
+  max-height: min(80vh, 960px);
+  overflow: auto;
+  padding: var(--space-6);
+  background: var(--color-surface);
+}
+.dv-page {
+  max-width: 640px;
+  min-height: 560px;
+  margin: 0 auto;
+  padding: 56px 64px;
+  background: var(--color-canvas);
+  box-shadow:
+    0 0 0 1px var(--color-line),
+    0 2px 8px rgb(15 23 42 / 0.04);
+  font-family: Charter, "Iowan Old Style", "Source Serif Pro", Georgia, serif;
+  line-height: 1.6;
+  color: var(--color-ink);
+  overflow-wrap: break-word;
+}
+.dv-para {
+  position: relative;
+  margin: 0 0 0.9em;
+  white-space: pre-wrap;
+}
+/* Cited paragraphs carry a bar in the left margin, like the design. */
+.dv-para.is-cited::before {
+  content: "";
+  position: absolute;
+  left: -28px;
+  top: 2px;
+  bottom: 2px;
+  width: 2px;
+  border-radius: 1px;
+  background: #eab308;
+}
+.dv-mark {
+  display: inline;
+  min-height: 0;
+  padding: 1px 0;
+  border: 0;
+  border-radius: 2px;
+  background: #fef9c3;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  white-space: pre-wrap;
+  cursor: pointer;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+.dv-mark:hover {
+  background: #fef08a;
+}
+.dv-mark[data-selected="true"] {
+  background: #fde68a;
+  outline: 2px solid #eab308;
+  outline-offset: 1px;
+}
+.dv-hit,
+.dv-mark.is-hit {
+  background: #dbeafe;
+  color: inherit;
+}
+.dv-hit.is-current {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 1px;
+}
+.dv-clauses {
+  padding: var(--space-4);
+  border-left: 1px solid var(--color-line);
+}
+.dv-clauses h3 {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-bold);
+}
+.dv-clauses > p {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-xs);
+}
+.dv-clauses ul {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+.dv-clause {
+  display: grid;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.dv-clause:hover:not(:disabled) {
+  border-color: #c7d2fe;
+}
+.dv-clause[aria-pressed="true"] {
+  border-color: var(--color-brand);
+  box-shadow: 0 0 0 1px var(--color-brand);
+}
+.dv-clause:disabled {
+  cursor: default;
+  background: var(--color-surface);
+}
+.dv-clause-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+}
+.dv-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px 6px;
+  border: 1px solid var(--color-line);
+  border-radius: 6px;
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font-weight: var(--weight-medium);
+}
+.dv-clause-summary {
+  font-size: var(--text-sm);
+  line-height: 1.4;
+}
+.dv-clause-note {
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+}
+.dv-clauses > .dv-added {
+  margin-top: var(--space-3);
+  color: var(--color-muted);
+}
+.dv-downloads {
+  margin-top: var(--space-3);
+}
+.dv-file-details {
+  margin-top: var(--space-6);
+}
+.dv-file-details > summary {
+  cursor: pointer;
+  font-weight: var(--weight-medium);
+}
+.dv-file-details dl {
+  margin: var(--space-4) 0 var(--space-3);
+}
+.dv-file-details dt {
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+}
+.dv-file-details dd {
+  margin: var(--space-1) 0 var(--space-3);
+  overflow-wrap: anywhere;
+}
+.dv-file-details code {
+  font-size: var(--text-xs);
+}
+.dv-file-details small {
+  color: var(--color-muted);
+}
+.ag-menu-list > a {
+  display: block;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  color: var(--color-ink);
+  text-decoration: none;
+}
+.ag-menu-list > a:hover {
+  background: var(--color-surface);
+}
+
+/* Phones: the page goes full width and the clauses become a chip row above it. */
+@media (max-width: 767px) {
+  .dv-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .dv-clauses {
+    order: -1;
+    padding: var(--space-3) var(--space-3) var(--space-2);
+    border-left: 0;
+    border-bottom: 1px solid var(--color-line);
+  }
+  .dv-clauses > p:not(.dv-added) {
+    display: none;
+  }
+  .dv-clauses ul {
+    display: flex;
+    gap: var(--space-2);
+    margin-top: var(--space-2);
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .dv-clauses li {
+    flex: none;
+    max-width: 240px;
+  }
+  .dv-clause {
+    gap: var(--space-1);
+    padding: var(--space-2) var(--space-3);
+  }
+  .dv-clause-summary {
+    font-size: var(--text-xs);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .dv-bar {
+    padding: 0 var(--space-3);
+  }
+  .dv-zoom {
+    display: none;
+  }
+  .dv-body {
+    max-height: none;
+    padding: var(--space-3);
+  }
+  .dv-page {
+    min-height: 0;
+    padding: 28px 24px 24px 28px;
+  }
+  .dv-para.is-cited::before {
+    left: -14px;
+  }
+  .dv-info::after {
+    left: auto;
+    right: -80px;
+    transform: none;
+  }
+}
+
+/* The document now leads the Agreement tab; space before the rules. */
+.ag-agreement .ag-agreement-document {
+  margin: 0 0 var(--space-6);
+}

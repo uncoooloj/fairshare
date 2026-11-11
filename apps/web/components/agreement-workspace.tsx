@@ -401,6 +401,13 @@ export function StatusLine({
   );
 }
 
+/** One entry in the page header's "…" menu: a link or an action. */
+export interface HeaderMenuItem {
+  label: string;
+  href?: string;
+  onSelect?: () => void;
+}
+
 export function AgreementHeader({
   agreement,
   userId,
@@ -409,6 +416,7 @@ export function AgreementHeader({
   onViewPayouts,
   rename,
   renameSuggested = false,
+  menuItems = [],
 }: {
   agreement: Agreement;
   /** The viewer: the status line is written from their side. */
@@ -420,6 +428,8 @@ export function AgreementHeader({
   rename?: (open: boolean, close: () => void) => ReactNode;
   /** A suggested name keeps the review prompt visible without the menu. */
   renameSuggested?: boolean;
+  /** Extra menu entries, such as the agreement document's downloads. */
+  menuItems?: HeaderMenuItem[];
 }) {
   const menu = useRef<HTMLDetailsElement>(null);
   const menuButton = useRef<HTMLElement>(null);
@@ -493,6 +503,27 @@ export function AgreementHeader({
               >
                 Edit agreement name
               </button>
+            )}
+            {menuItems.map((item) =>
+              item.href ? (
+                <a
+                  key={item.label}
+                  role="menuitem"
+                  href={item.href}
+                  onClick={() => choose(() => {})}
+                >
+                  {item.label}
+                </a>
+              ) : (
+                <button
+                  key={item.label}
+                  type="button"
+                  role="menuitem"
+                  onClick={() => choose(() => item.onSelect?.())}
+                >
+                  {item.label}
+                </button>
+              ),
             )}
             <button
               type="button"

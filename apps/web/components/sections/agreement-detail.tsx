@@ -8,7 +8,13 @@ import {
 } from "react";
 import { AgreementHeader } from "../agreement-workspace";
 import { AgreementTabs, visibleTab } from "../agreement-tabs";
-import { AgreementDocument } from "../agreement-document";
+import {
+  AgreementDocument,
+  DocumentFileDetails,
+  downloadDocumentText,
+  originalDocumentUrl,
+  type LoadedDocument,
+} from "../agreement-document";
 import { AgreementVersions } from "../agreement-versions";
 import { StageAction } from "../../lib/agreement-status";
 import { AgreementName } from "../agreement-name";
@@ -160,6 +166,10 @@ export function AgreementDetail({
     !organizer &&
     collaboratorStage(selected, latest, user.id) === CollaboratorStage.REVIEW;
   const [reviewPinned, setReviewPinned] = useState("");
+  // The Agreement tab's document: its downloads sit in the header menu.
+  const [loadedDocument, setLoadedDocument] = useState<LoadedDocument | null>(
+    null,
+  );
   const fullHeading = useRef<HTMLHeadingElement>(null);
   const openDocument = useRef<HTMLButtonElement>(null);
   const reviewHeading = useRef<HTMLHeadingElement>(null);
@@ -365,6 +375,27 @@ export function AgreementDetail({
           onBack={() => navigate(Section.Agreements)}
           onViewPayouts={() => navigate(Section.Payouts)}
           renameSuggested={!!extraction?.suggestedTitle}
+          menuItems={
+            loadedDocument && shown === AgreementTab.Terms
+              ? [
+                  ...(originalDocumentUrl(base, loadedDocument.document)
+                    ? [
+                        {
+                          label: "Download original",
+                          href: originalDocumentUrl(
+                            base,
+                            loadedDocument.document,
+                          ),
+                        },
+                      ]
+                    : []),
+                  {
+                    label: "Download text",
+                    onSelect: () => downloadDocumentText(loadedDocument),
+                  },
+                ]
+              : []
+          }
           rename={
             organizer
               ? (open, close) => (
@@ -453,6 +484,22 @@ export function AgreementDetail({
           )}
           {shown === AgreementTab.Terms && (
             <div className="ag-agreement">
+              {/* The document comes first; the rules and file details follow. */}
+              {!editing && selected.value.versions.length > 0 && (
+                <section
+                  className="ag-agreement-document"
+                  id="agreement-document"
+                  aria-label="The agreement document"
+                >
+                  <AgreementDocument
+                    key={`${selected.id}:${latest?.id ?? ""}`}
+                    agreement={selected}
+                    base={base}
+                    reviewedVersionId={latest?.id}
+                    onDocument={setLoadedDocument}
+                  />
+                </section>
+              )}
               <AgreementTermsTab
                 selected={selected}
                 latest={latest}
@@ -494,18 +541,12 @@ export function AgreementDetail({
               />
               {!editing && selected.value.versions.length > 0 && (
                 <>
-                  <section
-                    className="ag-agreement-document"
-                    id="agreement-document"
-                    aria-label="The agreement document"
-                  >
-                    <AgreementDocument
-                      key={`${selected.id}:${latest?.id ?? ""}`}
+                  {loadedDocument && (
+                    <DocumentFileDetails
                       agreement={selected}
-                      base={base}
-                      reviewedVersionId={latest?.id}
+                      loaded={loadedDocument}
                     />
-                  </section>
+                  )}
                   <details className="panel ag-history">
                     <summary>History</summary>
                     <AgreementVersions agreement={selected} />

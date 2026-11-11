@@ -30,12 +30,12 @@ test("document starts on the terms version and resets only when that review targ
 });
 test("document content is rendered as plain text and download accurately labelled", () => {
   assert.match(source, /<DocumentCitationView/);
-  const renderer = readFileSync(
-    new URL("../components/source-rule-context.tsx", import.meta.url),
+  const viewer = readFileSync(
+    new URL("../components/document-citation-view.tsx", import.meta.url),
     "utf8",
   );
-  assert.match(renderer, /\{segment.text\}/);
-  assert.doesNotMatch(renderer, /dangerouslySetInnerHTML|innerHTML/);
+  assert.match(viewer, /\{segment.text\}/);
+  assert.doesNotMatch(viewer, /dangerouslySetInnerHTML|innerHTML/);
   assert.doesNotMatch(
     source,
     /dangerouslySetInnerHTML|innerHTML|application\/pdf/,
@@ -43,11 +43,24 @@ test("document content is rendered as plain text and download accurately labelle
   assert.match(source, /Download text/);
   assert.match(source, /text\/plain;charset=utf-8/);
   assert.match(source, /URL.revokeObjectURL/);
-  assert.match(source, /This is the text we read from your file\./);
+  assert.match(viewer, /This is the text we read from your file\./);
   assert.match(source, /File details/);
   assert.match(source, /Fingerprint/);
-  assert.match(
-    source,
-    /Each\s+update\s+keeps\s+the\s+document\s+it\s+was\s+made\s+from/,
+  // The caveat paragraph and its label are gone; the tooltip carries it.
+  assert.doesNotMatch(source, /Saved agreement text|Each update keeps/);
+});
+test("the Agreement tab leads with the document; downloads live in the header menu", () => {
+  const detail = readFileSync(
+    new URL("../components/sections/agreement-detail.tsx", import.meta.url),
+    "utf8",
   );
+  const terms = detail.indexOf("{shown === AgreementTab.Terms && (");
+  const documentAt = detail.indexOf("<AgreementDocument", terms);
+  const rulesAt = detail.indexOf("<AgreementTermsTab", terms);
+  const detailsAt = detail.indexOf("<DocumentFileDetails", terms);
+  assert.ok(documentAt > terms && documentAt < rulesAt);
+  assert.ok(detailsAt > rulesAt);
+  assert.match(detail, /label: "Download original"/);
+  assert.match(detail, /label: "Download text"/);
+  assert.match(detail, /onDocument=\{setLoadedDocument\}/);
 });
