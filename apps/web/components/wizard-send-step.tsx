@@ -122,7 +122,10 @@ export function WizardReviewSummary({
             <ul>
               {answers.people.value.map((person, index) => (
                 <li key={person.key}>
-                  <span className={`wiz-avatar wiz-avatar-${index % 3}`}>
+                  <span
+                    className={`wiz-avatar wiz-avatar-${index % 3}`}
+                    aria-hidden="true"
+                  >
                     {initials(person.name)}
                   </span>
                   <span>{person.name || "Unnamed person"}</span>

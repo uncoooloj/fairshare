@@ -121,6 +121,7 @@ test("the review card keeps the saved values in aligned detail rows", () => {
   assert.match(html, /Dates<\/dt><dd>Oct 1, 2026 – no end date<\/dd>/);
   assert.match(html, /Revenue Share Agreement\.pdf/);
   assert.match(html, /2\.4 MB/);
+  assert.match(html, /class="wiz-avatar wiz-avatar-0" aria-hidden="true">M/);
   assert.match(html, /Maya<\/span><small>Owner<\/small>/);
   assert.match(html, /Jordan<\/span><small>Collaborator<\/small>/);
 });
