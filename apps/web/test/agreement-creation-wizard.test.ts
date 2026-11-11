@@ -6,9 +6,11 @@ import { readFileSync } from "node:fs";
 import {
   AgreementCreationWizard,
   checkProblem,
+  clearPersonInvitation,
   detailsPatch,
   mergeQuestions,
   resumedAnswers,
+  readingResultIsCurrent,
   submissionWasCommitted,
   STAGE_STEP,
   WizardStage,
@@ -286,6 +288,50 @@ test("a lost submit reply is recovered only for this attempt's newly sent rules"
     ),
     false,
   );
+});
+
+test("manual reading exit keeps manual answers when the old read settles", () => {
+  const manual = answersFromDraft(
+    {
+      workspaceId: "w",
+      id: "a",
+      revision: 1,
+      value: { name: "Draft", members: [], versions: [] },
+    } as unknown as Agreement,
+    null,
+    doc,
+    self,
+  ).answers;
+  const seeded = {
+    ...manual,
+    name: { value: "Manual title", source: AnswerSource.PERSON },
+  };
+  assert.equal(readingResultIsCurrent(2, 1), false);
+  assert.equal(seeded.name.value, "Manual title");
+  assert.equal(readingResultIsCurrent(2, 2), true);
+});
+
+test("removing an edited pending seat clears its stale invitation before retry", () => {
+  const before = {
+    ...emptyAnswers(self),
+    people: {
+      value: [
+        ...emptyAnswers(self).people.value,
+        {
+          key: "jordan",
+          name: "Jordan",
+          email: "new@example.test",
+          invitationId: "old-invite",
+          basisPoints: 0,
+          isSelf: false,
+        },
+      ],
+      source: AnswerSource.PERSON,
+    },
+  };
+  const checkpointed = clearPersonInvitation(before, "jordan");
+  assert.equal(checkpointed.people.value[1].invitationId, undefined);
+  assert.equal(before.people.value[1].invitationId, "old-invite");
 });
 
 test("finishing lands on the agreement Overview; drafts reopen the wizard", () => {

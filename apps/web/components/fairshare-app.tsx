@@ -29,12 +29,14 @@ import { recoverSourceDocument } from "../lib/source-recovery";
 import { useRouter } from "next/navigation";
 import { Button } from "./ui";
 import { workspaceBase } from "../lib/workspace-base";
+import { mutationIsCurrent } from "../lib/mutation-generation";
 import { AppShell } from "./app-shell";
 import { OverviewSection } from "./sections/overview-section";
 import { AgreementsSection } from "./sections/agreements-section";
 import { AgreementDetail } from "./sections/agreement-detail";
 import { PayoutsSection } from "./sections/payouts-section";
 import { SettingsSection } from "./sections/settings-section";
+
 export default function FairshareApp() {
   const router = useRouter();
   const emailDelivery = useEmailDelivery();
@@ -538,6 +540,15 @@ export default function FairshareApp() {
           "Agreement updated. Refresh to reload the rest of your workspace.",
         );
       }
+      if (
+        !mutationIsCurrent(
+          workspaceRequestId,
+          openRequestId,
+          workspaceRequest.current,
+          openRequest.current,
+        )
+      )
+        return false;
       return true;
     } catch (cause) {
       if (
