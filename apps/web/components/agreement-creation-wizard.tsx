@@ -864,10 +864,18 @@ export function resumedAnswers(
       (item) => item.id === saved.answeredChoiceId,
     );
     if (!question || !choice) continue;
+    // Never replay an old choice onto later manual edits. It only remains answered
+    // when the stored answers still equal the choice's effect; otherwise surface it
+    // again for an explicit current decision.
     const applied = choice.apply(restored);
+    const stillMatches =
+      JSON.stringify(applied.people) === JSON.stringify(restored.people) &&
+      JSON.stringify(applied.advance) === JSON.stringify(restored.advance) &&
+      JSON.stringify(applied.fees) === JSON.stringify(restored.fees);
+    if (!stillMatches) continue;
     restored = {
-      ...applied,
-      questions: applied.questions.map((item) =>
+      ...restored,
+      questions: restored.questions.map((item) =>
         item.id === question.id
           ? { ...item, answeredChoiceId: saved.answeredChoiceId }
           : item,
