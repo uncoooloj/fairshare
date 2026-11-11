@@ -80,7 +80,10 @@ test("organizers can recover a sent pending person's link without putting its to
 
 test("reissued agreements propagate to the app state by composite identity", () => {
   const tab = readFileSync(
-    new URL("../components/sections/agreement-tabs/people-tab.tsx", import.meta.url),
+    new URL(
+      "../components/sections/agreement-tabs/people-tab.tsx",
+      import.meta.url,
+    ),
     "utf8",
   );
   const detail = readFileSync(
