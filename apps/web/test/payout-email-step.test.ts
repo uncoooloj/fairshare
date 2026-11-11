@@ -122,8 +122,11 @@ test("settings: no platform PayPal card, inline Saved, row menu for reminders", 
   assert.doesNotMatch(settings, /PayPal email saved\./);
   assert.match(settings, /setSaved\("Saved"\)/);
   assert.match(settings, /settings-card-head[\s\S]*<SavedNote/);
-  // Reminders sit in the same overflow menu as the agreement People table.
+  // Reminders use the shared portal menu so the settings table cannot clip it.
   assert.match(settings, /<strong>Collaborators<\/strong>/);
-  assert.match(settings, /className="ag-menu"[\s\S]*Copy reminder/);
-  assert.match(settings, /aria-label=\{`Actions for \$\{m\.name\}`\}/);
+  assert.match(
+    settings,
+    /<ActionMenu[\s\S]*label=\{`Actions for \$\{m\.name\}`\}[\s\S]*label: "Copy reminder"/,
+  );
+  assert.doesNotMatch(settings, /<details className="ag-menu"/);
 });

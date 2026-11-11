@@ -542,7 +542,7 @@ input.settings-switch {
 .settings-collaborators-head strong {
   font-size: var(--text-base);
 }
-.settings-collaborators .ag-menu > summary.icon-button {
+.settings-collaborators .action-menu-trigger {
   border-color: transparent;
 }
 @media (max-width: 600px) {

@@ -3,6 +3,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { api } from "../lib/model";
 import { toneForId } from "../lib/person";
 import { publicWebOrigin } from "../lib/public-web-origin";
+import { ActionMenu } from "./action-menu";
 import { Avatar, AvatarSize } from "./person";
 import { SettingsPaneHeader } from "./settings-preferences";
 import { Button } from "./ui";
@@ -315,52 +316,16 @@ export function PaymentAccountsSettings({
                       </td>
                       <td className="settings-cell-action">
                         {m.status === PayoutReadiness.NEEDS_EMAIL && (
-                          <details className="ag-menu">
-                            <summary
-                              className="icon-button"
-                              aria-label={`Actions for ${m.name}`}
-                            >
-                              <svg
-                                width="16"
-                                height="16"
-                                viewBox="0 0 16 16"
-                                aria-hidden="true"
-                              >
-                                <circle
-                                  cx="3"
-                                  cy="8"
-                                  r="1.4"
-                                  fill="currentColor"
-                                />
-                                <circle
-                                  cx="8"
-                                  cy="8"
-                                  r="1.4"
-                                  fill="currentColor"
-                                />
-                                <circle
-                                  cx="13"
-                                  cy="8"
-                                  r="1.4"
-                                  fill="currentColor"
-                                />
-                              </svg>
-                            </summary>
-                            <div className="ag-menu-list">
-                              <Button
-                                type="button"
-                                variant="quiet"
-                                onClick={(e) => {
-                                  e.currentTarget
-                                    .closest("details")
-                                    ?.removeAttribute("open");
-                                  void copyReminder(m.name);
-                                }}
-                              >
-                                Copy reminder
-                              </Button>
-                            </div>
-                          </details>
+                          <ActionMenu
+                            label={`Actions for ${m.name}`}
+                            items={[
+                              {
+                                id: "copy-reminder",
+                                label: "Copy reminder",
+                                onSelect: () => void copyReminder(m.name),
+                              },
+                            ]}
+                          />
                         )}
                       </td>
                     </tr>
