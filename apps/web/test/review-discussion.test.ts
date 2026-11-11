@@ -297,8 +297,9 @@ test("thread-owned drafts survive a collapsed view and clear after a successful 
     ruleKey: CommentTopic.SPLIT,
     parentId: null,
   } as ReviewComment;
-  const thread = new CommentThread("comments", async <T>(_path: string) =>
-    ({ comments: [], nextCursor: null }) as T,
+  const thread = new CommentThread(
+    "comments",
+    async <T>(_path: string) => ({ comments: [], nextCursor: null }) as T,
   );
   thread.setDraft(CommentTopic.SPLIT, { body: "Keep this", parent });
   assert.deepEqual(thread.draft(CommentTopic.SPLIT), {
@@ -313,9 +314,9 @@ test("a completed post cannot clear text entered after its request started", asy
   const thread = new CommentThread(
     "comments",
     async <T>(_path: string, method?: string) => {
-    if (method === "POST")
-      await new Promise<void>((resolve) => (release = resolve));
-    return { comments: [], nextCursor: null } as T;
+      if (method === "POST")
+        await new Promise<void>((resolve) => (release = resolve));
+      return { comments: [], nextCursor: null } as T;
     },
   );
   thread.setDraft(CommentTopic.SPLIT, { body: "First comment" });
