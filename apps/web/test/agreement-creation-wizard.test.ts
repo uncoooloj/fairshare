@@ -66,12 +66,27 @@ test("creation saves actual participant and name changes, keeps consent boundary
 
 test("saved drafts resume creation and finishing routes to actual terms review", () => {
   const app = appSource();
-  assert.match(app, /sessionStorage.setItem\(\s*`fairshare:creation:/);
-  assert.match(app, /sessionStorage.getItem\(`fairshare:creation:/);
-  assert.match(app, /sessionStorage.removeItem\(\s*`fairshare:creation:/);
+  assert.match(app, /function creationMarker\(agreement/);
+  assert.match(app, /agreementIdentityKey\(agreement\)/);
+  assert.match(app, /const sameId = agreements\.filter/);
+  assert.match(app, /sameId\.length === 1/);
   assert.match(
     app,
-    /creationAgreementId === selected.id &&\s*!selected.value.versions.length/,
+    /sessionStorage\.setItem\(creationMarker\(result\.agreement\)/,
+  );
+  assert.match(
+    app,
+    /sessionStorage\.removeItem\(\s*creationMarker\(selected\)/,
+  );
+  assert.match(
+    app,
+    /creationAgreementId === agreementIdentityKey\(selected\) &&\s*!selected.value.versions.length/,
   );
   assert.match(app, /mutate\("\/members", \{ userId \}\)/);
+});
+
+test("document preprocessing participates in the app navigation lock", () => {
+  const app = appSource();
+  assert.equal((app.match(/onBusyChange=\{setBusy\}/g) || []).length, 3);
+  assert.match(app, /function mayLeaveDraft\(\) \{\s*if \(busy\) return false/);
 });

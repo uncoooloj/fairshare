@@ -3,10 +3,6 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { appSource } from "./app-source";
 const app = appSource();
-const onboarding = readFileSync(
-  new URL("../components/designer-auth.tsx", import.meta.url),
-  "utf8",
-);
 
 test("navigation selects actual agreements, never hidden tenant groups", () => {
   assert.match(app, /aria-label="Open agreement"/);
@@ -31,7 +27,12 @@ test("atomic creation adopts the returned workspace and document before optional
     app.indexOf("async function refresh"),
   );
   assert.match(creation, /api\(\s*"agreements\/intake",\s*"POST"/);
-  assert.match(creation, /setWorkspace\(result.workspace.id\)/);
+  assert.match(creation, /commitWorkspace\(result.workspace.id\)/);
+  assert.match(creation, /void loadWorkspace\(intakeWorkspaceId\)/);
+  assert.match(
+    creation,
+    /item\.workspaceId !== result\.agreement\.workspaceId \|\|\s*item\.id !== result\.agreement\.id/,
+  );
   assert.match(creation, /setDocumentId\(result.document.documentId\)/);
   assert.doesNotMatch(creation, /await loadWorkspaces|await openAgreement/);
 });

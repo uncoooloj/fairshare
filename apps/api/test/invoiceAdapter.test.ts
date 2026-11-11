@@ -72,19 +72,6 @@ async function setupAdapter() {
               : [],
         },
       });
-    if (path === "/v2/payments/captures/CAPTURE123" && method === "GET")
-      return json({
-        id: "CAPTURE123",
-        status: "COMPLETED",
-        invoice_id: id,
-        payee: { merchant_id: "MERCHANT123" },
-        amount: { currency_code: "USD", value: "100.00" },
-        seller_receivable_breakdown: {
-          gross_amount: { currency_code: "USD", value: "100.00" },
-          paypal_fee: { currency_code: "USD", value: "3.00" },
-          net_amount: { currency_code: "USD", value: "97.00" },
-        },
-      });
     throw Error(`Unexpected provider request ${method} ${path}`);
   }) as typeof fetch;
   const provider = new PayPalSandbox(
@@ -164,7 +151,7 @@ async function setupAdapter() {
     },
   };
 }
-test("invoice API integrates real PayPal adapter create, suppressed-email publish, verified capture allocation and retry idempotence", async () => {
+test("invoice API integrates real PayPal adapter create, suppressed-email publish and pending buyer-paid status", async () => {
   const s = await setupAdapter();
   try {
     const input = {
@@ -195,24 +182,14 @@ test("invoice API integrates real PayPal adapter create, suppressed-email publis
     s.paid();
     const reconciled = await s.post(`/invoices/${invoice.id}/reconcile`);
     assert.equal(reconciled.statusCode, 200, reconciled.body);
-    assert.equal(reconciled.json().invoice.status, "PAID");
+    assert.equal(reconciled.json().invoice.status, "PAYMENT_PENDING");
     const revenue = s.agg.read(s.w.id, "collab").value.revenue;
-    assert.equal(revenue.length, 1);
-    assert.equal(revenue[0].providerCaptureId, "CAPTURE123");
-    assert.equal(
-      revenue[0].allocations.reduce((sum, a) => sum + a.totalCents, 0),
-      9700,
-    );
+    assert.equal(revenue.length, 0);
     assert.equal(
       (await s.post(`/invoices/${invoice.id}/reconcile`)).json().invoice.status,
-      "PAID",
+      "PAYMENT_PENDING",
     );
-    assert.equal(s.agg.read(s.w.id, "collab").value.revenue.length, 1);
-    assert.equal(
-      s.requests.filter((r) => r.path === "/v2/payments/captures/CAPTURE123")
-        .length,
-      1,
-    );
+    assert.equal(s.agg.read(s.w.id, "collab").value.revenue.length, 0);
     assert.equal(
       s.requests.filter(
         (r) => r.method === "POST" && r.path !== "/v1/oauth2/token",

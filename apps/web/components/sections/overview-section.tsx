@@ -10,6 +10,8 @@ export interface OverviewSectionProps {
   user: User;
   agreements: Agreement[];
   payouts: any[];
+  payoutsComplete: boolean;
+  payoutsUnavailable: boolean;
   canCreateAgreement: boolean;
   setSection: Dispatch<SetStateAction<Section>>;
   setCreating: Dispatch<SetStateAction<boolean>>;
@@ -22,6 +24,8 @@ export function OverviewSection({
   user,
   agreements,
   payouts,
+  payoutsComplete,
+  payoutsUnavailable,
   canCreateAgreement,
   setSection,
   setCreating,
@@ -50,6 +54,8 @@ export function OverviewSection({
       <OverviewDashboard
         agreements={agreements}
         payouts={payouts}
+        payoutsComplete={payoutsComplete}
+        payoutsUnavailable={payoutsUnavailable}
         userId={user.id}
         onOpen={(a) => run(() => openAgreement(a))}
       />
