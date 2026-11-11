@@ -41,6 +41,7 @@ export function AgreementPeople({
   version,
   userId,
   base,
+  onHandOver,
   organizer = false,
   onAgreementChange,
 }: {
@@ -48,6 +49,8 @@ export function AgreementPeople({
   version?: Version;
   userId: string;
   base: string;
+  /** Organizer only: offer the role to this joined person. */
+  onHandOver?: (memberId: string) => void;
   organizer?: boolean;
   onAgreementChange?: (agreement: Agreement) => void;
 }) {
@@ -305,6 +308,17 @@ export function AgreementPeople({
                             Add or change my payout email
                           </Button>
                         )}
+                        {onHandOver &&
+                          member.userId !== userId &&
+                          !(member as { pending?: unknown }).pending && (
+                            <Button
+                              type="button"
+                              variant="quiet"
+                              onClick={() => onHandOver(member.userId)}
+                            >
+                              Hand over organizing
+                            </Button>
+                          )}
                         <p className="muted">
                           {currentAgreement.value.versions.length
                             ? "People can’t be added once a split has been proposed."

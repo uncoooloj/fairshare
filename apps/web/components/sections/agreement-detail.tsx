@@ -11,6 +11,7 @@ import { AgreementVersions } from "../agreement-versions";
 import { StageAction } from "../../lib/agreement-status";
 import { AgreementName } from "../agreement-name";
 import { AgreementSetup } from "../agreement-setup";
+import { OrganizerHandoverBanner } from "../organizer-handover-banner";
 import {
   AgreementTab,
   Section,
@@ -192,6 +193,13 @@ export function AgreementDetail({
                 )
               : undefined
           }
+        />
+        <OrganizerHandoverBanner
+          agreement={selected}
+          userId={user.id}
+          busy={busy}
+          run={run}
+          mutate={mutate}
         />
         <AgreementSetup
           agreement={selected}
