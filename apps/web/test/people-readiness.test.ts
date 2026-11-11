@@ -67,10 +67,7 @@ test("organizers can recover a sent pending person's link without putting its to
     link,
     "https://usefairshare.app/invitation#token=agreement%3Aone-time-token",
   );
-  assert.match(
-    source,
-    /organizer && sent && isPendingMember\(member\)/,
-  );
+  assert.match(source, /organizer && sent && isPendingMember\(member\)/);
   assert.match(source, /replacePersonLink\(/);
   assert.match(source, /currentAgreement\.revision/);
   assert.match(source, /agreementIdentityRef\.current !== requestIdentity/);

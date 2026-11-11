@@ -93,11 +93,11 @@ test("workspace changes fence in-flight reads and clear workspace-scoped state",
   );
 
   const mutate = source
-    .split("async function mutate(action: string")[1]
-    .split("if (!ready)")[0];
+    .split("async function mutateWithResult(")[1]
+    .split("async function mutate(action: string")[0];
   assert.match(
     mutate,
-    /if \(selected\?\.workspaceId !== currentWorkspace\.current\) return/,
+    /if \(selected\?\.workspaceId !== currentWorkspace\.current\) return false/,
   );
   assert.ok(
     (mutate.match(/workspaceRequestId !== workspaceRequest\.current/g) || [])

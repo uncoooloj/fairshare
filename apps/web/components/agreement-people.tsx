@@ -44,7 +44,11 @@ export function AgreementPeople({
   base: string;
   organizer?: boolean;
 }) {
-  const agreementIdentity = JSON.stringify([agreement.workspaceId, agreement.id, base]);
+  const agreementIdentity = JSON.stringify([
+    agreement.workspaceId,
+    agreement.id,
+    base,
+  ]);
   const agreementIdentityRef = useRef(agreementIdentity);
   const [currentAgreement, setCurrentAgreement] = useState(agreement);
   const [destinations, setDestinations] = useState<Readiness[] | null>(null);
@@ -92,10 +96,12 @@ export function AgreementPeople({
   }, [currentAgreement.workspaceId, refresh]);
   const members = currentAgreement.value.members as AgreementMember[];
   const currentVersion = version
-    ? currentAgreement.value.versions.find((item) => item.id === version.id) ?? version
+    ? (currentAgreement.value.versions.find((item) => item.id === version.id) ??
+      version)
     : undefined;
   const approved = currentVersion
-    ? members.filter((m) => Object.hasOwn(currentVersion.approvals, m.userId)).length
+    ? members.filter((m) => Object.hasOwn(currentVersion.approvals, m.userId))
+        .length
     : 0;
   const sent = currentAgreement.value.versions.length > 0;
   async function reissue(member: AgreementMember) {
@@ -118,7 +124,9 @@ export function AgreementPeople({
     } catch (cause) {
       if (agreementIdentityRef.current !== requestIdentity) return;
       setInviteError(
-        cause instanceof Error ? cause.message : "Couldn’t create a new invite link.",
+        cause instanceof Error
+          ? cause.message
+          : "Couldn’t create a new invite link.",
       );
     } finally {
       if (agreementIdentityRef.current === requestIdentity) setReissuing("");
@@ -293,7 +301,8 @@ export function AgreementPeople({
         <section className="panel ag-card" aria-label="New invite link">
           <h3>New invite link for {issuedInvite.name}</h3>
           <p className="muted">
-            The previous link no longer works. Copy this link now; it is shown only once.
+            The previous link no longer works. Copy this link now; it is shown
+            only once.
           </p>
           <input
             aria-label={`New invite link for ${issuedInvite.name}`}
@@ -303,7 +312,9 @@ export function AgreementPeople({
           <Button
             type="button"
             variant="secondary"
-            onClick={() => void navigator.clipboard.writeText(issuedInvite.link)}
+            onClick={() =>
+              void navigator.clipboard.writeText(issuedInvite.link)
+            }
           >
             Copy invite link
           </Button>
