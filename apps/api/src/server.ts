@@ -1,5 +1,6 @@
 import { configuredMailTransport } from "./mail.js";
-import { PayPalSandbox } from "@fairshare/payments";
+import { createHash } from "node:crypto";
+import { PayPalIdentitySandbox, PayPalSandbox } from "@fairshare/payments";
 import { buildApp } from "./app.js";
 if (process.env.PAYPAL_ENV === "live")
   throw new Error("Fairshare supports sandbox only.");
@@ -18,6 +19,36 @@ const provider =
           process.env.PAYPAL_PAYOUTS_ELIGIBILITY_CONFIRMED === "true",
       })
     : undefined;
+// "Connect with PayPal" uses the same sandbox REST app when "Log in with PayPal"
+// is enabled on it; dedicated Identity credentials win when set.
+const identityClientId =
+  process.env.PAYPAL_IDENTITY_CLIENT_ID || process.env.PAYPAL_CLIENT_ID;
+const identityClientSecret =
+  process.env.PAYPAL_IDENTITY_CLIENT_SECRET || process.env.PAYPAL_CLIENT_SECRET;
+const identityReturnUrl = process.env.PAYPAL_IDENTITY_RETURN_URL;
+if (
+  identityReturnUrl &&
+  !/^(https:\/\/|http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/)/.test(
+    identityReturnUrl,
+  )
+)
+  throw new Error("PAYPAL_IDENTITY_RETURN_URL must be https (or localhost).");
+const paypalIdentity =
+  process.env.DEMO_MODE !== "true" &&
+  identityClientId &&
+  identityClientSecret &&
+  identityReturnUrl
+    ? {
+        provider: new PayPalIdentitySandbox({
+          clientId: identityClientId,
+          clientSecret: identityClientSecret,
+          returnUrl: identityReturnUrl,
+        }),
+        stateSecret: createHash("sha256")
+          .update(`fairshare-paypal-connect-state:${identityClientSecret}`)
+          .digest("hex"),
+      }
+    : undefined;
 const mailTransport = configuredMailTransport();
 const app = await buildApp({
   mailTransport,
@@ -26,6 +57,7 @@ const app = await buildApp({
   logger: false,
   hackathonMfaSimulation: process.env.HACKATHON_MFA_SIMULATION === "true",
   localOcrEnabled: process.env.LOCAL_OCR_ENABLED === "true",
+  paypalIdentity,
   payment: {
     provider,
     automaticPayoutsEnabled:

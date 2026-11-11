@@ -26,6 +26,10 @@ import { AggregateStore } from "./fairshare.js";
 import type { FairshareApp } from "./app.js";
 import { Role } from "./identity.js";
 import { registerPaymentRecovery } from "./paymentRecovery.js";
+import {
+  ensurePayoutAccountSchema,
+  readPayoutDestination,
+} from "./payoutAccounts.js";
 export type PaymentProvider = Pick<
   PayPalSandbox,
   | "createOrder"
@@ -67,6 +71,7 @@ export function registerPaymentRoutes(
  CREATE TABLE IF NOT EXISTS fairshare_webhook_inbox(id TEXT PRIMARY KEY,fingerprint TEXT NOT NULL,action TEXT NOT NULL,status TEXT NOT NULL,error TEXT);
  CREATE TABLE IF NOT EXISTS fairshare_recipients(workspace_id TEXT NOT NULL,user_id TEXT NOT NULL,paypal_id TEXT NOT NULL,PRIMARY KEY(workspace_id,user_id));
  CREATE TABLE IF NOT EXISTS fairshare_payout_ops(id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL,collaboration_id TEXT NOT NULL,capture_id TEXT NOT NULL,user_id TEXT NOT NULL,recipient_id TEXT NOT NULL,amount INTEGER NOT NULL,batch_id TEXT,status TEXT NOT NULL,item_id TEXT,UNIQUE(capture_id,user_id));`);
+  ensurePayoutAccountSchema(db);
   // Additive migration: existing checkouts retain their original PayPal attribution.
   for (const [name, definition] of [
     ["source_type", "TEXT NOT NULL DEFAULT 'PAYPAL'"],
@@ -359,18 +364,6 @@ export function registerPaymentRoutes(
     message:
       "No payment status is assumed. Return to Fairshare to check your payment.",
   }));
-  // User can only assign their own payout destination. Pending operations preserve the original destination.
-  app.put(`${base}/recipient`, async (req) => {
-    const { p, user } = access(req);
-    const id = str((req.body as any)?.paypalId);
-    if (!/^[A-Z0-9]{13}$/.test(id))
-      fail("INVALID_RECIPIENT", "Sandbox PayPal merchant ID required");
-    db.prepare(
-      "INSERT INTO fairshare_recipients VALUES(?,?,?) ON CONFLICT(workspace_id,user_id) DO UPDATE SET paypal_id=excluded.paypal_id",
-    ).run(p.workspaceId, user.id, id);
-    app.store.audit(user.id, p.workspaceId, "PAYOUT_ACCOUNT_SAVED");
-    return { configured: true };
-  });
   app.get(`${base}/payouts`, async (req) => {
     const { p, user, row } = access(req);
     const organizer = row.value.members.some(
@@ -397,6 +390,7 @@ export function registerPaymentRoutes(
     try {
       r = await provider().getPayout(op.batch_id, {
         requestId: op.id,
+        recipientType: op.recipient_type,
         recipientId: op.recipient_id,
         amountCents: op.amount,
         currency: "USD",
@@ -444,11 +438,7 @@ export function registerPaymentRoutes(
             )
             .get(captureId, a.userId) as any;
           if (prior) return { op: prior, created: false };
-          const recipient = db
-            .prepare(
-              "SELECT paypal_id FROM fairshare_recipients WHERE workspace_id=? AND user_id=?",
-            )
-            .get(p.workspaceId, a.userId) as any;
+          const recipient = readPayoutDestination(db, a.userId, p.workspaceId);
           if (!recipient)
             fail(
               "RECIPIENT_REQUIRED",
@@ -459,14 +449,15 @@ export function registerPaymentRoutes(
             .digest("hex")
             .slice(0, 30);
           db.prepare(
-            "INSERT INTO fairshare_payout_ops(id,workspace_id,collaboration_id,capture_id,user_id,recipient_id,amount,status) VALUES(?,?,?,?,?,?,?,?)",
+            "INSERT INTO fairshare_payout_ops(id,workspace_id,collaboration_id,capture_id,user_id,recipient_type,recipient_id,amount,status) VALUES(?,?,?,?,?,?,?,?,?)",
           ).run(
             id,
             p.workspaceId,
             p.collaborationId,
             captureId,
             a.userId,
-            recipient.paypal_id,
+            recipient!.type,
+            recipient!.value,
             a.totalCents,
             "RESERVED",
           );
@@ -516,6 +507,7 @@ export function registerPaymentRoutes(
       try {
         const result = await provider().createPayout({
           requestId: op.id,
+          recipientType: op.recipient_type,
           recipientId: op.recipient_id,
           amountCents: op.amount,
           currency: "USD",

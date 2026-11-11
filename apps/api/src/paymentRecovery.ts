@@ -159,6 +159,7 @@ export function registerPaymentRecovery({
       fail("RECOVERY_CONFLICT", "Payout already linked");
     const verified = await provider().getPayout(batchId, {
       requestId: op.id,
+      recipientType: op.recipient_type,
       recipientId: op.recipient_id,
       amountCents: op.amount,
       currency: "USD",
