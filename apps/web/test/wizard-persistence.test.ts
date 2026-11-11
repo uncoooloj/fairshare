@@ -104,6 +104,7 @@ test("the whole answers round-trip under a versioned key, without tokens", () =>
     const answers = midnight();
     // Anything extra on a person (an invite link, say) is never written.
     (answers.people.value[1] as any).token = "secret-invite-token";
+    (answers.advance!.value as any).token = "secret-advance-token";
     saveDraftAnswers("w", "a", answers);
     assert.deepEqual([...store.keys()], [draftAnswersKey("w", "a")]);
     assert.match(draftAnswersKey("w", "a"), /:v1:/);
@@ -174,6 +175,10 @@ test("legacy saves migrate through the versioned whitelist without leaking extra
             token: `invite-${index}`,
             extra: true,
           })),
+        },
+        advance: {
+          ...legacy.advance,
+          value: { ...legacy.advance!.value, token: "not-stored" },
         },
         questionAnswers: [
           {
@@ -278,6 +283,68 @@ test("restoreQuestions retains stored order and appends a newly live question", 
       [StandardQuestionId.FEES, FeeChoice.BEFORE_SPLIT],
       [StandardQuestionId.REFUNDS, undefined],
     ],
+  );
+});
+
+test("restoreQuestions keeps only the first persisted copy of an id", () => {
+  const asked = mergeQuestions(
+    (({ fees: _f, ...rest }) => rest)(midnight()) as AgreementAnswers,
+  ).questions;
+  assert.deepEqual(
+    restoreQuestions(
+      [
+        {
+          id: StandardQuestionId.FEES,
+          answeredChoiceId: FeeChoice.BEFORE_SPLIT,
+        },
+        {
+          id: StandardQuestionId.FEES,
+          answeredChoiceId: FeeChoice.ORGANIZER_SHARE,
+        },
+      ],
+      asked,
+    ).map((question) => [question.id, question.answeredChoiceId]),
+    [
+      [StandardQuestionId.FEES, FeeChoice.BEFORE_SPLIT],
+      [StandardQuestionId.REFUNDS, undefined],
+    ],
+  );
+});
+
+test("a fresh unresolved question wins a capped list over older answered questions", () => {
+  const answered = ["old-a", "old-b", "old-c"].map((id) => ({
+    id,
+    text: id,
+    choices: [
+      {
+        id: "keep",
+        label: "Keep",
+        explanation: "",
+        apply: (a: AgreementAnswers) => a,
+      },
+    ],
+    answeredChoiceId: "keep",
+  }));
+  const live = {
+    id: "newly-live",
+    text: "Current question",
+    choices: [
+      {
+        id: "answer",
+        label: "Answer",
+        explanation: "",
+        apply: (a: AgreementAnswers) => a,
+      },
+    ],
+  };
+  const answers: AgreementAnswers = {
+    ...midnight(),
+    refunds: { value: RefundChoice.SPLIT, source: AnswerSource.PERSON },
+    questions: [...answered, live],
+  };
+  assert.deepEqual(
+    mergeQuestions(answers).questions.map((question) => question.id),
+    ["newly-live", "old-a", "old-b"],
   );
 });
 

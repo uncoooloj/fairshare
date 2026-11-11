@@ -65,6 +65,19 @@ function storedCited<T>(answer: Cited<T>): Cited<T> {
   };
 }
 
+function storedAdvance(answer: Cited<AdvanceAnswer>): Cited<AdvanceAnswer> {
+  return {
+    ...storedCited(answer),
+    value: {
+      recipientKey: answer.value.recipientKey,
+      amountCents: answer.value.amountCents,
+      ...(answer.value.alreadyPaid !== undefined
+        ? { alreadyPaid: answer.value.alreadyPaid }
+        : {}),
+    },
+  };
+}
+
 function storedAnswers(answers: AgreementAnswers): StoredAnswers["answers"] {
   const stored: StoredAnswers["answers"] = {
     name: storedCited(answers.name),
@@ -77,7 +90,7 @@ function storedAnswers(answers: AgreementAnswers): StoredAnswers["answers"] {
     stored.effectiveFrom = storedCited(answers.effectiveFrom);
   if (answers.effectiveTo)
     stored.effectiveTo = storedCited(answers.effectiveTo);
-  if (answers.advance) stored.advance = storedCited(answers.advance);
+  if (answers.advance) stored.advance = storedAdvance(answers.advance);
   if (answers.fees) stored.fees = storedCited(answers.fees);
   if (answers.refunds) stored.refunds = storedCited(answers.refunds);
   return stored;
@@ -187,7 +200,7 @@ function legacyAnswers(value: unknown): StoredAnswers["answers"] | undefined {
   );
   if (effectiveFrom) stored.effectiveFrom = effectiveFrom;
   if (effectiveTo) stored.effectiveTo = effectiveTo;
-  if (advance) stored.advance = advance;
+  if (advance) stored.advance = storedAdvance(advance);
   if (fees) stored.fees = fees;
   if (refunds) stored.refunds = refunds;
   return stored;
@@ -284,7 +297,10 @@ export function restoreQuestions(
   stored: StoredQuestion[],
   candidates: Question[],
 ): Question[] {
+  const seenStoredIds = new Set<string>();
   const restored = stored.flatMap((s) => {
+    if (seenStoredIds.has(s.id)) return [];
+    seenStoredIds.add(s.id);
     const q = candidates.find((c) => c.id === s.id);
     if (!q) return [];
     const answered =

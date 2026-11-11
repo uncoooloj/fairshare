@@ -156,7 +156,7 @@ export function mergeQuestions(answers: AgreementAnswers): AgreementAnswers {
   ).filter((q) => !answered.some((a) => a.id === q.id));
   return {
     ...answers,
-    questions: [...answered, ...fresh].slice(0, MAX_QUESTIONS),
+    questions: [...fresh, ...answered].slice(0, MAX_QUESTIONS),
   };
 }
 
