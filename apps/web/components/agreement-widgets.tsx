@@ -1,3 +1,6 @@
+import { sourceHighlights } from "../lib/source-highlights";
+import { HighlightedSource } from "./source-rule-context";
+import { SplitRuleEditor } from "./split-rule-editor";
 import { RuleImpactReview } from "./rule-impact-review";
 import { agreementEmptyState } from "../lib/agreement-empty-state";
 import { formatDate } from "../lib/preferences";
@@ -589,6 +592,24 @@ export function RulesEditor({
   onDirty?: () => void;
   onReviewPeople?: () => void;
 }) {
+  const highlights = sourceHighlights(extraction, documentId, source);
+  const [selectedCitation, setSelectedCitation] = useState<string | null>(null);
+  const [splitDraft, setSplitDraft] = useState<Record<string, string> | null>(
+    null,
+  );
+  const selectedFact = highlights.find((fact) => fact.id === selectedCitation);
+  function editSplit() {
+    if (!formRef.current) return;
+    const fields = new FormData(formRef.current);
+    setSplitDraft(
+      Object.fromEntries(
+        agreement.value.members.map((member) => [
+          member.userId,
+          String(fields.get(member.userId) ?? ""),
+        ]),
+      ),
+    );
+  }
   const [draftRevision, setDraftRevision] = useState(0);
   const formRef = useRef<HTMLFormElement>(null);
   const [prefilled, setPrefilled] = useState(false);
@@ -614,10 +635,29 @@ export function RulesEditor({
           Compare each proposed term with the saved text. This is extracted
           text; the original file is available in Document.
         </p>
-        <div className="review-source-text" tabIndex={0}>
-          {source ||
-            "No saved source text. Add the agreement document before proposing rules."}
-        </div>
+        <p className="muted">
+          Select a highlighted clause to review its extracted term on the right.
+          Source text is read-only.
+        </p>
+        {source ? (
+          <HighlightedSource
+            source={source}
+            highlights={highlights}
+            selected={selectedCitation}
+            onSelect={setSelectedCitation}
+          />
+        ) : (
+          <p>
+            No saved source text. Add the agreement document before proposing
+            rules.
+          </p>
+        )}
+        {!highlights.length && (
+          <small>
+            No validated citation ranges are available yet. The source remains
+            unchanged.
+          </small>
+        )}
       </aside>
       <form
         ref={formRef}
@@ -686,6 +726,88 @@ export function RulesEditor({
         }}
       >
         <h3>Proposed rules</h3>
+        {highlights.length > 0 && (
+          <div
+            className="source-citation-links"
+            aria-label="Source-backed terms"
+          >
+            {highlights.map((fact) => (
+              <Button
+                key={fact.id}
+                type="button"
+                variant="quiet"
+                onClick={() => setSelectedCitation(fact.id)}
+              >
+                {fact.label} · {title(fact.kind)}
+              </Button>
+            ))}
+          </div>
+        )}
+        {selectedFact && (
+          <section className="panel" aria-label="Selected source clause">
+            <h4>
+              {selectedFact.label} · {title(selectedFact.kind)}
+            </h4>
+            <blockquote>{selectedFact.quote}</blockquote>
+            <p>Original extraction: {selectedFact.rawValue}</p>
+            <p className="muted">
+              The quote is from your saved source. Editing proposed terms never
+              changes it.
+            </p>
+            {selectedFact.kind === "SHARE" && (
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={!!splitDraft}
+                onClick={editSplit}
+              >
+                Edit proposed split
+              </Button>
+            )}
+          </section>
+        )}
+        {splitDraft && (
+          <SplitRuleEditor
+            members={agreement.value.members}
+            values={splitDraft}
+            original={highlights
+              .filter((fact) => fact.kind === "SHARE")
+              .map((fact) => `${fact.label}: ${fact.rawValue} — ${fact.quote}`)}
+            onFocusMember={(name) => {
+              const fact = highlights.find(
+                (item) =>
+                  item.kind === "SHARE" &&
+                  item.label.trim().toLowerCase() === name.trim().toLowerCase(),
+              );
+              if (fact) setSelectedCitation(fact.id);
+            }}
+            onCancel={() => setSplitDraft(null)}
+            onApply={(values) => {
+              for (const [id, value] of Object.entries(values)) {
+                const input = formRef.current?.elements.namedItem(id);
+                if (input instanceof HTMLInputElement) input.value = value;
+              }
+              setOrigin("HUMAN_PROPOSAL");
+              const excerpt = formRef.current?.elements.namedItem("excerpt");
+              if (excerpt instanceof HTMLTextAreaElement) {
+                const proposal = `Proposed split clarification: ${agreement.value.members.map((member) => `${member.displayName} ${values[member.userId]}%`).join(", ")}.`;
+                excerpt.value =
+                  `${excerpt.value.replace(/\n?Proposed split clarification:[^\n]*/g, "").trim()}\n${proposal}`.trim();
+              }
+              onDirty?.();
+              setDraftRevision((value) => value + 1);
+              setSplitDraft(null);
+            }}
+          />
+        )}
+        <Button
+          type="button"
+          variant="secondary"
+          disabled={!!splitDraft}
+          onClick={editSplit}
+        >
+          Edit revenue split
+        </Button>
         {source.trim() === sampleAgreement && (
           <Notice warning>
             <strong>Sample text is not your participants’ agreement.</strong>
@@ -956,7 +1078,12 @@ export function RulesEditor({
           Saving creates a new version. It does not legally amend the source
           contract or authorize a payout.
         </Notice>
-        <Button disabled={busy}>Save proposal</Button>
+        {splitDraft && (
+          <p role="status">
+            Apply or cancel your split edit before saving the proposal.
+          </p>
+        )}
+        <Button disabled={busy || !!splitDraft}>Save proposal</Button>
       </form>
     </div>
   );
