@@ -1,10 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-const app = readFileSync(
-  new URL("../components/fairshare-app.tsx", import.meta.url),
-  "utf8",
-);
+import { appSource } from "./app-source";
+const app = appSource();
 
 test("navigation selects actual agreements, never hidden tenant groups", () => {
   assert.match(app, /<GlobalSearch\s+agreements=\{agreements\}/);

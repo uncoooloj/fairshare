@@ -6,11 +6,9 @@ import {
   agreementIdentityKey,
   findAgreementByIdentity,
 } from "../lib/agreement-identity";
+import { appSource } from "./app-source";
 
-const app = readFileSync(
-  new URL("../components/fairshare-app.tsx", import.meta.url),
-  "utf8",
-);
+const app = appSource();
 
 const search = readFileSync(
   new URL("../components/global-search.tsx", import.meta.url),

@@ -9,6 +9,7 @@ import {
   creationSteps,
 } from "../components/agreement-creation-wizard";
 import type { Agreement } from "../lib/model";
+import { appSource } from "./app-source";
 
 test("v2 creation has one ordered upload-first stepper, not agreement tabs", () => {
   assert.deepEqual(creationSteps, ["Document", "Details", "People", "Review"]);
@@ -64,10 +65,7 @@ test("creation saves actual participant and name changes, keeps consent boundary
 });
 
 test("saved drafts resume creation and finishing routes to actual terms review", () => {
-  const app = readFileSync(
-    new URL("../components/fairshare-app.tsx", import.meta.url),
-    "utf8",
-  );
+  const app = appSource();
   assert.match(app, /function creationMarker\(agreement/);
   assert.match(app, /agreementIdentityKey\(agreement\)/);
   assert.match(app, /const sameId = agreements\.filter/);
@@ -88,10 +86,7 @@ test("saved drafts resume creation and finishing routes to actual terms review",
 });
 
 test("document preprocessing participates in the app navigation lock", () => {
-  const app = readFileSync(
-    new URL("../components/fairshare-app.tsx", import.meta.url),
-    "utf8",
-  );
+  const app = appSource();
   assert.equal((app.match(/onBusyChange=\{setBusy\}/g) || []).length, 3);
   assert.match(app, /function mayLeaveDraft\(\) \{\s*if \(busy\) return false/);
 });

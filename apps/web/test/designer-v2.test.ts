@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { appSource } from "./app-source";
 const source = readFileSync(
   new URL("../components/agreement-widgets.tsx", import.meta.url),
   "utf8",
@@ -22,10 +23,7 @@ test("revised agreement filter is labelled, native and wired to existing filter 
   assert.match(source, /No matching agreements/);
 });
 test("only active rules collapse, leaving setup and recoupment actions outside", () => {
-  const app = readFileSync(
-    new URL("../components/fairshare-app.tsx", import.meta.url),
-    "utf8",
-  );
+  const app = appSource();
   const disclosure = readFileSync(
     new URL("../components/revenue-rules.tsx", import.meta.url),
     "utf8",

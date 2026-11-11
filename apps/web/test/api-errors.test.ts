@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { api, ApiError } from "../lib/model";
 import { readFileSync } from "node:fs";
+import { appSource } from "./app-source";
 test("API retains structured revision conflict without retrying writes", async () => {
   const original = globalThis.fetch;
   let calls = 0;
@@ -28,10 +29,7 @@ test("API retains structured revision conflict without retrying writes", async (
   }
 });
 test("mutation recovery fetches current state and requires fresh user decision", () => {
-  const source = readFileSync(
-    new URL("../components/fairshare-app.tsx", import.meta.url),
-    "utf8",
-  );
+  const source = appSource();
   assert.match(source, /cause.code === "REVISION_CONFLICT"/);
   assert.match(source, /const current = await api<Agreement>\(base\)/);
   assert.match(source, /Latest version loaded; review before trying again/);

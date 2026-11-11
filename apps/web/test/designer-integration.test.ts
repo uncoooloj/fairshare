@@ -1,10 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-const source = readFileSync(
-  new URL("../components/fairshare-app.tsx", import.meta.url),
-  "utf8",
-);
+import { appSource } from "./app-source";
+const source = appSource();
 test("designer shell retains authoritative payment recovery and onboarding callbacks", () => {
   assert.match(source, /<PaymentRecovery/);
   assert.match(source, /<AgreementIntake/);
