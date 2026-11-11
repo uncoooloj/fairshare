@@ -23,5 +23,5 @@ test("hosted configuration preserves sandbox authority and parser", () => {
     "PAYPAL_RECONCILIATION_ENABLED",
     "PAYPAL_AUTOMATIC_PAYOUTS_ENABLED",
   ])
-    assert.equal(config.vars[key], "false");
+    assert.equal(Object.hasOwn(config.vars, key), false);
 });

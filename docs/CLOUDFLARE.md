@@ -42,7 +42,7 @@ The checked local API smoke covers authentication, validation, tenant isolation,
 
 Before running `cloudflare:deploy`, provide stable `FAIRSHARE_API_URL` and `FAIRSHARE_WEB_ORIGIN` HTTPS origins and set `FAIRSHARE_API_PERSISTENCE_VERIFIED=true` **only after** restart/redeploy/restore tests. The script validates configuration, not actual durability. Supply these two non-secret runtime variables in the Worker's environment as well; shell environment is not automatically deployed as Worker bindings. Do not place PayPal or AI credentials in the web Worker.
 
-The hosted release workflow is manual-only and requires that persistence acknowledgement before it installs, checks, or deploys. Persistence acceptance does not establish provider eligibility or safe money movement. Its hosted manifest keeps payouts, payout eligibility, reconciliation, and automatic payouts off. Each capability needs separate PayPal sandbox and operational acceptance plus a reviewed manifest change before its flag can be enabled.
+The [hosted release workflow](../deploy/cloudflare/README.md) runs on merges to `main`, but publication fails closed until a recorded hosted persistence acceptance receipt matches the backend/deployment source fingerprint. API, storage, shared-package, dependency and deployment changes invalidate that receipt. PRs check the release path without publishing. Hosted payment capability variables are deliberately omitted from the release manifest and preserved with `keep_vars`; this neither enables them nor establishes provider acceptance.
 
 Use approved account access and secret storage. No `wrangler login`, secret upload, DNS change or paid-resource creation is automatic. Do not commit `.dev.vars`, `.wrangler`, generated bundles or credentials.
 
