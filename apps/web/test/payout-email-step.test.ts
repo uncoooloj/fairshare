@@ -96,4 +96,14 @@ test("settings: one Getting paid card, the email plainly, no duplicate copy", ()
   );
   assert.doesNotMatch(settings, /A-Z0-9\]\{13\}|maxLength=\{13\}|merchant/i);
   assert.doesNotMatch(settings, /accountHint|ownPaypalId/);
+  assert.match(
+    settings,
+    /!changing && data\.own\?\.type === PayoutRecipientType\.PAYPAL_ID/,
+  );
+  assert.match(
+    settings,
+    /Your share from every agreement goes to this PayPal account\./,
+  );
+  assert.match(settings, /Remove your \{payoutLabel\}\?/);
+  assert.match(settings, /setMessage\(`\$\{payoutLabel\} removed\.\`\)/);
 });
