@@ -26,21 +26,21 @@ export function refundBlocked(
   if (refunds.some((r) => r.payment_id === payment.id))
     return "A refund is already recorded. Check its status below; do not submit another.";
   if (payment.status !== "ALLOCATED" || !payment.provider_capture_id)
-    return "A verified, allocated capture is required.";
+    return "Wait until the payment is confirmed and its shares are calculated.";
   if (payouts.some((p) => p.capture_id === payment.provider_capture_id))
-    return "A payout was reserved. Operator liability review is required; automatic clawback is not supported.";
+    return "A payout has already started. The amounts owed need to be reviewed before a refund can be issued; sent payouts won’t be reversed automatically.";
   if (held)
     return "This agreement is on hold. A new refund cannot be submitted.";
   return null;
 }
 export function refundMessage(status: string) {
   if (status === "COMPLETED")
-    return "PayPal verified the refund as completed. The agreement remains on hold and liabilities are retained for review.";
+    return "PayPal confirmed the refund. The agreement stays on hold until the remaining amounts owed are reviewed.";
   if (status === "OUTCOME_UNKNOWN")
-    return "The refund outcome is unknown. Do not retry. Check provider evidence below. The agreement remains on hold.";
+    return "We haven’t confirmed whether the refund went through. Don’t send another refund. Check its PayPal status below; the agreement stays on hold.";
   if (status === "FAILED" || status === "CANCELLED")
-    return "Refund not confirmed complete. Review the provider record; do not submit another refund from this screen. The agreement remains on hold.";
-  return "Refund recorded, not confirmed complete. Check the provider status below. The agreement remains on hold.";
+    return "The refund hasn’t completed. Check its PayPal status below before taking another action. The agreement stays on hold.";
+  return "The refund is recorded, but PayPal hasn’t confirmed completion. Check its status below; the agreement stays on hold.";
 }
 
 /** Ignore repeat submissions synchronously; release the lock even after failure. */

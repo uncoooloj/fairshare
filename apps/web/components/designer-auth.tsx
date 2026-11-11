@@ -179,7 +179,7 @@ export function Auth({
           Email and password sign-in.{" "}
           {emailDelivery
             ? "Recovery requires a verified email."
-            : "Save your password securely: email recovery is unavailable in this environment."}{" "}
+            : "Keep your password somewhere safe. Password reset by email isn’t available yet."}{" "}
           Social sign-in is not available.
         </p>
       </div>

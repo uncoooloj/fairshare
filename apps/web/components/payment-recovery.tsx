@@ -62,7 +62,9 @@ export function PaymentRecovery({
         await action();
       } catch (e) {
         actionError =
-          e instanceof Error ? e.message : "Unable to verify provider status.";
+          e instanceof Error
+            ? e.message
+            : "We couldn’t check the payment status. Please refresh before continuing.";
       } finally {
         try {
           await load();
@@ -109,7 +111,7 @@ export function PaymentRecovery({
       {!data ? (
         <p role="status">
           {error
-            ? "Recovery information is unavailable. Refresh before taking any action."
+            ? "We couldn’t load the latest payment details. Refresh before continuing."
             : "Loading recovery information…"}
         </p>
       ) : (
@@ -308,7 +310,7 @@ function Evidence({
       </p>
       <Field
         label={`PayPal sandbox ${label}`}
-        hint="Use the exact reference from the sandbox provider record. Unmatched evidence will be rejected."
+        hint="Copy the reference from the matching PayPal test transaction."
       >
         <input
           value={value}
@@ -323,7 +325,7 @@ function Evidence({
         variant="secondary"
         disabled={busy || !value.trim()}
       >
-        Verify existing provider evidence
+        Check with PayPal
       </Button>
     </form>
   );

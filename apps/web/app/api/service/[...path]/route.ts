@@ -172,7 +172,7 @@ async function handler(
       {
         error: {
           message:
-            "The Fairshare API is unavailable. Your changes have not been confirmed. Please retry or refresh before repeating a payment.",
+            "We couldn’t connect. Your changes may not have been saved. Refresh to check before trying again, especially for payments.",
         },
       },
       { status: 502 },

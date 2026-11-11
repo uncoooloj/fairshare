@@ -129,9 +129,8 @@ export function ProfileContact({
       <p>{email}</p>
       {!emailDelivery && (
         <p className="muted">
-          This is your sign-in address. Email changes are unavailable because
-          email delivery is not enabled. You can still change your password
-          below.
+          This is your sign-in email. You can’t change it yet, but you can
+          update your password below.
         </p>
       )}
       {emailDelivery && (

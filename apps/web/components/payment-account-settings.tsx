@@ -99,16 +99,15 @@ export function PaymentAccountsSettings({
             <p>PayPal sandbox checkout</p>
             <p className="muted">
               {data.providerConfigured
-                ? "Server credentials configured. Payments are confirmed against PayPal before allocation."
-                : "PayPal server credentials are not configured. Checkout is unavailable."}
+                ? "PayPal sandbox credentials are configured. Payments are confirmed with PayPal before allocation."
+                : "PayPal sandbox credentials are not configured. Checkout is unavailable."}
             </p>
           </section>
           <section className="section">
             <h3>Sending payouts</h3>
             <p className="muted">
-              The server’s sandbox merchant account sends the agreed shares.
-              Server credentials are managed by the deployment owner, not
-              connected through this screen.
+              The server’s sandbox merchant account sends agreed shares. These
+              are test payments; no real money moves.
             </p>
           </section>
           <section className="section">
@@ -178,8 +177,8 @@ export function PaymentAccountsSettings({
           <section className="section">
             <h3>Collaborator accounts</h3>
             <p className="muted">
-              Each person manages their own destination. Saved IDs are not
-              provider-verified.
+              Each person adds their own PayPal account. An account being saved
+              doesn’t mean PayPal has verified it.
             </p>
             <div className="table-wrap">
               <table>
@@ -215,7 +214,7 @@ export function PaymentAccountsSettings({
                                 );
                               } catch {
                                 setMessage(
-                                  "Clipboard unavailable. Ask this collaborator to open Settings → Payment accounts and save their sandbox merchant ID.",
+                                  "Couldn’t copy the message. Ask this person to add their PayPal account in Settings → Payment accounts.",
                                 );
                               }
                             }}
