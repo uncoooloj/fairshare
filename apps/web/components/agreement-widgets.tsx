@@ -877,7 +877,7 @@ export function RulesEditor({
     splitWasOpen.current = !!splitDraft;
   }, [splitDraft]);
   useEffect(() => {
-    closeSplitEditor();
+    setSplitDraft(null);
   }, [agreement.revision]);
   const [prefilled, setPrefilled] = useState(false);
   const suggestions = suggestedShares(
