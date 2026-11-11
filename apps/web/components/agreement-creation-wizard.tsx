@@ -23,7 +23,7 @@ import {
   type AgreementAnswers,
   type PersonAnswer,
 } from "../lib/rules-answers";
-import { questionsFor } from "../lib/standard-questions";
+import { MAX_QUESTIONS, questionsFor } from "../lib/standard-questions";
 import { workspaceBase } from "../lib/workspace-base";
 import {
   clearDraftAnswers,
@@ -154,7 +154,10 @@ export function mergeQuestions(answers: AgreementAnswers): AgreementAnswers {
     answers,
     answers.questions.filter((q) => !q.answeredChoiceId),
   ).filter((q) => !answered.some((a) => a.id === q.id));
-  return { ...answers, questions: [...answered, ...fresh].slice(0, 3) };
+  return {
+    ...answers,
+    questions: [...answered, ...fresh].slice(0, MAX_QUESTIONS),
+  };
 }
 
 /** Why Check can't continue yet, or undefined. */
@@ -973,7 +976,8 @@ export function resumedAnswers(
     const stillMatches =
       JSON.stringify(applied.people) === JSON.stringify(restored.people) &&
       JSON.stringify(applied.advance) === JSON.stringify(restored.advance) &&
-      JSON.stringify(applied.fees) === JSON.stringify(restored.fees);
+      JSON.stringify(applied.fees) === JSON.stringify(restored.fees) &&
+      JSON.stringify(applied.refunds) === JSON.stringify(restored.refunds);
     if (!stillMatches) continue;
     restored = {
       ...restored,

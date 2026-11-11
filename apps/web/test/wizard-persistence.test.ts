@@ -8,6 +8,7 @@ import {
   AnswerSource,
   emptyAnswers,
   FeeChoice,
+  RefundChoice,
   type AgreementAnswers,
 } from "../lib/rules-answers";
 import { StandardQuestionId } from "../lib/standard-questions";
@@ -157,27 +158,37 @@ test("a reopened draft gets back the split, advance and answered questions", () 
   });
 });
 
-test("older unversioned saves still load; bad or other-version data is ignored", () => {
+test("legacy saves migrate through the versioned whitelist without leaking extra fields", () => {
   withStorage((store) => {
     const { questions: _q, ...legacy } = midnight();
-    store.set("fairshare:wizard-draft:w:a", JSON.stringify(legacy));
-    assert.equal(
-      loadDraftAnswers("w", "a")?.answers.people.value[0].basisPoints,
-      5000,
-    );
-    // Saves that carried answered choices as `questionAnswers` keep them.
     store.set(
       "fairshare:wizard-draft:w:a",
       JSON.stringify({
         ...legacy,
+        ignored: "not stored",
+        people: {
+          ...legacy.people,
+          token: "not-stored",
+          value: legacy.people.value.map((person, index) => ({
+            ...person,
+            token: `invite-${index}`,
+            extra: true,
+          })),
+        },
         questionAnswers: [
           {
             id: StandardQuestionId.FEES,
             answeredChoiceId: FeeChoice.BEFORE_SPLIT,
+            ignored: true,
           },
         ],
       }),
     );
+    const loaded = loadDraftAnswers("w", "a")!;
+    assert.equal(loaded.answers.people.value[0].basisPoints, 5000);
+    assert.equal(store.has("fairshare:wizard-draft:w:a"), false);
+    const raw = store.get(draftAnswersKey("w", "a"))!;
+    assert.doesNotMatch(raw, /token|extra|ignored|invite/);
     assert.equal(
       resumedAnswers(resume, self).answers.questions.find(
         (q) => q.id === StandardQuestionId.FEES,
@@ -193,6 +204,23 @@ test("older unversioned saves still load; bad or other-version data is ignored",
     assert.equal(loadDraftAnswers("w", "a"), undefined);
     clearDraftAnswers("w", "a");
     assert.equal(store.size, 0);
+  });
+});
+
+test("a failed legacy migration keeps the old key", () => {
+  withStorage((store) => {
+    const { questions: _q, ...legacy } = midnight();
+    const oldKey = "fairshare:wizard-draft:w:a";
+    store.set(oldKey, JSON.stringify(legacy));
+    (globalThis as any).localStorage.setItem = () => {
+      throw new Error("full");
+    };
+    assert.equal(
+      loadDraftAnswers("w", "a")?.answers.people.value[0].name,
+      "Maya Okafor",
+    );
+    assert.ok(store.has(oldKey));
+    assert.equal(store.has(draftAnswersKey("w", "a")), false);
   });
 });
 
@@ -229,6 +257,53 @@ test("restoreQuestions drops unknown questions and stale answers", () => {
   );
   assert.deepEqual(
     restored.map((q) => [q.id, q.answeredChoiceId]),
-    [[StandardQuestionId.FEES, undefined]],
+    [
+      [StandardQuestionId.FEES, undefined],
+      [StandardQuestionId.REFUNDS, undefined],
+    ],
   );
+});
+
+test("restoreQuestions retains stored order and appends a newly live question", () => {
+  const asked = mergeQuestions(
+    (({ fees: _f, ...rest }) => rest)(midnight()) as AgreementAnswers,
+  ).questions;
+  const restored = restoreQuestions(
+    [{ id: StandardQuestionId.FEES, answeredChoiceId: FeeChoice.BEFORE_SPLIT }],
+    asked,
+  );
+  assert.deepEqual(
+    restored.map((q) => [q.id, q.answeredChoiceId]),
+    [
+      [StandardQuestionId.FEES, FeeChoice.BEFORE_SPLIT],
+      [StandardQuestionId.REFUNDS, undefined],
+    ],
+  );
+});
+
+test("a stale refunds answer is reopened instead of being marked answered", () => {
+  withStorage(() => {
+    const answers = midnight();
+    const refunds = answers.questions.find(
+      (question) => question.id === StandardQuestionId.REFUNDS,
+    )!;
+    const saved = refunds.choices
+      .find((choice) => choice.id === RefundChoice.SPLIT)!
+      .apply(answers);
+    saveDraftAnswers("w", "a", {
+      ...saved,
+      refunds: { value: RefundChoice.ADVANCE, source: AnswerSource.PERSON },
+      questions: saved.questions.map((question) =>
+        question.id === refunds.id
+          ? { ...question, answeredChoiceId: RefundChoice.SPLIT }
+          : question,
+      ),
+    });
+    assert.equal(
+      resumedAnswers(resume, self).answers.questions.find(
+        (question) => question.id === StandardQuestionId.REFUNDS,
+      )?.answeredChoiceId,
+      undefined,
+    );
+  });
 });
