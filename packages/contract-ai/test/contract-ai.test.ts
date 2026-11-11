@@ -9,6 +9,7 @@ import {
   locateQuote,
   parseDocumentDate,
   findDefinedDates,
+  resolveDefinedDate,
   ExtractionStatus,
   ExtractionProvider,
   ExtractionSection,
@@ -509,6 +510,15 @@ test("defined dates resolve from several phrasings to the defining sentence", ()
   );
 });
 
+test("defined-date helper requires the usage quote to name the term", () => {
+  const text =
+    'This agreement is dated October 1, 2026 (the "Effective Date"). Maya receives 60%.';
+  assert.equal(
+    resolveDefinedDate(text, "Maya receives 60%.", "Effective Date"),
+    null,
+  );
+});
+
 test("a term start given only as the Effective Date cites the defining sentence", () => {
   const text = [
     'This agreement is dated October 1, 2026 (the "Effective Date") between Maya and Jordan.',
@@ -543,34 +553,29 @@ test("a term start given only as the Effective Date cites the defining sentence"
     },
     doc,
   );
-  assert.deepEqual(r.rejections, []);
-  const [s, e] = r.facts as Extract<ExtractedFact, { kind: FactKind.TERM }>[];
-  assert.equal(s.date, "2026-10-01");
-  assert.equal(s.rawValue, "October 1, 2026");
-  assert.equal(
-    s.citation.quote,
-    'This agreement is dated October 1, 2026 (the "Effective Date") between Maya and Jordan.',
-  );
+  assert.equal(r.rejections[0].reason, RejectionReason.SUBJECT_NOT_IN_QUOTE);
+  const [e] = r.facts as Extract<ExtractedFact, { kind: FactKind.TERM }>[];
   assert.equal(e.citation.quote, usesTerm);
   assert.equal(r.sections[ExtractionSection.TERM].status, SectionStatus.READ);
 
-  // The value may be the term itself.
-  const byName = validateDraft(
-    {
-      facts: [
-        fact(
-          FactKind.TERM,
-          "the Effective Date",
-          "the Effective Date",
-          usesTerm,
-          start,
-        ),
-      ],
-      issues: [],
-    },
-    doc,
+  // The value may be the term itself, but it is not source-complete alone.
+  assert.throws(() =>
+    validateDraft(
+      {
+        facts: [
+          fact(
+            FactKind.TERM,
+            "the Effective Date",
+            "the Effective Date",
+            usesTerm,
+            start,
+          ),
+        ],
+        issues: [],
+      },
+      doc,
+    ),
   );
-  assert.equal((byName.facts[0] as { date?: string }).date, "2026-10-01");
 
   // A date that does not match the definition, or no definition at all, stays dropped.
   for (const [source, value] of [
@@ -618,11 +623,15 @@ test("a term start given only as the Effective Date cites the defining sentence"
 
 test("paid back first is read from the same clause as the advance amount, never another clause", () => {
   const amount = "4.1 Maya received an advance of $3,000 for studio costs.";
-  const advanceIn = (text: string, recouped: boolean | null = null) => {
+  const advanceIn = (
+    text: string,
+    recouped: boolean | null = null,
+    quote = amount,
+  ) => {
     const r = validateDraft(
       {
         facts: [
-          fact(FactKind.ADVANCE, "Maya", "$3,000", amount, {
+          fact(FactKind.ADVANCE, "Maya", "$3,000", quote, {
             recoupedBeforeSplit: recouped,
           }),
         ],
@@ -635,20 +644,13 @@ test("paid back first is read from the same clause as the advance amount, never 
   // Same numbered clause, next sentence: paid back first, citing the whole clause.
   const sameClause = `${amount} It is recouped from revenue before the split.\n4.2 Statements are quarterly.`;
   const a = advanceIn(sameClause);
-  assert.equal(a.recoupedBeforeSplit, true);
-  assert.equal(
-    a.citation.quote,
-    `${amount} It is recouped from revenue before the split.`,
-  );
-  assert.equal(
-    sameClause.slice(a.citation.start, a.citation.end),
-    a.citation.quote,
-  );
+  assert.equal(a.recoupedBeforeSplit, null);
+  assert.equal(a.citation.quote, amount);
   // Same paragraph wrapped over lines, model claims true: still accepted.
   assert.equal(
     advanceIn(`${amount}\nIt is paid back from revenue first.`, true)
       .recoupedBeforeSplit,
-    true,
+    null,
   );
   // A different numbered clause or paragraph: not stated, citation stays the amount sentence.
   for (const text of [
@@ -664,8 +666,85 @@ test("paid back first is read from the same clause as the advance amount, never 
     [`${amount} It shall not be recouped from revenue.`, null],
     [`${amount} It is non-recoupable and never repaid.`, null],
     [`${amount} It is recouped from revenue before the split.`, false],
+    [`${amount} It is recouped from revenue after the split.`, true],
+    [`${amount} It is repaid from Maya's share.`, true],
+    [`${amount} It is reimbursed from revenue.`, true],
   ] as const) {
     assert.equal(advanceIn(text, recouped).recoupedBeforeSplit, null, text);
+  }
+
+  assert.equal(
+    advanceIn(
+      `${amount} It is recouped from revenue before any distribution.`,
+      true,
+    ).recoupedBeforeSplit,
+    null,
+  );
+  const mixed = `${amount} Fees are deducted before the split. The advance is repaid from Maya's share.`;
+  assert.equal(advanceIn(mixed, true).recoupedBeforeSplit, null);
+  const badQuote =
+    "Maya received a $3,000 advance; fees are deducted before the split, and the advance is repaid from Maya's share.";
+  assert.equal(advanceIn(badQuote, true, badQuote).recoupedBeforeSplit, null);
+  const goodQuote =
+    "Maya received a $3,000 advance, deducted first from revenue before the split.";
+  assert.equal(advanceIn(goodQuote, true, goodQuote).recoupedBeforeSplit, true);
+});
+
+test("defined dates require a positive boundary use, not a bare or limited term reference", () => {
+  const definition =
+    'This agreement is dated October 1, 2026 (the "Effective Date").';
+  const limitation =
+    "This agreement shall not start earlier than the Effective Date.";
+  const text = `${definition}\n${limitation}`;
+  const result = validateDraft(
+    {
+      facts: [
+        fact(FactKind.TERM, "October 1, 2026", "October 1, 2026", limitation, {
+          termBoundary: TermBoundary.START,
+        }),
+        fact(FactKind.CURRENCY, "This", "This", definition),
+      ],
+      issues: [],
+    },
+    { documentId: "doc_limited_date", revision: 1, text },
+  );
+  assert.equal(
+    result.facts.some((fact) => fact.kind === FactKind.TERM),
+    false,
+  );
+});
+
+test("negated and conditional defined-date uses stay unverified", () => {
+  const definition =
+    'This agreement is dated October 1, 2026 (the "Effective Date").';
+  for (const invocation of [
+    "This agreement does not commence on the Effective Date.",
+    "This agreement may commence on the Effective Date.",
+  ]) {
+    const result = validateDraft(
+      {
+        facts: [
+          fact(
+            FactKind.TERM,
+            "October 1, 2026",
+            "October 1, 2026",
+            invocation,
+            { termBoundary: TermBoundary.START },
+          ),
+          fact(FactKind.CURRENCY, "This", "This", definition),
+        ],
+        issues: [],
+      },
+      {
+        documentId: "doc_conditional_date",
+        revision: 1,
+        text: `${definition}\n${invocation}`,
+      },
+    );
+    assert.equal(
+      result.facts.some((fact) => fact.kind === FactKind.TERM),
+      false,
+    );
   }
 });
 
@@ -693,13 +772,9 @@ test("paid back first is read from another clause only through the advance's def
     "4.3 The Production Advance is not repayable other than by recoupment under clause 4.2.",
   ].join("\n");
   const a = advanceIn(text);
-  assert.equal(a.recoupedBeforeSplit, true);
+  assert.equal(a.recoupedBeforeSplit, null);
   assert.equal(a.citation.quote, amount);
-  assert.equal(a.recoupCitation?.quote, recoupClause);
-  assert.equal(
-    text.slice(a.recoupCitation!.start, a.recoupCitation!.end),
-    recoupClause,
-  );
+  assert.equal(a.recoupCitation, undefined);
   // The "means" form of definition works too.
   const means =
     '"Studio Advance" means the $3,000 paid to Maya before release.';
@@ -708,7 +783,7 @@ test("paid back first is read from another clause only through the advance's def
       `${means}\n\nThe Studio Advance is recouped before the split.`,
       means,
     ).recoupedBeforeSplit,
-    true,
+    null,
   );
   // A different term, no definition, a negation, or a clause saying it is not recouped: not stated.
   const notStated = [

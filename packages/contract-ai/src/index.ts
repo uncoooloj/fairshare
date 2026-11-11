@@ -521,8 +521,12 @@ export function resolveDefinedDate(
 }
 
 const MAX_CLAUSE_CHARS = 600;
-const RECOUP_SHOWN =
-  /recoup|repa(?:y|id)|recover|reimburs|paid back|deducted first/i;
+const RECOUP_ACTION =
+  /recoup|repa(?:y|id)|recover|reimburs|paid back|deducted/i;
+const RECOUP_BEFORE_SPLIT =
+  /\b(?:before\s+(?:(?:the\s+)?split|any\s+distribution)|first)\b/i;
+const RECOUP_FROM_SHARE = /\b(?:from|against)\s+[^.;]{0,80}\bshare\b/i;
+const RECOUP_AFTER_SPLIT = /\bafter\s+(?:the\s+)?split\b/i;
 const RECOUP_NEGATED =
   /\bnon-?(?:recoup|repay|refund)|\bnot\s+(?:be\s+)?(?:recoup|repa|recover|reimburs|deduct|paid back)|\bnever\b|\bno\s+(?:recoup|repayment)/i;
 const CLAUSE_BREAK =
@@ -551,7 +555,15 @@ const clauseOf = (text: string, citation: Citation) =>
   ) ?? null;
 const showsRecoup = (clause: string) => {
   const words = normalizeWhitespace(clause);
-  return RECOUP_SHOWN.test(words) && !RECOUP_NEGATED.test(words);
+  return (
+    new RegExp(
+      `${RECOUP_ACTION.source}[^.;]{0,160}${RECOUP_BEFORE_SPLIT.source}`,
+      "i",
+    ).test(words) &&
+    !RECOUP_FROM_SHARE.test(words) &&
+    !RECOUP_AFTER_SPLIT.test(words) &&
+    !RECOUP_NEGATED.test(words)
+  );
 };
 /** The numbered clause or paragraph holding a citation, when that clause says the advance is paid
  * back first and says nothing negating it. A different clause never counts here. */
@@ -647,27 +659,6 @@ function validateFact(raw: unknown, text: string): ExtractedFact {
     throw new Reject(RejectionReason.QUOTE_MULTIPLE_SENTENCES);
   const inQuote = (value: string) =>
     includesNormalized(citation.quote.toLowerCase(), value.toLowerCase());
-  // "shall commence on the Effective Date" holds no date: cite the sentence that defines it instead.
-  if (
-    kind === FactKind.TERM &&
-    !(inQuote(subject) && inQuote(rawValue) && parseDocumentDate(rawValue))
-  ) {
-    const defined = [subject, rawValue].map((v) =>
-      resolveDefinedDate(text, citation.quote, v),
-    );
-    if (defined[0] && defined[1] && defined[0].term === defined[1].term) {
-      requireNull(f, ["recoupedBeforeSplit", "feePolicy", "refundStep"]);
-      const { raw, date, citation: definition } = defined[0];
-      return {
-        kind,
-        subject: raw,
-        rawValue: raw,
-        citation: definition,
-        boundary: enumValue(f.termBoundary, Object.values(TermBoundary)),
-        date,
-      };
-    }
-  }
   // Names may be written in a different case elsewhere ("KEMI ADEYEMI", "the Producer").
   if (!includesNormalized(citation.quote.toLowerCase(), subject.toLowerCase()))
     throw new Reject(RejectionReason.SUBJECT_NOT_IN_QUOTE);
@@ -704,36 +695,13 @@ function validateFact(raw: unknown, text: string): ExtractedFact {
       });
       // A recoup claim the quote does not show becomes "not stated" (asked later) instead of
       // dropping the advance: the amount and recipient are still in the quote.
-      const shown =
-        recouped === true
-          ? /recoup|repa(?:y|id)|recover|reimburs|paid back|deducted first/i
-          : recouped === false
-            ? /non-?recoup|not (?:be )?(?:recouped|repaid|recovered|deducted|paid back)/i
-            : null;
-      if (shown && shown.test(normalizeWhitespace(q)))
+      const recoupDenied =
+        /non-?recoup|not (?:be )?(?:recouped|repaid|recovered|deducted|paid back)/i;
+      if (
+        (recouped === true && showsRecoup(q)) ||
+        (recouped === false && recoupDenied.test(normalizeWhitespace(q)))
+      )
         return { kind, ...base, amountCents, recoupedBeforeSplit: recouped };
-      // "Paid back first" may sit in the next sentence of the same clause: accept it from the clause.
-      const clause =
-        recouped === false ? null : clauseShowingRecoup(text, citation);
-      if (clause)
-        return {
-          kind,
-          ...base,
-          citation: clause,
-          amountCents,
-          recoupedBeforeSplit: true,
-        };
-      const defined =
-        recouped === false ? null : definedTermShowingRecoup(text, citation);
-      if (defined)
-        return {
-          kind,
-          ...base,
-          citation: defined[0],
-          amountCents,
-          recoupedBeforeSplit: true,
-          recoupCitation: defined[1],
-        };
       return { kind, ...base, amountCents, recoupedBeforeSplit: null };
     }
     case FactKind.FEES: {
