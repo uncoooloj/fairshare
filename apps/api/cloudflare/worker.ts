@@ -1,3 +1,4 @@
+import { configuredMailTransport, type MailEnvironment } from "../src/mail.js";
 export { FairshareDocumentParser } from "./parser.js";
 import { DurableObject } from "cloudflare:workers";
 import { PayPalSandbox } from "@fairshare/payments";
@@ -5,7 +6,7 @@ import { cloudflareDocumentReaders } from "./documentReaders.js";
 import { buildApp } from "../src/app.js";
 import { DurableSqlDatabase } from "../../../packages/cloudflare-storage/src/index.js";
 
-interface Env {
+interface Env extends MailEnvironment {
   AUTHORITY: DurableObjectNamespace;
   DOCUMENT_PARSER?: DurableObjectNamespace;
   OCR_ENABLED?: string;
@@ -79,6 +80,7 @@ export class FairshareAuthority extends DurableObject<Env> {
     this.reconciliation =
       !!provider && env.PAYPAL_RECONCILIATION_ENABLED === "true";
     this.app = buildApp({
+      mailTransport: configuredMailTransport(env),
       documentReaders: cloudflareDocumentReaders(
         env.DOCUMENT_PARSER?.get(
           env.DOCUMENT_PARSER.idFromName("fairshare-parser-v1"),

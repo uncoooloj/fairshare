@@ -1,3 +1,4 @@
+import { registerAgreementInvitationEmail } from "./agreementInvitationEmail.js";
 import { registerAgreementInvitations } from "./agreementInvitations.js";
 import { registerOrganizerHandover } from "./organizerHandover.js";
 import type { DocumentReaders } from "./documentReaders.js";
@@ -507,6 +508,7 @@ export async function buildApp(
   );
   registerPayPalConnect(app, options.paypalIdentity);
   registerAgreementInvitations(app, domainRoutes.store);
+  registerAgreementInvitationEmail(app, domainRoutes.store, options);
   registerOrganizerHandover(app, domainRoutes.store, domainRoutes.access);
   return app;
 }

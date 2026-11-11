@@ -1101,6 +1101,10 @@ export function AgreementCreationWizard({
           .filter((p) => !p.isSelf)
           .map<SentInvite>((p) => ({
             key: p.key,
+            invitationId: p.invitationId,
+            workspaceId: agreement.workspaceId,
+            agreementId: agreement.id,
+            userId: p.invitationId ? `pending:${p.invitationId}` : undefined,
             name: p.name,
             email: p.email ?? "",
             token: p.invitationId ? links[p.invitationId]?.token : undefined,

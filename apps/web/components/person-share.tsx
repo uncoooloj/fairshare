@@ -1,3 +1,5 @@
+import { EmailSendButton } from "./email-send-button";
+import { invitationEmailToken } from "../lib/email-send";
 import { useState } from "react";
 import { isPendingMember, type AgreementMember } from "../lib/agreement-api";
 import { ApiError, api, type Agreement } from "../lib/model";
@@ -42,7 +44,7 @@ export function canShareLink(
 
 /** Copy and Share for one person. Nothing is requested until a button is pressed; a pending
  * person's link is created on the first press and reused after that. */
-export function PersonShare({
+function PersonShareContent({
   agreement,
   member,
   viewerId,
@@ -69,6 +71,10 @@ export function PersonShare({
     knownPersonLink(agreement, member, currentOrigin()) ||
     "";
   const known = currentKnownLink();
+  const invitationId =
+    (issued?.agreement.value.members as AgreementMember[] | undefined)?.find(
+      (person) => person.userId === issued?.userId,
+    )?.pending?.invitationId ?? member.pending?.invitationId;
   const textFor = (link: string) =>
     mode === ShareMode.Nudge
       ? nudgeMessage(member, agreement.value.name, link)
@@ -218,6 +224,31 @@ export function PersonShare({
           Share
         </Button>
       </div>
+      {organizer && isPendingMember(member) && (
+        <EmailSendButton
+          key={`${agreement.workspaceId}:${agreement.id}:${issued?.userId ?? member.userId}:${invitationId}`}
+          path={`workspaces/${encodeURIComponent(agreement.workspaceId)}/collaborations/${encodeURIComponent(agreement.id)}/people/${encodeURIComponent(issued?.userId ?? member.userId)}/invitation-email`}
+          destination={member.pending!.email}
+          label="Email invitation"
+          payload={() => {
+            const token = invitationEmailToken(currentKnownLink());
+            return token ? { token } : undefined;
+          }}
+        />
+      )}
+      {organizer &&
+        !isPendingMember(member) &&
+        mode === ShareMode.Nudge &&
+        agreement.value.versions.at(-1)?.status === "AWAITING_APPROVAL" &&
+        !agreement.value.versions.at(-1)?.approvals[member.userId] && (
+          <EmailSendButton
+            key={`${agreement.workspaceId}:${agreement.id}:${agreement.value.versions.at(-1)?.id}:${member.userId}`}
+            path={`workspaces/${encodeURIComponent(agreement.workspaceId)}/collaborations/${encodeURIComponent(agreement.id)}/versions/${agreement.value.versions.at(-1)?.id}/reminders`}
+            destination={member.displayName}
+            label="Email review reminder"
+            payload={() => ({ recipientId: member.userId })}
+          />
+        )}
       {notice && (
         <p className="muted person-share-notice" role="status">
           {notice}
@@ -236,6 +267,16 @@ export function PersonShare({
   );
 }
 
+/** Keep a new agreement/person independent from a previous screen's local link and email state. */
+export function PersonShare(props: Parameters<typeof PersonShareContent>[0]) {
+  return (
+    <PersonShareContent
+      key={`${props.agreement.workspaceId}:${props.agreement.id}:${props.member.userId}:${props.member.pending?.invitationId}`}
+      {...props}
+    />
+  );
+}
+
 /** People who still need to approve the latest version, other than the viewer. */
 export function peopleToNudge(agreement: Agreement, viewerId: string) {
   const latest = agreement.value.versions.at(-1);
@@ -245,7 +286,7 @@ export function peopleToNudge(agreement: Agreement, viewerId: string) {
   );
 }
 
-/** Ready-made messages for each person still to approve. Nothing is sent from here. */
+/** Ready-made messages, with optional explicit email actions, for people still to approve. */
 export function NudgeDrawer({
   agreement,
   userId,

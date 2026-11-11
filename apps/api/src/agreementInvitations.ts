@@ -1,3 +1,4 @@
+import { requireEmailedInviteRecipient } from "./agreementInvitationEmail.js";
 import { randomBytes, randomUUID } from "node:crypto";
 import {
   addPendingMember,
@@ -494,6 +495,7 @@ export function registerAgreementInvitations(
           agreement: resumed.agreement,
         };
       const { row, agreement } = validLink((req.body as any)?.token);
+      requireEmailedInviteRecipient(store, row, user.email);
       const existing = store.db
         .prepare(
           "SELECT role FROM memberships WHERE workspace_id=? AND user_id=?",
