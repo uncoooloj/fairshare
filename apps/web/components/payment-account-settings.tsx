@@ -96,15 +96,16 @@ export function PaymentAccountsSettings({
             <p>PayPal sandbox checkout</p>
             <p className="muted">
               {data.providerConfigured
-                ? "PayPal is connected. Received payments are split according to your agreement."
-                : "PayPal isn’t connected yet. Payments can’t be received until setup is complete."}
+                ? "Sandbox PayPal is configured. Payments are allocated only after provider verification."
+                : "Sandbox PayPal is not configured. Payments cannot be received until setup is complete."}
             </p>
           </section>
           <section className="section">
             <h3>Sending payouts</h3>
             <p className="muted">
-              Fairshare sends each person their agreed share through PayPal.
-              These are test payments; no real money moves.
+              Eligible payouts can be submitted through PayPal after the
+              agreement and payment have been verified. These are test payments;
+              no real money moves.
             </p>
           </section>
           <section className="section">
