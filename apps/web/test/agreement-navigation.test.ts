@@ -10,16 +10,20 @@ import { appSource } from "./app-source";
 
 const app = appSource();
 
+const search = readFileSync(
+  new URL("../components/global-search.tsx", import.meta.url),
+  "utf8",
+);
+
 test("agreement navigation discovers all authorized groups without conflating group and agreement IDs", () => {
   assert.match(app, /api\("workspaces"\)/);
   assert.match(app, /groups.workspaces.map/);
   assert.match(app, /workspaceBase\(group.id\)/);
   assert.match(app, /lists.flatMap/);
-  assert.match(app, /agreementIdentityKey\(selected\)/);
-  assert.match(
-    app,
-    /findAgreementByIdentity\(\s*agreements,\s*e\.target\.value/,
-  );
+  // Top-bar search opens the agreement object itself; results are keyed by full identity.
+  assert.match(search, /agreementIdentityKey\(agreement\)/);
+  assert.match(search, /onOpen\(result\.agreement\)/);
+  assert.match(app, /<GlobalSearch[\s\S]*?openAgreement\(agreement\)/);
   assert.match(
     app,
     /if \(a.workspaceId !== currentWorkspace.current\)\s*commitWorkspace\(a.workspaceId\)/,

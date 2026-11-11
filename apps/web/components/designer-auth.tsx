@@ -18,11 +18,16 @@ function Brand() {
 export function Auth({
   busy,
   error,
+  codePrompt,
   onSubmit,
+  onCancelCode,
 }: {
   busy: boolean;
   error: string;
+  /** Set when the password was accepted and the account needs an authenticator code. */
+  codePrompt?: string;
   onSubmit: (type: string, data: Record<string, string>) => void;
+  onCancelCode?: () => void;
 }) {
   const emailDelivery = useEmailDelivery();
   const [login, setLogin] = useState(true);
@@ -30,6 +35,67 @@ export function Auth({
   const [showServerError, setShowServerError] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const visibleError = localError || (showServerError ? error : "");
+  const credentials = useRef<Record<string, string>>({});
+  if (codePrompt)
+    return (
+      <main className={styles.page}>
+        <Brand />
+        <div className={styles.column}>
+          <h1>Enter your authentication code</h1>
+          <p className={styles.subtitle}>{codePrompt}</p>
+          <form
+            className={styles.form}
+            aria-busy={busy}
+            aria-describedby={error ? "auth-error" : undefined}
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (busy) return;
+              const code = String(
+                new FormData(event.currentTarget).get("mfaCode") || "",
+              ).trim();
+              if (!code) return;
+              onSubmit("login", { ...credentials.current, mfaCode: code });
+            }}
+          >
+            {error && (
+              <p id="auth-error" className={styles.error} role="alert">
+                {error}
+              </p>
+            )}
+            <label>
+              Authenticator or recovery code
+              <input
+                name="mfaCode"
+                autoComplete="one-time-code"
+                inputMode="text"
+                autoCapitalize="none"
+                spellCheck={false}
+                maxLength={80}
+                required
+                autoFocus
+                disabled={busy}
+              />
+            </label>
+            <button className={styles.primary} disabled={busy}>
+              {busy ? "Please wait…" : "Verify and sign in"}
+            </button>
+          </form>
+          <p className={styles.switch}>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                credentials.current = {};
+                onCancelCode?.();
+              }}
+            >
+              Use a different account
+            </button>
+          </p>
+        </div>
+        <footer className={styles.footer}>Sandbox build. No live money.</footer>
+      </main>
+    );
   return (
     <main className={styles.page}>
       <Brand />
@@ -70,6 +136,7 @@ export function Auth({
               if (field instanceof HTMLInputElement) field.focus();
               return;
             }
+            if (login) credentials.current = prepared.data;
             onSubmit(login ? "login" : "register", prepared.data);
           }}
         >
@@ -130,23 +197,6 @@ export function Auth({
               Use at least 12 characters. Use a synthetic account for sandbox
               testing.
             </p>
-          )}
-          {login && (
-            <p className={styles.hint}>
-              If you enabled an extra sign-in step, use the code or instructions
-              from your account settings.
-            </p>
-          )}
-          {login && (
-            <label>
-              Authenticator or recovery code (if enabled)
-              <input
-                name="mfaCode"
-                autoComplete="one-time-code"
-                maxLength={80}
-                disabled={busy}
-              />
-            </label>
           )}
           <button className={styles.primary} disabled={busy}>
             {busy ? "Please wait…" : login ? "Sign in" : "Create account"}

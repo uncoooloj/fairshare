@@ -122,8 +122,11 @@ export function MfaSettings({ onSignOut }: { onSignOut: () => void }) {
               onSignOut();
             }}
           >
-            I saved my codes. Sign in
+            I’ve saved my codes
           </Button>
+          <p className="muted">
+            You’ll sign in again with your authenticator next.
+          </p>
         </>
       ) : !status ? (
         <p>Loading security settings…</p>
