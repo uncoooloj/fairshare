@@ -137,12 +137,13 @@ export function registerPreferences(app: FairshareApp) {
       preferences = readPreferences(store, user.id);
     const rows = store.db
       .prepare(
-        "SELECT c.value FROM fairshare_collaborations c JOIN memberships m ON m.workspace_id=c.workspace_id WHERE m.user_id=?",
+        "SELECT c.workspace_id,c.value FROM fairshare_collaborations c JOIN memberships m ON m.workspace_id=c.workspace_id WHERE m.user_id=?",
       )
-      .all(user.id) as { value: string }[];
+      .all(user.id) as { workspace_id: string; value: string }[];
     const events: {
       id: string;
       kind: NotificationKind;
+      workspaceId: string;
       agreementId: string;
       agreementName: string;
       at: string | null;
@@ -152,7 +153,7 @@ export function registerPreferences(app: FairshareApp) {
     for (const row of rows) {
       const c = JSON.parse(row.value) as Collaboration;
       if (!c.members.some((member) => member.userId === user.id)) continue;
-      agreements.set(c.id, c);
+      agreements.set(`${row.workspace_id}:${c.id}`, c);
       for (const event of c.audit) {
         const kind = notificationKindForAuditEvent(event.type);
         if (!kind || !preferences.notifications[kind].inApp) continue;
@@ -168,6 +169,7 @@ export function registerPreferences(app: FairshareApp) {
         events.push({
           id: `${c.id}:${event.sequence}`,
           kind,
+          workspaceId: row.workspace_id,
           agreementId: c.id,
           agreementName: c.name,
           at: event.at,
@@ -177,21 +179,25 @@ export function registerPreferences(app: FairshareApp) {
     }
     const payouts = store.db
       .prepare(
-        "SELECT id,collaboration_id,status FROM fairshare_payout_ops WHERE user_id=?",
+        "SELECT id,workspace_id,collaboration_id,status FROM fairshare_payout_ops WHERE user_id=?",
       )
       .all(user.id) as {
       id: string;
+      workspace_id: string;
       collaboration_id: string;
       status: string;
     }[];
     for (const payout of payouts) {
-      const agreement = agreements.get(payout.collaboration_id);
+      const agreement = agreements.get(
+        `${payout.workspace_id}:${payout.collaboration_id}`,
+      );
       const kind = notificationKindForPayoutStatus(payout.status);
       if (!agreement || !kind || !preferences.notifications[kind].inApp)
         continue;
       events.push({
         id: `payout:${payout.id}:${payout.status}`,
         kind,
+        workspaceId: payout.workspace_id,
         agreementId: agreement.id,
         agreementName: agreement.name,
         at: null,
@@ -201,11 +207,29 @@ export function registerPreferences(app: FairshareApp) {
             : notificationMessage(kind),
       });
     }
-    return {
-      events: events
-        .sort((a, b) => (b.at ?? "").localeCompare(a.at ?? ""))
-        .slice(0, 100),
-    };
+    const datedEvents = events
+      .filter((event) => event.at !== null)
+      .sort((a, b) => b.at!.localeCompare(a.at!) || a.id.localeCompare(b.id));
+    const undatedEvents = events
+      .filter((event) => event.at === null)
+      .sort(
+        (a, b) =>
+          Number(a.kind !== "payoutFailed") -
+            Number(b.kind !== "payoutFailed") || a.id.localeCompare(b.id),
+      );
+    const visible = [] as typeof events;
+    let datedIndex = 0,
+      undatedIndex = 0;
+    while (
+      visible.length < 100 &&
+      (datedIndex < datedEvents.length || undatedIndex < undatedEvents.length)
+    ) {
+      if (datedIndex < datedEvents.length)
+        visible.push(datedEvents[datedIndex++]!);
+      if (visible.length < 100 && undatedIndex < undatedEvents.length)
+        visible.push(undatedEvents[undatedIndex++]!);
+    }
+    return { events: visible };
   });
 }
 export function requireApprovalEmail(store: IdentityStore, userId: string) {

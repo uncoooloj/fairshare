@@ -38,3 +38,14 @@ test("send action is gated behind confirmation and success precedes sharing", ()
   assert.match(dialog, /No email is sent/);
   assert.doesNotMatch(dialog, /api\(|fetch\(/);
 });
+test("a committed review remains shareable if the optional workspace refresh fails", () => {
+  const app = readFileSync(
+    new URL("../components/fairshare-app.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    app,
+    /workspaceRequestId !== workspaceRequest\.current[\s\S]*setSelected\(a\);\s*try\s*\{\s*await loadWorkspace\(currentWorkspace\.current\);\s*\}\s*catch\s*\{\s*setNotice\(/,
+  );
+  assert.match(app, /Agreement updated\. Refresh to reload the rest/);
+});

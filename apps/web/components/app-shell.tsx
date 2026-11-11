@@ -5,6 +5,10 @@ import { NotificationPanel } from "./notification-panel";
 import { Logo } from "./agreement-widgets";
 import { Section, api, title, type Agreement, type User } from "../lib/model";
 import { Button, Icon } from "./ui";
+import {
+  agreementIdentityKey,
+  findAgreementByIdentity,
+} from "../lib/agreement-identity";
 import type { Run } from "./sections/types";
 
 export interface AppShellProps {
@@ -18,14 +22,12 @@ export interface AppShellProps {
   notice: string;
   run: Run;
   refresh: () => Promise<void>;
+  workspace: string;
   navigate: (s: Section) => boolean;
   mayLeaveDraft: () => boolean;
   openAgreement: (a: Agreement) => Promise<void>;
   setSettingsTab: Dispatch<SetStateAction<string>>;
-  setUser: Dispatch<SetStateAction<User | null>>;
-  setWorkspace: Dispatch<SetStateAction<string>>;
-  setSelected: Dispatch<SetStateAction<Agreement | null>>;
-  setAgreements: Dispatch<SetStateAction<Agreement[]>>;
+  clearSession: () => void;
   children: ReactNode;
 }
 
@@ -41,14 +43,12 @@ export function AppShell({
   notice,
   run,
   refresh,
+  workspace,
   navigate,
   mayLeaveDraft,
   openAgreement,
   setSettingsTab,
-  setUser,
-  setWorkspace,
-  setSelected,
-  setAgreements,
+  clearSession,
   children,
 }: AppShellProps) {
   return (
@@ -89,10 +89,7 @@ export function AppShell({
               if (!mayLeaveDraft()) return;
               return run(async () => {
                 await api("auth/logout", "POST", {});
-                setUser(null);
-                setWorkspace("");
-                setSelected(null);
-                setAgreements([]);
+                clearSession();
               });
             }}
           >
@@ -106,11 +103,12 @@ export function AppShell({
           {agreements.length ? (
             <select
               aria-label="Open agreement"
-              value={selected?.id ?? ""}
+              value={selected ? agreementIdentityKey(selected) : ""}
               disabled={busy}
               onChange={(e) => {
-                const agreement = agreements.find(
-                  (item) => item.id === e.target.value,
+                const agreement = findAgreementByIdentity(
+                  agreements,
+                  e.target.value,
                 );
                 if (!agreement || !mayLeaveDraft()) return;
                 void run(() => openAgreement(agreement));
@@ -120,7 +118,10 @@ export function AppShell({
                 Choose an agreement
               </option>
               {agreements.map((agreement) => (
-                <option key={agreement.id} value={agreement.id}>
+                <option
+                  key={agreementIdentityKey(agreement)}
+                  value={agreementIdentityKey(agreement)}
+                >
                   {agreement.value.name}
                 </option>
               ))}
@@ -130,10 +131,15 @@ export function AppShell({
           )}
           <span className="spacer" />
           <NotificationPanel
-            key={user.id}
-            agreementIds={agreements.map((agreement) => agreement.id)}
-            onOpenAgreement={(id) => {
-              const agreement = agreements.find((item) => item.id === id);
+            key={`${user.id}:${workspace}`}
+            agreements={agreements.map(({ workspaceId, id }) => ({
+              workspaceId,
+              id,
+            }))}
+            onOpenAgreement={(workspaceId, id) => {
+              const agreement = agreements.find(
+                (item) => item.workspaceId === workspaceId && item.id === id,
+              );
               if (!agreement || !mayLeaveDraft()) return false;
               void run(() => openAgreement(agreement));
               return true;

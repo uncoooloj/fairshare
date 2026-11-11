@@ -156,8 +156,9 @@ export function AgreementVersions({ agreement }: { agreement: Agreement }) {
                   </div>
                 </div>
                 <p className="muted">
-                  These changes apply only after everyone approves the new
-                  version. Earlier payments keep their original rules.
+                  {latest.status === "ACTIVE"
+                    ? `Version ${latest.id} is active. Incoming payments use it; earlier payments keep their original rules.`
+                    : "These changes apply only after everyone approves the new version. Earlier payments keep their original rules."}
                 </p>
               </details>
             )}

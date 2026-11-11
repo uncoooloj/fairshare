@@ -24,6 +24,8 @@ export interface AgreementOverviewTabProps {
   active: Version | undefined;
   user: User;
   payouts: any[];
+  payoutsComplete: boolean;
+  payoutsUnavailable: boolean;
   changeAgreementTab: (next: AgreementTab) => void;
   setBreakdown: Dispatch<SetStateAction<Revenue | null>>;
   navigate: (s: Section) => boolean;
@@ -35,6 +37,8 @@ export function AgreementOverviewTab({
   active,
   user,
   payouts,
+  payoutsComplete,
+  payoutsUnavailable,
   changeAgreementTab,
   setBreakdown,
   navigate,
@@ -120,6 +124,8 @@ export function AgreementOverviewTab({
               p.agreement.id === selected.id &&
               p.agreement.workspaceId === selected.workspaceId,
           )}
+          payoutsComplete={payoutsComplete}
+          payoutsUnavailable={payoutsUnavailable}
           footer={
             <div className="ag-tip">
               <p>

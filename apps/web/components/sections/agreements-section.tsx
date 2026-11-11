@@ -17,6 +17,7 @@ export interface AgreementsSectionProps {
   workspaces: any[];
   workspace: string;
   setCreating: Dispatch<SetStateAction<boolean>>;
+  setBusy: Dispatch<SetStateAction<boolean>>;
   createFromAgreement: (input: AgreementIntakeInput) => Promise<void>;
   run: Run;
   openAgreement: (a: Agreement) => Promise<void>;
@@ -31,6 +32,7 @@ export function AgreementsSection({
   workspaces,
   workspace,
   setCreating,
+  setBusy,
   createFromAgreement,
   run,
   openAgreement,
@@ -60,6 +62,7 @@ export function AgreementsSection({
           busy={busy}
           onCancel={() => setCreating(false)}
           onCreate={createFromAgreement}
+          onBusyChange={setBusy}
         />
       ) : (
         <AgreementList

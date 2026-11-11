@@ -9,9 +9,17 @@ test("client-side session and section changes update the document title", () => 
   const app = appSource();
   assert.match(
     app,
-    /document.title = user\s*\? `\$\{section\} · Fairshare`\s*: "Log in · Fairshare"/,
+    /flowToken && flowKind === "\/invitation"\s*\? "Invitation · Fairshare"/,
   );
-  assert.match(app, /\[ready, user, section\]/);
+  assert.match(
+    app,
+    /flowToken && flowKind === "\/verify-email"\s*\? "Verify email · Fairshare"/,
+  );
+  assert.match(
+    app,
+    /user\s*\? `\$\{section\} · Fairshare`\s*: "Log in · Fairshare"/,
+  );
+  assert.match(app, /\[ready, user, section, flowKind, flowToken\]/);
 });
 
 test("first-run payouts is an empty state, not the agreement creation form", () => {
@@ -24,6 +32,7 @@ test("first-run payouts is an empty state, not the agreement creation form", () 
     ),
   );
   assert.match(payoutsBranch, /No payouts yet/);
+  assert.match(payoutsBranch, /allocated and payout dispatch is recorded/);
   assert.match(payoutsBranch, /navigate\(Section.Agreements\)/);
   assert.match(payoutsBranch, /\) : \(/);
   assert.doesNotMatch(

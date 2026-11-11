@@ -29,10 +29,15 @@ test("notification navigation preserves draft guards and accounts are isolated",
     app.indexOf("<NotificationPanel"),
     app.indexOf("<NotificationPanel") + 900,
   );
-  assert.match(wiring, /key=\{user.id\}/);
+  assert.match(wiring, /key=\{`\$\{user.id\}:\$\{workspace\}`\}/);
   assert.match(wiring, /!agreement \|\| !mayLeaveDraft\(\)/);
   assert.match(wiring, /openAgreement\(agreement\)/);
   assert.match(wiring, /setSettingsTab\("Notifications"\)/);
-  assert.match(panel, /agreementIds.includes\(event.agreementId\)/);
+  assert.match(panel, /agreement.workspaceId === event.workspaceId/);
+  assert.match(panel, /agreement.id === event.agreementId/);
+  assert.match(
+    panel,
+    /onOpenAgreement\(event.workspaceId, event.agreementId\)/,
+  );
   assert.match(panel, /no longer available to your account/);
 });

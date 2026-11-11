@@ -16,6 +16,7 @@ import {
   type Version,
 } from "../../lib/model";
 import { Notice } from "../ui";
+import { agreementIdentityKey } from "../../lib/agreement-identity";
 import type { Mutate, Run } from "./types";
 import { AgreementOverviewTab } from "./agreement-tabs/overview-tab";
 import { AgreementPeopleTab } from "./agreement-tabs/people-tab";
@@ -33,11 +34,14 @@ export interface AgreementDetailProps {
   active: Version | undefined;
   tab: AgreementTab;
   creationAgreementId: string;
+  creationMarker: (agreement: Pick<Agreement, "workspaceId" | "id">) => string;
   workspaces: any[];
   workspace: string;
   members: any[];
   payments: any[];
   payouts: any[];
+  payoutsComplete: boolean;
+  payoutsUnavailable: boolean;
   source: string;
   documentId: string;
   extraction: any;
@@ -82,11 +86,14 @@ export function AgreementDetail({
   active,
   tab,
   creationAgreementId,
+  creationMarker,
   workspaces,
   workspace,
   members,
   payments,
   payouts,
+  payoutsComplete,
+  payoutsUnavailable,
   source,
   documentId,
   extraction,
@@ -121,7 +128,7 @@ export function AgreementDetail({
 }: AgreementDetailProps) {
   return (
     <>
-      {creationAgreementId === selected.id &&
+      {creationAgreementId === agreementIdentityKey(selected) &&
       !selected.value.versions.length ? (
         <AgreementCreationWizard
           key={selected.id}
@@ -150,7 +157,7 @@ export function AgreementDetail({
             setSection(Section.Agreements);
           }}
           onComplete={() => {
-            sessionStorage.removeItem(`fairshare:creation:${selected.id}`);
+            sessionStorage.removeItem(creationMarker(selected));
             setCreationAgreementId("");
             setTab(AgreementTab.Terms);
             setNotice(
@@ -216,6 +223,8 @@ export function AgreementDetail({
                 active={active}
                 user={user}
                 payouts={payouts}
+                payoutsComplete={payoutsComplete}
+                payoutsUnavailable={payoutsUnavailable}
                 changeAgreementTab={changeAgreementTab}
                 setBreakdown={setBreakdown}
                 navigate={navigate}

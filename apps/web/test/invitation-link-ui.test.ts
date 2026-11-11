@@ -22,9 +22,13 @@ test("acceptance adopts the returned workspace and consumes the link before back
   const accept = source
     .split("async function acceptInvitation(token: string) {")[1]
     .split("async function loadWorkspace")[0];
-  assert.match(accept, /setWorkspace\(result.workspace.id\)/);
-  assert.match(accept, /setSelected\(null\)/);
-  assert.match(accept, /setAgreements\(\[\]\)/);
+  assert.match(accept, /commitWorkspace\(result.workspace.id\)/);
+  const commit = source
+    .split("function commitWorkspace(id: string) {")[1]
+    .split("function clearSession")[0];
+  assert.match(commit, /setWorkspace\(id\)/);
+  assert.match(commit, /setSelected\(null\)/);
+  assert.match(commit, /setAgreements\(\[\]\)/);
   assert.match(accept, /setFlowToken\(""\)/);
   assert.match(accept, /setSection\(Section.Agreements\)/);
   assert.doesNotMatch(accept, /await loadWorkspaces/);

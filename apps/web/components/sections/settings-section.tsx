@@ -32,7 +32,7 @@ export interface SettingsSectionProps {
   setNotice: Dispatch<SetStateAction<string>>;
   setInviteLink: Dispatch<SetStateAction<string>>;
   setUser: Dispatch<SetStateAction<User | null>>;
-  setWorkspace: Dispatch<SetStateAction<string>>;
+  clearSession: () => void;
 }
 
 /** Settings sub-navigation and panes. */
@@ -52,7 +52,7 @@ export function SettingsSection({
   setNotice,
   setInviteLink,
   setUser,
-  setWorkspace,
+  clearSession,
 }: SettingsSectionProps) {
   return (
     <>
@@ -185,8 +185,7 @@ export function SettingsSection({
                         currentPassword,
                         newPassword,
                       });
-                      setUser(null);
-                      setWorkspace("");
+                      clearSession();
                     })
                   }
                 />
@@ -201,8 +200,7 @@ export function SettingsSection({
               </section>
               <MfaSettings
                 onSignOut={() => {
-                  setUser(null);
-                  setWorkspace("");
+                  clearSession();
                 }}
               />
               <section className="panel">
