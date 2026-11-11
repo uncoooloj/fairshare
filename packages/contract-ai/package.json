@@ -6,7 +6,8 @@
   "exports": "./src/index.ts",
   "scripts": {
     "test": "node --import tsx --test test/*.test.ts",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "eval:live": "node --import tsx scripts/live-eval.ts"
   },
   "devDependencies": {
     "@types/node": "^24.10.0",
