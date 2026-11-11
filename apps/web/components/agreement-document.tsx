@@ -194,6 +194,7 @@ export function AgreementDocument({
             version={version}
             fileName={documentFileName(agreement, document)}
             nameOf={nameOf}
+            originalUrl={originalDocumentUrl(base, document)}
           />
           {!onDocument && (
             <>

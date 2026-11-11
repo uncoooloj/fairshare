@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import type { Version } from "../lib/model";
 import {
   citationSummary,
@@ -13,6 +14,29 @@ import {
   SEARCH_PREFIX,
   searchHighlights,
 } from "../lib/document-citations";
+import {
+  DocumentViewMode,
+  documentViewMode,
+  PdfLoadState,
+} from "../lib/pdf-highlights";
+import type { PdfClause } from "./pdf-pages";
+
+/** pdf.js loads only on the client, only when a PDF is shown, and stays out of
+ * the server bundle. If its code cannot load, the text pages show instead. */
+const PdfPages = dynamic(
+  () =>
+    import("./pdf-pages")
+      .then((module) => module.PdfPages)
+      .catch(() => PdfUnavailable),
+  { ssr: false, loading: PdfLoading },
+);
+function PdfLoading() {
+  return <p className="dv-pdf-loading muted">Loading the pages…</p>;
+}
+function PdfUnavailable({ onFail }: { onFail: () => void }) {
+  useEffect(onFail, [onFail]);
+  return null;
+}
 
 const ZOOM_STEPS = [75, 90, 100, 115, 130, 150];
 
@@ -48,12 +72,14 @@ export function DocumentCitationView({
   document,
   fileName,
   nameOf,
+  originalUrl,
 }: {
   version?: Version;
   document: {
     documentId: string;
     text: string;
     provenance?: {
+      inputType?: string;
       ocr?: boolean;
       pages?: number | { page: number; start: number; end: number }[];
     };
@@ -61,6 +87,8 @@ export function DocumentCitationView({
   /** Shown in the viewer bar. */
   fileName: string;
   nameOf: (userId: string) => string;
+  /** The uploaded file through our proxy. A PDF shows as its real pages. */
+  originalUrl?: string;
 }) {
   const [selected, setSelected] = useState<string | null>(null);
   const [pageIndex, setPageIndex] = useState(0);
@@ -68,6 +96,14 @@ export function DocumentCitationView({
   const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState("");
   const [hit, setHit] = useState(0);
+  const [pdfState, setPdfState] = useState(PdfLoadState.Loading);
+  const [pdfPageCount, setPdfPageCount] = useState(0);
+  const [rendered, setRendered] = useState(0);
+  const mode = documentViewMode({
+    inputType: document.provenance?.inputType,
+    originalUrl,
+    pdfState,
+  });
   const body = useRef<HTMLDivElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
   const all = useMemo(
@@ -91,7 +127,42 @@ export function DocumentCitationView({
     ),
     ...matches,
   ];
+  const pageCount =
+    mode === DocumentViewMode.Pdf && pdfPageCount ? pdfPageCount : pages.length;
   const page = pages[Math.min(pageIndex, pages.length - 1)];
+  /** Where an offset in the text sits in the pager. PDF pages count from the
+   * file, so use the page number the text came from. */
+  const indexAt = (offset: number) => {
+    const at = pageIndexOf(pages, offset);
+    if (at < 0 || mode !== DocumentViewMode.Pdf) return at;
+    return paged ? Math.min(pages[at].page, pageCount) - 1 : at;
+  };
+  const pdfClauses = useMemo<PdfClause[]>(
+    () =>
+      cited.flatMap((citation) =>
+        citation.highlight
+          ? [
+              {
+                id: citation.id,
+                quote: citation.highlight.quote,
+                page: citation.page,
+              },
+            ]
+          : [],
+      ),
+    // cited is rebuilt every render; its content only changes with these.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [all],
+  );
+  // The current search hit, counted among the hits on its own page.
+  const currentHit = matches[hit];
+  const pageHit = currentHit
+    ? matches.filter(
+        (item) =>
+          item.start < currentHit.start &&
+          indexAt(item.start) === indexAt(currentHit.start),
+      ).length
+    : -1;
   const blocks = pageBlocks(document.text, page, highlights);
   const focusId = selected ?? (matches.length ? matches[hit]?.id : null);
 
@@ -102,10 +173,14 @@ export function DocumentCitationView({
   // Bring the chosen clause or search hit into view once its page is showing.
   useEffect(() => {
     if (!focusId) return;
+    const target =
+      mode === DocumentViewMode.Pdf && !selected
+        ? ".dv-pdf-hit.is-current"
+        : `[data-ids~="${focusId}"]`;
     body.current
-      ?.querySelector<HTMLElement>(`[data-ids~="${focusId}"]`)
+      ?.querySelector<HTMLElement>(target)
       ?.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, [focusId, pageIndex]);
+  }, [focusId, pageIndex, rendered, mode, selected]);
   useEffect(() => {
     if (searching) searchInput.current?.focus();
   }, [searching]);
@@ -113,7 +188,10 @@ export function DocumentCitationView({
   function show(id: string) {
     const citation = cited.find((item) => item.id === id);
     if (!citation?.highlight) return;
-    const index = pageIndexOf(pages, citation.highlight.start);
+    const index =
+      mode === DocumentViewMode.Pdf && citation.page
+        ? Math.min(citation.page, pageCount) - 1
+        : indexAt(citation.highlight.start);
     if (index >= 0) setPageIndex(index);
     setSelected(null);
     requestAnimationFrame(() => setSelected(id));
@@ -139,14 +217,17 @@ export function DocumentCitationView({
     const index = (next + matches.length) % matches.length;
     setHit(index);
     setSelected(null);
-    const at = pageIndexOf(pages, matches[index].start);
+    const at = indexAt(matches[index].start);
     if (at >= 0) setPageIndex(at);
   }
 
   const chosen = cited.find((citation) => citation.id === selected);
-  const tip = document.provenance?.ocr
-    ? "This is the text we read from a scanned file. Check it against the original."
-    : "This is the text we read from your file.";
+  const tip =
+    mode === DocumentViewMode.Pdf
+      ? "This is your original file."
+      : document.provenance?.ocr
+        ? "This is the text we read from a scanned file. Check it against the original."
+        : "This is the text we read from your file.";
   const zoomAt = ZOOM_STEPS.indexOf(zoom);
   return (
     <div className="dv-layout">
@@ -177,13 +258,13 @@ export function DocumentCitationView({
                 <Icon d={["m15 18-6-6 6-6"]} />
               </button>
               <span aria-live="polite">
-                {pageIndex + 1} / {pages.length}
+                {pageIndex + 1} / {pageCount}
               </span>
               <button
                 type="button"
                 className="dv-tool"
                 aria-label="Next page"
-                disabled={pageIndex >= pages.length - 1}
+                disabled={pageIndex >= pageCount - 1}
                 onClick={() => setPageIndex((value) => value + 1)}
               >
                 <Icon d={["m9 18 6-6-6-6"]} />
@@ -243,7 +324,7 @@ export function DocumentCitationView({
                   document.text,
                   event.target.value,
                 )[0];
-                const at = first ? pageIndexOf(pages, first.start) : -1;
+                const at = first ? indexAt(first.start) : -1;
                 if (at >= 0) setPageIndex(at);
               }}
               onKeyDown={(event) => {
@@ -262,68 +343,91 @@ export function DocumentCitationView({
           </div>
         )}
         <div className="dv-body" ref={body}>
-          <article
-            className="dv-page"
-            aria-label={paged ? `Page ${page.page}` : "Agreement text"}
-            style={{ fontSize: `${(15 * zoom) / 100}px` }}
-          >
-            {blocks.length ? (
-              blocks.map((block) => {
-                const clause = block.segments.some((segment) =>
-                  segment.ids.some((id) => !id.startsWith(SEARCH_PREFIX)),
-                );
-                return (
-                  <p
-                    key={block.start}
-                    className={clause ? "dv-para is-cited" : "dv-para"}
-                  >
-                    {block.segments.map((segment) => {
-                      const clauseId = segment.ids.find(
-                        (id) => !id.startsWith(SEARCH_PREFIX),
-                      );
-                      const searchHit = segment.ids.some((id) =>
-                        id.startsWith(SEARCH_PREFIX),
-                      );
-                      const ids = segment.ids.join(" ");
-                      if (clauseId)
-                        return (
-                          <button
-                            type="button"
-                            key={segment.start}
-                            className={`dv-mark${searchHit ? " is-hit" : ""}`}
-                            data-ids={ids}
-                            data-selected={selected === clauseId}
-                            aria-pressed={selected === clauseId}
-                            onClick={() => setSelected(clauseId)}
-                          >
-                            {segment.text}
-                          </button>
+          {mode === DocumentViewMode.Pdf ? (
+            <PdfPages
+              url={originalUrl!}
+              pageNumber={pageIndex + 1}
+              zoom={zoom}
+              clauses={pdfClauses}
+              selected={selected}
+              search={{ query, current: pageHit }}
+              onSelect={setSelected}
+              onReady={(count) => {
+                setPdfPageCount(count);
+                setPdfState(PdfLoadState.Ready);
+                setPageIndex((value) => Math.min(value, count - 1));
+              }}
+              onFail={() => {
+                setPdfState(PdfLoadState.Failed);
+                setPageIndex((value) => Math.min(value, pages.length - 1));
+              }}
+              onPageChange={(number) => setPageIndex(number - 1)}
+              onRendered={() => setRendered((value) => value + 1)}
+            />
+          ) : (
+            <article
+              className="dv-page"
+              aria-label={paged ? `Page ${page.page}` : "Agreement text"}
+              style={{ fontSize: `${(15 * zoom) / 100}px` }}
+            >
+              {blocks.length ? (
+                blocks.map((block) => {
+                  const clause = block.segments.some((segment) =>
+                    segment.ids.some((id) => !id.startsWith(SEARCH_PREFIX)),
+                  );
+                  return (
+                    <p
+                      key={block.start}
+                      className={clause ? "dv-para is-cited" : "dv-para"}
+                    >
+                      {block.segments.map((segment) => {
+                        const clauseId = segment.ids.find(
+                          (id) => !id.startsWith(SEARCH_PREFIX),
                         );
-                      if (searchHit)
-                        return (
-                          <mark
-                            key={segment.start}
-                            className={`dv-hit${
-                              segment.ids.includes(matches[hit]?.id ?? "")
-                                ? " is-current"
-                                : ""
-                            }`}
-                            data-ids={ids}
-                          >
-                            {segment.text}
-                          </mark>
+                        const searchHit = segment.ids.some((id) =>
+                          id.startsWith(SEARCH_PREFIX),
                         );
-                      return <span key={segment.start}>{segment.text}</span>;
-                    })}
-                  </p>
-                );
-              })
-            ) : (
-              <p className="dv-para muted">
-                This page has no text we could read.
-              </p>
-            )}
-          </article>
+                        const ids = segment.ids.join(" ");
+                        if (clauseId)
+                          return (
+                            <button
+                              type="button"
+                              key={segment.start}
+                              className={`dv-mark${searchHit ? " is-hit" : ""}`}
+                              data-ids={ids}
+                              data-selected={selected === clauseId}
+                              aria-pressed={selected === clauseId}
+                              onClick={() => setSelected(clauseId)}
+                            >
+                              {segment.text}
+                            </button>
+                          );
+                        if (searchHit)
+                          return (
+                            <mark
+                              key={segment.start}
+                              className={`dv-hit${
+                                segment.ids.includes(matches[hit]?.id ?? "")
+                                  ? " is-current"
+                                  : ""
+                              }`}
+                              data-ids={ids}
+                            >
+                              {segment.text}
+                            </mark>
+                          );
+                        return <span key={segment.start}>{segment.text}</span>;
+                      })}
+                    </p>
+                  );
+                })
+              ) : (
+                <p className="dv-para muted">
+                  This page has no text we could read.
+                </p>
+              )}
+            </article>
+          )}
         </div>
       </div>
       <aside className="dv-clauses" aria-labelledby="dv-clauses-title">
