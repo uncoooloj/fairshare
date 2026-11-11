@@ -238,6 +238,30 @@ test("push-to-main releases retain gates while pull requests cannot publish", ()
   assert.match(workflow, /if: steps\.current\.outputs\.deploy == 'true'/);
 });
 
+test("CI retains every test lane in two aggregated jobs", () => {
+  const workflow = readFileSync(
+    new URL("../../.github/workflows/ci.yml", import.meta.url),
+    "utf8",
+  );
+  assert.match(workflow, /^  tests:\n/m);
+  assert.match(workflow, /^  quality_and_build:\n/m);
+  for (const command of [
+    "--test-shard=1/2 test/*.test.ts",
+    "--test-shard=2/2 test/*.test.ts",
+    "@fairshare/web",
+    "@fairshare/cloudflare-storage",
+    "@fairshare/contract-ai",
+    "@fairshare/domain",
+    "@fairshare/payments",
+    "npm run format:check",
+    "npm run typecheck",
+    "npm run build",
+  ])
+    assert.ok(workflow.includes(command), command);
+  assert.match(workflow, /wait "\$pid" \|\| status=1/);
+  assert.match(workflow, /needs:\n      \[\n        tests,\n        quality_and_build,/);
+});
+
 test("persistence waiver is manual-main-only and guards both gate invocations", () => {
   const workflow = readFileSync(
     new URL("../../.github/workflows/deploy.yml", import.meta.url),
