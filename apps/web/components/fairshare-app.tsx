@@ -405,7 +405,13 @@ export default function FairshareApp() {
         ...extra,
       });
       setSelected(a);
-      await loadWorkspace(workspace);
+      try {
+        await loadWorkspace(workspace);
+      } catch {
+        setNotice(
+          "Agreement updated. Refresh to reload the rest of your workspace.",
+        );
+      }
     } catch (cause) {
       if (cause instanceof ApiError && cause.code === "REVISION_CONFLICT") {
         const current = await api<Agreement>(base);
