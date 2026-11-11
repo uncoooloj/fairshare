@@ -97,3 +97,22 @@ test("settings: one Getting paid card, the email plainly, no duplicate copy", ()
   assert.doesNotMatch(settings, /A-Z0-9\]\{13\}|maxLength=\{13\}|merchant/i);
   assert.doesNotMatch(settings, /accountHint|ownPaypalId/);
 });
+
+test("settings: no platform PayPal card, inline Saved, row menu for reminders", () => {
+  const settings = source("components/payment-account-settings.tsx");
+  // The platform's PayPal app is not the user's to configure; only say so
+  // when payments are actually off.
+  assert.doesNotMatch(settings, /Receiving payments|Not configured|WalletIcon/);
+  assert.match(
+    settings,
+    /!data\.providerConfigured && \([\s\S]*Payments are off on this server/,
+  );
+  // Saving confirms inside the card and fades, not as loose text on top.
+  assert.doesNotMatch(settings, /PayPal email saved\./);
+  assert.match(settings, /setSaved\("Saved"\)/);
+  assert.match(settings, /settings-card-head[\s\S]*<SavedNote/);
+  // Reminders sit in the same overflow menu as the agreement People table.
+  assert.match(settings, /<strong>Collaborators<\/strong>/);
+  assert.match(settings, /className="ag-menu"[\s\S]*Copy reminder/);
+  assert.match(settings, /aria-label=\{`Actions for \$\{m\.name\}`\}/);
+});
