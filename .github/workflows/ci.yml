@@ -40,6 +40,7 @@ jobs:
           (cd apps/api && node --import tsx --test --test-shard=2/2 test/*.test.ts) &
           shard_two=$!
           (
+            set -e
             npm run test --workspace @fairshare/web --if-present
             npm run test --workspace @fairshare/cloudflare-storage --if-present
             npm run test --workspace @fairshare/contract-ai --if-present
@@ -69,20 +70,14 @@ jobs:
           key: ${{ runner.os }}-nextjs-${{ hashFiles('package-lock.json') }}-${{ hashFiles('apps/web/**') }}
           restore-keys: |
             ${{ runner.os }}-nextjs-${{ hashFiles('package-lock.json') }}-
-      # Keep these serial on the two-core hosted runner: build and typecheck both compile
-      # the workspace graph, so parallelizing them increases contention without a useful
-      # wall-clock improvement.
+      # Keep these serial: build and typecheck both compile the workspace graph.
       - run: npm run format:check
       - run: npm run typecheck
       - run: npm run build
 
   verify:
     if: ${{ always() }}
-    needs:
-      [
-        tests,
-        quality_and_build,
-      ]
+    needs: [tests, quality_and_build]
     runs-on: ubuntu-latest
     steps:
       - name: Require every check to succeed

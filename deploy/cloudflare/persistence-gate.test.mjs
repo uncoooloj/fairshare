@@ -258,8 +258,9 @@ test("CI retains every test lane in two aggregated jobs", () => {
     "npm run build",
   ])
     assert.ok(workflow.includes(command), command);
+  assert.match(workflow, /\(\n\s+set -e\n\s+npm run test --workspace @fairshare\/web/);
   assert.match(workflow, /wait "\$pid" \|\| status=1/);
-  assert.match(workflow, /needs:\n      \[\n        tests,\n        quality_and_build,/);
+  assert.match(workflow, /needs: \[tests, quality_and_build\]/);
 });
 
 test("persistence waiver is manual-main-only and guards both gate invocations", () => {
