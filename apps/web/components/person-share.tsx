@@ -82,6 +82,7 @@ export function PersonShare({
       onAgreementChange?.(result.agreement);
     } catch (cause) {
       if (cause instanceof ApiError && cause.code === "REVISION_CONFLICT") {
+        let refreshFailed = false;
         try {
           const current = await api<Agreement>(
             `workspaces/${encodeURIComponent(agreement.workspaceId)}/collaborations/${encodeURIComponent(agreement.id)}`,
@@ -89,10 +90,12 @@ export function PersonShare({
           setIssued("");
           onAgreementChange?.(current);
         } catch {
-          // Keep the retry message when the refresh itself is unavailable.
+          refreshFailed = true;
         }
         setNotice(
-          "Someone else just changed this. Here’s the latest; try again.",
+          refreshFailed
+            ? "Couldn’t load the latest agreement. Reload and try again."
+            : "Someone else just changed this. Here’s the latest; try again.",
         );
       } else {
         setNotice(

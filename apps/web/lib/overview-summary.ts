@@ -260,14 +260,19 @@ export function overviewSummary(
         latest.status === "AWAITING_APPROVAL" &&
         review.allApproved &&
         member?.role !== "ORGANIZER"
-      )
+      ) {
+        const waitingForAdvance = readyButForAdvance(agreement);
         waiting.push({
-          key: `${identity(agreement)}:waiting-activation`,
+          key: `${identity(agreement)}:${waitingForAdvance ? "waiting-advance-confirmation" : "waiting-activation"}`,
           agreement,
-          title: "Waiting for the organizer to switch it on",
-          detail:
-            "Everyone approved. Waiting for the organizer to switch it on.",
+          title: waitingForAdvance
+            ? "Waiting for the organizer to confirm the advance"
+            : "Waiting for the organizer to switch it on",
+          detail: waitingForAdvance
+            ? "Everyone approved. Waiting for the organizer to confirm the advance was paid."
+            : "Everyone approved. Waiting for the organizer to switch it on.",
         });
+      }
     }
 
     for (const event of value.audit) {

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { Agreement } from "../lib/model";
+import { api, ApiError, type Agreement } from "../lib/model";
 import {
   agreementStatus,
   AgreementStage,
@@ -372,6 +372,57 @@ test("reissue and advance confirmation recover a revision conflict without retry
     .split("async function getNewLink(")[1]
     .split("finally")[0];
   assert.equal((personReissue.match(/issueInviteLink\(/g) || []).length, 1);
+});
+
+test("a failed latest-agreement read keeps the retry error", async () => {
+  const original = globalThis.fetch;
+  const calls: string[] = [];
+  globalThis.fetch = (async (url: string, init?: RequestInit) => {
+    const method = init?.method ?? "GET";
+    calls.push(`${method} ${url}`);
+    if (method === "POST")
+      return new Response(
+        JSON.stringify({
+          error: { code: "REVISION_CONFLICT", message: "Reload latest" },
+        }),
+        { status: 409 },
+      );
+    return new Response(
+      JSON.stringify({ error: { code: "TEMPORARY_FAILURE" } }),
+      { status: 503 },
+    );
+  }) as typeof fetch;
+  try {
+    const a = midnight();
+    const riley = a.value.members[2] as AgreementMember;
+    await assert.rejects(
+      issueInviteLink(a, riley, "http://localhost:3480"),
+      (cause: unknown) =>
+        cause instanceof ApiError && cause.code === "REVISION_CONFLICT",
+    );
+    await assert.rejects(
+      api<Agreement>("workspaces/w1/collaborations/a1"),
+      (cause: unknown) => cause instanceof ApiError && cause.status === 503,
+    );
+    assert.deepEqual(
+      calls.map((call) => call.split(" ")[0]),
+      ["POST", "GET"],
+    );
+    for (const path of [
+      "../components/agreement-people.tsx",
+      "../components/person-share.tsx",
+      "../components/agreement-workspace.tsx",
+    ]) {
+      const source = readFileSync(new URL(path, import.meta.url), "utf8");
+      assert.match(source, /refreshFailed/);
+      assert.match(
+        source,
+        /Couldn’t load the latest agreement\. Reload and try again\./,
+      );
+    }
+  } finally {
+    globalThis.fetch = original;
+  }
 });
 
 test("the agreement header prunes invite tokens after a fresh agreement revision", () => {

@@ -304,6 +304,34 @@ test("review actions use the authoritative review state", () => {
   assert.equal(confirm.attention[0].key, '["w","a"]:confirm-advance');
 });
 
+test("collaborator overview waits for advance confirmation", () => {
+  const a = fixture();
+  a.value.versions[0].approvals = {
+    me: "2026-11-10T12:00:00Z",
+    other: "2026-11-10T12:00:00Z",
+  };
+  a.value.versions[0].rules.advance = {
+    id: "advance",
+    recipientId: "me",
+    amountCents: 10,
+    verified: false,
+    source: a.value.versions[0].rules.source,
+  };
+
+  const summary = overviewSummary([a], [], "other");
+  assert.equal(summary.attention.length, 0);
+  assert.equal(summary.waiting.length, 1);
+  assert.equal(
+    summary.waiting[0].title,
+    "Waiting for the organizer to confirm the advance",
+  );
+  assert.match(summary.waiting[0].detail, /advance was paid/);
+  assert.equal(
+    summary.waiting[0].key,
+    '["w","a"]:waiting-advance-confirmation',
+  );
+});
+
 test("agreement status line is role-aware and needs no organizer switch-on", async () => {
   const { agreementStatus, AgreementStage, StageAction } = await import(
     "../lib/agreement-status"
