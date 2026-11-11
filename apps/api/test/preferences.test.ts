@@ -236,6 +236,84 @@ test("in-app notifications respect channels, workspace and agreement membership,
   }
 });
 
+test("notification reads are authenticated, user-scoped and persisted", async () => {
+  const app = await buildApp({ dbPath: ":memory:" });
+  try {
+    const a = app.store.register({
+      name: "A",
+      email: "reads-a@example.test",
+      password,
+    });
+    const b = app.store.register({
+      name: "B",
+      email: "reads-b@example.test",
+      password,
+    });
+    const workspace = app.store.createWorkspace(a.user.id, "Read state");
+    app.store.db
+      .prepare("INSERT INTO memberships VALUES(?,?,?)")
+      .run(workspace.id, b.user.id, "MEMBER");
+    const agreement = {
+      id: "agreement-read",
+      name: "Read state agreement",
+      members: [{ userId: a.user.id }, { userId: b.user.id }],
+      versions: [{ id: 1, status: "AWAITING_APPROVAL" }],
+      audit: [
+        {
+          sequence: 1,
+          type: "SENT_FOR_REVIEW",
+          at: "2026-11-10T12:00:00Z",
+          details: { versionId: 1 },
+        },
+      ],
+    };
+    app.store.db
+      .prepare("INSERT INTO fairshare_collaborations VALUES(?,?,?,?)")
+      .run(workspace.id, agreement.id, 1, JSON.stringify(agreement));
+    const headers = { authorization: `Bearer ${a.token}` };
+    assert.equal(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/api/auth/notifications/mark-all-read",
+        })
+      ).statusCode,
+      401,
+    );
+    let events = (
+      await app.inject({ url: "/api/auth/notifications", headers })
+    ).json().events;
+    assert.equal(events[0].read, false);
+    const marked = await app.inject({
+      method: "POST",
+      url: "/api/auth/notifications/mark-all-read",
+      headers,
+    });
+    assert.equal(marked.statusCode, 200);
+    assert.equal(marked.json().marked, 1);
+    events = (
+      await app.inject({ url: "/api/auth/notifications", headers })
+    ).json().events;
+    assert.equal(events[0].read, true);
+    const bEvents = (
+      await app.inject({
+        url: "/api/auth/notifications",
+        headers: { authorization: `Bearer ${b.token}` },
+      })
+    ).json().events;
+    assert.equal(bEvents[0].read, false);
+    const receipts = app.store.db
+      .prepare("SELECT user_id,event_id FROM user_notification_reads")
+      .all() as { user_id: string; event_id: string }[];
+    assert.deepEqual(
+      receipts.map(({ user_id, event_id }) => ({ user_id, event_id })),
+      [{ user_id: a.user.id, event_id: "agreement-read:1" }],
+    );
+  } finally {
+    await app.close();
+  }
+});
+
 test("in-app notifications share the limited feed between audit events and payout states", async () => {
   const app = await buildApp({ dbPath: ":memory:" });
   try {

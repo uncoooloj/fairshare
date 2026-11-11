@@ -12,6 +12,7 @@ export interface NotificationEvent {
   agreementName: string;
   at: string | null;
   message: string;
+  read: boolean;
 }
 
 type NotificationGroup = "today" | "earlier";
@@ -89,7 +90,7 @@ function NotificationIcon({ kind }: { kind: NotificationKind }) {
   );
 }
 
-/** A real event feed, not an unread counter: the API does not persist read receipts. */
+/** A real event feed with user-scoped persisted read receipts. */
 export function NotificationPanel({
   agreements,
   onOpenAgreement,
@@ -103,6 +104,7 @@ export function NotificationPanel({
   const [events, setEvents] = useState<NotificationEvent[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [markingRead, setMarkingRead] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const close = useRef<HTMLButtonElement>(null);
@@ -116,6 +118,7 @@ export function NotificationPanel({
     },
     { today: [], earlier: [] },
   );
+  const hasUnread = events.some((event) => !event.read);
   // Fetches every time the panel opens, so there is no separate refresh control.
   useEffect(() => {
     if (!open) return;
@@ -148,6 +151,20 @@ export function NotificationPanel({
   function dismiss() {
     setOpen(false);
     trigger.current?.focus();
+  }
+  async function markAllRead() {
+    if (!hasUnread || markingRead) return;
+    setMarkingRead(true);
+    try {
+      await api("auth/notifications/mark-all-read", "POST");
+      setEvents((current) =>
+        current.map((event) => ({ ...event, read: true })),
+      );
+    } catch {
+      setError("Notifications couldn’t be marked as read. Try again.");
+    } finally {
+      setMarkingRead(false);
+    }
   }
   return (
     <div
@@ -193,6 +210,14 @@ export function NotificationPanel({
           <div className="notification-heading">
             <h2>Notifications</h2>
             <div className="notification-heading-actions">
+              <button
+                type="button"
+                className="notification-mark-read"
+                disabled={!hasUnread || markingRead}
+                onClick={() => void markAllRead()}
+              >
+                {markingRead ? "Marking…" : "Mark all read"}
+              </button>
               <span className="notification-tip-anchor">
                 <button
                   type="button"
@@ -265,7 +290,7 @@ export function NotificationPanel({
                             {reachable ? (
                               <button
                                 type="button"
-                                className="notification-row"
+                                className={`notification-row${event.read ? "" : " is-unread"}`}
                                 onClick={() => {
                                   if (
                                     onOpenAgreement(
@@ -277,10 +302,24 @@ export function NotificationPanel({
                                 }}
                               >
                                 {body}
+                                {!event.read && (
+                                  <span
+                                    className="notification-unread-dot"
+                                    aria-hidden="true"
+                                  />
+                                )}
                               </button>
                             ) : (
-                              <div className="notification-row">
+                              <div
+                                className={`notification-row${event.read ? "" : " is-unread"}`}
+                              >
                                 {body}
+                                {!event.read && (
+                                  <span
+                                    className="notification-unread-dot"
+                                    aria-hidden="true"
+                                  />
+                                )}
                                 <span className="notification-access-note">
                                   You no longer have access to this agreement.
                                 </span>

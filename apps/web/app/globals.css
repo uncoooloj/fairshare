@@ -1685,6 +1685,19 @@ td:last-child {
   gap: 4px;
   margin-right: -6px;
 }
+.notification-mark-read {
+  min-height: 32px;
+  padding: 4px 6px;
+  border: 0;
+  background: none;
+  color: #1f4ee8;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+}
+.notification-mark-read:disabled {
+  color: #94a3b8;
+}
 .notification-tip-anchor {
   position: relative;
   display: inline-flex;
@@ -1727,6 +1740,7 @@ td:last-child {
 }
 .notification-row {
   display: grid;
+  position: relative;
   width: 100%;
   min-height: 64px;
   padding: 12px 16px;
@@ -1742,6 +1756,12 @@ button.notification-row {
 }
 button.notification-row:hover {
   background: #f8fafc;
+}
+.notification-row.is-unread {
+  background: #eff6ff;
+}
+button.notification-row.is-unread:hover {
+  background: #dbeafe;
 }
 .notification-row:focus-visible {
   outline: 2px solid #1f4ee8;
@@ -1792,6 +1812,20 @@ button.notification-row:hover {
   color: #64748b;
   font-size: 14px;
   line-height: 1.35;
+}
+.notification-unread-dot {
+  position: absolute;
+  top: 50%;
+  right: 16px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #2563eb;
+  transform: translateY(-50%);
+}
+.notification-row.is-unread .notification-row-content,
+.notification-row.is-unread .notification-access-note {
+  padding-right: 20px;
 }
 .notification-access-note {
   padding-left: 44px;
