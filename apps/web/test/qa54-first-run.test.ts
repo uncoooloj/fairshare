@@ -8,17 +8,17 @@ test("client-side session and section changes update the document title", () => 
   const app = component("fairshare-app");
   assert.match(
     app,
-    /flowKind === "\/invitation"\s*\? "Invitation · Fairshare"/,
+    /flowToken && flowKind === "\/invitation"\s*\? "Invitation · Fairshare"/,
   );
   assert.match(
     app,
-    /flowKind === "\/verify-email"\s*\? "Verify email · Fairshare"/,
+    /flowToken && flowKind === "\/verify-email"\s*\? "Verify email · Fairshare"/,
   );
   assert.match(
     app,
     /user\s*\? `\$\{section\} · Fairshare`\s*: "Log in · Fairshare"/,
   );
-  assert.match(app, /\[ready, user, section, flowKind\]/);
+  assert.match(app, /\[ready, user, section, flowKind, flowToken\]/);
 });
 
 test("first-run payouts is an empty state, not the agreement creation form", () => {

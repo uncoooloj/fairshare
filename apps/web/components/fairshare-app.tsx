@@ -406,14 +406,14 @@ export default function FairshareApp() {
   useEffect(() => {
     if (!ready) return;
     document.title =
-      flowKind === "/invitation"
+      flowToken && flowKind === "/invitation"
         ? "Invitation · Fairshare"
-        : flowKind === "/verify-email"
+        : flowToken && flowKind === "/verify-email"
           ? "Verify email · Fairshare"
           : user
             ? `${section} · Fairshare`
             : "Log in · Fairshare";
-  }, [ready, user, section, flowKind]);
+  }, [ready, user, section, flowKind, flowToken]);
   useEffect(() => {
     if (user)
       run(async () => {
