@@ -902,3 +902,65 @@ test("the stepper says which question you're on; Share falls back to copy", () =
     ShareMethod.SHEET,
   );
 });
+
+test("not an agreement: no footer Continue, and uploading again discards the first draft", () => {
+  const only = namesOnlyReading();
+  const agreement = {
+    workspaceId: "w",
+    id: "a",
+    revision: 1,
+    value: {
+      name: "Untitled agreement",
+      members: [
+        { userId: "owner", displayName: "Maya Okafor", role: "ORGANIZER" },
+      ],
+      versions: [],
+    },
+  } as unknown as Agreement;
+  const render = (extraction: unknown) =>
+    renderToStaticMarkup(
+      createElement(AgreementCreationWizard, {
+        owner,
+        resume: {
+          created: {
+            workspaceId: "w",
+            agreementId: "a",
+            documentId: "d",
+            documentText: only.doc,
+            agreement,
+          },
+          extraction,
+        },
+        onCreate: async () => {
+          throw new Error("not called");
+        },
+        onFinish: noop,
+        onKeepDraft: noop,
+        onClose: noop,
+        onBusyChange: noop,
+      }),
+    );
+  const html = render(only.extraction);
+  assert.match(
+    html,
+    /This doesn(’|'|&#x27;)t look like a revenue-share agreement/,
+  );
+  assert.match(html, /Upload a different file/);
+  assert.doesNotMatch(html, /wiz-footer|>Continue</);
+  // An ordinary manual Check keeps its Continue.
+  assert.match(render(null), />Continue</);
+  // Upload again deletes the first draft and starts clean; Set it up myself leaves the screen.
+  const again = wizard.slice(
+    wizard.indexOf("async function uploadAgain()"),
+    wizard.indexOf("async function discard()"),
+  );
+  assert.match(again, /await deleteDraft\(/);
+  assert.match(again, /clearDraftAnswers\(/);
+  assert.match(again, /setCreated\(null\)/);
+  assert.match(again, /setStage\(WizardStage\.UPLOAD\)/);
+  assert.match(wizard, /onUploadAgain=\{\(\) => void uploadAgain\(\)\}/);
+  assert.match(
+    wizard,
+    /onSetUpMyself=\{\(\) => setCheckMode\(CheckMode\.MANUAL\)\}/,
+  );
+});

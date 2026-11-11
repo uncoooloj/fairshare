@@ -263,6 +263,7 @@ export function WizardCheckStep({
   peopleFixed = false,
   flag,
   onUploadAgain,
+  onSetUpMyself,
 }: {
   answers: AgreementAnswers;
   onChange(answers: AgreementAnswers): void;
@@ -275,6 +276,8 @@ export function WizardCheckStep({
   flag?: { card: CheckCard; note: ReactNode };
   /** Not an agreement: back to Upload for another file. */
   onUploadAgain?: () => void;
+  /** Not an agreement: the organizer chose to set the split up by hand. */
+  onSetUpMyself?: () => void;
 }) {
   const [setUpMyself, setSetUpMyself] = useState(false);
   // Once they chose to set it up (or already added people), it's a manual setup.
@@ -336,7 +339,10 @@ export function WizardCheckStep({
           <button
             type="button"
             className="button secondary"
-            onClick={() => setSetUpMyself(true)}
+            onClick={() => {
+              setSetUpMyself(true);
+              onSetUpMyself?.();
+            }}
           >
             Set it up myself
           </button>

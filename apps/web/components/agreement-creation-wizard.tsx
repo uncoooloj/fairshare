@@ -633,6 +633,37 @@ export function AgreementCreationWizard({
     });
   }
 
+  /**
+   * Not an agreement → "Upload a different file": the first draft is discarded (it holds
+   * nothing but that document), so Agreements never fills up with abandoned drafts. The
+   * next "Read my agreement" saves a fresh one.
+   */
+  async function uploadAgain() {
+    if (!created || !agreement) {
+      setStage(WizardStage.UPLOAD);
+      return;
+    }
+    const { workspaceId, agreementId } = created;
+    await guarded(async () => {
+      await deleteDraft(workspaceId, agreementId, agreement.revision);
+      clearDraftAnswers(workspaceId, agreementId);
+      readingGeneration.current++;
+      requestId.current = "";
+      setCreated(null);
+      setAgreement(null);
+      setAnswers(null);
+      setLinks({});
+      setCheckMode(CheckMode.MANUAL);
+      setEqualSplitGuessed(false);
+      setQuestionIndex(0);
+      setModeState(DocumentMode.UPLOAD);
+      setFileState(null);
+      setTextState("");
+      setDocumentError("");
+      setStage(WizardStage.UPLOAD);
+    });
+  }
+
   async function discard() {
     if (!created || !agreement) {
       onClose();
@@ -772,19 +803,27 @@ export function AgreementCreationWizard({
     );
   }
 
+  // "This doesn't look like a revenue-share agreement": its own two buttons are the only
+  // actions, so no footer. Same rule as Check uses to leave that screen.
+  const notAgreement =
+    checkMode === CheckMode.NOT_AGREEMENT && answers
+      ? answers.people.value.length <= 1
+      : false;
   if (stage === WizardStage.CHECK && answers)
     return frame(
-      <>
-        <span />
-        <button
-          type="button"
-          className="button primary"
-          disabled={busy}
-          onClick={leaveCheck}
-        >
-          Continue
-        </button>
-      </>,
+      notAgreement ? null : (
+        <>
+          <span />
+          <button
+            type="button"
+            className="button primary"
+            disabled={busy}
+            onClick={leaveCheck}
+          >
+            Continue
+          </button>
+        </>
+      ),
       <>
         <WizardCheckStep
           answers={answers}
@@ -794,7 +833,8 @@ export function AgreementCreationWizard({
           }}
           mode={checkMode}
           equalSplitGuessed={equalSplitGuessed}
-          onUploadAgain={() => setStage(WizardStage.UPLOAD)}
+          onUploadAgain={() => void uploadAgain()}
+          onSetUpMyself={() => setCheckMode(CheckMode.MANUAL)}
         />
         {created?.lowConfidence && (
           <p className="wiz-warning" role="note">
