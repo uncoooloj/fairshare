@@ -1,8 +1,10 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { useEmailDelivery } from "../lib/email-capability";
 import { api } from "../lib/model";
 import styles from "./designer-auth.module.css";
 export function PasswordRecovery({ reset = false }: { reset?: boolean }) {
+  const emailDelivery = useEmailDelivery();
   const [token, setToken] = useState(""),
     [busy, setBusy] = useState(false),
     [notice, setNotice] = useState(""),
@@ -26,7 +28,9 @@ export function PasswordRecovery({ reset = false }: { reset?: boolean }) {
         <p className={styles.subtitle}>
           {reset
             ? "Your reset link can be used once. All signed-in sessions will be signed out."
-            : "Enter your verified account email. We will request a secure reset link."}
+            : emailDelivery
+              ? "Enter your verified account email. We will request a secure reset link."
+              : "Email password recovery is unavailable in this environment. If you are still signed in, change your password in Settings → Profile. We cannot provide a reset link without verifying account ownership."}
         </p>
         {notice && <p role="status">{notice}</p>}
         {error && (
@@ -34,7 +38,7 @@ export function PasswordRecovery({ reset = false }: { reset?: boolean }) {
             {error}
           </p>
         )}
-        {!done && (
+        {!done && (reset || emailDelivery) && (
           <form
             className={styles.form}
             aria-busy={busy}

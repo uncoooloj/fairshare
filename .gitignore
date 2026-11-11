@@ -17,3 +17,4 @@ coverage/
 .open-next/
 .wrangler/
 .dev.vars*
+.worktrees/

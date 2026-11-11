@@ -176,6 +176,10 @@ export async function buildApp(
       mfaCode: { type: "string", maxLength: 80 },
     },
   };
+  app.get("/api/auth/capabilities", async () => ({
+    emailDelivery: !options.demo && Boolean(options.mailTransport),
+    invitationDelivery: "LINK",
+  }));
   app.get("/health", async () => ({
     status: "ok",
     mode,

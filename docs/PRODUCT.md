@@ -56,7 +56,7 @@ The primary product object is an agreement. Documents, people, clarifications, r
 
 ## Settings boundaries
 
-Display preferences change the presentation of USD amounts and dates; they do not convert money or change agreement inputs. Notification preferences filter the in-app feed and configured approval-request email. Security email remains outside those controls.
+Display preferences change the presentation of USD amounts and dates; they do not convert money or change agreement inputs. The current settings UI offers notification preferences for the in-app feed. Legacy saved email preference data can still gate configured approval-request email on the API; security email remains outside those controls.
 
 Each workspace owner or member manages their own workspace-scoped sandbox payout destination. A saved ID is not provider-verified, is not an OAuth connection, and does not expose server credentials. The activity log is read-only and only shows account activity and agreement events the person may access.
 
@@ -78,7 +78,7 @@ The agreement list should show a real metric such as **Revenue received**, with 
 2. **Add the source agreement.** Start with upload or pasted text. The first intake creates the workspace, agreement and immutable source together, so a failed source is not a partial collaboration. The implementation supports bounded PDF and DOCX text extraction; local scanned-PDF OCR is an optional, separately configured path and must remain explicit. Formatting, tracked edits and OCR output require comparison against the original.
 3. **Review the generated name.** A filename can provide an initial title. If there is no filename, a short safe heading from pasted source can do so; clauses, commands and unsafe text must fall back to **Untitled agreement**. This local fallback is not AI interpretation. Let the organizer rename the workspace or agreement without implying that its terms changed. A creative role such as producer is separate from permissions such as organizer or participant.
 4. **Identify participants.** Match names in the agreement to invited accounts, then add every accepted account that needs a share or approval to the agreement. Unknown or ambiguous names must be resolved rather than silently assigned. Confirm the advance recipient separately from the organizer’s role. Accepting a workspace invitation does not add someone to the agreement or make them eligible to review.
-5. **Confirm the roster, then review the proposed rules.** Before the first draft, the person saving it explicitly acknowledges the displayed roster, including an intentional one-person agreement. This acknowledgement is not an approval or an additional membership action. Do this before asking people to activate the rules. Invitations can be drafted during setup; sending one is a distinct action.
+5. **Confirm the roster, then review the proposed rules.** Before the first draft, the person saving it explicitly acknowledges the displayed roster, including an intentional one-person agreement. This acknowledgement is not an approval or an additional membership action. Do this before asking people to activate the rules. Create a private invitation link when access is needed and share it directly; the optional configured legacy email-invitation route is backend-only in the current web experience.
 6. **Connect payment capability when needed.** The organizer’s merchant setup and collaborators’ recipient details are different tasks. Do not imply that every participant needs to supply merchant API keys. Provider-specific onboarding depends on the integration chosen and verified.
 
 The workspace-name field begins with the saved name. Background refreshes may update an untouched field, but must not replace a name someone is currently editing; a failed save leaves that local change available to retry.
@@ -89,7 +89,7 @@ The invitation identifies the collaboration and inviter, without exposing the fu
 
 Actions are **Approve this version**, **Request a change** and **Ask a question**. A person can inspect the source and example calculation before deciding. Approval of the app’s allocation rules is not presented as signing or legally amending the original agreement.
 
-Show invitation states separately from rule approvals: an invitation may be sent or accepted while approval is still pending. Expired, revoked, wrong-account and already-accepted links need clear recovery paths. A successful sign-in should return the person to the invitation rather than drop them on a generic dashboard.
+Show invitation states separately from rule approvals: a private link may be shared or accepted while approval is still pending. Provide a copied review reminder for direct sharing after a version is ready; it does not send email. Expired, revoked, wrong-account and already-accepted links need clear recovery paths. A successful sign-in should return the person to the invitation rather than drop them on a generic dashboard.
 
 ## Design states to include
 
