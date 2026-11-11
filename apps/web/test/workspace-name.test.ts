@@ -50,24 +50,13 @@ test("confirmed saved name becomes clean, and returning to server name clears di
     false,
   );
 });
-test("workspace form receives server name and resets only when workspace identity changes", () => {
+test("internal group naming is not exposed as agreement settings", () => {
   const app = readFileSync(
     new URL("../components/fairshare-app.tsx", import.meta.url),
     "utf8",
   );
-  assert.match(
+  assert.doesNotMatch(
     app,
-    /WorkspaceNameForm\s+key=\{workspace\}\s+name=\{\s*workspaces\.find\(\(w\)\s*=>\s*w\.id\s*===\s*workspace\)\?\.name/,
+    /WorkspaceNameForm|Rename your workspace|<h2>Workspace/,
   );
-  const form = readFileSync(
-    new URL("../components/workspace-name-form.tsx", import.meta.url),
-    "utf8",
-  );
-  assert.match(
-    form,
-    /useReducer\(\s*workspaceNameDraft,\s*name,\s*initialWorkspaceName,?\s*\)/,
-  );
-  assert.match(form, /pending\.current\s*\|\|\s*busy/);
-  assert.match(form, /maxLength=\{100\}/);
-  assert.match(form, /value=\{state.draft\}/);
 });

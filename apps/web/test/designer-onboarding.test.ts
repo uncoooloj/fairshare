@@ -22,16 +22,7 @@ test("onboarding never claims provider success or adds unsupported OAuth links",
     source,
     /It\s+does\s+not\s+approve an agreement\s+or\s+change anyone’s share\./,
   );
-  assert.match(
-    source,
-    /if\s*\(\s*busy\s*\|\|\s*submitting\.current\s*\|\|\s*!name\.trim\(\)\s*\)\s*return;/,
-  );
-  assert.ok(source.includes("submitting.current = true;"));
-  assert.ok(source.includes("await onCreate(name.trim())"));
-  assert.match(
-    source,
-    /finally\s*\{\s*submitting\.current\s*=\s*false;\s*setCreating\(false\);\s*\}/,
-  );
+  assert.doesNotMatch(source, /WorkspaceOnboarding|Workspace name/);
   assert.match(source, /if\s*\(\s*!busy\s*\)\s*onContinue\(\s*\)/);
   assert.doesNotMatch(
     source,

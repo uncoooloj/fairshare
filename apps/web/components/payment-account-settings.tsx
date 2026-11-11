@@ -79,10 +79,7 @@ export function PaymentAccountsSettings({
     return (
       <section className="panel">
         <h2>Payment accounts</h2>
-        <p>
-          Upload your first agreement to create a workspace before adding a
-          payout destination.
-        </p>
+        <p>Upload your first agreement before adding a payout destination.</p>
       </section>
     );
   return (
@@ -99,22 +96,24 @@ export function PaymentAccountsSettings({
             <p>PayPal sandbox checkout</p>
             <p className="muted">
               {data.providerConfigured
-                ? "PayPal sandbox credentials are configured. Payments are confirmed with PayPal before allocation."
-                : "PayPal sandbox credentials are not configured. Checkout is unavailable."}
+                ? "Sandbox PayPal credentials are configured. Payments are allocated only after provider verification."
+                : "Sandbox PayPal credentials are not configured. Checkout is unavailable."}
             </p>
           </section>
           <section className="section">
             <h3>Sending payouts</h3>
             <p className="muted">
-              The server’s sandbox merchant account sends agreed shares. These
-              are test payments; no real money moves.
+              Eligible payouts can be submitted through PayPal after the
+              agreement and payment have been verified. These are test payments;
+              no real money moves.
             </p>
           </section>
           <section className="section">
             <h3>Your payout destination</h3>
             <p className="muted">
-              Save your PayPal sandbox merchant ID for this workspace. This is
-              not an OAuth connection or an ownership verification.
+              Save your PayPal sandbox merchant ID for the selected agreement
+              and other agreements with the same team. This is not an OAuth
+              connection or an ownership verification.
             </p>
             <form
               onSubmit={(e) => {
@@ -207,7 +206,7 @@ export function PaymentAccountsSettings({
                             onClick={async () => {
                               try {
                                 await navigator.clipboard.writeText(
-                                  `Hi ${m.name}, please open Fairshare, select our workspace, and add your sandbox merchant ID under Settings → Payment accounts so your agreed share can be paid. ${location.origin}/app`,
+                                  `Hi ${m.name}, please open Fairshare, open our agreement, and add your sandbox merchant ID under Settings → Payment accounts so your agreed share can be paid. ${location.origin}/app`,
                                 );
                                 setMessage(
                                   "Reminder copied. Share it directly with this collaborator. No email was sent.",

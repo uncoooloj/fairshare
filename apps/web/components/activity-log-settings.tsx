@@ -22,6 +22,7 @@ const label = (value: string) =>
   value
     .toLowerCase()
     .replaceAll("_", " ")
+    .replace(/workspace/g, "team access")
     .replace(/^./, (c) => c.toUpperCase());
 export function ActivityLogSettings({ workspace }: { workspace: string }) {
   const [actor, setActor] = useState(""),
@@ -165,7 +166,7 @@ export function ActivityLogSettings({ workspace }: { workspace: string }) {
                     <tr key={e.id}>
                       <td>{e.actorName}</td>
                       <td>{label(e.action)}</td>
-                      <td>{e.agreementName ?? "Account / workspace"}</td>
+                      <td>{e.agreementName ?? "Account"}</td>
                       <td>
                         <time dateTime={new Date(e.createdAt).toISOString()}>
                           {formatDate(e.createdAt)}

@@ -6,9 +6,11 @@ const app = readFileSync(
   "utf8",
 );
 
-test("workspace selector only offers switching when there is a choice", () => {
-  assert.match(app, /workspaces\.length\s*>\s*1\s*\?\s*\(\s*<select/);
-  assert.match(app, /workspaces\[0\]\?\.name\s*\|\|\s*"No workspace yet"/);
+test("navigation selects actual agreements, never hidden tenant groups", () => {
+  assert.match(app, /aria-label="Open agreement"/);
+  assert.match(app, /agreements.map\(\(agreement\)/);
+  assert.match(app, /openAgreement\(agreement\)/);
+  assert.doesNotMatch(app, /aria-label="Workspace"|No workspace yet/);
 });
 test("account settings and invitations remain accessible before workspace creation", () => {
   assert.match(
@@ -28,6 +30,11 @@ test("atomic creation adopts the returned workspace and document before optional
   );
   assert.match(creation, /api\(\s*"agreements\/intake",\s*"POST"/);
   assert.match(creation, /commitWorkspace\(result.workspace.id\)/);
+  assert.match(creation, /void loadWorkspace\(intakeWorkspaceId\)/);
+  assert.match(
+    creation,
+    /item\.workspaceId !== result\.agreement\.workspaceId \|\|\s*item\.id !== result\.agreement\.id/,
+  );
   assert.match(creation, /setDocumentId\(result.document.documentId\)/);
   assert.doesNotMatch(creation, /await loadWorkspaces|await openAgreement/);
 });

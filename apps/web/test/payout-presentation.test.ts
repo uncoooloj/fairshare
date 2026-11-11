@@ -12,6 +12,7 @@ import {
 const row: PaymentGridRow = {
   id: "p1",
   agreementId: "a",
+  agreementKey: '["w","a"]',
   agreementName: "Album",
   recipientName: "Riley",
   currency: "USD",

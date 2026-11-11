@@ -43,7 +43,7 @@ export default function Home() {
             Get started <span aria-hidden="true">→</span>
           </a>
           <p className={styles.note}>
-            Have an account? <a href="/login">Open your workspace</a>
+            Have an account? <a href="/login">Open your agreements</a>
           </p>
         </section>
         <section

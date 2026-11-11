@@ -24,7 +24,7 @@ test("invitation context comes from server, shows signed-in account and explicit
   assert.match(source, /preview.agreementName/);
   assert.match(source, /preview.inviterName/);
   assert.match(source, /Joining as/);
-  assert.match(source, /workspace member and agreement collaborator/);
+  assert.match(source, /collaborator on this\s+agreement/);
   assert.match(source, /Accept and open agreement/);
 });
 test("approval success triggers payout status prompt; later neither undoes approval nor auto-saves", () => {

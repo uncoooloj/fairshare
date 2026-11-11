@@ -18,7 +18,7 @@ test("first action is upload or paste, never title or workspace setup", () => {
   );
   assert.match(html, /type="file"/);
   assert.match(html, /<textarea/);
-  assert.match(html, /create your workspace automatically/);
+  assert.match(html, /take care of the setup/);
   assert.doesNotMatch(html, /label>Agreement name|label>Workspace name/);
   assert.match(html, /AI interpretation requires your confirmation/);
 });

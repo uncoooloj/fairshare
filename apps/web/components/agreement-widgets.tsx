@@ -190,7 +190,7 @@ export function AgreementList({
                 );
                 const shares = (active || latest)?.rules.shares;
                 return (
-                  <tr key={a.id}>
+                  <tr key={`${a.workspaceId}:${a.id}`}>
                     <td>
                       <button
                         className="text-button strong agreement-name"

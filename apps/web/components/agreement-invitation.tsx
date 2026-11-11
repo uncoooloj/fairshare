@@ -42,7 +42,7 @@ export function AgreementInvitation({
     <section className="section">
       <h3>Invite someone to {name}</h3>
       <p className="muted">
-        This private, single-use link adds its holder to this workspace and this
+        This private, single-use link adds its holder to your team and this
         agreement after sign-in and acceptance. Share only with your intended
         collaborator. Wait for everyone to join before drafting rules; joining
         never approves rules or moves money.
@@ -159,8 +159,9 @@ export function AgreementInvitationPreview({
             Joining as <strong>{email}</strong>.
           </p>
           <p>
-            Accepting adds you as a workspace member and agreement collaborator.
-            You will review and approve rules separately. No payment is made.
+            Accepting adds you to the team and as a collaborator on this
+            agreement. It does not grant access to other agreements. You will
+            review and approve rules separately. No payment is made.
           </p>
           <p className="muted">
             Expires {new Date(preview.expiresAt).toLocaleString()}.

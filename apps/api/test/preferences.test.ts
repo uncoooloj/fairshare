@@ -153,6 +153,62 @@ test("in-app notifications respect channels, workspace and agreement membership,
       await app.inject({ url: "/api/auth/notifications", headers })
     ).json().events;
     assert.equal(events.length, 2);
+    const secondWorkspace = app.store.createWorkspace(a.user.id, "Second");
+    const duplicateAgreement = {
+      ...agreement,
+      name: "Second song",
+      audit: [
+        {
+          sequence: 1,
+          type: "SENT_FOR_REVIEW",
+          at: "2026-11-10T13:00:00Z",
+          details: { versionId: 1 },
+        },
+      ],
+    };
+    app.store.db
+      .prepare("INSERT INTO fairshare_collaborations VALUES(?,?,?,?)")
+      .run(
+        secondWorkspace.id,
+        duplicateAgreement.id,
+        1,
+        JSON.stringify(duplicateAgreement),
+      );
+    app.store.db
+      .prepare(
+        "INSERT INTO fairshare_payout_ops(id,workspace_id,collaboration_id,capture_id,user_id,recipient_id,amount,status) VALUES(?,?,?,?,?,?,?,?)",
+      )
+      .run(
+        "payout-second",
+        secondWorkspace.id,
+        duplicateAgreement.id,
+        "capture-second",
+        a.user.id,
+        "recipient",
+        100,
+        "SUCCESS",
+      );
+    events = (
+      await app.inject({ url: "/api/auth/notifications", headers })
+    ).json().events;
+    const duplicateEvents = events.filter(
+      (event: any) => event.agreementId === agreement.id,
+    );
+    assert.equal(duplicateEvents.length, 4);
+    assert.deepEqual(
+      new Set(duplicateEvents.map((event: any) => event.workspaceId)),
+      new Set([w.id, secondWorkspace.id]),
+    );
+    assert.deepEqual(
+      new Set(duplicateEvents.map((event: any) => event.agreementName)),
+      new Set([agreement.name, duplicateAgreement.name]),
+    );
+    assert.equal(
+      new Set(
+        duplicateEvents.map((event: any) => `${event.workspaceId}:${event.id}`),
+      ).size,
+      duplicateEvents.length,
+    );
     const preferences = defaultPreferences();
     preferences.notifications.approvalRequests.inApp = false;
     preferences.notifications.payoutCompleted.inApp = false;
