@@ -25,6 +25,13 @@ import {
 } from "./agreement-intake";
 import { isDraftAgreement } from "./sections/agreements-section";
 import { AccessPrompt } from "./designer-auth";
+import { OnboardingDetails, OnboardingWelcome } from "./onboarding-details";
+import {
+  browserSessionStorage,
+  readOnboardingStage,
+  writeOnboardingStage,
+  type OnboardingStage,
+} from "./onboarding-storage";
 import { recoverSourceDocument } from "../lib/source-recovery";
 import { useRouter } from "next/navigation";
 import { Button } from "./ui";
@@ -82,6 +89,8 @@ export default function FairshareApp() {
     [payoutsUnavailable, setPayoutsUnavailable] = useState(false),
     [mode, setMode] = useState("Unavailable");
   const [skippedFirstRun, setSkippedFirstRun] = useState(false);
+  const [onboardingStage, setOnboardingStage] =
+    useState<OnboardingStage | null>(null);
   const [workspacesLoaded, setWorkspacesLoaded] = useState(false);
   const [creating, setCreating] = useState(false),
     // A saved draft the wizard reopens at Check.
@@ -109,6 +118,8 @@ export default function FairshareApp() {
   const replaceNext = useRef(false);
   const [routeTick, setRouteTick] = useState(0);
   const workspaceRequest = useRef(0);
+  const workspaceLoadedRequest = useRef(0);
+  const onboardingFallback = useRef(new Map<string, OnboardingStage>());
   const currentWorkspace = useRef("");
   const openRequest = useRef(0);
   const wizardMayLeave = useRef<() => boolean>(() => true);
@@ -140,7 +151,22 @@ export default function FairshareApp() {
   function clearSession() {
     commitWorkspace("");
     setWorkspaces([]);
+    setWorkspacesLoaded(false);
+    workspaceLoadedRequest.current = 0;
+    setSkippedFirstRun(false);
     setUser(null);
+    setOnboardingStage(null);
+    onboardingFallback.current.clear();
+  }
+  function setOnboardingForUser(stage: OnboardingStage) {
+    if (!user) return;
+    writeOnboardingStage(
+      browserSessionStorage(),
+      onboardingFallback.current,
+      user.id,
+      stage,
+    );
+    setOnboardingStage(stage);
   }
   function mayLeaveDraft() {
     if (busy) return false;
@@ -209,6 +235,7 @@ export default function FairshareApp() {
           ? currentWorkspace.current
           : r.workspaces[0]?.id || "";
       setWorkspaces(r.workspaces);
+      workspaceLoadedRequest.current = request;
       if (id !== currentWorkspace.current) commitWorkspace(id);
       return id;
     } catch (error) {
@@ -535,22 +562,49 @@ export default function FairshareApp() {
             : "Log in · Fairshare";
   }, [ready, user, section, flowKind, flowToken]);
   useEffect(() => {
-    if (user)
-      run(async () => {
-        await loadWorkspaces();
-        setWorkspacesLoaded(true);
-      });
+    if (!user) {
+      setOnboardingStage(null);
+      return;
+    }
+    setOnboardingStage(
+      readOnboardingStage(
+        browserSessionStorage(),
+        onboardingFallback.current,
+        user.id,
+      ),
+    );
+  }, [user?.id]);
+  useEffect(() => {
+    setSkippedFirstRun(false);
+    setWorkspacesLoaded(false);
+    workspaceLoadedRequest.current = 0;
+    if (!user) return;
+    workspaceRequest.current++;
+    const request = workspaceRequest.current;
+    run(async () => {
+      await loadWorkspaces();
+      if (workspaceLoadedRequest.current === request) setWorkspacesLoaded(true);
+    });
   }, [user?.id]);
   useEffect(() => {
     if (workspace && user) run(() => loadWorkspace(workspace));
   }, [workspace]);
+  const firstRun =
+    workspacesLoaded &&
+    needsWorkspace &&
+    !skippedFirstRun &&
+    section !== Section.Payouts;
+  const showOnboarding =
+    !flowToken &&
+    firstRun &&
+    onboardingStage !== null &&
+    onboardingStage !== "agreement" &&
+    onboardingStage !== "complete";
   const showWizard =
     !flowToken &&
     ((creating && (canCreateAgreement || needsWorkspace)) ||
-      (workspacesLoaded &&
-        needsWorkspace &&
-        !skippedFirstRun &&
-        section !== Section.Payouts));
+      (firstRun &&
+        (onboardingStage === null || onboardingStage === "agreement")));
   // The address for what is on screen. The first-run chooser keeps whatever URL it opened at.
   const routePath =
     !user || flowToken
@@ -872,6 +926,15 @@ export default function FairshareApp() {
               try {
                 const r = await api(`auth/${type}`, "POST", data);
                 setCodePrompt("");
+                if (type === "register") {
+                  writeOnboardingStage(
+                    browserSessionStorage(),
+                    onboardingFallback.current,
+                    r.user.id,
+                    "welcome",
+                  );
+                  setOnboardingStage("welcome");
+                }
                 setUser(r.user);
               } catch (cause) {
                 // The password was accepted; this account also needs its authenticator.
@@ -917,6 +980,23 @@ export default function FairshareApp() {
         }
       />
     );
+  if (showOnboarding && onboardingStage === "welcome")
+    return (
+      <OnboardingWelcome onStart={() => setOnboardingForUser("details")} />
+    );
+  if (showOnboarding && onboardingStage === "details")
+    return (
+      <OnboardingDetails
+        name={user.name}
+        onSave={async (name) => {
+          const result = await api<{ user: User }>("auth/profile", "POST", {
+            name,
+          });
+          setUser(result.user);
+          setOnboardingForUser("agreement");
+        }}
+      />
+    );
   if (showWizard)
     return (
       <AgreementIntake
@@ -928,7 +1008,10 @@ export default function FairshareApp() {
         onFinish={finishCreation}
         onKeepDraft={leaveWizard}
         onClose={leaveWizard}
-        onSkip={() => setSkippedFirstRun(true)}
+        onSkip={() => {
+          setSkippedFirstRun(true);
+          setOnboardingForUser("complete");
+        }}
         onBusyChange={setBusy}
         onLeaveAttempt={(attempt) => {
           wizardMayLeave.current = attempt;
