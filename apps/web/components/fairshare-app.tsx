@@ -1,4 +1,11 @@
 "use client";
+import {
+  AgreementInvitation,
+  AgreementInvitationPreview,
+  AGREEMENT_INVITE_PREFIX,
+} from "./agreement-invitation";
+import { PostApprovalPayout } from "./post-approval-payout";
+
 import { OverviewDashboard } from "./overview-dashboard";
 import { AgreementAllocations } from "./agreement-allocations";
 import { allocationTrace } from "../lib/allocation-trace";
@@ -102,6 +109,7 @@ export default function FairshareApp() {
     [preview, setPreview] = useState<any>(null),
     [breakdown, setBreakdown] = useState<Revenue | null>(null),
     [inviteLink, setInviteLink] = useState(""),
+    [approvedForPayout, setApprovedForPayout] = useState(""),
     [flowToken, setFlowToken] = useState(""),
     [flowKind, setFlowKind] = useState("");
   const [draftDirty, setDraftDirty] = useState(false);
@@ -172,11 +180,25 @@ export default function FairshareApp() {
     return id;
   }
   async function acceptInvitation(token: string) {
-    const result = await api("invitations/accept", "POST", { token });
+    const scoped = token.startsWith(AGREEMENT_INVITE_PREFIX);
+    const result = await api(
+      scoped ? "agreement-invitations/accept" : "invitations/accept",
+      "POST",
+      { token: scoped ? token.slice(AGREEMENT_INVITE_PREFIX.length) : token },
+    );
     // Adopt the committed membership immediately. Do not make a consumed
     // one-use invitation look unsuccessful if a later workspace fetch fails.
     openRequest.current++;
     setSelected(null);
+    setPayments([]);
+    setPreview(null);
+    setBreakdown(null);
+    setEditing(false);
+    setSource("");
+    setDocumentId("");
+    setExtraction(null);
+    setDraftDirty(false);
+    rulesDirty.current = false;
     setCreating(false);
     setAgreements([]);
     setMembers([]);
@@ -189,9 +211,26 @@ export default function FairshareApp() {
     setSection(Section.Agreements);
     setFlowToken("");
     history.replaceState(null, "", "/app");
-    setNotice(
-      "Workspace joined. The organizer must add you to the agreement before you can review and approve its rules.",
-    );
+    if (result.agreement) {
+      setAgreements([result.agreement]);
+      setSelected(result.agreement);
+      setTab(AgreementTab.People);
+      setNotice(
+        "You joined this agreement. Joining has not approved any rules or moved money.",
+      );
+      if (workspace === result.workspace.id) {
+        try {
+          await loadWorkspace(result.workspace.id);
+        } catch {
+          setNotice(
+            "You joined this agreement. Refresh to reload the rest of your workspace.",
+          );
+        }
+      }
+    } else
+      setNotice(
+        "Workspace joined. The organizer must add you to the agreement before you can review and approve its rules.",
+      );
   }
   async function loadWorkspace(id: string) {
     if (!id) return;
@@ -507,32 +546,44 @@ export default function FairshareApp() {
             Working…
           </div>
         )}
-        {flowToken && (
-          <AccessPrompt
-            kind={flowKind === "/verify-email" ? "verification" : "invitation"}
+        {flowToken && flowToken.startsWith(AGREEMENT_INVITE_PREFIX) ? (
+          <AgreementInvitationPreview
             email={user.email}
+            token={flowToken.slice(AGREEMENT_INVITE_PREFIX.length)}
             busy={busy}
-            onCancel={isInvitationFlow ? dismissAccessFlow : undefined}
-            onContinue={() =>
-              run(async () => {
-                if (flowKind === "/verify-email") {
-                  const r = await api("auth/verification/confirm", "POST", {
-                    token: flowToken,
-                  });
-                  setUser(r.user);
-                  setNotice(
-                    r.verificationMode === "DEMO_SIMULATION"
-                      ? "Demo verification completed. This does not prove email ownership."
-                      : "Email verified.",
-                  );
-                } else {
-                  await acceptInvitation(flowToken);
-                }
-                setFlowToken("");
-                history.replaceState(null, "", "/app");
-              })
-            }
+            onCancel={dismissAccessFlow}
+            onAccept={() => run(() => acceptInvitation(flowToken))}
           />
+        ) : (
+          flowToken && (
+            <AccessPrompt
+              kind={
+                flowKind === "/verify-email" ? "verification" : "invitation"
+              }
+              email={user.email}
+              busy={busy}
+              onCancel={isInvitationFlow ? dismissAccessFlow : undefined}
+              onContinue={() =>
+                run(async () => {
+                  if (flowKind === "/verify-email") {
+                    const r = await api("auth/verification/confirm", "POST", {
+                      token: flowToken,
+                    });
+                    setUser(r.user);
+                    setNotice(
+                      r.verificationMode === "DEMO_SIMULATION"
+                        ? "Demo verification completed. This does not prove email ownership."
+                        : "Email verified.",
+                    );
+                  } else {
+                    await acceptInvitation(flowToken);
+                  }
+                  setFlowToken("");
+                  history.replaceState(null, "", "/app");
+                })
+              }
+            />
+          )
         )}
         {isInvitationFlow ? null : needsWorkspace ? (
           <>
@@ -627,9 +678,10 @@ export default function FairshareApp() {
                     invitation={
                       workspaces.find((w) => w.id === workspace)?.role ===
                       "OWNER" ? (
-                        <PrivateInvitation
-                          key={workspace}
-                          workspace={workspace}
+                        <AgreementInvitation
+                          key={selected.id}
+                          base={base}
+                          name={selected.value.name}
                         />
                       ) : undefined
                     }
@@ -919,9 +971,10 @@ export default function FairshareApp() {
                                 ))}
                               {workspaces.find((w) => w.id === workspace)
                                 ?.role === "OWNER" && (
-                                <PrivateInvitation
-                                  key={workspace}
-                                  workspace={workspace}
+                                <AgreementInvitation
+                                  key={selected.id}
+                                  base={base}
+                                  name={selected.value.name}
                                 />
                               )}
                             </section>
@@ -1011,11 +1064,23 @@ export default function FairshareApp() {
                                       `/versions/${latest.id}/${action}`,
                                       payload,
                                     );
+                                    if (action === "approve")
+                                      setApprovedForPayout(selected.id);
                                   } finally {
                                     setBusy(false);
                                   }
                                 }}
                               />
+                              {approvedForPayout === selected.id && (
+                                <PostApprovalPayout
+                                  base={base}
+                                  onDismiss={() => setApprovedForPayout("")}
+                                  onSetup={() => {
+                                    setApprovedForPayout("");
+                                    changeAgreementTab(AgreementTab.People);
+                                  }}
+                                />
+                              )}
                               <ReviewDiscussion
                                 key={`${selected.id}:${latest.id}`}
                                 base={base}
