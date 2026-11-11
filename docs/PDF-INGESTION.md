@@ -18,7 +18,7 @@ Body `{ "mimeType": "application/pdf", "base64": "..." }`. It is an API transpor
 - Parser stdout is a private IPC payload, not logged. Stderr is drained and discarded, never exposed to clients. API returns only safe error codes/messages.
 - New successful PDF uploads retain the original bytes with extracted text, original-file SHA-256, extraction engine version and page offset ranges in the private SQLite database. Authorized agreement members can download the original as an attachment. Text-only and legacy uploads retain extracted text only; see security/source-documents.md.
 - PDF text layer reading order may differ from visual order, especially multi-column documents, tables, ligatures, invisible text and unusual fonts. The UI must show the extracted text for review. Exact AI offsets reference this text, **not** pixels or raw PDF byte positions. A matching quote does not prove contract semantics.
-- When local OCR is enabled on the host, scanned/image-only or empty PDFs automatically fall back once after native extraction. Local OCR is off by default and has separate five-page limits; text-layer PDFs never use OCR. When it is disabled, textless PDFs fail with PDF_NO_EXTRACTABLE_TEXT; see LOCAL-OCR.md.
+- When local OCR is enabled on the host, scanned/image-only or empty PDFs automatically fall back once after native extraction. Local OCR is off by default and has separate five-page limits; text-layer PDFs never use OCR. When it is disabled, upload routes return SCANNED_PDF_UNSUPPORTED for textless PDFs; the native reader reports PDF_NO_EXTRACTABLE_TEXT internally. See LOCAL-OCR.md.
 
 ## Provenance
 

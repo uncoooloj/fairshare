@@ -31,7 +31,7 @@ Every collaboration response is `{workspaceId,id,revision,value}`. Use latest `r
 
 ## Security and persistence
 
-Tenant and collaboration membership are checked on reads and writes. Workspace viewers cannot mutate. Access changes/removal are blocked while someone is a collaboration participant. Membership changes after drafting rules are intentionally not supported in MVP. Application owns recovery/reconciliation for those cases rather than rewriting liabilities.
+Tenant and collaboration membership are checked on reads and writes. Workspace viewers cannot mutate. Access changes/removal are blocked while someone is a collaboration participant. Organizers can change agreement participants until the rules are first sent. After sending, pending invite links can be replaced without changing their assigned share; the participant list otherwise stays locked. Application owns recovery/reconciliation for those cases rather than rewriting liabilities.
 
 Immutable documents remain server-side. New PDF/DOCX originals are private authenticated attachments; text-only and legacy documents retain extracted text only. API does not fetch source URLs. PDF and DOCX ingestion use bounded local parsers; see PDF-INGESTION.md and security/source-documents.md. Extraction requires explicit consent that discloses Cloudflare processing and the optional Anthropic fallback; it is rate limited. Do not put personal/legal documents into public demo accounts.
 
