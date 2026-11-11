@@ -6,15 +6,21 @@ import {
 const config = {
   accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
   apiToken: process.env.CLOUDFLARE_API_TOKEN,
-  model: process.env.CLOUDFLARE_CONTRACT_MODEL,
+  // Same variable as the API runtime; CLOUDFLARE_CONTRACT_MODEL is the older name, still accepted.
+  model:
+    process.env.CLOUDFLARE_AI_MODEL || process.env.CLOUDFLARE_CONTRACT_MODEL,
   timeoutMs: 30000,
+  anthropic: {
+    apiKey: process.env.ANTHROPIC_API_KEY,
+    model: process.env.ANTHROPIC_MODEL,
+  },
 };
-if (!config.accountId || !config.apiToken || !config.model) {
+if (!(config.accountId && config.apiToken) && !config.anthropic.apiKey) {
   console.log(
     JSON.stringify({
       status: "NOT_RUN",
       reason:
-        "Configure server-only Cloudflare account, token and text-generation model.",
+        "Configure CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_API_TOKEN, or ANTHROPIC_API_KEY.",
     }),
   );
   process.exit(2);
@@ -55,6 +61,8 @@ for (const fixture of fixtures) {
     httpStatus,
     status: r.status,
     reason: r.reason,
+    provider: r.provider,
+    fallbackFrom: r.fallbackFrom,
     model: r.model,
     sourceHash: r.sourceHash,
     factCount: r.facts.length,

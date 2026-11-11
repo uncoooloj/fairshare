@@ -8,8 +8,5 @@ export function approvalLabel(version: Version | undefined, userId: string) {
   if (version.status === "SUPERSEDED") return "Version replaced";
   return "Awaiting review";
 }
-export function payoutReadinessLabel(status: string | undefined) {
-  if (status === "SAVED_UNVERIFIED") return "Destination saved · not verified";
-  if (status === "MISSING") return "Needs payout destination";
-  return "Status unavailable";
-}
+/** Organizers see readiness only ("Ready to be paid" / "Needs a payout email"), never an address. */
+export { payoutReadinessLabel } from "../components/payout-email-step";

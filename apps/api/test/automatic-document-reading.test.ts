@@ -45,7 +45,7 @@ test("a disabled legacy scan request cannot invoke scan processing", async () =>
   const f = fixture("PDF_NO_EXTRACTABLE_TEXT");
   await assert.rejects(
     readUploadedPdf(f.readers, bytes, { ocrEnabled: false, forceOcr: true }),
-    (e) => e === f.error,
+    (e: any) => e.code === "SCANNED_PDF_UNSUPPORTED",
   );
   assert.deepEqual(f.calls, ["pdf"]);
 });

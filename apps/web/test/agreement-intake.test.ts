@@ -8,24 +8,31 @@ import {
   SAMPLE_PREFILL,
 } from "../components/agreement-intake";
 import { DocumentMode } from "../components/document-step";
-import { emptyDetails } from "../components/wizard-details-step";
 import {
   buildIntakeInput,
   DocumentInputError,
   isUnreadableDocument,
 } from "../components/wizard-intake";
-import { ApiError, Currency, sampleAgreement } from "../lib/model";
+import {
+  ApiError,
+  Currency,
+  sampleAgreement,
+  type Agreement,
+} from "../lib/model";
 
 const owner = { id: "owner", name: "Maya", email: "maya@example.test" };
 const created = async () => ({
   workspaceId: "w",
   agreementId: "a",
   documentId: "d",
+  documentText: "",
+  agreement: {} as Agreement,
 });
 const props = {
   owner,
   onCreate: created,
   onFinish: () => {},
+  onKeepDraft: () => {},
   onClose: () => {},
   onBusyChange: () => {},
 };
@@ -49,25 +56,15 @@ test("later agreements open straight on the wizard; the sample reuses existing s
   assert.equal(SAMPLE_PREFILL.text, sampleAgreement);
 });
 
-test("intake carries the details and USD, and bounds pasted text locally", async () => {
-  const details = {
-    ...emptyDetails(),
-    name: "Midnight Sessions",
-    effectiveFrom: "2026-10-01",
-    noEndDate: true,
-  };
+test("intake sends only the document and USD, and bounds pasted text locally", async () => {
   const input = await buildIntakeInput({
     requestId: "r",
     mode: DocumentMode.PASTE,
     file: null,
     text: "Maya receives 50%.",
-    details,
   });
   assert.deepEqual(input, {
     requestId: "r",
-    name: "Midnight Sessions",
-    effectiveFrom: "2026-10-01",
-    effectiveTo: null,
     currency: Currency.USD,
     text: "Maya receives 50%.",
   });
@@ -77,7 +74,6 @@ test("intake carries the details and USD, and bounds pasted text locally", async
       mode: DocumentMode.PASTE,
       file: null,
       text: "x".repeat(40001),
-      details,
     }),
     DocumentInputError,
   );
@@ -87,7 +83,6 @@ test("intake carries the details and USD, and bounds pasted text locally", async
     mode: DocumentMode.UPLOAD,
     file,
     text: "",
-    details,
   });
   assert.equal(pdf.mimeType, "application/pdf");
   assert.equal(pdf.filename, "deal.pdf");

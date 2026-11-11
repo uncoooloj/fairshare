@@ -3,7 +3,23 @@ import assert from "node:assert/strict";
 import { buildApp } from "../src/app.js";
 import { Role } from "../src/identity.js";
 import { FeePolicy, RuleOrigin } from "@fairshare/domain";
-import { sourceHash, ExtractionStatus } from "@fairshare/contract-ai";
+import {
+  sourceHash,
+  ExtractionProvider,
+  ExtractionSection,
+  ExtractionStatus,
+  FeePolicy,
+  IssueTopic,
+  SectionStatus,
+  type SectionSummary,
+} from "@fairshare/contract-ai";
+const askSections = () =>
+  Object.fromEntries(
+    Object.values(ExtractionSection).map((section) => [
+      section,
+      { status: SectionStatus.ASK, factIndexes: [], issueIndex: null },
+    ]),
+  ) as Record<ExtractionSection, SectionSummary>;
 const password = "Correct-Horse-123";
 const auth = (token: string) => ({ authorization: `Bearer ${token}` });
 async function setup() {
@@ -232,10 +248,32 @@ test("AI is consent gated, source bound and cannot activate rules", async () => 
         executable: false,
         facts: [],
         issues: [
-          { kind: "OTHER" as any, question: "Clarify terms", citation: null },
+          {
+            topic: IssueTopic.FEES,
+            question: "Who pays the card fees?",
+            citation: null,
+            readings: [
+              {
+                label: "Fees come off first",
+                explanation: "Fees come off the top, then split.",
+                setting: { feePolicy: FeePolicy.BEFORE_SPLIT },
+              },
+              {
+                label: "Maya pays the fees",
+                explanation: "Split everything, then Maya pays fees.",
+                setting: {
+                  feePolicy: FeePolicy.ORGANIZER_SHARE,
+                  feeBearer: "Maya",
+                },
+              },
+            ],
+          },
         ],
-        provider: "cloudflare",
+        sections: askSections(),
+        rejections: [],
+        provider: ExtractionProvider.CLOUDFLARE,
         model: "test",
+        fallbackFrom: null,
         promptVersion: "test",
         reason: null,
       };
@@ -288,6 +326,12 @@ test("AI is consent gated, source bound and cannot activate rules", async () => 
     assert.equal(r.statusCode, 200, r.body);
     assert.equal(r.json().executable, false);
     assert.equal(calls, 1);
+    // Per-section status and structured readings reach the client unchanged.
+    assert.equal(r.json().sections.FEES.status, SectionStatus.ASK);
+    assert.deepEqual(r.json().issues[0].readings[1].setting, {
+      feePolicy: FeePolicy.ORGANIZER_SHARE,
+      feeBearer: "Maya",
+    });
     const stored = (
       await app.inject({ url: path, headers: auth(user.token) })
     ).json();
@@ -471,8 +515,11 @@ test("AI completion cannot return or persist data after session revocation", asy
         executable: false,
         facts: [],
         issues: [],
-        provider: "cloudflare",
+        sections: askSections(),
+        rejections: [],
+        provider: ExtractionProvider.ANTHROPIC,
         model: "test",
+        fallbackFrom: ExtractionProvider.CLOUDFLARE,
         promptVersion: "test",
         reason: null,
       };

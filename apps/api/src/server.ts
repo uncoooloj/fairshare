@@ -71,6 +71,10 @@ const app = await buildApp({
     accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
     apiToken: process.env.CLOUDFLARE_API_TOKEN,
     model: process.env.CLOUDFLARE_AI_MODEL,
+    anthropic: {
+      apiKey: process.env.ANTHROPIC_API_KEY,
+      model: process.env.ANTHROPIC_MODEL,
+    },
     onFailure: (diagnostic) =>
       console.warn("contract_extraction_failed", diagnostic),
   },

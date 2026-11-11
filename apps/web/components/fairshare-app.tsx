@@ -2,6 +2,7 @@
 import {
   AgreementInvitationPreview,
   AGREEMENT_INVITE_PREFIX,
+  InvitationSignInContext,
 } from "./agreement-invitation";
 import { useEmailDelivery } from "../lib/email-capability";
 import { useDisplayPreferences } from "./settings-preferences";
@@ -20,11 +21,11 @@ import {
   AgreementIntake,
   type AgreementIntakeInput,
   type CreatedAgreement,
+  type WizardResume,
 } from "./agreement-intake";
-import type { ExtractionResponse } from "../lib/reading";
+import { isDraftAgreement } from "./sections/agreements-section";
 import { AccessPrompt } from "./designer-auth";
 import { recoverSourceDocument } from "../lib/source-recovery";
-import { agreementIdentityKey } from "../lib/agreement-identity";
 import { useRouter } from "next/navigation";
 import { Button } from "./ui";
 import { workspaceBase } from "../lib/workspace-base";
@@ -57,11 +58,11 @@ export default function FairshareApp() {
     [payoutsComplete, setPayoutsComplete] = useState(false),
     [payoutsUnavailable, setPayoutsUnavailable] = useState(false),
     [mode, setMode] = useState("Unavailable");
-  // Set when the wizard finished reading: Terms opens on Proposed rules once.
-  const [rulesLanding, setRulesLanding] = useState("");
   const [skippedFirstRun, setSkippedFirstRun] = useState(false);
   const [workspacesLoaded, setWorkspacesLoaded] = useState(false);
   const [creating, setCreating] = useState(false),
+    // A saved draft the wizard reopens at Check.
+    [resume, setResume] = useState<WizardResume | null>(null),
     [source, setSource] = useState(""),
     [documentId, setDocumentId] = useState(""),
     [extraction, setExtraction] = useState<any>(null),
@@ -120,7 +121,6 @@ export default function FairshareApp() {
   }
   function changeAgreementTab(next: AgreementTab) {
     if (next === tab || !mayLeaveDraft()) return;
-    setRulesLanding("");
     setTab(next);
     setBreakdown(null);
   }
@@ -215,11 +215,15 @@ export default function FairshareApp() {
     commitWorkspace(result.workspace.id);
     setSection(Section.Agreements);
     setFlowToken("");
-    router.replace("/app");
+    // Swap the address without a route change: /invitation and /app are
+    // separate pages, so router.replace would remount the app and drop the
+    // agreement opened below.
+    window.history.replaceState(null, "", "/app");
     if (result.agreement) {
       setAgreements([result.agreement]);
       setSelected(result.agreement);
-      setTab(AgreementTab.People);
+      // Collaborators land on what they get and approve.
+      setTab(AgreementTab.Terms);
       setNotice(
         "You joined this agreement. Joining has not approved any rules or moved money.",
       );
@@ -285,6 +289,7 @@ export default function FairshareApp() {
     }
   }
   async function openAgreement(a: Agreement) {
+    if (user && isDraftAgreement(a, user.id)) return resumeDraft(a);
     if (a.workspaceId !== currentWorkspace.current)
       commitWorkspace(a.workspaceId);
     const request = ++openRequest.current;
@@ -299,7 +304,6 @@ export default function FairshareApp() {
       rulesDirty.current = false;
       setTab(AgreementTab.Overview);
       setSelected(fresh);
-      setRulesLanding("");
       setPayments(p.payments);
       setSection(Section.Agreements);
       setCreating(false);
@@ -326,6 +330,31 @@ export default function FairshareApp() {
       throw error;
     }
   }
+  /** Reopens a never-sent agreement in the wizard at Check, from its stored document. */
+  async function resumeDraft(a: Agreement) {
+    if (a.workspaceId !== currentWorkspace.current)
+      commitWorkspace(a.workspaceId);
+    const request = ++openRequest.current;
+    const root = `${workspaceBase(a.workspaceId)}/collaborations/${a.id}`;
+    const fresh = await api<Agreement>(root);
+    const doc = await recoverSourceDocument(root, undefined, api);
+    if (request !== openRequest.current) return;
+    if (!doc) throw new Error("We couldn’t find this draft’s document.");
+    setSelected(null);
+    setResume({
+      created: {
+        workspaceId: a.workspaceId,
+        agreementId: a.id,
+        documentId: doc.documentId,
+        documentText: doc.text,
+        agreement: fresh,
+        lowConfidence: doc.provenance?.lowConfidence === true,
+      },
+      extraction: doc.extraction ?? null,
+    });
+    setCreating(true);
+  }
+  /** The wizard's private draft: intake saves the workspace, agreement and document together. */
   async function createFromAgreement(
     input: AgreementIntakeInput,
   ): Promise<CreatedAgreement> {
@@ -344,9 +373,12 @@ export default function FairshareApp() {
         ...result.workspace,
       },
     ]);
-    commitWorkspace(result.workspace.id);
-    // The wizard stays open for invite links and reading.
+    if (currentWorkspace.current !== result.workspace.id)
+      commitWorkspace(result.workspace.id);
+    // The wizard stays open through Check, People and Send.
     setCreating(true);
+    setSection(Section.Agreements);
+    // The draft shows in Agreements ("Finish setting up") if the wizard is closed.
     setAgreements((current) => [
       result.agreement,
       ...current.filter(
@@ -355,75 +387,32 @@ export default function FairshareApp() {
           item.id !== result.agreement.id,
       ),
     ]);
-    setSelected(result.agreement);
-    // Member refresh must not make a committed upload appear to fail.
     const intakeWorkspaceId = result.workspace.id;
-    const intakeWorkspaceRequest = workspaceRequest.current;
-    api(`${workspaceBase(result.workspace.id)}/members`)
-      .then((members) => {
-        if (
-          intakeWorkspaceRequest !== workspaceRequest.current ||
-          currentWorkspace.current !== intakeWorkspaceId
-        )
-          return;
-        setMembers(members.members);
-      })
-      .catch(() => {
-        if (
-          intakeWorkspaceRequest !== workspaceRequest.current ||
-          currentWorkspace.current !== intakeWorkspaceId
-        )
-          return;
-        setMembers([]);
-      });
     void loadWorkspace(intakeWorkspaceId).catch(() => {
-      // The intake is committed; a failed optional global refresh must not
-      // make it look unsuccessful or erase the adopted agreement.
+      // The intake is committed; a failed optional refresh must not make it look unsuccessful.
     });
-    setSection(Section.Agreements);
-    setTab(AgreementTab.Terms);
-    setSource(result.document.text);
-    setDocumentId(result.document.documentId);
-    setExtraction(null);
-    setPayments([]);
-    setDraftDirty(false);
-    rulesDirty.current = false;
     return {
       workspaceId: result.workspace.id,
       agreementId: result.agreement.id,
       documentId: result.document.documentId,
+      documentText: result.document.text,
+      agreement: result.agreement,
+      lowConfidence: result.document.provenance?.lowConfidence === true,
     };
   }
-  /** Leave the wizard for the new agreement's Terms; Proposed rules when reading ran. */
-  function finishCreation(
-    created: CreatedAgreement,
-    read: ExtractionResponse | null,
-  ) {
-    const root = `${workspaceBase(created.workspaceId)}/collaborations/${created.agreementId}`;
-    const request = ++openRequest.current;
-    setExtraction(read);
-    setRulesLanding(
-      read
-        ? agreementIdentityKey({
-            workspaceId: created.workspaceId,
-            id: created.agreementId,
-          })
-        : "",
-    );
-    setSection(Section.Agreements);
-    setTab(AgreementTab.Terms);
+  function leaveWizard() {
     setCreating(false);
-    setNotice(
-      read
-        ? "Agreement created. Check each suggested rule. Nothing is approved and no money moves until everyone agrees."
-        : "Agreement created. Add its rules. Nothing is approved and no money moves until everyone agrees.",
-    );
-    // Invitations bump the revision; reload so the next edit isn't a conflict.
-    api<Agreement>(root)
-      .then((fresh) => {
-        if (request === openRequest.current) setSelected(fresh);
-      })
-      .catch(() => {});
+    setResume(null);
+    setSection(Section.Agreements);
+    const id = currentWorkspace.current;
+    if (id) void loadWorkspace(id).catch(() => {});
+  }
+  /** After Sent: the agreement's Overview, now waiting for approvals. */
+  function finishCreation(agreement: Agreement) {
+    setResume(null);
+    setCreating(false);
+    run(() => openAgreement(agreement));
+    void loadWorkspace(agreement.workspaceId).catch(() => {});
   }
   async function refresh() {
     // An operation started in an older render may finish after navigation.
@@ -576,36 +565,41 @@ export default function FairshareApp() {
     );
   if (!user)
     return (
-      <Auth
-        busy={busy}
-        error={error}
-        codePrompt={codePrompt}
-        onCancelCode={() => {
-          setCodePrompt("");
-          setError("");
-        }}
-        onSubmit={(type, data) =>
-          run(async () => {
-            try {
-              const r = await api(`auth/${type}`, "POST", data);
-              setCodePrompt("");
-              setUser(r.user);
-            } catch (cause) {
-              // The password was accepted; this account also needs its authenticator.
-              if (
-                type === "login" &&
-                !data.mfaCode &&
-                cause instanceof ApiError &&
-                cause.code === "MFA_REQUIRED"
-              ) {
-                setCodePrompt(cause.message);
-                return;
+      <>
+        {flowToken.startsWith(AGREEMENT_INVITE_PREFIX) && (
+          <InvitationSignInContext />
+        )}
+        <Auth
+          busy={busy}
+          error={error}
+          codePrompt={codePrompt}
+          onCancelCode={() => {
+            setCodePrompt("");
+            setError("");
+          }}
+          onSubmit={(type, data) =>
+            run(async () => {
+              try {
+                const r = await api(`auth/${type}`, "POST", data);
+                setCodePrompt("");
+                setUser(r.user);
+              } catch (cause) {
+                // The password was accepted; this account also needs its authenticator.
+                if (
+                  type === "login" &&
+                  !data.mfaCode &&
+                  cause instanceof ApiError &&
+                  cause.code === "MFA_REQUIRED"
+                ) {
+                  setCodePrompt(cause.message);
+                  return;
+                }
+                throw cause;
               }
-              throw cause;
-            }
-          })
-        }
-      />
+            })
+          }
+        />
+      </>
     );
   const showWizard =
     !flowToken &&
@@ -618,10 +612,13 @@ export default function FairshareApp() {
     return (
       <AgreementIntake
         first={needsWorkspace && !creating}
+        key={resume ? resume.created.agreementId : "new"}
         owner={{ id: user.id, name: user.name, email: user.email }}
+        resume={resume ?? undefined}
         onCreate={createFromAgreement}
         onFinish={finishCreation}
-        onClose={() => setCreating(false)}
+        onKeepDraft={leaveWizard}
+        onClose={leaveWizard}
         onSkip={() => setSkippedFirstRun(true)}
         onBusyChange={setBusy}
       />
@@ -720,6 +717,7 @@ export default function FairshareApp() {
           )}
           {section === Section.Agreements && !selected && (
             <AgreementsSection
+              userId={user.id}
               canCreateAgreement={canCreateAgreement}
               agreements={agreements}
               workspaces={workspaces}
@@ -739,7 +737,7 @@ export default function FairshareApp() {
               latest={latest}
               active={active}
               tab={tab}
-              rulesLanding={rulesLanding === agreementIdentityKey(selected)}
+              rulesLanding={false}
               workspaces={workspaces}
               workspace={workspace}
               members={members}

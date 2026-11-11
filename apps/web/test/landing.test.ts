@@ -36,6 +36,13 @@ test("login and workspace retain the existing app and invitation entry points", 
     app,
     /\["\/verify-email", "\/invitation"\]\.includes\(location.pathname\)/,
   );
-  assert.ok(!app.includes("history.replaceState"));
+  // Native history is used once: accepting an agreement invite swaps
+  // /invitation#token=… for /app without remounting the app (Next syncs it).
+  assert.equal(app.match(/history\.replaceState/g)?.length, 1);
+  const accept = app.slice(
+    app.indexOf("async function acceptInvitation"),
+    app.indexOf("async function loadWorkspace("),
+  );
+  assert.match(accept, /window\.history\.replaceState\(null, "", "\/app"\)/);
   assert.match(read("../components/password-recovery.tsx"), /href="\/login"/);
 });

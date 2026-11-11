@@ -15,14 +15,18 @@ test("creation starts with one step at a time, and switching upload/paste keeps 
         workspaceId: "w",
         agreementId: "a",
         documentId: "d",
+        documentText: "",
+        agreement: {} as never,
       }),
       onFinish: () => {},
+      onKeepDraft: () => {},
       onClose: () => {},
       onBusyChange: () => {},
     }),
   );
-  assert.match(html, /Agreement name/);
-  assert.doesNotMatch(html, /type="file"|<textarea/);
+  assert.match(html, /Upload your agreement/);
+  assert.match(html, /type="file"/);
+  assert.doesNotMatch(html, /<textarea/);
   const source = readFileSync(
     new URL("../components/wizard-intake.tsx", import.meta.url),
     "utf8",

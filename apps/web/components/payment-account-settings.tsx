@@ -103,7 +103,7 @@ export function PaymentAccountsSettings({
           title="Payment accounts"
           description="Where money comes in and where shares go out."
         />
-        <p>Upload your first agreement before adding a payout destination.</p>
+        <p>Upload your first agreement before adding a payout email.</p>
       </section>
     );
   return (
@@ -164,7 +164,7 @@ export function PaymentAccountsSettings({
                     {data.own?.type === PayoutRecipientType.EMAIL
                       ? data.own.value
                       : data.own
-                        ? `Not set. Payouts go to your older PayPal ID ${data.own.value} until you add one.`
+                        ? "No email yet. Payouts go to the PayPal account you saved earlier until you add one."
                         : "Not set"}
                   </span>
                 )}

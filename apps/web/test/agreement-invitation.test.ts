@@ -24,17 +24,60 @@ test("invitation context comes from server, shows signed-in account and explicit
   assert.match(source, /api\("agreement-invitations\/preview", "POST"/);
   assert.match(source, /preview.agreementName/);
   assert.match(source, /preview.inviterName/);
+  assert.match(
+    source,
+    /\{preview.inviterName\} invited you to \{preview.agreementName\}/,
+  );
+  assert.match(source, /asking you to approve how its\s+money is split/);
   assert.match(source, /Joining as/);
-  assert.match(source, /collaborator on this\s+agreement/);
-  assert.match(source, /Accept and open agreement/);
+  assert.match(source, /collaborator on this\s+agreement only/);
+  assert.match(source, /Nothing is paid until everyone approves/);
+  assert.match(source, /"Review"/);
+  assert.match(source, /export function InvitationSignInContext/);
 });
-test("approval success triggers payout status prompt; later neither undoes approval nor auto-saves", () => {
+test("approval success leads to the get-paid step; it saves only on submit and can be skipped", () => {
   const app = appSource(),
     prompt = read("post-approval-payout.tsx");
-  assert.match(app, /if \(action === "approve"\)/);
   assert.match(app, /setApprovedForPayout\(selected.id\)/);
   assert.match(prompt, /recipient-status/);
-  assert.match(prompt, /without losing your approval/);
-  assert.match(prompt, /not a guarantee of\s+provider verification/);
-  assert.doesNotMatch(prompt, /"PUT"|"POST"/);
+  assert.match(prompt, /<PayoutEmailStep[\s\S]*autoFocus/);
+  assert.match(prompt, /Your approval is already saved/);
+  // The only write is PayoutEmailStep's explicit Save; "Do this later" lives there.
+  assert.doesNotMatch(prompt, /"PUT"|"POST"|paypalId|\{13\}/);
+  assert.match(prompt, /PayoutStepResult.SAVED/);
+});
+test("signed-out invite page names the inviter and agreement above sign-in", async () => {
+  const { createElement } = await import("react");
+  const { renderToStaticMarkup } = await import("react-dom/server");
+  const { InvitationSignInCopy, agreementInviteTokenFromHash } = await import(
+    "../components/agreement-invitation"
+  );
+  const html = renderToStaticMarkup(
+    createElement(InvitationSignInCopy, {
+      preview: {
+        agreementName: "Midnight Sessions",
+        inviterName: "Maya Okafor",
+        expiresAt: 0,
+      },
+    }),
+  );
+  assert.match(html, /Maya Okafor invited you to Midnight Sessions/);
+  assert.match(html, /Sign in or create an account to review it\./);
+  assert.doesNotMatch(html, /\$|%|@/);
+  // Before the preview loads (or if it fails) the copy stays generic.
+  assert.match(
+    renderToStaticMarkup(
+      createElement(InvitationSignInCopy, { preview: null }),
+    ),
+    /invited to review an agreement/,
+  );
+  // The token is read from the fragment only, so it is never sent as a query or path.
+  assert.equal(
+    agreementInviteTokenFromHash("#token=agreement%3Aabc_DEF-123"),
+    "abc_DEF-123",
+  );
+  assert.equal(agreementInviteTokenFromHash("#token=workspace-token"), null);
+  assert.equal(agreementInviteTokenFromHash("#token=%E0%A4%A"), null);
+  const source = read("agreement-invitation.tsx");
+  assert.match(source, /agreementInviteTokenFromHash\(location.hash\)/);
 });

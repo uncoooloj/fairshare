@@ -34,6 +34,10 @@ test(
     assert.equal(result.extraction.engine, expectedEngine);
     assert.equal(result.extraction.ocr, true);
     assert.equal(result.extraction.reviewRequired, true);
+    assert.equal(typeof result.extraction.confidence, "number");
+    assert.equal(typeof result.extraction.lowConfidenceLines, "number");
+    assert.equal(typeof result.extraction.lowConfidence, "boolean");
+    assert.ok(Array.isArray(result.extraction.lowConfidenceRanges));
     assert.equal(result.pages.length, 1);
     assert.equal(
       result.text.slice(result.pages[0].start, result.pages[0].end),

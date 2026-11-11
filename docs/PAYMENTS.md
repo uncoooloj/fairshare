@@ -1,12 +1,12 @@
 # Sandbox payment flow and verification boundary
 
-The API registers sandbox routes under each authenticated collaboration. Only its organizer can create checkout, capture/reconcile payment, dispatch fixed allocations or reconcile payout status. Collaborators can read the collaboration's payment and payout ledger and set only their own PayPal payout email (account-level, `PUT /api/auth/payout-account`), optionally confirmed with "Connect with PayPal" (below). No endpoint accepts arbitrary allocation amounts for payouts.
+The API registers sandbox routes under each authenticated collaboration. Only its organizer can create checkout, capture/reconcile payment, dispatch fixed allocations or reconcile payout status. Collaborators can read the collaboration's payment and payout ledger and set only their own sandbox PayPal recipient ID. No endpoint accepts arbitrary allocation amounts for payouts.
 
 1. POST `.../payments` with `{requestKey, amountCents}` reserves an immutable operation under active unanimously approved rules. A repeat key with different amount or collaboration is rejected. Return includes sandbox approval URL after provider order creation.
 2. Buyer approves in PayPal sandbox; return/cancel callbacks make no claims about payment completion.
 3. POST `.../payments/:paymentId/capture`, then reconcile. Provider read must match order/reference/capture/currency/gross and fee accounting before atomic allocation. Changed active rule version blocks allocation for explicit reconciliation instead of silently applying new terms.
 4. POST `/api/paypal/webhook` verifies PayPal signature, persists event fingerprint and action, rejects changed payloads under existing ID, and processes capture/hold/payout reconciliation. Failures remain PENDING and return503 so provider retries. Unknown IDs retained, never silently credited.
-5. PUT `/api/auth/payout-account` with `{email}` stores the current user's payout email (sent as `recipient_type: EMAIL`; legacy per-workspace PayPal IDs still pay as `PAYPAL_ID`). POST `.../payouts/dispatch` with `{captureId}` reserves each exact allocation once and submits it to sandbox. It is a dispatch command, not discretionary approval of shares. Dispatch remains explicit; the opt-in reconciliation worker only reads and reconciles known operations.
+5. PUT `.../recipient` with `{paypalId}` stores current user's recipient destination. POST `.../payouts/dispatch` with `{captureId}` reserves each exact allocation once and submits it to sandbox. It is a dispatch command, not discretionary approval of shares. Dispatch remains explicit; the opt-in reconciliation worker only reads and reconciles known operations.
 6. Repeated dispatch never sends a second payment for existing operation. POST `.../payouts/:payoutId/reconcile` verifies provider item and updates status. Acceptance is PENDING, not paid. Frozen recipient/amount remain unchanged if profile changes.
 
 ## Deliberate fail-closed limits

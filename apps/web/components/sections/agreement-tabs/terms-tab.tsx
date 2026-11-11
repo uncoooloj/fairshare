@@ -1,5 +1,6 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import { PostApprovalPayout } from "../../post-approval-payout";
+import { CollaboratorTerms } from "../../collaborator-review";
 import { ReviewDiscussion } from "../../review-discussion";
 import { RuleSteps, RuleStepsLayout } from "../../agreement-workspace";
 import {
@@ -94,6 +95,47 @@ export function AgreementTermsTab({
   setDocumentId,
   setExtraction,
 }: AgreementTermsTabProps) {
+  const isOrganizer =
+    selected.value.members.find((m) => m.userId === user.id)?.role ===
+    "ORGANIZER";
+  // Collaborators see what they get and approve; drafting, sending and
+  // proposing revised terms stay with the organizer.
+  if (!isOrganizer)
+    return (
+      <div className="collab-terms">
+        <CollaboratorTerms
+          agreement={selected}
+          version={latest}
+          userId={user.id}
+          base={base}
+          busy={busy}
+          justApproved={approvedForPayout === selected.id}
+          onApprove={async () => {
+            if (!latest) return;
+            await mutate(`/versions/${latest.id}/approve`);
+            setApprovedForPayout(selected.id);
+          }}
+          onRequestChange={async (reason) => {
+            if (!latest) return;
+            await mutate(`/versions/${latest.id}/request-change`, { reason });
+          }}
+          onOpenDocument={() => changeAgreementTab(AgreementTab.Document)}
+          onPayoutDone={() => setApprovedForPayout("")}
+        />
+        {latest && (
+          <ReviewDiscussion
+            key={`${selected.id}:${latest.id}`}
+            base={base}
+            agreement={selected}
+            version={latest}
+            canWrite={
+              workspaces.find((w) => w.id === workspace)?.role !== "VIEWER"
+            }
+            onDirtyChange={setDraftDirty}
+          />
+        )}
+      </div>
+    );
   return (
     <>
       {(editing || !latest) && (
@@ -185,11 +227,7 @@ export function AgreementTermsTab({
             {approvedForPayout === selected.id && (
               <PostApprovalPayout
                 base={base}
-                onDismiss={() => setApprovedForPayout("")}
-                onSetup={() => {
-                  setApprovedForPayout("");
-                  changeAgreementTab(AgreementTab.People);
-                }}
+                onDone={() => setApprovedForPayout("")}
               />
             )}
             <ReviewDiscussion

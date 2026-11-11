@@ -7,6 +7,7 @@ import { rmSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { DomainError } from "@fairshare/domain";
 import { MAX_PDF_BYTES } from "./pdf.js";
+import { layoutPage, type LayoutLine, type TextRange } from "./textLayout.js";
 const limits = { pages: 5, characters: 40000, imageBytes: 20 * 1024 * 1024 };
 let active = 0;
 const fail = (code: string, message: string) => new DomainError(code, message);
@@ -117,9 +118,233 @@ function prepareNativeTool(): Promise<string> {
     }
   })());
 }
-async function nativePages(source: string, timeout: number): Promise<string[]> {
+/** A recognized line with the engine's confidence (0 to 1) for its words. */
+export interface OcrLine extends LayoutLine {
+  confidence: number;
+  /** Another reading of this line contained an amount. */
+  amountHint?: boolean;
+}
+export interface OcrPage {
+  lines: OcrLine[];
+}
+export interface LowConfidenceRange extends TextRange {
+  /** The line contains digits, a percent sign or a currency symbol. */
+  amount: boolean;
+}
+/** Lines with amounts are held to a stricter bar than prose. */
+export const OCR_AMOUNT_LINE_THRESHOLD = 0.9;
+export const OCR_LINE_THRESHOLD = 0.7;
+export const OCR_LOW_DOCUMENT_CONFIDENCE = 0.9;
+const MAX_REPORTED_RANGES = 100;
+const AMOUNT = /[\d%\p{Sc}]/u;
+const ocrMessages = {
+  OCR_TEXT_LIMIT: "OCR text exceeds 40,000 characters. Use a shorter document.",
+  OCR_NO_TEXT:
+    "No readable text was found. Upload a clearer scan or paste the text.",
+};
+
+function editDistance(a: string, b: string): number {
+  a = a.slice(0, 400);
+  b = b.slice(0, 400);
+  let previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= a.length; i++) {
+    const current = [i];
+    for (let j = 1; j <= b.length; j++)
+      current[j] = Math.min(
+        previous[j] + 1,
+        current[j - 1] + 1,
+        previous[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1),
+      );
+    previous = current;
+  }
+  return previous[b.length];
+}
+const squash = (value: string) => value.replace(/\s+/g, " ").trim();
+
+/**
+ * Apple Vision reports near-certain confidence even for misreads such as
+ * "S. Payments" for "5. Payments", so each line is also checked against a
+ * second, independent pass. Lines the passes disagree on, or that only one
+ * pass found, lose confidence in proportion to the difference.
+ */
+export function crossCheckLines(
+  lines: OcrLine[],
+  check: Array<Pick<OcrLine, "text" | "y" | "size">>,
+): OcrLine[] {
+  return lines.map((line) => {
+    const text = squash(line.text);
+    let best = 0,
+      amountHint = false;
+    for (const other of check) {
+      if (Math.abs(other.y - line.y) > Math.max(line.size, other.size) * 0.6)
+        continue;
+      const candidate = squash(other.text);
+      if (AMOUNT.test(candidate)) amountHint = true;
+      if (candidate === text) {
+        best = 1;
+        break;
+      }
+      const length = Math.max(candidate.length, text.length, 1);
+      const similarity = 1 - editDistance(candidate, text) / length;
+      // "5." read as "S." in one pass: only one pass saw an amount.
+      const score =
+        similarity * (AMOUNT.test(candidate) !== AMOUNT.test(text) ? 0.5 : 0.7);
+      best = Math.max(best, score);
+    }
+    const agreement = best === 0 ? 0.5 : best;
+    return {
+      ...line,
+      confidence: Math.min(line.confidence, agreement),
+      amountHint,
+    };
+  });
+}
+
+/** Group Tesseract TSV words into lines; confidence is the weakest word. */
+export function parseTesseractTsv(tsv: string): OcrLine[] {
+  let pageHeight = 0;
+  const lines = new Map<
+    string,
+    {
+      words: string[];
+      x: number;
+      top: number;
+      bottom: number;
+      right: number;
+      size: number;
+      confidence: number;
+    }
+  >();
+  for (const row of tsv.split("\n").slice(1)) {
+    const cells = row.split("\t");
+    if (cells.length < 12) continue;
+    const [level, , block, paragraph, lineNo, , ...rest] = cells;
+    const [left, top, width, height, conf] = rest.slice(0, 5).map(Number);
+    const word = cells.slice(11).join("\t").trim();
+    if (level === "1") pageHeight = top + height;
+    if (
+      level !== "5" ||
+      !word ||
+      ![left, top, width, height].every(Number.isFinite)
+    )
+      continue;
+    const key = `${block}.${paragraph}.${lineNo}`;
+    const line = lines.get(key) ?? {
+      words: [],
+      x: left,
+      top,
+      bottom: top + height,
+      right: left + width,
+      size: height,
+      confidence: 1,
+    };
+    line.words.push(word);
+    line.x = Math.min(line.x, left);
+    line.top = Math.min(line.top, top);
+    line.bottom = Math.max(line.bottom, top + height);
+    line.right = Math.max(line.right, left + width);
+    line.size = Math.max(line.size, height);
+    if (Number.isFinite(conf) && conf >= 0)
+      line.confidence = Math.min(line.confidence, conf / 100);
+    lines.set(key, line);
+  }
+  return [...lines.values()].map((line) => ({
+    text: line.words.join(" "),
+    x: line.x,
+    // Image rows grow downwards; layout expects y to grow upwards.
+    y: pageHeight - line.bottom,
+    right: line.right,
+    size: line.size,
+    confidence: line.confidence,
+  }));
+}
+
+/** Rebuild paragraphs and report confidence over the exact persisted text. */
+export function assembleOcrPages(ocrPages: OcrPage[]) {
+  let text = "";
+  const pages: Array<{ page: number; start: number; end: number }> = [];
+  const ranges: LowConfidenceRange[] = [];
+  let weighted = 0,
+    characters = 0,
+    lowConfidenceLines = 0;
+  for (const [index, page] of ocrPages.entries()) {
+    if (index > 0) text += "\n\n";
+    const start = text.length;
+    const layout = layoutPage(page.lines);
+    for (const [position, lineIndex] of layout.lineIndexes.entries()) {
+      const line = page.lines[lineIndex];
+      const range = layout.lineRanges[position];
+      const length = range.end - range.start;
+      const lineText = layout.text.slice(range.start, range.end);
+      const confidence = Math.max(0, Math.min(1, line.confidence));
+      weighted += confidence * length;
+      characters += length;
+      const amount = AMOUNT.test(lineText) || line.amountHint === true;
+      if (
+        confidence < (amount ? OCR_AMOUNT_LINE_THRESHOLD : OCR_LINE_THRESHOLD)
+      ) {
+        lowConfidenceLines++;
+        if (ranges.length < MAX_REPORTED_RANGES)
+          ranges.push({
+            start: start + range.start,
+            end: start + range.end,
+            amount,
+          });
+      }
+    }
+    text += layout.text;
+    if (text.length > limits.characters)
+      throw fail("OCR_TEXT_LIMIT", ocrMessages.OCR_TEXT_LIMIT);
+    pages.push({ page: index + 1, start, end: text.length });
+  }
+  if (!text.trim()) throw fail("OCR_NO_TEXT", ocrMessages.OCR_NO_TEXT);
+  const confidence = characters
+    ? Math.round((weighted / characters) * 100) / 100
+    : 0;
+  return {
+    text,
+    pages,
+    quality: {
+      confidence,
+      lowConfidenceLines,
+      // Keep the text but let the UI warn that some words may be wrong.
+      lowConfidence:
+        lowConfidenceLines > 0 || confidence < OCR_LOW_DOCUMENT_CONFIDENCE,
+      lowConfidenceRanges: ranges,
+    },
+  };
+}
+
+const finite = (value: unknown) =>
+  typeof value === "number" && Number.isFinite(value);
+function readLine(value: unknown): OcrLine | null {
+  if (value === null || typeof value !== "object") return null;
+  const line = value as Record<string, unknown>;
+  if (
+    typeof line.text !== "string" ||
+    !finite(line.x) ||
+    !finite(line.y) ||
+    !finite(line.right) ||
+    !finite(line.size)
+  )
+    return null;
+  return {
+    text: line.text,
+    x: line.x as number,
+    y: line.y as number,
+    right: line.right as number,
+    size: line.size as number,
+    confidence: finite(line.confidence) ? (line.confidence as number) : 0,
+  };
+}
+async function nativePages(
+  source: string,
+  timeout: number,
+): Promise<OcrPage[]> {
   const binary = await prepareNativeTool();
-  const response = JSON.parse(await command(binary, [source], timeout, 320200));
+  const response = JSON.parse(
+    await command(binary, [source], timeout, 1_000_000),
+  );
   const messages: Record<string, string> = {
     INVALID_PDF: "Choose a readable PDF no larger than 5 MiB.",
     OCR_PAGE_LIMIT:
@@ -139,11 +364,20 @@ async function nativePages(source: string, timeout: number): Promise<string[]> {
   if (
     !Array.isArray(response.pages) ||
     response.pages.length < 1 ||
-    response.pages.length > limits.pages ||
-    response.pages.some((page: unknown) => typeof page !== "string")
+    response.pages.length > limits.pages
   )
     throw fail("OCR_FAILED", messages.OCR_FAILED);
-  return response.pages;
+  return response.pages.map((page: { lines?: unknown; check?: unknown }) => {
+    if (!Array.isArray(page?.lines) || !Array.isArray(page.check))
+      throw fail("OCR_FAILED", messages.OCR_FAILED);
+    const lines = page.lines.map(readLine);
+    const check = page.check.map(readLine);
+    if (lines.includes(null) || check.includes(null))
+      throw fail("OCR_FAILED", messages.OCR_FAILED);
+    return {
+      lines: crossCheckLines(lines as OcrLine[], check as OcrLine[]),
+    };
+  });
 }
 export async function extractPdfOcr(
   bytes: Buffer,
@@ -175,25 +409,8 @@ export async function extractPdfOcr(
     if (process.platform === "darwin") {
       // Prepare before computing the extraction timeout; startup normally warms this.
       await prepareNativeTool();
-      const pageTexts = await nativePages(source, remainingTimeout());
-      let text = "";
-      const pages: Array<{ page: number; start: number; end: number }> = [];
-      for (const [index, pageText] of pageTexts.entries()) {
-        if (text) text += "\n\n";
-        const start = text.length;
-        text += pageText.trim();
-        if (text.length > limits.characters)
-          throw fail(
-            "OCR_TEXT_LIMIT",
-            "OCR text exceeds 40,000 characters. Use a shorter document.",
-          );
-        pages.push({ page: index + 1, start, end: text.length });
-      }
-      if (!text.trim())
-        throw fail(
-          "OCR_NO_TEXT",
-          "No readable text was found. Upload a clearer scan or paste the text.",
-        );
+      const ocrPages = await nativePages(source, remainingTimeout());
+      const { text, pages, quality } = assembleOcrPages(ocrPages);
       return {
         text,
         pages,
@@ -205,6 +422,7 @@ export async function extractPdfOcr(
           ocr: true as const,
           language: "eng",
           reviewRequired: true,
+          ...quality,
         },
       };
     }
@@ -224,8 +442,8 @@ export async function extractPdfOcr(
         "OCR_ENCRYPTED",
         "Remove PDF password protection locally before OCR.",
       );
-    let text = "";
-    const pages: Array<{ page: number; start: number; end: number }> = [];
+    const ocrPages: OcrPage[] = [];
+    let characters = 0;
     for (let page = 1; page <= pageCount; page++) {
       const imagePrefix = join(sourceDirectory, `page-${page}`);
       await command(
@@ -251,30 +469,22 @@ export async function extractPdfOcr(
           "OCR_IMAGE_LIMIT",
           "The scanned page is too large to process.",
         );
-      const pageText = (
+      // TSV carries per-word confidence and positions alongside the text.
+      const lines = parseTesseractTsv(
         await command(
           "tesseract",
-          [imagePath, "stdout", "-l", "eng", "--psm", "3"],
+          [imagePath, "stdout", "-l", "eng", "--psm", "3", "tsv"],
           remainingTimeout(),
-          160100,
-        )
-      ).trim();
-      if (text.length + pageText.length + 2 > limits.characters)
-        throw fail(
-          "OCR_TEXT_LIMIT",
-          "OCR text exceeds 40,000 characters. Use a shorter document.",
-        );
-      if (text) text += "\n\n";
-      const start = text.length;
-      text += pageText;
-      pages.push({ page, start, end: text.length });
+          1_000_000,
+        ),
+      );
+      characters += lines.reduce((sum, line) => sum + line.text.length + 1, 2);
+      if (characters > limits.characters)
+        throw fail("OCR_TEXT_LIMIT", ocrMessages.OCR_TEXT_LIMIT);
+      ocrPages.push({ lines });
       await rm(imagePath, { force: true });
     }
-    if (!text.trim())
-      throw fail(
-        "OCR_NO_TEXT",
-        "No readable text was found. Upload a clearer scan or paste the text.",
-      );
+    const { text, pages, quality } = assembleOcrPages(ocrPages);
     return {
       text,
       pages,
@@ -286,6 +496,7 @@ export async function extractPdfOcr(
         ocr: true as const,
         language: "eng",
         reviewRequired: true,
+        ...quality,
       },
     };
   } finally {

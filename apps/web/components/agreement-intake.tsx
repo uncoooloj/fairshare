@@ -1,10 +1,10 @@
 "use client";
 import { useState } from "react";
-import { sampleAgreement } from "../lib/model";
-import type { ExtractionResponse } from "../lib/reading";
+import { sampleAgreement, type Agreement } from "../lib/model";
 import {
   AgreementCreationWizard,
   type WizardPrefill,
+  type WizardResume,
 } from "./agreement-creation-wizard";
 import {
   FirstAgreementChoice,
@@ -13,39 +13,38 @@ import {
 import type { AgreementIntakeInput, CreatedAgreement } from "./wizard-intake";
 
 export type { AgreementIntakeInput, CreatedAgreement } from "./wizard-intake";
+export type { WizardResume } from "./agreement-creation-wizard";
 
-export const SAMPLE_PREFILL: WizardPrefill = {
-  details: { name: "Sample agreement" },
-  text: sampleAgreement,
-};
+/** The sample opens the wizard with its text already pasted. */
+export const SAMPLE_PREFILL: WizardPrefill = { text: sampleAgreement };
 
 /**
  * Full-screen agreement creation. First-time users choose between their own
- * document and the sample before the wizard opens. The server saves the
- * workspace, agreement and source together, or none at all.
+ * document and the sample before the wizard opens. A saved draft reopens at Check.
  */
 export function AgreementIntake({
   first = false,
   owner,
+  resume,
   onCreate,
   onFinish,
+  onKeepDraft,
   onClose,
   onSkip,
   onBusyChange,
 }: {
   first?: boolean;
   owner: { id: string; name: string; email: string };
+  resume?: WizardResume;
   onCreate: (input: AgreementIntakeInput) => Promise<CreatedAgreement>;
-  onFinish: (
-    created: CreatedAgreement,
-    extraction: ExtractionResponse | null,
-  ) => void;
+  onFinish: (agreement: Agreement) => void;
+  onKeepDraft: (agreement: Agreement) => void;
   onClose: () => void;
   onSkip?: () => void;
   onBusyChange: (busy: boolean) => void;
 }) {
   const [choice, setChoice] = useState<FirstAgreementChoice | null>(
-    first ? null : FirstAgreementChoice.UPLOAD,
+    first && !resume ? null : FirstAgreementChoice.UPLOAD,
   );
   if (choice === null)
     return (
@@ -56,15 +55,17 @@ export function AgreementIntake({
     );
   return (
     <AgreementCreationWizard
-      key={choice}
+      key={resume ? resume.created.agreementId : choice}
       owner={owner}
+      resume={resume}
       prefill={
         choice === FirstAgreementChoice.SAMPLE ? SAMPLE_PREFILL : undefined
       }
       onCreate={onCreate}
       onFinish={onFinish}
-      // A first-time user returns to the chooser; everyone else returns to the app.
-      onClose={first ? () => setChoice(null) : onClose}
+      onKeepDraft={onKeepDraft}
+      // A first-time user who saved nothing returns to the chooser; everyone else returns to the app.
+      onClose={first && !resume ? () => setChoice(null) : onClose}
       onBusyChange={onBusyChange}
     />
   );
