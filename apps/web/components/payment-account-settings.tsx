@@ -15,6 +15,12 @@ import {
   payoutReadinessLabel,
   type PayoutDestination,
 } from "./payout-email-step";
+import {
+  PayPalConnectButton,
+  PayPalConnected,
+  paypalFlagMessage,
+  takePayPalConnectFlag,
+} from "./paypal-connect";
 
 function WalletIcon() {
   return (
@@ -36,6 +42,7 @@ function WalletIcon() {
 }
 type Accounts = {
   providerConfigured: boolean;
+  paypalConnect: boolean;
   own: PayoutDestination | null;
   members: { id: string; name: string; status: PayoutReadiness }[];
 };
@@ -59,7 +66,7 @@ export function PaymentAccountsSettings({
   useEffect(() => {
     let active = true;
     setData(null);
-    setMessage("");
+    setMessage(paypalFlagMessage(takePayPalConnectFlag()));
     if (workspace)
       api(path)
         .then((next) => {
@@ -139,13 +146,26 @@ export function PaymentAccountsSettings({
               <WalletIcon />
               <div>
                 <strong>Your PayPal email</strong>
-                <span className="muted">
-                  {data.own?.type === PayoutRecipientType.EMAIL
-                    ? data.own.value
-                    : data.own
-                      ? "No email yet. Payouts go to the PayPal account you saved earlier until you add one."
-                      : "Not set"}
-                </span>
+                {data.own?.verified ? (
+                  <PayPalConnected
+                    email={data.own.value}
+                    canEdit={canEdit}
+                    onDisconnected={() => {
+                      setMessage(
+                        "PayPal disconnected. Your share still goes to this email until you change it.",
+                      );
+                      void load();
+                    }}
+                  />
+                ) : (
+                  <span className="muted">
+                    {data.own?.type === PayoutRecipientType.EMAIL
+                      ? data.own.value
+                      : data.own
+                        ? "No email yet. Payouts go to the PayPal account you saved earlier until you add one."
+                        : "Not set"}
+                  </span>
+                )}
               </div>
               {canEdit && !changing && (
                 <Button
@@ -161,6 +181,10 @@ export function PaymentAccountsSettings({
                 </Button>
               )}
             </div>
+            {data.paypalConnect &&
+              canEdit &&
+              !changing &&
+              !data.own?.verified && <PayPalConnectButton disabled={busy} />}
             {changing && (
               <PayoutEmailStep
                 autoFocus={false}
