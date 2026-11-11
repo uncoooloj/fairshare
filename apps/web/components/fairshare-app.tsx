@@ -26,6 +26,12 @@ import {
 import { isDraftAgreement } from "./sections/agreements-section";
 import { AccessPrompt } from "./designer-auth";
 import { OnboardingDetails, OnboardingWelcome } from "./onboarding-details";
+import {
+  browserSessionStorage,
+  readOnboardingStage,
+  writeOnboardingStage,
+  type OnboardingStage,
+} from "./onboarding-storage";
 import { recoverSourceDocument } from "../lib/source-recovery";
 import { useRouter } from "next/navigation";
 import { Button } from "./ui";
@@ -57,12 +63,6 @@ import {
 /** Where to go after signing in: the app page that sent you to login, or Overview. */
 function loginDestination() {
   return safeAppPath(new URLSearchParams(location.search).get("next"));
-}
-
-type OnboardingStage = "welcome" | "details" | "agreement" | "complete";
-
-function onboardingStorageKey(userId: string) {
-  return `fairshare:onboarding:v1:${userId}`;
 }
 
 export default function FairshareApp() {
@@ -118,6 +118,8 @@ export default function FairshareApp() {
   const replaceNext = useRef(false);
   const [routeTick, setRouteTick] = useState(0);
   const workspaceRequest = useRef(0);
+  const workspaceLoadedRequest = useRef(0);
+  const onboardingFallback = useRef(new Map<string, OnboardingStage>());
   const currentWorkspace = useRef("");
   const openRequest = useRef(0);
   const wizardMayLeave = useRef<() => boolean>(() => true);
@@ -149,12 +151,21 @@ export default function FairshareApp() {
   function clearSession() {
     commitWorkspace("");
     setWorkspaces([]);
+    setWorkspacesLoaded(false);
+    workspaceLoadedRequest.current = 0;
+    setSkippedFirstRun(false);
     setUser(null);
     setOnboardingStage(null);
+    onboardingFallback.current.clear();
   }
   function setOnboardingForUser(stage: OnboardingStage) {
     if (!user) return;
-    sessionStorage.setItem(onboardingStorageKey(user.id), stage);
+    writeOnboardingStage(
+      browserSessionStorage(),
+      onboardingFallback.current,
+      user.id,
+      stage,
+    );
     setOnboardingStage(stage);
   }
   function mayLeaveDraft() {
@@ -224,6 +235,7 @@ export default function FairshareApp() {
           ? currentWorkspace.current
           : r.workspaces[0]?.id || "";
       setWorkspaces(r.workspaces);
+      workspaceLoadedRequest.current = request;
       if (id !== currentWorkspace.current) commitWorkspace(id);
       return id;
     } catch (error) {
@@ -554,19 +566,25 @@ export default function FairshareApp() {
       setOnboardingStage(null);
       return;
     }
-    const saved = sessionStorage.getItem(onboardingStorageKey(user.id));
     setOnboardingStage(
-      saved === "details" || saved === "agreement" || saved === "complete"
-        ? saved
-        : "welcome",
+      readOnboardingStage(
+        browserSessionStorage(),
+        onboardingFallback.current,
+        user.id,
+      ),
     );
   }, [user?.id]);
   useEffect(() => {
-    if (user)
-      run(async () => {
-        await loadWorkspaces();
-        setWorkspacesLoaded(true);
-      });
+    setSkippedFirstRun(false);
+    setWorkspacesLoaded(false);
+    workspaceLoadedRequest.current = 0;
+    if (!user) return;
+    workspaceRequest.current++;
+    const request = workspaceRequest.current;
+    run(async () => {
+      await loadWorkspaces();
+      if (workspaceLoadedRequest.current === request) setWorkspacesLoaded(true);
+    });
   }, [user?.id]);
   useEffect(() => {
     if (workspace && user) run(() => loadWorkspace(workspace));
@@ -585,7 +603,8 @@ export default function FairshareApp() {
   const showWizard =
     !flowToken &&
     ((creating && (canCreateAgreement || needsWorkspace)) ||
-      (firstRun && onboardingStage === "agreement"));
+      (firstRun &&
+        (onboardingStage === null || onboardingStage === "agreement")));
   // The address for what is on screen. The first-run chooser keeps whatever URL it opened at.
   const routePath =
     !user || flowToken
@@ -907,6 +926,15 @@ export default function FairshareApp() {
               try {
                 const r = await api(`auth/${type}`, "POST", data);
                 setCodePrompt("");
+                if (type === "register") {
+                  writeOnboardingStage(
+                    browserSessionStorage(),
+                    onboardingFallback.current,
+                    r.user.id,
+                    "welcome",
+                  );
+                  setOnboardingStage("welcome");
+                }
                 setUser(r.user);
               } catch (cause) {
                 // The password was accepted; this account also needs its authenticator.
