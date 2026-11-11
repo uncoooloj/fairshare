@@ -371,13 +371,19 @@ export function registerPaymentRoutes(
     return { configured: true };
   });
   app.get(`${base}/payouts`, async (req) => {
-    const { p } = access(req);
+    const { p, user, row } = access(req);
+    const organizer = row.value.members.some(
+      (member) =>
+        member.userId === user.id && member.role === MemberRole.ORGANIZER,
+    );
+    const query =
+      "SELECT id,capture_id,user_id,amount,batch_id,status,item_id FROM fairshare_payout_ops WHERE workspace_id=? AND collaboration_id=?";
     return {
-      payouts: db
-        .prepare(
-          "SELECT id,capture_id,user_id,amount,batch_id,status,item_id FROM fairshare_payout_ops WHERE workspace_id=? AND collaboration_id=?",
-        )
-        .all(p.workspaceId, p.collaborationId),
+      payouts: organizer
+        ? db.prepare(query).all(p.workspaceId, p.collaborationId)
+        : db
+            .prepare(`${query} AND user_id=?`)
+            .all(p.workspaceId, p.collaborationId, user.id),
     };
   });
   async function reconcilePayout(op: any, assertLease: () => void = () => {}) {
