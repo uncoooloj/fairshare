@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api, type Agreement, type Version } from "../lib/model";
 import { recoverSourceDocument } from "../lib/source-recovery";
 import {
@@ -121,6 +121,8 @@ export function AgreementDocument({
   base,
   reviewedVersionId,
   onDocument,
+  requestedCitation,
+  onRequestedCitationHandled,
 }: {
   agreement: Agreement;
   base: string;
@@ -129,6 +131,9 @@ export function AgreementDocument({
   /** The page shows downloads in its menu and file details below the rules.
    * Without it, both stay here. */
   onDocument?: (loaded: LoadedDocument | null) => void;
+  /** A clause picked before this document mounted, such as from Overview. */
+  requestedCitation?: OpenCitationDetail;
+  onRequestedCitationHandled?: () => void;
 }) {
   const initial =
     reviewedVersionId ??
@@ -145,24 +150,34 @@ export function AgreementDocument({
     (item) => item.id === versionId,
   );
   const sourceId = requestedDocumentId ?? version?.rules.source.documentId;
-  useEffect(() => {
-    const open = (event: Event) => {
-      const detail = (event as CustomEvent<string | OpenCitationDetail>).detail;
-      if (typeof detail === "string" || !detail) return;
+  const openCitation = useCallback(
+    (detail: OpenCitationDetail) => {
       const target = resolveCitationTarget(
         agreement.value.versions,
         detail,
         versionId,
       );
-      if (!target) return;
-      event.preventDefault();
+      if (!target) return false;
       setPendingCitation(detail);
       setVersionId(target.versionId);
       setRequestedDocumentId(target.documentId);
+      return true;
+    },
+    [agreement.value.versions, versionId],
+  );
+  useEffect(() => {
+    const open = (event: Event) => {
+      const detail = (event as CustomEvent<string | OpenCitationDetail>).detail;
+      if (typeof detail === "string" || !detail) return;
+      if (openCitation(detail)) event.preventDefault();
     };
     window.addEventListener(OPEN_CITATION_EVENT, open);
     return () => window.removeEventListener(OPEN_CITATION_EVENT, open);
-  }, [agreement.value.versions, versionId]);
+  }, [openCitation]);
+  useEffect(() => {
+    if (requestedCitation && openCitation(requestedCitation))
+      onRequestedCitationHandled?.();
+  }, [onRequestedCitationHandled, openCitation, requestedCitation]);
   useEffect(() => {
     let stale = false;
     setLoading(true);
