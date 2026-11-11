@@ -64,6 +64,6 @@ test("changing only the fee proposal preserves source evidence for an unchanged 
 test("source upload can be retried with same file and late agreement reads cannot replace current source", () => {
   assert.match(app, /e.target.value = ""/);
   assert.match(app, /Replace your unsaved source and rules draft/);
-  assert.equal((app.match(/request !== openRequest.current/g) || []).length, 2);
+  assert.equal((app.match(/request !== openRequest.current/g) || []).length, 3);
   assert.match(app, /rows=\{8\}\s*disabled=\{busy\}/);
 });
