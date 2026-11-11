@@ -3,6 +3,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { api } from "../lib/model";
 import { toneForId } from "../lib/person";
 import { publicWebOrigin } from "../lib/public-web-origin";
+import { ActionMenu } from "./action-menu";
 import { Avatar, AvatarSize } from "./person";
 import { SettingsPaneHeader } from "./settings-preferences";
 import { Button } from "./ui";
@@ -22,24 +23,6 @@ import {
   takePayPalConnectFlag,
 } from "./paypal-connect";
 
-function WalletIcon() {
-  return (
-    <span className="settings-provider-icon" aria-hidden="true">
-      <svg
-        width="18"
-        height="18"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <path d="M4 7h15v12H4zM4 7V5h12M14 12h5v3h-5z" />
-      </svg>
-    </span>
-  );
-}
 /** Small muted chip; the hint shows on hover, focus or tap. */
 function TestModeChip() {
   const tip = useId();
@@ -52,7 +35,28 @@ function TestModeChip() {
     </span>
   );
 }
+/** Confirmation that fades on its own; screen readers hear it once. */
+function SavedNote({ text }: { text: string }) {
+  return (
+    <span className="settings-saved-note" role="status">
+      <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+        <path
+          d="M3 8.5l3 3 7-7"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+      {text}
+    </span>
+  );
+}
+const SAVED_NOTE_MS = 3000;
 type Accounts = {
+  // The platform's own PayPal app. Organizers never connect one; invoices are
+  // paid through it, so the only state worth showing is when it's missing.
   providerConfigured: boolean;
   own: PayoutDestination | null;
   members: { id: string; name: string; status: PayoutReadiness }[];
@@ -65,7 +69,10 @@ export function PaymentAccountsSettings({
   canEdit?: boolean;
 }) {
   const [data, setData] = useState<Accounts | null>(null),
-    [message, setMessage] = useState(""),
+    [error, setError] = useState(""),
+    [note, setNote] = useState(""),
+    [saved, setSaved] = useState(""),
+    [copied, setCopied] = useState(""),
     [busy, setBusy] = useState(false),
     [changing, setChanging] = useState(false),
     [confirm, setConfirm] = useState(false);
@@ -81,34 +88,57 @@ export function PaymentAccountsSettings({
   useEffect(() => {
     let active = true;
     setData(null);
-    setMessage(paypalFlagMessage(takePayPalConnectFlag()));
+    setError("");
+    setNote(paypalFlagMessage(takePayPalConnectFlag()));
     if (workspace)
       api(path)
         .then((next) => {
           if (active) setData(next);
         })
         .catch((e) => {
-          if (active) setMessage(e.message);
+          if (active) setError(e.message);
         });
     return () => {
       active = false;
     };
   }, [path, workspace]);
+  useEffect(() => {
+    if (!saved) return;
+    const timer = setTimeout(() => setSaved(""), SAVED_NOTE_MS);
+    return () => clearTimeout(timer);
+  }, [saved]);
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(""), SAVED_NOTE_MS);
+    return () => clearTimeout(timer);
+  }, [copied]);
   async function remove() {
     if (pending.current) return;
     pending.current = true;
     setBusy(true);
-    setMessage("");
+    setNote("");
     try {
       await api(PAYOUT_ACCOUNT_PATH, "DELETE");
       await load();
       setConfirm(false);
-      setMessage(`${payoutLabel} removed.`);
+      setSaved("Removed");
     } catch (e) {
-      setMessage(e instanceof Error ? e.message : "Couldn’t remove it.");
+      setNote(e instanceof Error ? e.message : "Couldn’t remove it.");
     } finally {
       pending.current = false;
       setBusy(false);
+    }
+  }
+  async function copyReminder(name: string) {
+    try {
+      await navigator.clipboard.writeText(
+        `Hi ${name}, please open Fairshare, open our agreement, and add your PayPal email under Settings → PayPal so your agreed share can be paid. ${publicWebOrigin(location.origin)}/app`,
+      );
+      setCopied(name);
+    } catch {
+      setNote(
+        `Couldn’t copy. Ask ${name} to add their PayPal email in Settings → PayPal.`,
+      );
     }
   }
   if (!workspace)
@@ -118,7 +148,7 @@ export function PaymentAccountsSettings({
           title="PayPal"
           description="Where payments come in and shares go out."
         />
-        <p>Upload your first agreement before adding a payout email.</p>
+        <p>Upload an agreement first, then add your PayPal email here.</p>
       </section>
     );
   return (
@@ -127,35 +157,21 @@ export function PaymentAccountsSettings({
         title="PayPal"
         description="Where payments come in and shares go out."
       />
-      {message && <p role="status">{message}</p>}
+      {error && <p role="alert">{error}</p>}
       {!data ? (
-        <p role="status">Loading payment accounts…</p>
+        !error && <p role="status">Loading…</p>
       ) : (
         <>
-          <section className="settings-card">
-            <h3>Receiving payments</h3>
-            <p className="muted">
-              {data.providerConfigured
-                ? "PayPal (test) is connected."
-                : "PayPal isn’t connected yet, so you can’t take payments."}
+          {!data.providerConfigured && (
+            <p className="notice settings-payments-off">
+              Payments are off on this server, so invoices can’t be paid yet.
             </p>
-            <div className="settings-provider">
-              <WalletIcon />
-              <div>
-                <strong>PayPal</strong>
-                <span className="muted">Test payments only</span>
-              </div>
-              <span
-                className={`status-chip ${data.providerConfigured ? "good" : "warning"}`}
-              >
-                {data.providerConfigured ? "Configured" : "Not configured"}
-              </span>
-            </div>
-          </section>
+          )}
           <section className="settings-card settings-getting-paid">
             <div className="settings-card-head">
               <h3>Getting paid</h3>
               <TestModeChip />
+              {saved && <SavedNote key={saved} text={saved} />}
             </div>
             <p className="muted">
               {!changing && data.own?.type === PayoutRecipientType.PAYPAL_ID
@@ -169,7 +185,7 @@ export function PaymentAccountsSettings({
                     email={data.own.value}
                     canEdit={canEdit}
                     onDisconnected={() => {
-                      setMessage(
+                      setNote(
                         "PayPal disconnected. Your share still goes to this email until you change it.",
                       );
                       void load();
@@ -189,7 +205,7 @@ export function PaymentAccountsSettings({
                       variant="quiet"
                       disabled={busy}
                       onClick={() => {
-                        setMessage("");
+                        setNote("");
                         setConfirm(false);
                         setChanging(true);
                       }}
@@ -215,7 +231,8 @@ export function PaymentAccountsSettings({
                 onDone={(result) => {
                   setChanging(false);
                   if (result === PayoutStepResult.SAVED) {
-                    setMessage("PayPal email saved.");
+                    setNote("");
+                    setSaved("Saved");
                     void load();
                   }
                 }}
@@ -225,14 +242,19 @@ export function PaymentAccountsSettings({
             )}
             {!canEdit && (
               <p className="muted settings-footnote">
-                Viewers can’t change payout details here.
+                Viewers can’t change this.
+              </p>
+            )}
+            {note && (
+              <p className="muted settings-footnote" role="status">
+                {note}
               </p>
             )}
             {confirm && (
               <div role="alert" className="settings-confirm">
                 <p>
-                  Remove your {payoutLabel}? We can’t send you new payouts until
-                  you add one.
+                  Remove your {payoutLabel}? We can’t send your share until you
+                  add one again.
                 </p>
                 <Button disabled={busy} onClick={() => void remove()}>
                   Yes, remove
@@ -248,9 +270,17 @@ export function PaymentAccountsSettings({
             )}
           </section>
           <section className="settings-collaborators">
-            <h3>Collaborator accounts</h3>
-            <p className="muted">
-              Everyone needs a PayPal email before their share can be sent.
+            <p className="settings-collaborators-head">
+              <strong>Collaborators</strong>
+              <span className="muted">
+                Each needs a PayPal email to get paid.
+              </span>
+              {copied && (
+                <SavedNote
+                  key={copied}
+                  text={`Reminder for ${copied} copied`}
+                />
+              )}
             </p>
             <div className="settings-table">
               <table>
@@ -259,7 +289,7 @@ export function PaymentAccountsSettings({
                     <th scope="col">Person</th>
                     <th scope="col">Status</th>
                     <th scope="col">
-                      <span className="visually-hidden">Reminder</span>
+                      <span className="visually-hidden">Actions</span>
                     </th>
                   </tr>
                 </thead>
@@ -286,26 +316,16 @@ export function PaymentAccountsSettings({
                       </td>
                       <td className="settings-cell-action">
                         {m.status === PayoutReadiness.NEEDS_EMAIL && (
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            onClick={async () => {
-                              try {
-                                await navigator.clipboard.writeText(
-                                  `Hi ${m.name}, please open Fairshare, open our agreement, and add your PayPal email under Settings → PayPal so your agreed share can be paid. ${publicWebOrigin(location.origin)}/app`,
-                                );
-                                setMessage(
-                                  "Reminder copied. Share it directly with this collaborator. No email was sent.",
-                                );
-                              } catch {
-                                setMessage(
-                                  "Couldn’t copy the message. Ask this person to add their PayPal email in Settings → PayPal.",
-                                );
-                              }
-                            }}
-                          >
-                            Copy reminder
-                          </Button>
+                          <ActionMenu
+                            label={`Actions for ${m.name}`}
+                            items={[
+                              {
+                                id: "copy-reminder",
+                                label: "Copy reminder",
+                                onSelect: () => void copyReminder(m.name),
+                              },
+                            ]}
+                          />
                         )}
                       </td>
                     </tr>

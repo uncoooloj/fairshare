@@ -1,5 +1,6 @@
 import type { Agreement, Rules } from "./model";
 import { contractReviewState } from "./contract-review";
+import { readyButForAdvance } from "./advance-status";
 import { formatMoneyHeadline } from "./preferences";
 
 export interface OverviewPayout {
@@ -37,6 +38,7 @@ const eventNames: Record<string, string> = {
   APPROVED: "approved the split",
   CHANGE_REQUESTED: "asked for a change",
   ACTIVATED: "switched on the split",
+  ADVANCE_CONFIRMED: "confirmed the advance was paid",
   REVENUE_ALLOCATED: "Payment split",
   PAYMENT_HELD: "Payment paused for a check",
   PERSON_ADDED: "added someone to the agreement",
@@ -226,6 +228,14 @@ export function overviewSummary(
           detail:
             "Everyone approved. Switch it on to start splitting payments.",
         });
+      else if (organizer && readyButForAdvance(agreement))
+        attention.push({
+          key: `${identity(agreement)}:confirm-advance`,
+          agreement,
+          title: "Confirm the advance",
+          detail:
+            "Everyone approved. Confirm the advance was paid to start splitting payments.",
+        });
       else if (review.canApprove)
         attention.push({
           key: `${identity(agreement)}:approval`,
@@ -250,14 +260,19 @@ export function overviewSummary(
         latest.status === "AWAITING_APPROVAL" &&
         review.allApproved &&
         member?.role !== "ORGANIZER"
-      )
+      ) {
+        const waitingForAdvance = readyButForAdvance(agreement);
         waiting.push({
-          key: `${identity(agreement)}:waiting-activation`,
+          key: `${identity(agreement)}:${waitingForAdvance ? "waiting-advance-confirmation" : "waiting-activation"}`,
           agreement,
-          title: "Waiting for the organizer to switch it on",
-          detail:
-            "Everyone approved. Waiting for the organizer to switch it on.",
+          title: waitingForAdvance
+            ? "Waiting for the organizer to confirm the advance"
+            : "Waiting for the organizer to switch it on",
+          detail: waitingForAdvance
+            ? "Everyone approved. Waiting for the organizer to confirm the advance was paid."
+            : "Everyone approved. Waiting for the organizer to switch it on.",
         });
+      }
     }
 
     for (const event of value.audit) {

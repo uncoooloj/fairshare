@@ -180,3 +180,18 @@ export function declineOrganizerHandover(
     { expectedRevision },
   );
 }
+
+/** Organizer confirms the advance in the current proposal was paid. Approvals stand; if
+ * everyone has approved, the agreement switches on in the same call. */
+export function confirmAdvancePaid(
+  workspaceId: string,
+  agreementId: string,
+  expectedRevision: number,
+  advanceId: string,
+): Promise<Agreement> {
+  return api<Agreement>(
+    `${agreementPath(workspaceId, agreementId)}/advance/confirm`,
+    "POST",
+    { expectedRevision, advanceId },
+  );
+}
