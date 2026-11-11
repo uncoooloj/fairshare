@@ -1,6 +1,7 @@
 import { AllocationStatus } from "@fairshare/domain";
 import type { Database } from "./database.js";
 import { pendingWebhookBlocksPayout } from "./paymentSafety.js";
+import { UNSETTLED_REFUND_SQL } from "./refundReversal.js";
 
 /** Why outgoing money for a capture must wait. Any of these blocks every
  * person's payout for that capture, not just one person. */
@@ -16,7 +17,8 @@ export const payoutHoldMessages: Record<PayoutHoldReason, string> = {
   [PayoutHoldReason.REVIEW_HOLD]:
     "Outgoing funds held while the agreement is under review",
   [PayoutHoldReason.ALLOCATION_HELD]: "Allocation held",
-  [PayoutHoldReason.REFUND]: "Payment has a refund; payouts are held",
+  [PayoutHoldReason.REFUND]:
+    "A refund on this payment is still going through; payouts from it wait",
   [PayoutHoldReason.ADVERSE_EVENT]:
     "A PayPal dispute or reversal is still being processed; payouts are held",
   [PayoutHoldReason.APPROVALS_MISSING]:
@@ -49,9 +51,12 @@ export function payoutHoldReason(
   if (agreement.reviewHold) return PayoutHoldReason.REVIEW_HOLD;
   if (allocations.some((a) => a.status !== AllocationStatus.ALLOCATED))
     return PayoutHoldReason.ALLOCATION_HELD;
+  // Only a refund still moving money blocks; a refund applied to the split no longer does.
   if (
     db
-      .prepare("SELECT id FROM fairshare_refund_ops WHERE capture_id=? LIMIT 1")
+      .prepare(
+        `SELECT id FROM fairshare_refund_ops WHERE capture_id=? AND ${UNSETTLED_REFUND_SQL} LIMIT 1`,
+      )
       .get(capture.provider_capture_id)
   )
     return PayoutHoldReason.REFUND;

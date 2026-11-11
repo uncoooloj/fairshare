@@ -88,6 +88,11 @@ function domainErrorStatus(code: string): number {
       "ADVANCE_RECIPIENT_CHANGED",
       "ADVANCE_BELOW_RECOUPED",
       "NO_HANDOVER",
+      "NOT_PAUSED",
+      "DISPUTE_OPEN",
+      "WEBHOOK_UNRECONCILED",
+      "REFUND_UNRECONCILED",
+      "REFUND_IN_PROGRESS",
     ].includes(code)
   )
     return 409;

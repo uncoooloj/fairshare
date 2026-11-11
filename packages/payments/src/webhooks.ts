@@ -19,6 +19,8 @@ export type WebhookAction = {
   orderId?: string;
   invoiceId?: string;
   refundId?: string;
+  /** PayPal dispute ID, so a later RESOLVED event can close the same dispute. */
+  disputeId?: string;
   captureProvenance?: "related_id" | "parent_link";
   reason?: string;
 };
@@ -234,6 +236,7 @@ export async function verifyAndPlanWebhook(
       kind: WebhookActionKind.HoldCapture,
       providerId: providerIds[0],
       providerIds,
+      disputeId: text(r.dispute_id),
       reason: eventType,
     };
   } else if (payoutEvents.includes(eventType))

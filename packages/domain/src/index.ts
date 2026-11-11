@@ -48,6 +48,8 @@ export enum AuditType {
   ORGANIZER_HANDOVER_CANCELLED = "ORGANIZER_HANDOVER_CANCELLED",
   ORGANIZER_HANDOVER_DECLINED = "ORGANIZER_HANDOVER_DECLINED",
   ORGANIZER_HANDED_OVER = "ORGANIZER_HANDED_OVER",
+  REFUND_APPLIED = "REFUND_APPLIED",
+  PAYOUTS_RESUMED = "PAYOUTS_RESUMED",
 }
 /** A person named in the agreement who has not accepted their invitation yet. */
 export interface PendingInvite {
@@ -105,10 +107,46 @@ export interface Allocation {
   recoupmentCents: number;
   shareCents: number;
   feeCents: number;
+  /** Kept back to settle an earlier overpayment (see Collaboration.owedBack). */
+  offsetCents?: number;
+  /** recoupment + share - fee - offset. */
   totalCents: number;
   status: AllocationStatus;
 }
+/** A refund gives the buyer money back; a reversal is PayPal taking the payment back. */
+export enum RefundKind {
+  REFUND = "REFUND",
+  REVERSAL = "REVERSAL",
+}
+/** What one refund took off one person's part of one payment. */
+export interface RefundShare {
+  userId: string;
+  /** Taken off what this payment paid back on the advance. */
+  recoupmentCents: number;
+  /** Taken off their split. */
+  shareCents: number;
+  /** Fee given back to whoever covered it (ORGANIZER_SHARE only). */
+  feeCents: number;
+  /** An earlier offset that this refund undid; owed again. */
+  offsetRestoredCents: number;
+  /** Their part of an unreturned fee that this payment no longer covers. */
+  shortfallCents: number;
+  /** Added to owedBack: paid out beyond what they are now entitled to, plus shortfall and restored offset. */
+  owedCents: number;
+}
+export interface RevenueRefund {
+  /** Provider refund ID (or a stable reversal key); applying the same ID twice is a no-op. */
+  id: string;
+  kind: RefundKind;
+  grossCents: number;
+  feeReturnedCents: number;
+  shares: RefundShare[];
+  /** True when this refund paused the agreement for review. */
+  held: boolean;
+  at: string;
+}
 export interface Revenue {
+  /** Original capture. gross/fee/net never change; refunds are recorded beside them. */
   providerCaptureId: string;
   currency: "USD";
   grossCents: number;
@@ -118,6 +156,7 @@ export interface Revenue {
   allocations: Allocation[];
   status: RevenueStatus;
   at: string;
+  refunds?: RevenueRefund[];
 }
 export interface AuditEntry {
   sequence: number;
@@ -158,6 +197,10 @@ export interface Collaboration {
   audit: AuditEntry[];
   /** At most one open offer; cleared when accepted, declined, cancelled or replaced. */
   organizerHandover?: OrganizerHandover;
+  /** Per person: paid out beyond what refunds left them, still to be settled. */
+  owedBack?: Record<string, number>;
+  /** Set by resumePayouts: owedBack is kept back from each person's next shares until settled. */
+  offsetOwedBack?: boolean;
 }
 export class DomainError extends Error {
   constructor(
@@ -1080,6 +1123,7 @@ function allocate(
       writable: true,
       configurable: true,
     });
+  offsetOwedBack(out, allocations);
   out.revenue.push({
     ...copy(input),
     netCents,
@@ -1117,6 +1161,393 @@ export function holdReversedRevenue(
   audit(out, AuditType.PAYMENT_HELD, "provider", at, { captureId, reason });
   return out;
 }
+const setOwn = (record: Record<string, number>, key: string, value: number) =>
+  Object.defineProperty(record, key, {
+    value,
+    enumerable: true,
+    writable: true,
+    configurable: true,
+  });
+const own = (record: Record<string, number> | undefined, key: string) =>
+  record && Object.hasOwn(record, key) ? record[key] : 0;
+/** Largest remainder over integer weights with stable user-ID tie break. When
+ * total <= the sum of weights, no part is negative or larger than its weight. */
+function prorate(
+  total: number,
+  weights: { userId: string; weight: number }[],
+): Map<string, number> {
+  const sum = weights.reduce((s, w) => s + w.weight, 0);
+  if (!Number.isSafeInteger(total) || total < 0 || total > sum)
+    fail("CONSERVATION_ERROR", "A refund cannot take more than is left");
+  const rows = weights.map((w) => ({
+    userId: w.userId,
+    amount: sum ? Number((BigInt(total) * BigInt(w.weight)) / BigInt(sum)) : 0,
+    remainder: sum ? (BigInt(total) * BigInt(w.weight)) % BigInt(sum) : 0n,
+  }));
+  let left = total - rows.reduce((s, r) => s + r.amount, 0);
+  rows.sort((a, b) =>
+    a.remainder !== b.remainder
+      ? a.remainder > b.remainder
+        ? -1
+        : 1
+      : a.userId < b.userId
+        ? -1
+        : a.userId > b.userId
+          ? 1
+          : 0,
+  );
+  for (const row of rows)
+    if (left > 0) {
+      row.amount++;
+      left--;
+    }
+  return new Map(rows.map((r) => [r.userId, r.amount]));
+}
+/** Everything refunds have taken back from one payment so far. */
+export function refundedCents(r: Revenue): {
+  grossCents: number;
+  feeReturnedCents: number;
+} {
+  return (r.refunds ?? []).reduce(
+    (sum, x) => ({
+      grossCents: sum.grossCents + x.grossCents,
+      feeReturnedCents: sum.feeReturnedCents + x.feeReturnedCents,
+    }),
+    { grossCents: 0, feeReturnedCents: 0 },
+  );
+}
+/** What a payment's allocations (totals plus amounts kept back) must add up to after its refunds:
+ * the net received, less each refund's net, plus any shortfall now owed instead of covered. */
+export function allocatedNetCents(r: Revenue): number {
+  return (r.refunds ?? []).reduce(
+    (sum, x) =>
+      sum -
+      (x.grossCents - x.feeReturnedCents) +
+      x.shares.reduce((s, p) => s + p.shortfallCents, 0),
+    r.netCents,
+  );
+}
+export interface CaptureRefundInput {
+  /** Provider refund ID, or a stable key for a reversal. Replays are no-ops. */
+  refundId: string;
+  captureId: string;
+  kind: RefundKind;
+  /** Amount the buyer got back, as PayPal reported it. */
+  grossCents: number;
+  /** Part of PayPal's fee that PayPal gave back with this refund (0 when not returned). */
+  feeReturnedCents: number;
+}
+export interface CapturePayoutState {
+  /** A share of this payment was reserved for, or may have reached, PayPal. */
+  payoutsStarted: boolean;
+  /** Per person: what may already have been paid out from this payment. */
+  paidCents: Record<string, number>;
+}
+/**
+ * A refund comes back out of the payment it refunds, by that payment's stored allocation
+ * (never the current rules). Ordering, decided by the owner: a refund is undone in the
+ * reverse of how the payment came in. The payment first paid back the advance, so the refund
+ * first reduces what this payment paid back (the advance counts as less paid back and later
+ * payments repay it again); whatever is left comes off each person's split in proportion to
+ * what they still get from this payment, by largest remainder. Never negative, integer cents.
+ *
+ * Fees: the reversal is based on PayPal's net refund. Under BEFORE_SPLIT the net refund
+ * (refund minus fee returned) comes off everyone, so an unreturned fee is shared by the split.
+ * Under ORGANIZER_SHARE the refund comes off everyone's gross share and only a returned fee goes
+ * back to whoever covered it, so they keep covering any unreturned fee. When an unreturned fee
+ * is more than the payment has left, the rest becomes a shortfall owed by the same people.
+ *
+ * The agreement pauses (reviewHold) when payouts from this payment already started, for a
+ * reversal, when a shortfall or undone offset becomes owed, or when the advance changed since
+ * this payment. Otherwise only this payment's shares change. Everyone's newly owed amount is
+ * added to owedBack.
+ */
+export function applyCaptureRefund(
+  c: Collaboration,
+  input: CaptureRefundInput,
+  payouts: CapturePayoutState,
+  at: string,
+): {
+  collaboration: Collaboration;
+  duplicate: boolean;
+  held: boolean;
+  refund: RevenueRefund;
+} {
+  nonempty(input.refundId, "Refund ID");
+  nonempty(input.captureId, "Capture ID");
+  timestamp(at);
+  if (!Object.values(RefundKind).includes(input.kind))
+    fail("INVALID_INPUT", "Refund kind required");
+  cents(input.grossCents, "Refund");
+  cents(input.feeReturnedCents, "Returned fee");
+  if (!input.grossCents || input.feeReturnedCents > input.grossCents)
+    fail("INVALID_MONEY", "A positive refund is required");
+  const out = copy(c);
+  const revenue =
+    out.revenue.find((r) => r.providerCaptureId === input.captureId) ??
+    fail("UNKNOWN_CAPTURE", "Refund does not match a recorded payment");
+  const prior = revenue.refunds?.find((r) => r.id === input.refundId);
+  if (prior) {
+    if (
+      prior.kind !== input.kind ||
+      prior.grossCents !== input.grossCents ||
+      prior.feeReturnedCents !== input.feeReturnedCents
+    )
+      fail(
+        "REFUND_CONFLICT",
+        "Refund previously recorded with different money",
+      );
+    return {
+      collaboration: copy(c),
+      duplicate: true,
+      held: prior.held,
+      refund: copy(prior),
+    };
+  }
+  const done = refundedCents(revenue);
+  if (done.grossCents + input.grossCents > revenue.grossCents)
+    fail(
+      "REFUND_EXCEEDS_PAYMENT",
+      "Refunds cannot add up to more than the payment",
+    );
+  if (done.feeReturnedCents + input.feeReturnedCents > revenue.feeCents)
+    fail("REFUND_FEE_MISMATCH", "Returned fees cannot exceed the fee charged");
+  const rules =
+    out.versions.find((v) => v.id === revenue.versionId)?.rules ??
+    fail("UNKNOWN_VERSION", "The payment's rules are missing");
+  const organizerPays = rules.feePolicy === FeePolicy.ORGANIZER_SHARE;
+  const before = new Map(
+    revenue.allocations.map((a) => [a.userId, a.totalCents]),
+  );
+  const shares = new Map<string, RefundShare>(
+    revenue.allocations.map((a) => [
+      a.userId,
+      {
+        userId: a.userId,
+        recoupmentCents: 0,
+        shareCents: 0,
+        feeCents: 0,
+        offsetRestoredCents: 0,
+        shortfallCents: 0,
+        owedCents: 0,
+      },
+    ]),
+  );
+  const base = organizerPays
+    ? input.grossCents
+    : input.grossCents - input.feeReturnedCents;
+  // 1. The advance first: what this payment paid back.
+  let fromAdvance = 0;
+  for (const a of revenue.allocations) {
+    const take = Math.min(a.recoupmentCents, base - fromAdvance);
+    a.recoupmentCents -= take;
+    shares.get(a.userId)!.recoupmentCents = take;
+    fromAdvance += take;
+  }
+  // 2. Then the split, in proportion to what each person still gets from this payment.
+  const splitLeft = revenue.allocations.reduce((s, a) => s + a.shareCents, 0);
+  const fromSplit = Math.min(base - fromAdvance, splitLeft);
+  const split = prorate(
+    fromSplit,
+    revenue.allocations.map((a) => ({
+      userId: a.userId,
+      weight: a.shareCents,
+    })),
+  );
+  for (const a of revenue.allocations) {
+    a.shareCents -= split.get(a.userId)!;
+    shares.get(a.userId)!.shareCents = split.get(a.userId)!;
+  }
+  // 3. An unreturned fee beyond what the payment has left is shared like the fee was.
+  const beyond = base - fromAdvance - fromSplit;
+  if (beyond > 0)
+    for (const [userId, part] of Object.entries(
+      splitCents(beyond, rules.shares),
+    ))
+      if (shares.has(userId)) shares.get(userId)!.shortfallCents += part;
+      else fail("CONSERVATION_ERROR", "Refund shortfall has no owner");
+  // 4. A returned fee goes back to whoever covered it.
+  if (organizerPays && input.feeReturnedCents) {
+    const bearer =
+      revenue.allocations.find((a) => a.userId === rules.feeBearerId) ??
+      fail("REFUND_FEE_MISMATCH", "The fee was not covered by anyone");
+    if (bearer.feeCents < input.feeReturnedCents)
+      fail(
+        "REFUND_FEE_MISMATCH",
+        "Returned fees cannot exceed the fee covered",
+      );
+    bearer.feeCents -= input.feeReturnedCents;
+    shares.get(bearer.userId)!.feeCents = input.feeReturnedCents;
+  }
+  // 5. Never negative: undo an offset this payment can no longer cover, then any fee it no
+  // longer covers. Both become owed again.
+  for (const a of revenue.allocations) {
+    const share = shares.get(a.userId)!;
+    let offset = a.offsetCents ?? 0,
+      total = a.recoupmentCents + a.shareCents - a.feeCents - offset;
+    if (total < 0) {
+      const restore = Math.min(offset, -total);
+      offset -= restore;
+      total += restore;
+      share.offsetRestoredCents = restore;
+    }
+    if (total < 0) {
+      a.feeCents += total;
+      share.shortfallCents -= total;
+      total = 0;
+    }
+    if (offset) a.offsetCents = offset;
+    else delete a.offsetCents;
+    a.totalCents = total;
+  }
+  // 6. Advance bookkeeping, and whether it can be trusted without a person looking.
+  let advanceUnclear = false;
+  if (fromAdvance) {
+    const advance =
+      rules.advance ??
+      fail("CONSERVATION_ERROR", "Repayment without an advance");
+    const lower = (id: string) => {
+      const was = own(out.recoupedByAdvance, id);
+      if (was < fromAdvance) advanceUnclear = true;
+      setOwn(out.recoupedByAdvance, id, Math.max(0, was - fromAdvance));
+    };
+    lower(advance.id);
+    const inForce = recoupedInForce(out).advance;
+    if (inForce?.id !== advance.id) {
+      // The rules changed since; a carried-over repayment count may include this payment.
+      advanceUnclear = true;
+      if (inForce && Object.hasOwn(out.recoupedByAdvance, inForce.id))
+        lower(inForce.id);
+    }
+  }
+  const owesNew = [...shares.values()].some(
+    (s) => s.shortfallCents || s.offsetRestoredCents,
+  );
+  const held =
+    input.kind === RefundKind.REVERSAL ||
+    payouts.payoutsStarted ||
+    owesNew ||
+    advanceUnclear;
+  // 7. Owed: newly overpaid against what may already have been paid, plus anything uncovered.
+  for (const a of revenue.allocations) {
+    const share = shares.get(a.userId)!;
+    const paid = own(payouts.paidCents, a.userId);
+    cents(paid, "Paid");
+    share.owedCents =
+      Math.max(0, paid - a.totalCents) -
+      Math.max(0, paid - before.get(a.userId)!) +
+      share.shortfallCents +
+      share.offsetRestoredCents;
+    if (share.owedCents) {
+      out.owedBack ??= {};
+      setOwn(
+        out.owedBack,
+        a.userId,
+        own(out.owedBack, a.userId) + share.owedCents,
+      );
+    }
+  }
+  const refund: RevenueRefund = {
+    id: input.refundId,
+    kind: input.kind,
+    grossCents: input.grossCents,
+    feeReturnedCents: input.feeReturnedCents,
+    shares: [...shares.values()],
+    held,
+    at,
+  };
+  (revenue.refunds ??= []).push(refund);
+  if (
+    revenue.allocations.some((a) => a.totalCents < 0) ||
+    revenue.allocations.reduce(
+      (s, a) => s + a.totalCents + (a.offsetCents ?? 0),
+      0,
+    ) !== allocatedNetCents(revenue)
+  )
+    fail("CONSERVATION_ERROR", "Refund must reconcile to the money left");
+  audit(out, AuditType.REFUND_APPLIED, "provider", at, {
+    captureId: input.captureId,
+    refundId: input.refundId,
+    kind: input.kind,
+    grossCents: input.grossCents,
+    feeReturnedCents: input.feeReturnedCents,
+    held,
+  });
+  if (held) {
+    revenue.status = RevenueStatus.REVIEW_REQUIRED;
+    out.reviewHold = true;
+    for (const e of out.revenue)
+      for (const a of e.allocations) a.status = AllocationStatus.HELD;
+    audit(out, AuditType.PAYMENT_HELD, "provider", at, {
+      captureId: input.captureId,
+      refundId: input.refundId,
+      reason:
+        input.kind === RefundKind.REVERSAL
+          ? "PayPal took this payment back"
+          : payouts.payoutsStarted
+            ? "Refunded after payouts started"
+            : "Refund needs a review",
+    });
+  }
+  return { collaboration: out, duplicate: false, held, refund: copy(refund) };
+}
+/** Settles each person's owed amount from their next shares, up to what each share pays. */
+function offsetOwedBack(c: Collaboration, allocations: Allocation[]) {
+  if (!c.offsetOwedBack || !c.owedBack) return;
+  for (const a of allocations) {
+    const owed = own(c.owedBack, a.userId);
+    const take = Math.min(owed, a.totalCents);
+    if (take <= 0) continue;
+    a.offsetCents = take;
+    a.totalCents -= take;
+    if (owed > take) setOwn(c.owedBack, a.userId, owed - take);
+    else delete c.owedBack[a.userId];
+  }
+  if (!Object.keys(c.owedBack).length) {
+    delete c.owedBack;
+    delete c.offsetOwedBack;
+  }
+}
+/** Organizer clears the pause after reviewing. With offsetFromFuturePayouts, what each person
+ * owes is kept back from their next shares until settled; otherwise it is recorded as settled
+ * outside Fairshare and cleared. The application layer refuses while PayPal is unsettled. */
+export function resumePayouts(
+  c: Collaboration,
+  input: { offsetFromFuturePayouts: boolean; note?: string },
+  actorId: string,
+  at: string,
+): Collaboration {
+  organizer(c, actorId);
+  timestamp(at);
+  if (typeof input.offsetFromFuturePayouts !== "boolean")
+    fail("INVALID_INPUT", "Choose whether to take it out of future payouts");
+  if (
+    input.note !== undefined &&
+    (typeof input.note !== "string" || input.note.length > 1000)
+  )
+    fail("INVALID_INPUT", "Note must be 1000 characters or fewer");
+  if (!c.reviewHold) fail("NOT_PAUSED", "Payouts are not paused");
+  const out = copy(c);
+  out.reviewHold = false;
+  for (const r of out.revenue) {
+    if (r.status === RevenueStatus.REVIEW_REQUIRED)
+      r.status = RevenueStatus.CONFIRMED;
+    for (const a of r.allocations) a.status = AllocationStatus.ALLOCATED;
+  }
+  const owed = copy(out.owedBack ?? {});
+  const anyOwed = Object.values(owed).some((v) => v > 0);
+  if (input.offsetFromFuturePayouts && anyOwed) out.offsetOwedBack = true;
+  else {
+    delete out.owedBack;
+    delete out.offsetOwedBack;
+  }
+  audit(out, AuditType.PAYOUTS_RESUMED, actorId, at, {
+    offsetFromFuturePayouts: input.offsetFromFuturePayouts && anyOwed,
+    owedCents: owed,
+    ...(input.note?.trim() ? { note: input.note.trim() } : {}),
+  });
+  return out;
+}
 export interface AllocationPreview {
   previewOnly: true;
   versionId: number;
@@ -1143,6 +1574,8 @@ export function previewVersion(
   v.status = VersionStatus.ACTIVE;
   scratch.reviewHold = false;
   scratch.revenue = [];
+  // Illustrates the rules alone; amounts kept back for earlier overpayments are not rules.
+  delete scratch.offsetOwedBack;
   // Illustrative only, so it also works while invited people have not joined yet.
   const preview = allocate(
     scratch,

@@ -10,7 +10,7 @@ function fixture(createPayout: any = async () => ({ batchId: "batch" })) {
   INSERT INTO fairshare_captures VALUES('capture','workspace','agreement');
   CREATE TABLE fairshare_recipients(workspace_id TEXT,user_id TEXT,paypal_id TEXT);
   INSERT INTO fairshare_recipients VALUES('workspace','one','ABCDEFGHIJKLM');
-  CREATE TABLE fairshare_refund_ops(id TEXT,capture_id TEXT);
+  CREATE TABLE fairshare_refund_ops(id TEXT,capture_id TEXT,status TEXT,applied_at TEXT);
   CREATE TABLE fairshare_webhook_inbox(action TEXT,status TEXT);
   CREATE TABLE fairshare_payout_ops(id TEXT PRIMARY KEY,workspace_id TEXT,collaboration_id TEXT,capture_id TEXT,user_id TEXT,recipient_id TEXT,amount INTEGER,status TEXT,batch_id TEXT,UNIQUE(capture_id,user_id));`);
   const agreement: any = {
@@ -143,7 +143,9 @@ test("review, refund, adverse webhook and allocation holds prevent sending", asy
     });
     if (hold === "review") f.agreement.reviewHold = true;
     if (hold === "refund")
-      f.db.exec("INSERT INTO fairshare_refund_ops VALUES('refund','capture')");
+      f.db.exec(
+        "INSERT INTO fairshare_refund_ops VALUES('refund','capture','PENDING',NULL)",
+      );
     if (hold === "event")
       f.db
         .prepare("INSERT INTO fairshare_webhook_inbox VALUES(?,'PENDING')")
