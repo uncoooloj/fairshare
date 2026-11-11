@@ -29,7 +29,10 @@ test("agreement navigation discovers all authorized groups without conflating gr
     /if \(a.workspaceId !== currentWorkspace.current\)\s*commitWorkspace\(a.workspaceId\)/,
   );
   assert.match(app, /workspaceBase\(a.workspaceId\)/);
-  assert.match(app, /workspaceBase\(p.agreement.workspaceId\)/);
+  assert.match(
+    app,
+    /id: JSON\.stringify\(\[p\.agreement\.workspaceId, p\.agreement\.id, p\.id\]\)/,
+  );
   assert.match(app, /request !== workspaceRequest.current/);
   assert.doesNotMatch(app, /aria-label="Workspace"|WorkspaceNameForm/);
 });

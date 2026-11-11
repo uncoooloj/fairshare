@@ -40,6 +40,32 @@ tbody tr {
   height: var(--table-row-min-height);
 }
 
+/*
+ * These tables become grid cards on phones. Keep the desktop table metrics
+ * above for native rows, while allowing their card layouts to supply spacing
+ * and grow to fit every grid area.
+ */
+@media (max-width: 600px) {
+  .ag-list-table tr.ov-row {
+    height: auto;
+  }
+
+  .ag-list-table tr.ov-row > td {
+    padding: 0 !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .ag-invoices-table tr {
+    height: auto;
+  }
+
+  .ag-invoices-table td,
+  .ag-invoices-table td:first-child {
+    padding: 0 !important;
+  }
+}
+
 thead th:first-child,
 tbody td:first-child,
 tbody th:first-child {
