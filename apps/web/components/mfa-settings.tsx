@@ -83,9 +83,7 @@ export function MfaSettings({ onSignOut }: { onSignOut: () => void }) {
   return (
     <section className="panel">
       <h2>
-        {status?.simulated
-          ? "Hackathon MFA simulation"
-          : "Authenticator security"}
+        {status?.simulated ? "Hackathon MFA simulation" : "Two-step sign-in"}
       </h2>
       {status?.simulated && (
         <p role="status">
@@ -96,8 +94,7 @@ export function MfaSettings({ onSignOut }: { onSignOut: () => void }) {
       )}
       {status && !status.simulated && (
         <p className="muted">
-          Require a six-digit authenticator code when you sign in. Recovery
-          codes are single-use; store them somewhere private.
+          Ask for a code from your phone each time you sign in.
         </p>
       )}
       {error && <p role="alert">{error}</p>}
@@ -105,9 +102,8 @@ export function MfaSettings({ onSignOut }: { onSignOut: () => void }) {
         <>
           <h3>Authenticator enabled</h3>
           <p>
-            Save these recovery codes now. They will not be shown again. All
-            previous sessions have been signed out. Wait for the next
-            authenticator code before signing in, or use a recovery code.
+            Save these backup codes somewhere safe. You won’t see them again.
+            Each works once if you lose your phone.
           </p>
           <ul>
             {recovery.map((code) => (
@@ -147,8 +143,8 @@ export function MfaSettings({ onSignOut }: { onSignOut: () => void }) {
           {!status.simulated && (
             <>
               <p>
-                In your authenticator app, add a time-based code for Fairshare
-                using this setup key. It expires in ten minutes.
+                Add Fairshare to your authenticator app with this key (it
+                expires in 10 minutes).
               </p>
               <p>
                 <code>{setup.secret}</code>
@@ -177,7 +173,7 @@ export function MfaSettings({ onSignOut }: { onSignOut: () => void }) {
               ? "Verifying…"
               : status.simulated
                 ? "Enable simulated step and sign out"
-                : "Enable authenticator and show recovery codes"}
+                : "Turn on"}
           </Button>
           <Button
             type="button"
@@ -200,8 +196,7 @@ export function MfaSettings({ onSignOut }: { onSignOut: () => void }) {
         >
           {status.simulated ? (
             <p>
-              Simulation enabled. Disable using your password and any nonempty
-              value.
+              Pretend step is on. Turn it off with your password and any code.
             </p>
           ) : (
             <p>
@@ -240,7 +235,7 @@ export function MfaSettings({ onSignOut }: { onSignOut: () => void }) {
               ? "Disabling…"
               : status.simulated
                 ? "Disable simulated step and sign out"
-                : "Disable authenticator and sign out"}
+                : "Turn off"}
           </Button>
         </form>
       ) : (
@@ -252,8 +247,8 @@ export function MfaSettings({ onSignOut }: { onSignOut: () => void }) {
         >
           <p>
             {status.simulated
-              ? "Not enabled. Set up a simulated sign-in step for this test account. It does not add account protection."
-              : "Not enabled. Setup will not change sign-in until you verify an authenticator code."}
+              ? "Off. In test mode this is a pretend step and doesn’t protect your account."
+              : "Off."}
           </p>
           <Field label="Confirm current password">
             <input

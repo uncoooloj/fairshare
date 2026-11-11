@@ -9,21 +9,21 @@ function reviewHeading(
   blockerCount: number,
 ) {
   if (version.status === "ACTIVE") return "These rules are active";
-  if (reviewing && allApproved) return "Everyone approved. Ready to activate.";
+  if (reviewing && allApproved) return "Everyone approved. Ready to switch on.";
   if (reviewing) return `${approvedCount} of ${memberCount} approved`;
-  if (blockerCount) return "Resolve before review";
+  if (blockerCount) return "Answer questions first";
   if (version.status === "DRAFT") return "Ready for everyone’s review";
-  return "Historical version";
+  return "Older version";
 }
 
 function reviewEffect(version: Version, activeId: number | undefined) {
   if (activeId && activeId !== version.id) {
-    return `Version ${activeId} still governs incoming payments. This proposal changes nothing until everyone approves and the organizer activates it.`;
+    return `Version ${activeId} is still in use. This change starts once everyone approves it.`;
   }
   if (version.status === "ACTIVE") {
-    return "Incoming payments use these agreed rules. Approval of terms is not a payment or payout.";
+    return "New payments are split this way.";
   }
-  return "No payments can be allocated under this proposal until everyone approves and the organizer activates it.";
+  return "Nothing is split until everyone approves and it’s switched on.";
 }
 
 /** Presentation gates mirror domain rules, but the API remains authoritative. */
@@ -37,7 +37,7 @@ export function contractReviewState(
   const current = agreement.value.versions.at(-1)?.id === version.id;
   const blockers = [...version.rules.unresolvedQuestions];
   if (version.rules.advance && !version.rules.advance.verified)
-    blockers.push("Verify the existing advance before requesting approval.");
+    blockers.push("Confirm the advance amount before asking for approval.");
   const approved = members.filter((member) =>
     Object.hasOwn(version.approvals, member.userId),
   );

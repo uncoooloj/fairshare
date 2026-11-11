@@ -134,13 +134,17 @@ export async function extractDocx(
           );
           return;
         }
-        if (typeof result.text !== "string" || result.text.length > 40000) {
+        if (typeof result.text !== "string") {
           failure("DOCX_EXTRACTION_FAILED");
           return;
         }
         const { ok, ...extracted } = result;
         // One blank line between paragraphs; empty Word paragraphs add no extra gaps.
         extracted.text = normalizeExtractedText(extracted.text);
+        if (extracted.text.length > 40000) {
+          failure("DOCX_TEXT_LIMIT");
+          return;
+        }
         if (!extracted.text) {
           failure("DOCX_NO_EXTRACTABLE_TEXT");
           return;

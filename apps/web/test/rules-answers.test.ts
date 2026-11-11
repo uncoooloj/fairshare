@@ -245,7 +245,10 @@ test("toRules fills hidden fields and keys pending people by invitation", () => 
   assert.equal(rules.source.origin, "HUMAN_PROPOSAL");
   assert.equal(rules.source.documentId, "doc-1");
   assert.equal(rules.source.clause, "Midnight Sessions");
-  assert.match(rules.source.excerpt, /Refunds come off the split\./);
+  assert.match(
+    rules.source.excerpt,
+    /Refund preference recorded for organizer review: shared split\./,
+  );
   assert.ok(rules.source.excerpt.length <= 10000);
   assert.equal(rules.advance?.recipientId, "u-maya");
   assert.equal(rules.advance?.verified, true);
@@ -323,7 +326,7 @@ test("summary sentences follow the spec copy", () => {
     "Midnight Sessions · Oct 1, 2026 to Sep 30, 2027",
     "Maya is paid back $2,000 first. Then the rest is split 50 / 30 / 20.",
     "PayPal fees come off the top.",
-    "Refunds come off the split.",
+    "Refund preference recorded for organizer review: shared split.",
     "Sending to Jordan (jordan@x) and Riley (riley@y)",
   ]);
   const other = answers({
@@ -336,7 +339,7 @@ test("summary sentences follow the spec copy", () => {
     "Midnight Sessions · From Oct 1, 2026, no end date",
     "The money is split 50 / 30 / 20.",
     "Maya covers the PayPal fees.",
-    "Refunds come off the advance.",
+    "Refund preference recorded for organizer review: advance.",
     "Sending to Jordan (jordan@x) and Riley (riley@y)",
   ]);
 });

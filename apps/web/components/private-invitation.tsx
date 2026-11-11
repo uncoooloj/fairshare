@@ -34,10 +34,7 @@ export function PrivateInvitation({ workspace }: { workspace: string }) {
     <section className="section">
       <h3>Invite a collaborator</h3>
       <p className="muted">
-        Anyone holding this private link can join your team once as a member
-        after signing in. Share it only with your intended collaborator. No
-        email is sent. The organizer must still add them to an agreement;
-        joining does not approve rules or move money.
+        Send this link to one person to add them to your team. It works once.
       </p>
       {!invitation ? (
         <Button
@@ -68,7 +65,7 @@ export function PrivateInvitation({ workspace }: { workspace: string }) {
           </label>
           <p className="muted">
             Expires {new Date(invitation.expiresAt).toLocaleString()}. Copy it
-            now; it is not stored in your browser.
+            now; you won’t see it again.
           </p>
           <Button
             disabled={busy}

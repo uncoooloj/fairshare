@@ -5,3 +5,4 @@ export type {
   ProviderInvoice,
   InvoiceSettlement,
 } from "./invoices.js";
+export * from "./paypalIdentity.js";

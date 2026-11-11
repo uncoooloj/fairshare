@@ -70,11 +70,8 @@ export function NewAgreement({
             </p>
           </li>
           <li>
-            <strong>Agree, then activate</strong>
-            <p>
-              Everyone approves the same version. The organizer activates it
-              before payments begin.
-            </p>
+            <strong>Agree, then start paying</strong>
+            <p>Everyone approves the same version before payments begin.</p>
           </li>
         </ol>
         <small>Creating an agreement does not move money.</small>
@@ -103,7 +100,7 @@ export function AgreementSetup({
       </strong>
       <p>
         {latest
-          ? `${agreement.value.members.filter((m) => latest.approvals[m.userId]).length} of ${agreement.value.members.length} approved this version. Everyone must approve before the organizer activates it.`
+          ? `${agreement.value.members.filter((m) => latest.approvals[m.userId]).length} of ${agreement.value.members.length} approved this version. Once everyone approves, these terms are used for payments.`
           : "Review the source in Terms. Add collaborators in People before saving a proposal for everyone to review."}
       </p>
       {tab !== target && (

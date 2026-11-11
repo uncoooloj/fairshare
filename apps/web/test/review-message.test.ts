@@ -11,7 +11,7 @@ test("copy text is version-specific, with optional personal note and no access t
   );
   assert.match(result, /^Please check fees\./);
   assert.match(result, /version 3/);
-  assert.match(result, /account added to this agreement/);
+  assert.match(result, /Sign in with the email I invited/);
   assert.ok(result.endsWith("https://usefairshare.app/app"));
   assert.doesNotMatch(result, /private|secret/);
 });
@@ -35,7 +35,7 @@ test("send action is gated behind confirmation and success precedes sharing", ()
   assert.match(dialog, /setSent\(true\)/);
   assert.match(dialog, /lock.current \|\| !canSend/);
   assert.match(dialog, /showModal\(\)/);
-  assert.match(dialog, /No email is sent/);
+  assert.match(dialog, /We don’t send email/);
   assert.doesNotMatch(dialog, /api\(|fetch\(/);
 });
 test("a committed review remains shareable if the optional workspace refresh fails", () => {
@@ -47,5 +47,5 @@ test("a committed review remains shareable if the optional workspace refresh fai
     app,
     /workspaceRequestId !== workspaceRequest\.current[\s\S]*setSelected\(a\);\s*try\s*\{\s*await loadWorkspace\(currentWorkspace\.current\);\s*\}\s*catch\s*\{\s*setNotice\(/,
   );
-  assert.match(app, /Agreement updated\. Refresh to reload the rest/);
+  assert.match(app, /Updated\. Refresh to see the latest\./);
 });

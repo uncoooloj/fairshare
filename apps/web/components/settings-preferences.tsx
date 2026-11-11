@@ -231,8 +231,7 @@ export function NotificationsSettings() {
         <p role="alert">{feedError}</p>
       ) : !events.length ? (
         <p className="muted">
-          Nothing yet. Agreement reviews and confirmed payout updates appear
-          here.
+          Nothing yet. Approvals and payouts show up here.
         </p>
       ) : (
         <ul className="settings-feed">

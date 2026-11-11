@@ -131,6 +131,20 @@ test("holds are visible and activity uses recorded times, newest first", () => {
   assert.equal(s.activity[1].text, "You created the agreement");
   assert.equal(s.remaining, 100);
 });
+test("recipient and automatic payout holds remain visible until resolved", () => {
+  const a = fixture();
+  for (const status of ["WAITING_RECIPIENT", "AUTO_HELD"]) {
+    const summary = overviewSummary([a], [payout(a, status)], "me");
+    const item = summary.attention.find((item) =>
+      item.key.startsWith("payout:"),
+    );
+    assert.ok(item);
+    assert.match(
+      item.detail,
+      new RegExp(status.toLowerCase().replaceAll("_", " ")),
+    );
+  }
+});
 test("empty workspace has honest zero totals and no synthetic activity", () => {
   const s = overviewSummary([], [], "me");
   assert.equal(s.allocated, 0);
@@ -248,6 +262,6 @@ test("review actions use the authoritative review state", () => {
     source: draft.value.versions[0].rules.source,
   };
   const blocked = overviewSummary([draft], [], "me");
-  assert.match(blocked.attention[0].detail, /Verify the existing advance/);
+  assert.match(blocked.attention[0].detail, /Confirm the advance amount/);
   assert.equal(blocked.attention[0].key, '["w","a"]:review-blockers');
 });

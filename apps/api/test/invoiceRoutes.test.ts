@@ -572,6 +572,13 @@ test("verified paid invoices retain their final status when a refresh is weak or
     assert.equal(held.json().invoice.status, "PAID");
     assert.equal(held.json().invoice.settlementStatus, "HELD");
     assert.equal(s.agg.read(s.w.id, "collab").value.reviewHold, true);
+    const weakAfterHold = paid(s, p);
+    weakAfterHold.settlement.status = "PENDING";
+    const retained = await s.post(`/invoices/${id}/reconcile`);
+    assert.equal(retained.statusCode, 200, retained.body);
+    assert.equal(retained.json().invoice.status, "PAID");
+    assert.equal(retained.json().invoice.settlementStatus, "HELD");
+    assert.equal(s.agg.read(s.w.id, "collab").value.reviewHold, true);
   } finally {
     await s.app.close();
   }
