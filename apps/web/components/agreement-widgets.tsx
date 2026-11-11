@@ -1,3 +1,4 @@
+import { statusLabel } from "../lib/status-labels";
 import { sourceHighlights } from "../lib/source-highlights";
 import { ChevronRightIcon } from "./icons";
 import { HighlightedSource } from "./source-rule-context";
@@ -265,9 +266,9 @@ export function AgreementList({
                           ? `v${active.id}`
                           : latest
                             ? `v${latest.id}`
-                            : "No proposed terms"}
+                            : "No split yet"}
                         {active && latest && active.id !== latest.id
-                          ? ` · v${latest.id} ${title(latest.status).toLowerCase()}`
+                          ? ` · v${latest.id} ${statusLabel(latest.status).toLowerCase()}`
                           : ""}
                         {updated && (
                           <span title={listExact(updated)}>
@@ -442,9 +443,8 @@ export function RevenueTable({
       </tbody>
     </table>
   ) : (
-    <Empty title="No confirmed revenue">
-      Incoming payments will appear once PayPal has confirmed the payment and
-      its fees.
+    <Empty title="No payments yet">
+      Payments show up here once PayPal confirms them.
     </Empty>
   );
 }
@@ -460,10 +460,10 @@ export function AllocationTable({
       <thead>
         <tr>
           <th>Person</th>
-          <th className="numeric">Recoupment</th>
+          <th className="numeric">Advance payback</th>
           <th className="numeric">Share</th>
           <th className="numeric">Fee</th>
-          <th className="numeric">Total allocated</th>
+          <th className="numeric">Total owed</th>
         </tr>
       </thead>
       <tbody>
@@ -516,10 +516,10 @@ export function PreviewForm({
         }
       }}
     >
-      <Field label="Gross payment (USD)">
+      <Field label="Payment amount ($)">
         <input name="gross" defaultValue="3000" inputMode="decimal" required />
       </Field>
-      <Field label="Provider fee (USD)">
+      <Field label="PayPal fee ($)">
         <input name="fee" defaultValue="0" inputMode="decimal" required />
       </Field>
       <Button disabled={busy} variant="secondary">

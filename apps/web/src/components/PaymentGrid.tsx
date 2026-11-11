@@ -188,7 +188,7 @@ export function PaymentGrid({
       },
       {
         field: "providerReference",
-        headerName: "Provider reference",
+        headerName: "PayPal reference",
         minWidth: 185,
       },
     ],
@@ -197,8 +197,7 @@ export function PaymentGrid({
   if (error || data.invalid)
     return (
       <div role="alert">
-        Payouts could not be displayed. Refresh the page to load verified
-        records; do not resubmit any transfers.
+        Couldn’t load payouts. Refresh the page; don’t send anything again.
       </div>
     );
   return (
@@ -226,19 +225,19 @@ export function PaymentGrid({
               "Paid out",
               data.summary.paid,
               data.summary.paidCount,
-              "Provider-confirmed payouts",
+              "Confirmed by PayPal",
             ],
             [
               "Pending or processing",
               data.summary.processing,
               data.summary.processingCount,
-              "Not yet completed transfers",
+              "On the way",
             ],
             [
               "Needs attention",
               data.summary.attention,
               data.summary.attentionCount,
-              "Failed, held, unclaimed or uncertain",
+              "Failed, paused or not collected",
             ],
           ] as const
         ).map(([label, amount, count, detail]) => (
@@ -312,10 +311,7 @@ export function PaymentGrid({
       {!loading && !data.rows.length ? (
         <div className={styles.empty}>
           <h3>No payouts yet</h3>
-          <p>
-            Payouts appear here after a transfer is submitted under an approved
-            agreement. An allocation alone does not move money.
-          </p>
+          <p>When you pay people, it shows up here.</p>
           {emptyActions && (
             <div className={styles.emptyActions}>{emptyActions}</div>
           )}
@@ -323,10 +319,7 @@ export function PaymentGrid({
       ) : !loading && !filteredRows.length ? (
         <div className={styles.empty} role="status">
           <h3>No matching payouts</h3>
-          <p>
-            Try another person, agreement or provider reference, or clear your
-            filters.
-          </p>
+          <p>Try another search, or clear your filters.</p>
           <button
             className={styles.control}
             type="button"
@@ -350,7 +343,7 @@ export function PaymentGrid({
             pagination
             paginationPageSize={20}
             paginationPageSizeSelector={[20, 50, 100]}
-            overlayNoRowsTemplate="<span>No payouts to display. Payouts appear after submission; try clearing your filters.</span>"
+            overlayNoRowsTemplate="<span>No payouts match. Try clearing your filters.</span>"
             suppressCellFocus={false}
             ensureDomOrder
             onGridReady={(event) =>
@@ -367,9 +360,7 @@ export function PaymentGrid({
         />
       )}
       <p style={{ fontSize: 12, color: "var(--color-muted)" }}>
-        Totals cover all recorded payouts, not a monthly period. Amounts follow
-        the approved agreement. On-hold and pending entries are not completed
-        transfers.
+        Totals are for all time.
       </p>
     </section>
   );

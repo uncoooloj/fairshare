@@ -116,8 +116,8 @@ export default function Home() {
             </article>
           </div>
           <p className={styles.qualifier}>
-            People approve the rules, not the AI. Payouts depend on recipient
-            setup and payment-provider confirmation.
+            AI suggests, people decide. Everyone gets paid once their PayPal is
+            added.
           </p>
         </section>
         <section className={styles.closing} aria-label="Get started">
@@ -132,7 +132,7 @@ export default function Home() {
       </main>
       <footer className={styles.footer}>
         <span>Fairshare</span>
-        <span>Built with PayPal Sandbox · No live money</span>
+        <span>Test mode · no real money</span>
         <a href="/login">Log in</a>
       </footer>
     </div>

@@ -26,7 +26,7 @@ test("latest version is not confused with active rules", () => {
   assert.equal(versionSummary(agreement, v2).latest, true);
   assert.match(
     versionSummary(agreement, v2).description,
-    /organizer can activate/,
+    /Waiting for everyone to approve/,
   );
 });
 test("approval count includes only current members", () => {
@@ -35,5 +35,5 @@ test("approval count includes only current members", () => {
 });
 test("approved inactive rules are not described as active or historical", () => {
   const result = versionSummary(agreement, { ...v2, status: "APPROVED" });
-  assert.match(result.description, /Not active until/);
+  assert.match(result.description, /Not switched on yet/);
 });

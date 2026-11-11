@@ -69,7 +69,7 @@ export function SendReviewConfirmation({
       <p className="muted">
         {sent
           ? "The proposal is available in Fairshare. Copy a message below to let the other participants know."
-          : "Everyone below will review this same version. This does not activate the rules or move money."}
+          : "We’ll ask these people to approve. No money moves."}
       </p>
       <ul className="send-review-people" aria-label="Review participants">
         {agreement.value.members.map((member) => (
@@ -90,14 +90,13 @@ export function SendReviewConfirmation({
       {agreement.value.activeVersionId &&
         agreement.value.activeVersionId !== version.id && (
           <p className="muted">
-            Version {agreement.value.activeVersionId} continues to govern
-            incoming payments until the new version is unanimously approved and
-            activated.
+            Version {agreement.value.activeVersionId} stays in use until
+            everyone approves this one.
           </p>
         )}
       <Field
         label="Personal note to include when you share"
-        hint="Optional. Included in the copied message, not sent or saved as a comment."
+        hint="Optional. Added to the message you copy."
       >
         <textarea
           rows={3}
@@ -112,8 +111,7 @@ export function SendReviewConfirmation({
         />
       </Field>
       <p className="muted">
-        No email is sent. This message does not grant access; only existing
-        agreement participants can review.
+        We don’t send email. Copy the message and send it yourself.
       </p>
       {(requestError || error) && <p role="alert">{requestError || error}</p>}
       {sent ? (
@@ -168,17 +166,12 @@ export function SendReviewConfirmation({
               }
             }}
           >
-            {pending
-              ? "Preparing review…"
-              : `Confirm review of version ${version.id}`}
+            {pending ? "Preparing review…" : "Ask for approval"}
           </Button>
         </div>
       )}
       {!sent && !canSend && (
-        <p role="status">
-          This proposal changed or is not ready. Close this window and review
-          its current status.
-        </p>
+        <p role="status">Something changed. Close this and check the latest.</p>
       )}
       {copyState && <p role="status">{copyState}</p>}
       {fallback && (

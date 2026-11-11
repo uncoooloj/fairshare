@@ -100,7 +100,7 @@ export function PayoutsSection({
             })
           }
         >
-          Refresh payment statuses
+          Refresh
         </Button>
       )}
     </>

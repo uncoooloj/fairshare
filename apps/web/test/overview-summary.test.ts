@@ -248,6 +248,6 @@ test("review actions use the authoritative review state", () => {
     source: draft.value.versions[0].rules.source,
   };
   const blocked = overviewSummary([draft], [], "me");
-  assert.match(blocked.attention[0].detail, /Verify the existing advance/);
+  assert.match(blocked.attention[0].detail, /Confirm the advance amount/);
   assert.equal(blocked.attention[0].key, '["w","a"]:review-blockers');
 });

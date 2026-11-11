@@ -34,7 +34,7 @@ export const paymentStatusLabels: Record<PaymentGridStatus, string> = {
   PAID: "Paid",
   FAILED: "Failed",
   REVERSED: "Reversed",
-  UNKNOWN: "Needs reconciliation",
+  UNKNOWN: "Being checked",
 };
 export function formatPaymentAmount(cents: number, currency: "USD"): string {
   if (!Number.isSafeInteger(cents) || cents < 0 || currency !== "USD")

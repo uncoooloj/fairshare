@@ -23,7 +23,7 @@ const row: PaymentGridRow = {
 test("search and status intersect, without changing source records", () => {
   assert.deepEqual(filterPayouts([row], S.Unknown, "album riley"), [row]);
   assert.deepEqual(filterPayouts([row], S.Paid, "album"), []);
-  assert.deepEqual(filterPayouts([row], "", "reconciliation"), [row]);
+  assert.deepEqual(filterPayouts([row], "", "being checked"), [row]);
   assert.deepEqual(filterPayouts([row], "", "missing"), []);
 });
 test("CSV preserves exact cents, status, missing evidence and safely quotes formulas", () => {
@@ -36,7 +36,7 @@ test("CSV preserves exact cents, status, missing evidence and safely quotes form
   ]);
   assert.ok(csv.includes('"\'=HYPERLINK(""evil"")"'));
   assert.ok(csv.includes('"\'  +formula"'));
-  assert.ok(csv.includes('"1.01","USD","Needs reconciliation","",""'));
+  assert.ok(csv.includes('"1.01","USD","Being checked","",""'));
   assert.ok(!csv.includes("Paid"));
 });
 test("CSV uses the payout operation ID, never the internal scoped grid key", () => {
@@ -46,9 +46,9 @@ test("CSV uses the payout operation ID, never the internal scoped grid key", () 
 });
 test("all payout states have truthful guidance and uncertain transfers prohibit retry", () => {
   assert.equal(Object.keys(payoutGuidance).length, Object.values(S).length);
-  assert.match(payoutGuidance.UNKNOWN, /Do not retry/);
-  assert.match(payoutGuidance.REVERSED, /Do not count/);
-  assert.match(payoutGuidance.UNCLAIMED, /not a completed/);
+  assert.match(payoutGuidance.UNKNOWN, /Don’t send it again/);
+  assert.match(payoutGuidance.REVERSED, /doesn’t count as paid/);
+  assert.match(payoutGuidance.UNCLAIMED, /haven’t collected/);
 });
 
 test("CSV never loses a cent near the safe integer boundary", () => {

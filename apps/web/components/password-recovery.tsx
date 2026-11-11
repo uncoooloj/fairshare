@@ -27,9 +27,9 @@ export function PasswordRecovery({ reset = false }: { reset?: boolean }) {
         <h1>{reset ? "Choose a new password" : "Reset your password"}</h1>
         <p className={styles.subtitle}>
           {reset
-            ? "Your reset link can be used once. All signed-in sessions will be signed out."
+            ? "This signs you out on other devices."
             : emailDelivery
-              ? "Enter your verified account email. We will request a secure reset link."
+              ? "Enter your email and we’ll send you a reset link."
               : "Password reset by email isn’t available yet. If you’re still signed in on another device, change your password in Settings → Profile."}
         </p>
         {notice && <p role="status">{notice}</p>}
@@ -130,7 +130,7 @@ export function PasswordRecovery({ reset = false }: { reset?: boolean }) {
               {busy
                 ? reset
                   ? "Saving…"
-                  : "Requesting… this can take 16 seconds"
+                  : "Sending… this can take a few seconds"
                 : reset
                   ? "Save new password"
                   : "Request reset link"}

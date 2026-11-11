@@ -13,7 +13,7 @@ test("review state does not invent pending approval before proposal or send", ()
   assert.equal(approvalLabel(undefined, "u"), "No proposal yet");
   assert.equal(
     approvalLabel({ ...version, status: "DRAFT" }, "u"),
-    "Not sent for review",
+    "Not sent yet",
   );
   assert.equal(approvalLabel(version, "u"), "Awaiting review");
   assert.equal(
