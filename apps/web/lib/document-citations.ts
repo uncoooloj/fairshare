@@ -16,6 +16,23 @@ export enum CitationId {
 /** Window event: a rule's clause chip asks the document to show that quote.
  * The listener calls preventDefault() once it has handled it. */
 export const OPEN_CITATION_EVENT = "fairshare:open-citation";
+/** A citation request may carry the version and document that produced it.
+ * Older callers can continue to send the citation ID string alone. */
+export interface OpenCitationDetail {
+  id: string;
+  versionId?: number;
+  documentId?: string;
+}
+export function matchesCitationTarget(
+  request: OpenCitationDetail,
+  versionId: number | undefined,
+  documentId: string,
+) {
+  return (
+    (request.versionId === undefined || request.versionId === versionId) &&
+    (request.documentId === undefined || request.documentId === documentId)
+  );
+}
 type PageRange = { page: number; start: number; end: number };
 
 /** Saved rules carry quotes, not extraction offsets. Only a unique exact quote is locatable. */

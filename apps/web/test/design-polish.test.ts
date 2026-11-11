@@ -127,7 +127,8 @@ test("money labels distinguish allocation from payout completion", () => {
   assert.match(payments, /ALLOCATED: "Received and allocated"/);
   assert.doesNotMatch(payments, /ALLOCATED: "Paid and split"/);
   assert.match(workspace, /Advance paid back/);
-  assert.doesNotMatch(workspace, /Advance allocation|allocated toward/);
+  assert.match(workspace, /Advance allocation/);
+  assert.match(workspace, /allocated toward/);
 });
 
 test("allocation explanation does not invent an advance for a zero-net payment", () => {
