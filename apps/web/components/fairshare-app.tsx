@@ -43,9 +43,12 @@ import {
   APP_ROOT,
   appPath,
   historyMark,
+  historyWorkspace,
   isAppPath,
   markedState,
   parseAppPath,
+  resolveRoutedAgreement,
+  routeForHistory,
   safeAppPath,
   type AppRoute,
 } from "../lib/app-routes";
@@ -108,6 +111,7 @@ export default function FairshareApp() {
   const workspaceRequest = useRef(0);
   const currentWorkspace = useRef("");
   const openRequest = useRef(0);
+  const wizardMayLeave = useRef<() => boolean>(() => true);
   const rulesDirty = useRef(false);
   function commitWorkspace(id: string) {
     workspaceRequest.current++;
@@ -140,6 +144,7 @@ export default function FairshareApp() {
   }
   function mayLeaveDraft() {
     if (busy) return false;
+    if (!wizardMayLeave.current()) return false;
     if (draftDirty && !window.confirm("Discard your unsaved changes?"))
       return false;
     setDraftDirty(false);
@@ -557,6 +562,8 @@ export default function FairshareApp() {
                 ? {
                     view: AppView.DraftSetup,
                     section: Section.Agreements,
+                    workspaceId:
+                      resume?.created.workspaceId ?? currentWorkspace.current,
                     agreementId: resume?.created.agreementId ?? wizardDraftId,
                   }
                 : { view: AppView.NewAgreement, section: Section.Agreements },
@@ -566,6 +573,7 @@ export default function FairshareApp() {
           ? appPath({
               view: AppView.Agreement,
               section,
+              workspaceId: selected.workspaceId,
               agreementId: selected.id,
               tab,
             })
@@ -585,7 +593,11 @@ export default function FairshareApp() {
         here,
       );
     if (mark !== AppHistoryMark.Entry)
-      history.pushState(markedState(null, AppHistoryMark.Entry), "", here);
+      history.pushState(
+        markedState(null, AppHistoryMark.Entry, currentWorkspace.current),
+        "",
+        here,
+      );
   }, [user?.id, flowToken]);
   // Open the deep link once there is something to open it in. Runs once.
   useEffect(() => {
@@ -612,18 +624,32 @@ export default function FairshareApp() {
       return;
     }
     if (!applied.current) return;
+    // A rejected history move invalidates only a pending route open. Mutations
+    // share openRequest's freshness fence and must retain their committed reply.
+    if (navigating.current) {
+      openRequest.current++;
+      navigating.current = "";
+    }
     if (!mayLeaveDraft()) {
       // Put the address back to what is still on screen.
       if (routePath)
         history.pushState(
-          markedState(null, AppHistoryMark.Entry),
+          markedState(
+            null,
+            AppHistoryMark.Entry,
+            selected?.workspaceId ?? currentWorkspace.current,
+          ),
           "",
           routePath,
         );
       return;
     }
     replaceNext.current = true;
-    applyRoute(parseAppPath(location.pathname));
+    applyRoute(
+      parseAppPath(location.pathname),
+      historyWorkspace(event.state),
+      event.state,
+    );
     setRouteTick((n) => n + 1);
   };
   useEffect(() => {
@@ -638,7 +664,11 @@ export default function FairshareApp() {
     const replace = replaceNext.current;
     replaceNext.current = false;
     if (location.pathname === routePath) return;
-    const state = markedState(null, AppHistoryMark.Entry);
+    const state = markedState(
+      null,
+      AppHistoryMark.Entry,
+      selected?.workspaceId ?? currentWorkspace.current,
+    );
     if (replace) history.replaceState(state, "", routePath);
     else history.pushState(state, "", routePath);
   }, [routePath, routeTick]);
@@ -676,31 +706,34 @@ export default function FairshareApp() {
     else setCreating(false);
   }
   /** Opens what a URL names (leaving unsaved work was already confirmed). */
-  function applyRoute(route: AppRoute) {
+  function applyRoute(route: AppRoute, workspaceId?: string, state?: unknown) {
     if (route.view === AppView.NewAgreement) return freshWizard();
     if (route.view === AppView.Section) return showSection(route.section);
-    if (
-      route.view === AppView.Agreement &&
-      selected?.id === route.agreementId &&
-      !creating
-    ) {
-      setSection(Section.Agreements);
-      if (route.tab && visibleTab(route.tab) !== visibleTab(tab)) {
-        setTab(route.tab);
-        setBreakdown(null);
-      }
-      return;
-    }
-    const a = route.agreementId
-      ? agreements.find((item) => item.id === route.agreementId)
-      : undefined;
+    let routed = route;
+    if (!routed.workspaceId && workspaceId) routed = { ...route, workspaceId };
+    const a = resolveRoutedAgreement(agreements, routed);
     if (!a) {
       showSection(Section.Agreements);
       replaceNext.current = true;
       setNotice("We couldn’t find that agreement.");
       return;
     }
-    const target = appPath(route);
+    const historyRoute = routeForHistory(routed, state, a);
+    const requestedTab = historyRoute.tab;
+    if (
+      route.view === AppView.Agreement &&
+      selected?.id === a.id &&
+      selected.workspaceId === a.workspaceId &&
+      !creating
+    ) {
+      setSection(Section.Agreements);
+      if (requestedTab && visibleTab(requestedTab) !== visibleTab(tab)) {
+        setTab(requestedTab);
+        setBreakdown(null);
+      }
+      return;
+    }
+    const target = appPath(historyRoute);
     openRequest.current++;
     setCreating(false);
     setResume(null);
@@ -708,7 +741,7 @@ export default function FairshareApp() {
     navigating.current = target;
     void run(async () => {
       try {
-        await openAgreement(a, route.tab);
+        await openAgreement(a, requestedTab);
       } finally {
         // Opening can land elsewhere (a draft opens its setup) or fail:
         // correct the address to what is on screen.
@@ -871,6 +904,9 @@ export default function FairshareApp() {
         onClose={leaveWizard}
         onSkip={() => setSkippedFirstRun(true)}
         onBusyChange={setBusy}
+        onLeaveAttempt={(attempt) => {
+          wizardMayLeave.current = attempt;
+        }}
       />
     );
   return (
