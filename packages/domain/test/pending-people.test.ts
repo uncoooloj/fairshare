@@ -494,12 +494,6 @@ test("one-shot submit: organizer only, validated, solo organizer switches on imm
       ),
     code("UNRESOLVED_RULES"),
   );
-  const unverified = rulesFor(RILEY_PENDING);
-  unverified.advance!.verified = false;
-  assert.throws(
-    () => submitForApproval(c, unverified, "maya", at),
-    code("UNRESOLVED_RULES"),
-  );
   assert.equal(c.versions.length, 0, "input untouched on failure");
 });
 

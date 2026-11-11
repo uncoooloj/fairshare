@@ -13,7 +13,7 @@ import {
   answersFromDraft,
   type ExtractedAnswers,
 } from "../lib/answers-from-extraction";
-import { api, type Agreement } from "../lib/model";
+import { ApiError, api, type Agreement } from "../lib/model";
 import { readAgreement, ReadingOutcome } from "../lib/reading";
 import {
   blockingReasons,
@@ -142,6 +142,50 @@ export function clearPersonInvitation(
       ),
     },
   };
+}
+
+type DraftDelete = (
+  workspaceId: string,
+  agreementId: string,
+  expectedRevision: number,
+) => Promise<void>;
+type DraftRead = (
+  workspaceId: string,
+  agreementId: string,
+) => Promise<Agreement>;
+
+/**
+ * A lost DELETE response is safe to recover only when a fresh read proves the draft is gone.
+ * A present draft, an auth failure, or an unreadable response keeps the original error.
+ */
+export async function deleteDraftForReplacement(
+  workspaceId: string,
+  agreementId: string,
+  expectedRevision: number,
+  deps: { deleteDraft?: DraftDelete; readDraft?: DraftRead } = {},
+): Promise<void> {
+  const remove = deps.deleteDraft ?? deleteDraft;
+  const read =
+    deps.readDraft ??
+    ((workspace: string, agreement: string) =>
+      api<Agreement>(
+        `${workspaceBase(workspace)}/collaborations/${agreement}`,
+      ));
+  try {
+    await remove(workspaceId, agreementId, expectedRevision);
+  } catch (cause) {
+    try {
+      await read(workspaceId, agreementId);
+    } catch (readCause) {
+      if (
+        readCause instanceof ApiError &&
+        readCause.status === 404 &&
+        readCause.code === "NOT_FOUND"
+      )
+        return;
+    }
+    throw cause;
+  }
 }
 
 /**
@@ -567,6 +611,49 @@ export function AgreementCreationWizard({
     }
   }
 
+  /** Replace a non-agreement only after its private server draft is retired successfully. */
+  async function uploadAgain() {
+    if (!created || !agreement) {
+      setStage(WizardStage.UPLOAD);
+      return;
+    }
+    if (lock.current) return;
+    lock.current = true;
+    setBusy(true);
+    setError("");
+    readingGeneration.current++;
+    try {
+      await deleteDraftForReplacement(
+        created.workspaceId,
+        created.agreementId,
+        agreement.revision,
+      );
+      clearDraftAnswers(created.workspaceId, created.agreementId);
+      requestId.current = "";
+      setFileState(null);
+      setTextState("");
+      setModeState(DocumentMode.UPLOAD);
+      setDocumentError("");
+      setCreated(null);
+      setAgreement(null);
+      setAnswers(null);
+      setCheckMode(CheckMode.MANUAL);
+      setEqualSplitGuessed(false);
+      setQuestionIndex(0);
+      setInvites({});
+      setStage(WizardStage.UPLOAD);
+    } catch (cause) {
+      setError(
+        cause instanceof Error && cause.message
+          ? cause.message
+          : "We couldn’t replace this draft. Try again.",
+      );
+    } finally {
+      lock.current = false;
+      setBusy(false);
+    }
+  }
+
   function attemptLeave() {
     if (busy || stage === WizardStage.READING) return false;
     if (stage === WizardStage.SENT && agreement) {
@@ -703,6 +790,8 @@ export function AgreementCreationWizard({
           }}
           mode={checkMode}
           equalSplitGuessed={equalSplitGuessed}
+          busy={busy}
+          onUploadAgain={() => void uploadAgain()}
         />
         {created?.lowConfidence && (
           <p className="wiz-warning" role="note">
@@ -800,7 +889,15 @@ export function AgreementCreationWizard({
           {busy ? "Sending…" : "Send for approval"}
         </button>
       </>,
-      <WizardSendStep answers={answers} error={error || undefined} />,
+      <WizardSendStep
+        answers={answers}
+        error={error || undefined}
+        onChange={(next) => {
+          setError("");
+          setAnswers(next);
+        }}
+        onFixPeople={() => setStage(WizardStage.PEOPLE)}
+      />,
     );
 
   if (stage === WizardStage.SENT && answers && agreement)

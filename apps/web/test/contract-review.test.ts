@@ -56,7 +56,7 @@ test("review panel gates activation by unanimity and organizer without claiming 
     false,
   );
 });
-test("unresolved and unverified advances block sending; historical proposals cannot act", () => {
+test("unresolved questions block sending, but an unpaid advance does not", () => {
   const draft = {
     ...version,
     status: "DRAFT",
@@ -73,7 +73,32 @@ test("unresolved and unverified advances block sending; historical proposals can
     },
   };
   assert.equal(contractReviewState(agreement, draft, "a").canSend, false);
-  assert.equal(contractReviewState(agreement, draft, "a").blockers.length, 2);
+  assert.equal(contractReviewState(agreement, draft, "a").blockers.length, 1);
+  const advanceOnly = {
+    ...draft,
+    rules: { ...draft.rules, unresolvedQuestions: [] },
+  };
+  const canSend = contractReviewState(agreement, advanceOnly, "a");
+  assert.equal(canSend.canSend, true);
+  assert.deepEqual(canSend.blockers, []);
+  const allApproved = contractReviewState(
+    {
+      ...agreement,
+      value: { ...agreement.value, versions: [advanceOnly] },
+    },
+    {
+      ...advanceOnly,
+      status: "AWAITING_APPROVAL",
+      approvals: { a: "now", b: "now" },
+    },
+    "a",
+  );
+  assert.equal(allApproved.canActivate, false);
+  assert.equal(
+    allApproved.heading,
+    "Everyone approved. Confirm the advance first.",
+  );
+  assert.match(allApproved.effect, /organizer confirms the advance is paid/);
   assert.equal(
     contractReviewState(agreement, { ...draft, rules: version.rules }, "b")
       .canSend,

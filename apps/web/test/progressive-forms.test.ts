@@ -36,7 +36,16 @@ test("creation starts with one step at a time, and switching upload/paste keeps 
     new URL("../components/agreement-creation-wizard.tsx", import.meta.url),
     "utf8",
   );
-  assert.doesNotMatch(wizard, /setFileState\(null\)|setTextState\(""\)/);
+  const switchMode = wizard.slice(
+    wizard.indexOf("const setMode ="),
+    wizard.indexOf("function documentProblem"),
+  );
+  assert.doesNotMatch(switchMode, /setFileState\(null\)|setTextState\(""\)/);
+  const replacement = wizard.slice(
+    wizard.indexOf("async function uploadAgain()"),
+  );
+  assert.match(replacement, /setFileState\(null\)/);
+  assert.match(replacement, /setTextState\(""\)/);
 });
 
 test("checkout starts with details and does not expose final action before review", () => {

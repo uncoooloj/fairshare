@@ -16,8 +16,11 @@ import {
   dateRange,
   exampleLine,
   feeLine,
+  feesNeedSave,
   splitSummary,
+  REFUND_LINE,
 } from "../components/wizard-check-step";
+import { StandardQuestionId } from "../lib/standard-questions";
 import {
   addPerson,
   equalSplit,
@@ -131,14 +134,9 @@ test("the $3,000 example comes from the engine and names the advance only when t
   assert.equal(exampleLine(broken), undefined);
 });
 
-test("fees show as a line only when stated", () => {
-  assert.equal(feeLine(midnight()), undefined);
+test("fees are always a line: before the split unless someone covers them", () => {
   assert.equal(
-    feeLine(
-      midnight({
-        fees: { value: FeeChoice.BEFORE_SPLIT, source: AnswerSource.DOCUMENT },
-      }),
-    ),
+    feeLine(midnight()),
     "PayPal fees come off the top, before the split.",
   );
   assert.equal(
@@ -152,6 +150,118 @@ test("fees show as a line only when stated", () => {
     ),
     "PayPal fees come out of Maya's share.",
   );
+});
+
+test("an explicit current-organizer fee choice can replace a kept former bearer", () => {
+  const handedOver = midnight({
+    fees: { value: FeeChoice.ORGANIZER_SHARE, source: AnswerSource.PERSON },
+    feeBearerId: "former-organizer",
+    feeBearerChoice: "KEEP",
+  });
+  assert.equal(
+    feesNeedSave(handedOver, FeeChoice.ORGANIZER_SHARE, false),
+    false,
+  );
+  assert.equal(feesNeedSave(handedOver, FeeChoice.ORGANIZER_SHARE, true), true);
+  assert.equal(feesNeedSave(midnight(), FeeChoice.BEFORE_SPLIT, false), false);
+  assert.equal(
+    feesNeedSave(midnight(), FeeChoice.ORGANIZER_SHARE, false),
+    true,
+  );
+});
+
+test("Check states fees with a Change link and the true refund line, no refund question", () => {
+  const html = render(midnight());
+  assert.match(html, /PayPal fees come off the top, before the split\./);
+  assert.match(html, /aria-label="Change who covers the PayPal fees"/);
+  assert.match(
+    html,
+    /If a payment is refunded, payouts pause while it(’|'|&#x27;)s checked\./,
+  );
+  assert.match(
+    REFUND_LINE,
+    /^If a payment is refunded, payouts pause while it.s checked\.$/,
+  );
+  // A fee the document gives to someone we can't charge is asked next, not changed here.
+  const asked = render(
+    midnight({
+      questions: [
+        {
+          id: StandardQuestionId.FEES,
+          text: "We can't have Jordan pay the PayPal fee yet. Who covers it?",
+          choices: [],
+        },
+      ],
+    }),
+  );
+  assert.match(asked, /We(’|'|&#x27;)ll ask you about the PayPal fees next\./);
+  assert.doesNotMatch(asked, /Change who covers the PayPal fees/);
+});
+
+test("someone outside the split shows no 0%", () => {
+  const outside = midnight({
+    people: {
+      value: [
+        person("maya", "Maya Okafor", 0, true),
+        person("jordan", "Jordan Reyes", 3334),
+        person("riley", "Riley Chen", 3333),
+        person("sam", "Sam Lee", 3333),
+      ],
+      source: AnswerSource.PERSON,
+    },
+  });
+  assert.equal(
+    splitSummary(outside.people.value),
+    "Jordan 33.34% · Riley 33.33% · Sam 33.33%",
+  );
+  const html = render(outside);
+  assert.match(html, /Not in the split/);
+  assert.doesNotMatch(html, />0%</);
+  assert.doesNotMatch(exampleLine(outside) ?? "", /Maya/);
+});
+
+test("not an agreement: a plain headline, two ways on, nothing guessed", () => {
+  assert.equal(
+    checkHeadline(CheckMode.NOT_AGREEMENT).title,
+    "This doesn't look like a revenue-share agreement",
+  );
+  const alone = midnight({
+    name: { value: "", source: AnswerSource.PERSON },
+    people: {
+      value: [person("maya", "Maya Okafor", 10000, true)],
+      source: AnswerSource.PERSON,
+    },
+  });
+  const html = renderToStaticMarkup(
+    createElement(WizardCheckStep, {
+      answers: alone,
+      onChange: () => {},
+      mode: CheckMode.NOT_AGREEMENT,
+      onUploadAgain: () => {},
+    }),
+  );
+  assert.match(html, /Upload a different file/);
+  assert.match(html, /Set it up myself/);
+  assert.doesNotMatch(html, /Who gets what|wc-card/);
+  const busy = renderToStaticMarkup(
+    createElement(WizardCheckStep, {
+      answers: alone,
+      onChange: () => {},
+      mode: CheckMode.NOT_AGREEMENT,
+      onUploadAgain: () => {},
+      busy: true,
+    }),
+  );
+  assert.equal((busy.match(/disabled=""/g) || []).length, 2);
+  // People already added (back from a later step): it's a manual setup now.
+  const manual = renderToStaticMarkup(
+    createElement(WizardCheckStep, {
+      answers: midnight(),
+      onChange: () => {},
+      mode: CheckMode.NOT_AGREEMENT,
+    }),
+  );
+  assert.doesNotMatch(manual, /Upload a different file/);
 });
 
 test("the screen renders the cards, the paid-back question and plain words only", () => {
