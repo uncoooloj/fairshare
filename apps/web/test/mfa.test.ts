@@ -1,16 +1,20 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-test("MFA UI requires current password and code, never a cosmetic toggle or external QR service", () => {
+test("MFA UI uses a setup-intent switch without treating it as enabled", () => {
   const source = readFileSync(
     new URL("../components/mfa-settings.tsx", import.meta.url),
     "utf8",
   );
   assert.match(source, /Confirm current password/);
   assert.match(source, /"Turn on"/);
+  assert.match(source, /role="switch"/);
+  assert.match(source, /Finish setup to turn on/);
+  assert.match(source, /status\.enabled && disableConfirmation/);
   assert.match(source, /pending.current\s*=\s*true/);
   assert.match(source, /auth\/mfa/);
-  assert.match(source, /action\s*===\s*['"]cancel['"]/);
+  assert.match(source, /auth\/mfa\/cancel/);
+  assert.match(source, /setSetup\(null\)/);
   assert(!source.includes("localStorage"));
   assert(!source.includes("https://"));
   assert.match(source, /You won’t see them again/);
