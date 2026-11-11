@@ -333,6 +333,131 @@ test("v1 payout compatibility keeps merchant IDs scoped and v2 email private", a
   }
 });
 
+test("v1 writes reject account-level payout collisions without changing frozen payouts", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "fairshare-payout-collision-"));
+  const app = await buildApp({ dbPath: join(directory, "db.sqlite") });
+  try {
+    const owner = app.store.register({
+      name: "Owner",
+      email: "owner@example.test",
+      password: "Correct-Horse-123",
+    });
+    const workspace = app.store.createWorkspace(owner.user.id, "Studio");
+    const headers = { authorization: `Bearer ${owner.token}` };
+    const accounts = `/api/workspaces/${workspace.id}/payment-accounts`;
+    const origin = await app.listen({ host: "127.0.0.1", port: 0 });
+    assert.equal(
+      (
+        await app.inject({
+          method: "PUT",
+          url: "/api/auth/payout-account",
+          headers,
+          payload: { email: "owner.paypal@example.test" },
+        })
+      ).statusCode,
+      200,
+    );
+    app.store.db
+      .prepare("INSERT INTO fairshare_recipients VALUES(?,?,?)")
+      .run(workspace.id, owner.user.id, "ABCDEFGHIJKLM");
+    const collaboration = await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${workspace.id}/collaborations`,
+      headers,
+      payload: { name: "Compatibility" },
+    });
+    assert.equal(collaboration.statusCode, 201, collaboration.body);
+    app.store.db
+      .prepare(
+        "INSERT INTO fairshare_payout_ops(id,workspace_id,collaboration_id,capture_id,user_id,recipient_type,recipient_id,amount,status) VALUES(?,?,?,?,?,?,?,?,?)",
+      )
+      .run(
+        "frozen-op",
+        workspace.id,
+        collaboration.json().id,
+        "capture-1",
+        owner.user.id,
+        "PAYPAL_ID",
+        "ABCDEFGHIJKLM",
+        100,
+        "RESERVED",
+      );
+
+    const legacy = await fetch(`${origin}${accounts}`, { headers });
+    const legacyBody = (await legacy.json()) as any;
+    assert.equal(legacy.status, 200);
+    assert.equal(legacyBody.ownPaypalId, null);
+    assert.deepEqual(legacyBody.members[0], {
+      id: owner.user.id,
+      name: "Owner",
+      status: "MISSING",
+      accountHint: null,
+    });
+    const v2 = await fetch(`${origin}${accounts}?version=2`, { headers });
+    const v2Body = (await v2.json()) as any;
+    assert.equal(v2.status, 200);
+    assert.equal(v2Body.own.value, "owner.paypal@example.test");
+    assert.equal(v2Body.members[0].status, "READY");
+
+    for (const request of [
+      {
+        url: `${origin}${accounts}/mine`,
+        method: "PUT",
+        body: JSON.stringify({ paypalId: "NOPQRSTUVWXYZ" }),
+      },
+      { url: `${origin}${accounts}/mine`, method: "DELETE" },
+      {
+        url: `${origin}/api/workspaces/${workspace.id}/collaborations/${collaboration.json().id}/recipient`,
+        method: "PUT",
+        body: JSON.stringify({ paypalId: "NOPQRSTUVWXYZ" }),
+      },
+    ]) {
+      const response = await fetch(request.url, {
+        method: request.method,
+        headers: {
+          ...headers,
+          ...(request.body ? { "content-type": "application/json" } : {}),
+        },
+        body: request.body,
+      });
+      const body = await response.text();
+      assert.equal(
+        response.status,
+        409,
+        `${request.method} ${request.url}: ${body}`,
+      );
+      assert.equal(JSON.parse(body).error.code, "PAYOUT_DESTINATION_CONFLICT");
+    }
+    assert.equal(
+      (
+        app.store.db
+          .prepare(
+            "SELECT paypal_id FROM fairshare_recipients WHERE workspace_id=? AND user_id=?",
+          )
+          .get(workspace.id, owner.user.id) as any
+      ).paypal_id,
+      "ABCDEFGHIJKLM",
+    );
+    assert.deepEqual(
+      {
+        ...(app.store.db
+          .prepare(
+            "SELECT recipient_type,recipient_id,status FROM fairshare_payout_ops WHERE id=?",
+          )
+          .get("frozen-op") as any),
+      },
+      {
+        recipient_type: "PAYPAL_ID",
+        recipient_id: "ABCDEFGHIJKLM",
+        status: "RESERVED",
+      },
+    );
+  } finally {
+    await app.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("activity includes accessible contract events but hides unrelated contracts; legacy writes still reject viewers", async () => {
   const app = await buildApp({ dbPath: ":memory:" });
   try {

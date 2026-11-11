@@ -2,6 +2,7 @@ import type { FairshareApp } from "./app.js";
 import { ApiError, Role } from "./identity.js";
 import {
   advancePayoutAccountGeneration,
+  hasAccountPayoutDestination,
   payoutReadiness,
   readPayoutDestination,
   registerPayoutAccountRoutes,
@@ -50,8 +51,14 @@ export function registerAccountSettings(
           ON r.workspace_id=m.workspace_id AND r.user_id=m.user_id WHERE m.workspace_id=?`,
         )
         .all(req.params.workspaceId) as LegacyPaymentAccountMember[];
-      const ownPaypalId =
-        members.find((m) => m.id === user.id)?.paypalId ?? null;
+      const accountDestinations = new Set(
+        members
+          .filter((member) => hasAccountPayoutDestination(db, member.id))
+          .map((member) => member.id),
+      );
+      const ownPaypalId = accountDestinations.has(user.id)
+        ? null
+        : (members.find((m) => m.id === user.id)?.paypalId ?? null);
       return {
         providerConfigured,
         mode: app.store.mode,
@@ -59,8 +66,14 @@ export function registerAccountSettings(
         members: members.map((m) => ({
           id: m.id,
           name: m.name,
-          status: m.paypalId ? "SAVED_UNVERIFIED" : "MISSING",
-          accountHint: m.paypalId ? `•••• ${m.paypalId.slice(-4)}` : null,
+          status:
+            m.paypalId && !accountDestinations.has(m.id)
+              ? "SAVED_UNVERIFIED"
+              : "MISSING",
+          accountHint:
+            m.paypalId && !accountDestinations.has(m.id)
+              ? `•••• ${m.paypalId.slice(-4)}`
+              : null,
         })),
       };
     }
@@ -95,6 +108,12 @@ export function registerAccountSettings(
         "INVALID_RECIPIENT",
         "Enter your 13-character sandbox PayPal merchant ID.",
       );
+    if (hasAccountPayoutDestination(db, user.id))
+      throw new ApiError(
+        409,
+        "PAYOUT_DESTINATION_CONFLICT",
+        "Manage your account-level payout destination before using this legacy route.",
+      );
     app.store.tx(() => {
       advancePayoutAccountGeneration(db, user.id);
       db.prepare(
@@ -111,6 +130,12 @@ export function registerAccountSettings(
         Role.OWNER,
         Role.MEMBER,
       ]);
+      if (hasAccountPayoutDestination(db, user.id))
+        throw new ApiError(
+          409,
+          "PAYOUT_DESTINATION_CONFLICT",
+          "Manage your account-level payout destination before using this legacy route.",
+        );
       app.store.tx(() => {
         advancePayoutAccountGeneration(db, user.id);
         db.prepare(
