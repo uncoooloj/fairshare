@@ -35,6 +35,13 @@ test("payout grid: one pager only above a page, info tooltips, no fake dates", (
   assert.doesNotMatch(grid, /Not recorded/);
   assert.doesNotMatch(grid, /height: 460/);
 });
+test("payout grid resets pager state when external filters change the row count", () => {
+  assert.match(
+    grid,
+    /const paginated = !loading && filteredRows\.length > PAYOUT_PAGE_SIZE/,
+  );
+  assert.match(grid, /key=\{`\$\{paginated\}:\$\{status\}:\$\{query\}`\}/);
+});
 test("payout grid resets the global .ag-header margin that overlapped the first row", () => {
   const css = readFileSync(
     new URL("../src/components/payouts.module.css", import.meta.url),

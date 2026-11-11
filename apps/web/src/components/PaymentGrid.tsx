@@ -371,7 +371,11 @@ export function PaymentGrid({
         </div>
       ) : (
         <div className={styles.grid}>
+          {/* AG Grid keeps its internal pager when externally filtered rows
+              cross the page threshold; remounting on filter changes resets
+              the page and row count together with the pagination mode. */}
           <AgGridReact<PaymentGridRow>
+            key={`${paginated}:${status}:${query}`}
             theme={theme}
             rowData={loading ? [] : filteredRows}
             columnDefs={columns}
