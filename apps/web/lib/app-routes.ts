@@ -117,6 +117,7 @@ export enum AppHistoryMark {
   Entry = "fairshare-entry",
 }
 export const HISTORY_KEY = "fairshareApp";
+const HISTORY_WORKSPACE_KEY = "fairshareWorkspace";
 
 export function historyMark(state: unknown): AppHistoryMark | undefined {
   const value =
@@ -129,10 +130,25 @@ export function historyMark(state: unknown): AppHistoryMark | undefined {
 }
 
 /** Keeps whatever the framework stored in the entry and adds our marker. */
-export function markedState(state: unknown, mark: AppHistoryMark) {
+export function historyWorkspace(state: unknown): string | undefined {
+  const value =
+    state && typeof state === "object"
+      ? (state as Record<string, unknown>)[HISTORY_WORKSPACE_KEY]
+      : undefined;
+  return typeof value === "string" && value.length <= 100
+    ? value
+    : undefined;
+}
+
+export function markedState(
+  state: unknown,
+  mark: AppHistoryMark,
+  workspaceId?: string,
+) {
   return {
     ...(state && typeof state === "object" ? state : {}),
     [HISTORY_KEY]: mark,
+    ...(workspaceId ? { [HISTORY_WORKSPACE_KEY]: workspaceId } : {}),
   };
 }
 

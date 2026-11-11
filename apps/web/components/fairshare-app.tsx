@@ -43,6 +43,7 @@ import {
   APP_ROOT,
   appPath,
   historyMark,
+  historyWorkspace,
   isAppPath,
   markedState,
   parseAppPath,
@@ -108,6 +109,7 @@ export default function FairshareApp() {
   const workspaceRequest = useRef(0);
   const currentWorkspace = useRef("");
   const openRequest = useRef(0);
+  const wizardMayLeave = useRef<() => boolean>(() => true);
   const rulesDirty = useRef(false);
   function commitWorkspace(id: string) {
     workspaceRequest.current++;
@@ -140,6 +142,7 @@ export default function FairshareApp() {
   }
   function mayLeaveDraft() {
     if (busy) return false;
+    if (!wizardMayLeave.current()) return false;
     if (draftDirty && !window.confirm("Discard your unsaved changes?"))
       return false;
     setDraftDirty(false);
@@ -585,7 +588,11 @@ export default function FairshareApp() {
         here,
       );
     if (mark !== AppHistoryMark.Entry)
-      history.pushState(markedState(null, AppHistoryMark.Entry), "", here);
+      history.pushState(
+        markedState(null, AppHistoryMark.Entry, currentWorkspace.current),
+        "",
+        here,
+      );
   }, [user?.id, flowToken]);
   // Open the deep link once there is something to open it in. Runs once.
   useEffect(() => {
@@ -612,18 +619,26 @@ export default function FairshareApp() {
       return;
     }
     if (!applied.current) return;
+    // A rejected history move must also invalidate any older asynchronous open.
+    // Otherwise its reply can replace the screen after this address is restored.
+    openRequest.current++;
+    navigating.current = "";
     if (!mayLeaveDraft()) {
       // Put the address back to what is still on screen.
       if (routePath)
         history.pushState(
-          markedState(null, AppHistoryMark.Entry),
+          markedState(
+            null,
+            AppHistoryMark.Entry,
+            selected?.workspaceId ?? currentWorkspace.current,
+          ),
           "",
           routePath,
         );
       return;
     }
     replaceNext.current = true;
-    applyRoute(parseAppPath(location.pathname));
+    applyRoute(parseAppPath(location.pathname), historyWorkspace(event.state));
     setRouteTick((n) => n + 1);
   };
   useEffect(() => {
@@ -638,7 +653,11 @@ export default function FairshareApp() {
     const replace = replaceNext.current;
     replaceNext.current = false;
     if (location.pathname === routePath) return;
-    const state = markedState(null, AppHistoryMark.Entry);
+    const state = markedState(
+      null,
+      AppHistoryMark.Entry,
+      selected?.workspaceId ?? currentWorkspace.current,
+    );
     if (replace) history.replaceState(state, "", routePath);
     else history.pushState(state, "", routePath);
   }, [routePath, routeTick]);
@@ -676,12 +695,13 @@ export default function FairshareApp() {
     else setCreating(false);
   }
   /** Opens what a URL names (leaving unsaved work was already confirmed). */
-  function applyRoute(route: AppRoute) {
+  function applyRoute(route: AppRoute, workspaceId?: string) {
     if (route.view === AppView.NewAgreement) return freshWizard();
     if (route.view === AppView.Section) return showSection(route.section);
     if (
       route.view === AppView.Agreement &&
       selected?.id === route.agreementId &&
+      (!workspaceId || selected?.workspaceId === workspaceId) &&
       !creating
     ) {
       setSection(Section.Agreements);
@@ -692,7 +712,11 @@ export default function FairshareApp() {
       return;
     }
     const a = route.agreementId
-      ? agreements.find((item) => item.id === route.agreementId)
+      ? agreements.find(
+          (item) =>
+            item.workspaceId === (workspaceId ?? currentWorkspace.current) &&
+            item.id === route.agreementId,
+        )
       : undefined;
     if (!a) {
       showSection(Section.Agreements);
@@ -871,6 +895,9 @@ export default function FairshareApp() {
         onClose={leaveWizard}
         onSkip={() => setSkippedFirstRun(true)}
         onBusyChange={setBusy}
+        onLeaveAttempt={(attempt) => {
+          wizardMayLeave.current = attempt;
+        }}
       />
     );
   return (

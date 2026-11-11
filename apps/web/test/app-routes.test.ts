@@ -7,6 +7,7 @@ import {
   AppView,
   appPath,
   historyMark,
+  historyWorkspace,
   isAppPath,
   markedState,
   parseAppPath,
@@ -122,13 +123,15 @@ test("unknown or hostile paths fall back to a safe section", () => {
   assert.equal(isAppPath("/app/settings"), true);
 });
 
-test("history entries keep framework state and carry the app marker", () => {
+test("history entries keep framework state, carry the app marker, and retain route workspace identity", () => {
   const framework = { __NA: true, tree: [1] };
-  const guard = markedState(framework, AppHistoryMark.Guard);
+  const guard = markedState(framework, AppHistoryMark.Guard, "workspace-a");
   assert.equal((guard as Record<string, unknown>).__NA, true);
   assert.equal(historyMark(guard), AppHistoryMark.Guard);
+  assert.equal(historyWorkspace(guard), "workspace-a");
   assert.equal(historyMark(null), undefined);
   assert.equal(historyMark({ fairshareApp: "other" }), undefined);
+  assert.equal(historyWorkspace({ fairshareWorkspace: 7 }), undefined);
 });
 
 test("Back never leaves the dashboard for the home or login page", () => {
@@ -145,12 +148,30 @@ test("Back never leaves the dashboard for the home or login page", () => {
     /historyMark\(event\.state\) === AppHistoryMark\.Guard\) \{[\s\S]*?history\.forward\(\)/,
   );
   // Back and Forward inside the app open the address's screen.
-  assert.match(app, /applyRoute\(parseAppPath\(location\.pathname\)\)/);
+  assert.match(
+    app,
+    /applyRoute\(parseAppPath\(location\.pathname\), historyWorkspace\(event\.state\)\)/,
+  );
   // Wizard close and Sent replace the wizard's entry instead of stacking it.
   for (const fn of ["function leaveWizard", "function finishCreation"]) {
     const body = app.slice(app.indexOf(fn), app.indexOf(fn) + 500);
     assert.match(body, /replaceNext\.current = true/, fn);
   }
+});
+
+test("history routes use workspace-qualified agreement identity, cancel stale opens, and ask the wizard before leaving", () => {
+  assert.match(
+    app,
+    /item\.workspaceId === \(workspaceId \?\? currentWorkspace\.current\) &&\s*item\.id === route\.agreementId/,
+  );
+  const popstate = app.slice(
+    app.indexOf("onPopState.current ="),
+    app.indexOf("useEffect(() => {\n    const listener"),
+  );
+  assert.match(popstate, /openRequest\.current\+\+;/);
+  assert.match(popstate, /navigating\.current = "";/);
+  assert.match(app, /if \(!wizardMayLeave\.current\(\)\) return false;/);
+  assert.match(app, /onLeaveAttempt=\{\(attempt\) =>/);
 });
 
 test("every New agreement entry point opens a fresh wizard", () => {
