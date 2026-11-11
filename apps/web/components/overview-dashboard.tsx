@@ -51,13 +51,28 @@ export function OverviewDashboard({
   }
   return (
     <>
-      <p className="muted">All-time · all agreements you can access</p>
+      <p className="muted">
+        {summary.scope === "personal"
+          ? "Your shares across agreements · all time"
+          : summary.scope === "managed"
+            ? "All participants in agreements you manage · all time"
+            : "All participants where you organize; only your share where you collaborate · all time"}
+      </p>
       <div className="metrics">
         <Metric
-          label="Recorded allocations"
+          label={
+            summary.scope === "personal"
+              ? "Your allocated share"
+              : "Allocated shares"
+          }
           value={display(summary.allocated)}
         />
-        <Metric label="Confirmed paid out" value={display(summary.paid)} />
+        <Metric
+          label={
+            summary.scope === "personal" ? "Paid to you" : "Confirmed paid out"
+          }
+          value={display(summary.paid)}
+        />
         <Metric label="Not confirmed paid" value={display(summary.remaining)} />
       </div>
       <p className="muted">

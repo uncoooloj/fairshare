@@ -1025,6 +1025,72 @@ test("invalid source metadata cannot issue a provider write or assert financial 
   }
 });
 
+test("payout reads expose only own operations to collaborators and enforce tenant and agreement access", async () => {
+  const s = await setup();
+  try {
+    const get = (token: string, base = s.base) =>
+      s.app.inject({
+        method: "GET",
+        url: `${base}/payouts`,
+        headers: auth(token),
+      });
+    assert.equal((await get(s.other.token)).statusCode, 404);
+    s.app.store.db
+      .prepare("INSERT INTO memberships VALUES(?,?,?)")
+      .run(s.w.id, s.other.user.id, "MEMBER");
+    assert.equal((await get(s.other.token)).statusCode, 403);
+    const record = s.agg.read(s.w.id, "collab");
+    record.value.members.push({
+      userId: s.other.user.id,
+      displayName: "Riley",
+      role: MemberRole.COLLABORATOR,
+    });
+    s.app.store.db
+      .prepare(
+        "UPDATE fairshare_collaborations SET value=? WHERE workspace_id=? AND id=?",
+      )
+      .run(JSON.stringify(record.value), s.w.id, "collab");
+    for (const [id, userId, amount] of [
+      ["owner-payout", s.owner.user.id, 280000],
+      ["riley-payout", s.other.user.id, 20000],
+    ] as const)
+      s.app.store.db
+        .prepare(
+          "INSERT INTO fairshare_payout_ops(id,workspace_id,collaboration_id,capture_id,user_id,recipient_id,amount,status) VALUES(?,?,?,?,?,?,?,?)",
+        )
+        .run(
+          id,
+          s.w.id,
+          "collab",
+          "CAP1",
+          userId,
+          "private-recipient",
+          amount,
+          "SUCCESS",
+        );
+    const riley = await get(s.other.token);
+    assert.equal(riley.statusCode, 200, riley.body);
+    assert.deepEqual(
+      riley.json().payouts.map((p: any) => p.id),
+      ["riley-payout"],
+    );
+    assert.equal(riley.json().payouts[0].recipient_id, undefined);
+    assert.equal((await get(s.owner.token)).json().payouts.length, 2);
+    const otherTenant = s.app.store.createWorkspace(s.owner.user.id, "Private");
+    assert.equal(
+      (
+        await get(
+          s.other.token,
+          `/api/workspaces/${otherTenant.id}/collaborations/collab`,
+        )
+      ).statusCode,
+      404,
+    );
+  } finally {
+    await s.app.close();
+  }
+});
+
 test("disabled payout gates remain retryable without submitting or replaying money", async () => {
   const s = await setup();
   let providerRequests = 0;
