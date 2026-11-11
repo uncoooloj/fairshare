@@ -405,7 +405,10 @@ export function PaymentGrid({
             ensureDomOrder
             onGridReady={(event) => {
               gridApiRef.current = event.api;
-              event.api.setGridAriaProperty("label", "Agreement payout history");
+              event.api.setGridAriaProperty(
+                "label",
+                "Agreement payout history",
+              );
               event.api.setGridOption("pagination", paginated);
               event.api.paginationGoToFirstPage();
             }}
