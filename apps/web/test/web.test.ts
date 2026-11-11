@@ -32,6 +32,21 @@ test("same-origin BFF protects session, rejects cross-origin writes and unsuppor
           accepted: true,
         }),
       );
+    } else if (
+      req.url === "/api/agreement-invitations/preview" ||
+      req.url === "/api/agreement-invitations/accept"
+    ) {
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", () =>
+        res.end(
+          JSON.stringify({
+            authorized: req.headers.authorization,
+            path: req.url,
+            body,
+          }),
+        ),
+      );
     } else if (req.url === "/api/auth/me")
       res.end(JSON.stringify({ authorized: req.headers.authorization }));
     else {
@@ -85,6 +100,36 @@ test("same-origin BFF protects session, rejects cross-origin writes and unsuppor
     );
     assert.equal(intake.status, 200);
     assert.equal((await intake.json()).authorized, "Bearer server-only-token");
+    const invitationRequests: Array<[string, { token: string }]> = [
+      ["preview", { token: "preview-token" }],
+      ["accept", { token: "accept-token" }],
+    ];
+    for (const [path, payload] of invitationRequests) {
+      const invitation = await POST(
+        new NextRequest(
+          `http://localhost/api/service/agreement-invitations/${path}`,
+          {
+            method: "POST",
+            headers: {
+              origin: "http://localhost",
+              cookie: "fairshare_session=server-only-token",
+            },
+            body: JSON.stringify(payload),
+          },
+        ),
+        {
+          params: Promise.resolve({
+            path: ["agreement-invitations", path],
+          }),
+        },
+      );
+      assert.equal(invitation.status, 200);
+      assert.deepEqual(await invitation.json(), {
+        authorized: "Bearer server-only-token",
+        path: `/api/agreement-invitations/${path}`,
+        body: JSON.stringify(payload),
+      });
+    }
     const oversized = await POST(
       new NextRequest("http://localhost/api/service/agreements/intake", {
         method: "POST",

@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../lib/model";
 import { toneForId } from "../lib/person";
+import { publicWebOrigin } from "../lib/public-web-origin";
 import { Avatar, AvatarSize } from "./person";
 import { SettingsPaneHeader } from "./settings-preferences";
 import { Button } from "./ui";
@@ -280,7 +281,7 @@ export function PaymentAccountsSettings({
                             onClick={async () => {
                               try {
                                 await navigator.clipboard.writeText(
-                                  `Hi ${m.name}, please open Fairshare, open our agreement, and add your sandbox merchant ID under Settings → Payment accounts so your agreed share can be paid. ${location.origin}/app`,
+                                  `Hi ${m.name}, please open Fairshare, open our agreement, and add your sandbox merchant ID under Settings → Payment accounts so your agreed share can be paid. ${publicWebOrigin(location.origin)}/app`,
                                 );
                                 setMessage(
                                   "Reminder copied. Share it directly with this collaborator. No email was sent.",

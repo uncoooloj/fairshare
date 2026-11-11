@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { type Agreement, type Version } from "../lib/model";
 import { reviewMessage } from "../lib/review-message";
+import { publicWebOrigin } from "../lib/public-web-origin";
 import { Button, Field } from "./ui";
 
 export function SendReviewConfirmation({
@@ -123,7 +124,7 @@ export function SendReviewConfirmation({
               agreement.value.name,
               version.id,
               note,
-              window.location.origin,
+              publicWebOrigin(window.location.origin),
             );
             try {
               await navigator.clipboard.writeText(text);

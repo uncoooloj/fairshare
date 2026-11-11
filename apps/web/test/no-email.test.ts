@@ -26,7 +26,7 @@ test("review reminders copy locally and notification preferences are in-app only
     "export function ReviewReminder",
   )[1];
   assert.match(reminder, /navigator.clipboard.writeText/);
-  assert.match(reminder, /window\.location\.origin\}\/app/);
+  assert.match(reminder, /publicWebOrigin\(window\.location\.origin\)\}\/app/);
   assert.match(reminder, /Review reminder to copy/);
   assert.doesNotMatch(reminder, /\/reminders|api\(/);
   assert.match(
@@ -39,6 +39,6 @@ test("review reminders copy locally and notification preferences are in-app only
   );
   assert.match(
     source("components/payment-account-settings.tsx"),
-    /location\.origin\}\/app/,
+    /publicWebOrigin\(location\.origin\)\}\/app/,
   );
 });
