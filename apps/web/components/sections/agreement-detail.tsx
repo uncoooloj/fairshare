@@ -50,6 +50,10 @@ import {
   fullAgreementHistoryState,
   isFullAgreementHistoryState,
 } from "../../lib/full-agreement-history";
+import {
+  OPEN_CITATION_EVENT,
+  type OpenCitationDetail,
+} from "../../lib/document-citations";
 
 export interface AgreementDetailProps {
   selected: Agreement;
@@ -171,6 +175,8 @@ export function AgreementDetail({
   const [loadedDocument, setLoadedDocument] = useState<LoadedDocument | null>(
     null,
   );
+  const [overviewCitation, setOverviewCitation] =
+    useState<OpenCitationDetail>();
   const fullHeading = useRef<HTMLHeadingElement>(null);
   const openDocument = useRef<HTMLButtonElement>(null);
   const reviewHeading = useRef<HTMLHeadingElement>(null);
@@ -188,6 +194,19 @@ export function AgreementDetail({
   useEffect(() => {
     if (reviewAbove) window.scrollTo({ top: 0 });
   }, [reviewAbove]);
+  useEffect(() => {
+    const openFromAnotherTab = (event: Event) => {
+      const detail = (event as CustomEvent<string | OpenCitationDetail>).detail;
+      if (shown === AgreementTab.Terms || typeof detail === "string" || !detail)
+        return;
+      event.preventDefault();
+      setOverviewCitation(detail);
+      changeAgreementTab(AgreementTab.Terms);
+    };
+    window.addEventListener(OPEN_CITATION_EVENT, openFromAnotherTab);
+    return () =>
+      window.removeEventListener(OPEN_CITATION_EVENT, openFromAnotherTab);
+  }, [changeAgreementTab, shown]);
   useEffect(() => {
     const onPop = (event: PopStateEvent) => {
       if (
@@ -511,6 +530,8 @@ export function AgreementDetail({
                     base={base}
                     reviewedVersionId={latest?.id}
                     onDocument={setLoadedDocument}
+                  requestedCitation={overviewCitation}
+                  onRequestedCitationHandled={() => setOverviewCitation(undefined)}
                   />
                 </section>
               )}
