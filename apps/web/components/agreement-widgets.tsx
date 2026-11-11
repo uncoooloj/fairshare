@@ -1017,7 +1017,12 @@ export function RulesEditor({
           </section>
         )}
         {splitDraft && (
-          <div className="rule-editor-drawer-backdrop">
+          <div
+            className="rule-editor-drawer-backdrop"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) closeSplitEditor();
+            }}
+          >
             <aside
               ref={splitDrawerRef}
               className="rule-editor-drawer"
