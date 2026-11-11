@@ -2,6 +2,13 @@ import type { Dispatch, SetStateAction } from "react";
 import { AllocationTable } from "../../agreement-widgets";
 import { api, money, type Agreement, type Revenue } from "../../../lib/model";
 import { Button } from "../../ui";
+import {
+  PaymentConfirmation,
+  automaticPayoutCopy,
+  dispatchSummary,
+  usePaymentSetup,
+  type DispatchResult,
+} from "../../../lib/payment-setup";
 import type { Run } from "../types";
 
 export interface PaymentBreakdownProps {
@@ -28,6 +35,10 @@ export function PaymentBreakdown({
   setBreakdown,
   setNotice,
 }: PaymentBreakdownProps) {
+  const setup = usePaymentSetup(base);
+  const nameOf = (userId: string) =>
+    selected.value.members.find((m) => m.userId === userId)?.displayName ||
+    "this person";
   return (
     <section className="panel breakdown">
       <div className="row">
@@ -37,8 +48,8 @@ export function PaymentBreakdown({
         </Button>
       </div>
       <p>
-        {money(breakdown.grossCents)} paid − {money(breakdown.feeCents)} PayPal
-        fee = {money(breakdown.netCents)} left to split.
+        Received {money(breakdown.grossCents)} − PayPal fee{" "}
+        {money(breakdown.feeCents)} = {money(breakdown.netCents)} to split.
       </p>
       <AllocationTable
         allocations={breakdown.allocations}
@@ -55,20 +66,28 @@ export function PaymentBreakdown({
       </blockquote>
       {organizer && (
         <Button
-          disabled={busy || selected.value.reviewHold}
+          disabled={
+            busy ||
+            selected.value.reviewHold ||
+            setup?.paymentConfirmation === PaymentConfirmation.NOT_CONFIGURED ||
+            setup?.payoutsReady === false
+          }
           onClick={() =>
             run(async () => {
-              await api(`${base}/payouts/dispatch`, "POST", {
-                captureId: breakdown.providerCaptureId,
-              });
+              const result = await api<{ payouts: DispatchResult[] }>(
+                `${base}/payouts/dispatch`,
+                "POST",
+                { captureId: breakdown.providerCaptureId },
+              );
               await refresh();
-              setNotice("Payout dispatch recorded. Check Payouts for status.");
+              setNotice(dispatchSummary(result.payouts, nameOf));
             })
           }
         >
           Pay everyone (test)
         </Button>
       )}
+      <p className="muted">{automaticPayoutCopy(setup)}</p>
     </section>
   );
 }

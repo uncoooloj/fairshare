@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { money, type Agreement, type Rules, type Version } from "../lib/model";
 import { formatDay, formatExact } from "../lib/dates";
 import { toneInRoster } from "../lib/person";
+import { RECEIVED_DEFINITION, receivedTotals } from "../lib/received";
 import { Avatar, AvatarSize, SplitBar } from "./person";
 import { overviewSummary, type OverviewPayout } from "../lib/overview-summary";
 import {
@@ -492,8 +493,8 @@ export function MoneyCard({
 }) {
   const revenue = agreement.value.revenue;
   const allocations = revenue.flatMap((r) => r.allocations);
-  const received = revenue.reduce((t, r) => t + r.grossCents, 0);
-  const fees = revenue.reduce((t, r) => t + r.feeCents, 0);
+  const { receivedCents: received, paypalFeeCents: fees } =
+    receivedTotals(revenue);
   const summary = overviewSummary(
     [agreement],
     payouts,
@@ -522,12 +523,12 @@ export function MoneyCard({
         <>
           <dl className="ag-money-lines">
             <div>
-              <dt>Money in</dt>
+              <dt title={RECEIVED_DEFINITION}>Received</dt>
               <dd className="numeric">{money(received)}</dd>
             </div>
             {fees > 0 && (
               <div>
-                <dt>PayPal fees</dt>
+                <dt>PayPal fee</dt>
                 <dd className="numeric">{money(fees)}</dd>
               </div>
             )}
@@ -546,7 +547,7 @@ export function MoneyCard({
           </dl>
           <p className="muted ag-money-note">
             {personal
-              ? "Owed and paid are just yours. Money in and fees are for the whole agreement."
+              ? "Owed and paid are just yours. Received and the PayPal fee are for the whole agreement."
               : "Owed, not money in an account."}
           </p>
           <h3 className="ag-eyebrow">By person</h3>

@@ -24,6 +24,11 @@ import {
 } from "../lib/model";
 import { Badge, Button, Empty, Field, Notice } from "./ui";
 import {
+  PaymentGridStatus,
+  payoutGridStatus,
+} from "../src/components/paymentGridModel";
+import { RECEIVED_DEFINITION, receivedTotals } from "../lib/received";
+import {
   Avatar as ListAvatar,
   AvatarSize as ListAvatarSize,
   SplitBar as ListSplitBar,
@@ -228,7 +233,9 @@ export function AgreementList({
                 <th>Status</th>
                 <th>People</th>
                 <th>Split</th>
-                <th className="numeric">Received</th>
+                <th className="numeric" title={RECEIVED_DEFINITION}>
+                  Received
+                </th>
                 <th>
                   <span className="sr-only">Open agreement</span>
                 </th>
@@ -316,12 +323,7 @@ export function AgreementList({
                       />
                     </td>
                     <td className="numeric">
-                      {money(
-                        a.value.revenue.reduce(
-                          (sum, revenue) => sum + revenue.netCents,
-                          0,
-                        ),
-                      )}
+                      {money(receivedTotals(a.value.revenue).receivedCents)}
                     </td>
                     <td className="ov-chevron-cell" aria-hidden="true">
                       <span className="ov-chevron">
@@ -418,8 +420,9 @@ export function RevenueTable({
     <table>
       <thead>
         <tr>
-          <th>Received</th>
-          <th className="numeric">Net amount</th>
+          <th>Date</th>
+          <th className="numeric">Received</th>
+          <th className="numeric">PayPal fee</th>
           <th>Status</th>
           <th />
         </tr>
@@ -428,7 +431,8 @@ export function RevenueTable({
         {agreement.value.revenue.map((r) => (
           <tr key={r.providerCaptureId}>
             <td>{formatDate(r.at)}</td>
-            <td className="numeric">{money(r.netCents)}</td>
+            <td className="numeric">{money(r.grossCents)}</td>
+            <td className="numeric">{money(r.feeCents)}</td>
             <td>
               <Badge value={r.status} />
             </td>
@@ -1200,4 +1204,9 @@ export function safePayPalUrl(url: string) {
   } catch {
     return false;
   }
+}
+
+/** Kept for existing callers; the mapping lives with the grid model. */
+export function payoutStatus(status: string): PaymentGridStatus {
+  return payoutGridStatus(status);
 }

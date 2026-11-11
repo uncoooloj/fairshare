@@ -78,11 +78,13 @@
 }
 .status[data-status="FAILED"],
 .status[data-status="HELD"],
+.status[data-status="WAITING_RECIPIENT"],
 .status[data-status="UNKNOWN"] {
   background: #fff2e5;
   color: #925313;
 }
 .status[data-status="PROCESSING"],
+.status[data-status="CHECKING"],
 .status[data-status="PENDING"] {
   background: #edf1fa;
   color: #45609d;

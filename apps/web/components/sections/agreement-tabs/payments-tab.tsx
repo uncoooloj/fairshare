@@ -1,4 +1,5 @@
-import { useState, type Dispatch, type SetStateAction } from "react";
+import { paymentReconcilePath } from "../../../lib/payment-recovery";
+import React, { useState, type Dispatch, type SetStateAction } from "react";
 import { AgreementAllocations } from "../../agreement-allocations";
 import { AgreementInvoices } from "../../agreement-invoices";
 import { Drawer } from "../../allocation-drawer";
@@ -13,8 +14,12 @@ import {
   type User,
   type Version,
 } from "../../../lib/model";
-import { Button, Empty } from "../../ui";
+import { Button, Empty, Notice } from "../../ui";
 import type { Run } from "../types";
+import {
+  paymentConfirmationNotice,
+  usePaymentSetup,
+} from "../../../lib/payment-setup";
 
 /** Payment statuses as people say them; anything unmapped falls back to plain casing. */
 const PAYMENT_STATUS: Record<string, string> = {
@@ -56,10 +61,16 @@ export function AgreementPaymentsTab({
   run,
   refresh,
 }: AgreementPaymentsTabProps) {
+  const setupNotice = paymentConfirmationNotice(usePaymentSetup(base));
   const [fixing, setFixing] = useState(false);
   const held = !!selected.value.reviewHold;
   return (
     <div className="ag-payments">
+      {organizer && setupNotice && (
+        <Notice warning announcement="polite">
+          {setupNotice}
+        </Notice>
+      )}
       <section className="panel ag-card ag-get-paid" id="get-paid">
         <h2>Get paid</h2>
         <p className="muted">
@@ -75,6 +86,7 @@ export function AgreementPaymentsTab({
           agreementName={selected.value.name}
           userId={user.id}
           canCreate={organizer && !!active}
+          onReconciled={refresh}
         />
       </section>
       <section className="panel ag-card">
@@ -117,24 +129,26 @@ export function AgreementPaymentsTab({
                             Open in PayPal (test) ↗
                           </a>
                         )}
-                        {organizer && p.status === "AWAITING_BUYER" && (
-                          <Button
-                            variant="quiet"
-                            disabled={busy}
-                            onClick={() =>
-                              run(async () => {
-                                await api(
-                                  `${base}/payments/${p.id}/capture`,
-                                  "POST",
-                                  {},
-                                );
-                                await refresh();
-                              })
-                            }
-                          >
-                            Collect payment
-                          </Button>
-                        )}
+                        {organizer &&
+                          !p.invoice_id &&
+                          p.status === "AWAITING_BUYER" && (
+                            <Button
+                              variant="quiet"
+                              disabled={busy}
+                              onClick={() =>
+                                run(async () => {
+                                  await api(
+                                    `${base}/payments/${p.id}/capture`,
+                                    "POST",
+                                    {},
+                                  );
+                                  await refresh();
+                                })
+                              }
+                            >
+                              Collect payment
+                            </Button>
+                          )}
                         {organizer && (
                           <Button
                             variant="quiet"
@@ -142,7 +156,7 @@ export function AgreementPaymentsTab({
                             onClick={() =>
                               run(async () => {
                                 await api(
-                                  `${base}/payments/${p.id}/reconcile`,
+                                  `${base}/${paymentReconcilePath(p)}`,
                                   "POST",
                                   {},
                                 );
