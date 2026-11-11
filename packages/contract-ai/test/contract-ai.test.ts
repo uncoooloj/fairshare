@@ -915,6 +915,276 @@ test("both providers failing returns MANUAL without partial facts or secrets", a
   assert.equal(invalid.reason, FallbackReason.INVALID_OUTPUT);
 });
 
+// ---------- Claude fallback, end to end through the SDK with a mocked transport ----------
+/** A Claude reply with arbitrary content blocks, as the Messages API returns it. */
+const claudeReply = (content: unknown[], extra: Record<string, unknown> = {}) =>
+  new Response(
+    JSON.stringify({
+      id: "msg_fixture",
+      type: "message",
+      role: "assistant",
+      model: DEFAULT_ANTHROPIC_MODEL,
+      content,
+      stop_reason: "end_turn",
+      stop_sequence: null,
+      usage: { input_tokens: 1, output_tokens: 1 },
+      ...extra,
+    }),
+    { headers: { "content-type": "application/json" } },
+  );
+const failingCloudflare = {
+  ...config,
+  fetch: async () => new Response("upstream", { status: 500 }),
+};
+
+test("Claude request: Sonnet 5.5, bounded output, same prompt, structured JSON, no tools", async () => {
+  let body: any;
+  let headers: Headers | undefined;
+  const r = await extractContract(full, {
+    ...failingCloudflare,
+    anthropic: {
+      apiKey: anthropicKey,
+      fetch: async (_url, init) => {
+        body = JSON.parse(String(init!.body));
+        headers = new Headers(init!.headers as HeadersInit);
+        return claudeMessage(fullDraft);
+      },
+    },
+  });
+  assert.equal(r.status, ExtractionStatus.REVIEW_REQUIRED);
+  assert.equal(r.promptVersion, "contract-extraction-v5");
+  assert.equal(body.model, "claude-sonnet-5-5");
+  assert.equal(body.max_tokens, 16_000);
+  // Same system prompt and user payload as the Cloudflare path.
+  const [system, user] = buildMessages(full);
+  assert.equal(body.system, system.content);
+  assert.deepEqual(body.messages, [{ role: "user", content: user.content }]);
+  assert.equal(body.output_config.effort, "medium");
+  assert.equal(body.output_config.format.type, "json_schema");
+  assert.equal(body.output_config.format.schema.type, "object");
+  assert.equal(body.fallbacks, "default");
+  assert.match(
+    headers?.get("anthropic-beta") ?? "",
+    /server-side-fallback-2026-07-01/,
+  );
+  // Sonnet 5.5 rejects disabled thinking, budgets and sampling parameters; send none.
+  for (const key of ["thinking", "temperature", "top_p", "top_k", "tools"])
+    assert.equal(body[key], undefined, key);
+});
+
+test("Cloudflare invalid JSON falls back to Claude", async () => {
+  const diagnostics: any[] = [];
+  const r = await extractContract(full, {
+    ...config,
+    fetch: async () =>
+      new Response(
+        JSON.stringify({
+          success: true,
+          result: { response: '{"facts": [ {"kind": "SHARE", ' },
+        }),
+      ),
+    anthropic: {
+      apiKey: anthropicKey,
+      fetch: async () => claudeMessage(fullDraft),
+    },
+    onFailure: (d) => diagnostics.push(d),
+  });
+  assert.equal(r.status, ExtractionStatus.REVIEW_REQUIRED);
+  assert.equal(r.provider, ExtractionProvider.ANTHROPIC);
+  assert.equal(r.fallbackFrom, ExtractionProvider.CLOUDFLARE);
+  assert.deepEqual(diagnostics, [
+    {
+      provider: ExtractionProvider.CLOUDFLARE,
+      category: DiagnosticCategory.INVALID_OUTPUT,
+      httpStatus: 200,
+    },
+  ]);
+});
+
+test("Claude text is read from text blocks only, alongside thinking and fallback blocks", async () => {
+  const json = JSON.stringify(fullDraft);
+  const r = await extractContract(full, {
+    anthropic: {
+      apiKey: anthropicKey,
+      fetch: async () =>
+        claudeReply([
+          { type: "thinking", thinking: "", signature: "sig" },
+          { type: "text", text: json.slice(0, 40) },
+          { type: "text", text: json.slice(40) },
+        ]),
+    },
+  });
+  assert.equal(r.status, ExtractionStatus.REVIEW_REQUIRED);
+  assert.equal(r.facts.length, fullFacts.length);
+});
+
+test("Claude fenced, partial or empty JSON is rejected cleanly", async () => {
+  const json = JSON.stringify(fullDraft);
+  for (const content of [
+    [{ type: "text", text: "```json\n" + json + "\n```" }],
+    [{ type: "text", text: json.slice(0, json.length / 2) }],
+    [{ type: "text", text: "" }],
+    [],
+  ]) {
+    const diagnostics: any[] = [];
+    const r = await extractContract(full, {
+      ...failingCloudflare,
+      anthropic: {
+        apiKey: anthropicKey,
+        fetch: async () => claudeReply(content),
+      },
+      onFailure: (d) => diagnostics.push(d),
+    });
+    assert.equal(r.status, ExtractionStatus.MANUAL_REQUIRED);
+    assert.equal(r.reason, FallbackReason.INVALID_OUTPUT);
+    assert.deepEqual(r.facts, []);
+    assert.equal(r.provider, null);
+    assert.equal(diagnostics[1].category, DiagnosticCategory.INVALID_OUTPUT);
+  }
+});
+
+test("every non-end_turn Claude stop fails closed", async () => {
+  for (const stop_reason of [
+    "max_tokens",
+    "refusal",
+    "pause_turn",
+    "tool_use",
+    "stop_sequence",
+  ]) {
+    const diagnostics: any[] = [];
+    const r = await extractContract(full, {
+      anthropic: {
+        apiKey: anthropicKey,
+        fetch: async () => claudeMessage(fullDraft, stop_reason),
+      },
+      onFailure: (d) => diagnostics.push(d),
+    });
+    assert.equal(r.status, ExtractionStatus.MANUAL_REQUIRED, stop_reason);
+    assert.equal(r.reason, FallbackReason.PROVIDER_UNAVAILABLE);
+    assert.equal(diagnostics[0].category, DiagnosticCategory.PROVIDER_REJECTED);
+  }
+});
+
+test("Claude API errors become MANUAL_REQUIRED with the status, never a throw", async () => {
+  for (const status of [400, 401, 429, 500, 529]) {
+    const diagnostics: any[] = [];
+    const r = await extractContract(full, {
+      ...failingCloudflare,
+      anthropic: {
+        apiKey: anthropicKey,
+        fetch: async () =>
+          new Response(
+            JSON.stringify({
+              type: "error",
+              error: { type: "api_error", message: `echo ${anthropicKey}` },
+            }),
+            { status, headers: { "content-type": "application/json" } },
+          ),
+      },
+      onFailure: (d) => diagnostics.push(d),
+    });
+    assert.equal(r.status, ExtractionStatus.MANUAL_REQUIRED);
+    assert.equal(r.reason, FallbackReason.PROVIDER_UNAVAILABLE);
+    assert.deepEqual(diagnostics[1], {
+      provider: ExtractionProvider.ANTHROPIC,
+      category: DiagnosticCategory.HTTP_ERROR,
+      httpStatus: status,
+    });
+    assert.equal(
+      JSON.stringify([r, diagnostics]).includes(anthropicKey),
+      false,
+    );
+  }
+});
+
+test("the Claude call is bounded by the timeout and made once (no SDK retries)", async () => {
+  let calls = 0;
+  const diagnostics: any[] = [];
+  const r = await extractContract(full, {
+    anthropic: {
+      apiKey: anthropicKey,
+      timeoutMs: 5,
+      fetch: () => {
+        calls++;
+        return new Promise(() => {});
+      },
+    },
+    onFailure: (d) => diagnostics.push(d),
+  });
+  assert.equal(r.reason, FallbackReason.PROVIDER_UNAVAILABLE);
+  assert.equal(calls, 1);
+  assert.equal(diagnostics[0].provider, ExtractionProvider.ANTHROPIC);
+  assert.ok(
+    [DiagnosticCategory.TIMEOUT, DiagnosticCategory.TRANSPORT_ERROR].includes(
+      diagnostics[0].category,
+    ),
+  );
+});
+
+test("the stored reading records the Claude model that actually answered", async () => {
+  const r = await extractContract(full, {
+    ...failingCloudflare,
+    anthropic: {
+      apiKey: anthropicKey,
+      fetch: async () =>
+        claudeReply(
+          [
+            {
+              type: "fallback",
+              from: { model: "claude-sonnet-5-5" },
+              to: { model: "claude-opus-5-5" },
+            },
+            { type: "text", text: JSON.stringify(fullDraft) },
+          ],
+          { model: "claude-opus-5-5" },
+        ),
+    },
+  });
+  assert.equal(r.status, ExtractionStatus.REVIEW_REQUIRED);
+  assert.equal(r.provider, ExtractionProvider.ANTHROPIC);
+  assert.equal(r.model, "claude-opus-5-5");
+  assert.equal(r.fallbackFrom, ExtractionProvider.CLOUDFLARE);
+  // A Cloudflare answer records the Cloudflare model.
+  const cf = await invoke(fullDraft);
+  assert.equal(cf.provider, ExtractionProvider.CLOUDFLARE);
+  assert.equal(cf.model, DEFAULT_CLOUDFLARE_MODEL);
+});
+
+test("the Anthropic key never reaches the console, results or diagnostics", async () => {
+  const logged: string[] = [];
+  const methods = ["log", "info", "warn", "error", "debug"] as const;
+  const original = methods.map((m) => console[m]);
+  methods.forEach((m) => {
+    console[m] = (...args: unknown[]) => {
+      logged.push(args.map((a) => String(a)).join(" "));
+    };
+  });
+  const diagnostics: unknown[] = [];
+  const results: unknown[] = [];
+  try {
+    for (const fetch of [
+      async () => {
+        throw new Error(`boom ${anthropicKey}`);
+      },
+      async () => new Response(anthropicKey, { status: 401 }),
+      async () => claudeReply([{ type: "text", text: anthropicKey }]),
+      async () => claudeMessage(fullDraft),
+    ])
+      results.push(
+        await extractContract(full, {
+          ...failingCloudflare,
+          anthropic: { apiKey: anthropicKey, fetch },
+          onFailure: (d) => diagnostics.push(d),
+        }),
+      );
+  } finally {
+    methods.forEach((m, i) => (console[m] = original[i]));
+  }
+  const everything = JSON.stringify([logged, diagnostics, results]);
+  assert.equal(everything.includes(anthropicKey), false);
+  assert.equal(everything.includes("do-not-leak"), false);
+});
+
 // ---------- carried-over safety guarantees ----------
 test("stale revision, changed document or modified text cannot be accepted as current", async () => {
   const r = await invoke(fullDraft);

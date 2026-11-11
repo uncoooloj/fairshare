@@ -203,6 +203,7 @@ export interface ExtractionResult extends ExtractionDraft {
   executable: false;
   /** Internal metadata: which provider produced the accepted output. Not user copy. */
   provider: ExtractionProvider | null;
+  /** The model that wrote the accepted output (for Claude, the model that served the reply). */
   model: string | null;
   /** Set when the primary provider failed and the fallback produced this result. */
   fallbackFrom: ExtractionProvider | null;
@@ -1311,7 +1312,7 @@ async function callAnthropic(
   document: SourceDocument,
   config: AnthropicConfig,
   model: string,
-): Promise<unknown> {
+): Promise<ProviderOutput> {
   return withTimeout(config.timeoutMs, async (signal) => {
     const client = new Anthropic({
       apiKey: config.apiKey,
@@ -1359,17 +1360,35 @@ async function callAnthropic(
       .join("");
     if (!text || text.length > MAX_RESPONSE_BYTES)
       throw new ProviderFailure(DiagnosticCategory.INVALID_OUTPUT, 200);
+    // Structured outputs return bare JSON. Anything else (code fences, prose, a cut-off object)
+    // means the format was not honoured, so fail closed rather than salvage it.
+    let raw: unknown;
     try {
-      return JSON.parse(text);
+      raw = JSON.parse(text);
     } catch {
       throw new ProviderFailure(DiagnosticCategory.INVALID_OUTPUT, 200);
     }
+    // A server-side refusal fallback can answer with a different Claude model; record the one
+    // that actually wrote this reading.
+    return {
+      raw,
+      model:
+        typeof message.model === "string" &&
+        /^claude-[a-z0-9.-]+$/.test(message.model)
+          ? message.model
+          : model,
+    };
   });
+}
+interface ProviderOutput {
+  raw: unknown;
+  /** The model that produced the output, when the provider reports a different one. */
+  model?: string;
 }
 interface ProviderAttempt {
   provider: ExtractionProvider;
   model: string;
-  call: () => Promise<unknown>;
+  call: () => Promise<ProviderOutput>;
 }
 /** Caller must authenticate/authorize document access and consent to provider processing. No logging,
  * persistence, remote document fetching, tools or payment operations occur in this package.
@@ -1416,7 +1435,9 @@ export async function extractContract(
     attempts.push({
       provider: ExtractionProvider.CLOUDFLARE,
       model: cloudflareModel,
-      call: () => callCloudflare(document, config, cloudflareModel),
+      call: async () => ({
+        raw: await callCloudflare(document, config, cloudflareModel),
+      }),
     });
   const anthropic = config.anthropic ?? {};
   const anthropicModel = anthropic.model || DEFAULT_ANTHROPIC_MODEL;
@@ -1432,9 +1453,9 @@ export async function extractContract(
   for (const attempt of attempts) {
     try {
       let draft: ExtractionDraft;
-      const raw = await attempt.call();
+      const output = await attempt.call();
       try {
-        draft = validateDraft(raw, document);
+        draft = validateDraft(output.raw, document);
       } catch {
         throw new ProviderFailure(DiagnosticCategory.INVALID_OUTPUT, 200);
       }
@@ -1443,7 +1464,7 @@ export async function extractContract(
         ...draft,
         status: ExtractionStatus.REVIEW_REQUIRED,
         provider: attempt.provider,
-        model: attempt.model,
+        model: output.model ?? attempt.model,
         fallbackFrom: failedProvider,
         reason: null,
       };
