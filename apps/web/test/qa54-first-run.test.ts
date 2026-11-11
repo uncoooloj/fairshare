@@ -1,11 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { appSource } from "./app-source";
 const component = (name: string) =>
   readFileSync(new URL(`../components/${name}.tsx`, import.meta.url), "utf8");
 
 test("client-side session and section changes update the document title", () => {
-  const app = component("fairshare-app");
+  const app = appSource();
   assert.match(
     app,
     /flowToken && flowKind === "\/invitation"\s*\? "Invitation · Fairshare"/,
@@ -22,7 +23,7 @@ test("client-side session and section changes update the document title", () => 
 });
 
 test("first-run payouts is an empty state, not the agreement creation form", () => {
-  const app = component("fairshare-app");
+  const app = appSource();
   const payoutsBranch = app.slice(
     app.indexOf("section === Section.Payouts ? ("),
     app.indexOf(
