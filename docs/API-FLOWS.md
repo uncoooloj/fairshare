@@ -69,6 +69,14 @@ hash; audit events omit secrets. Refreshing loses the displayed link. Existing
 email invitations retain their independently verified-email requirement in
 SANDBOX; private links require no mail provider in either environment.
 
+An agreement's People section has a separate draft-only link flow. A workspace
+OWNER who is also that agreement's ORGANIZER creates it with
+`POST /api/workspaces/:workspaceId/collaborations/:agreementId/invitation-links`.
+The recipient accepts it through `POST /api/agreement-invitations/accept` and
+becomes a workspace MEMBER plus an agreement COLLABORATOR. It never approves
+rules or moves money, cannot be used after the first proposal exists, and does
+not change the workspace-only link behavior above.
+
 ## Invitation landing
 
 An authenticated invitation recipient sees the acceptance prompt before workspace creation forms. **Not now** dismisses the local prompt without accepting the link. After acceptance, a member with no shared agreements sees guidance to ask the organizer for agreement access and refresh; the invitation does not require another document upload. Viewers receive read-only access guidance. The API supports MEMBER and VIEWER invitation-link roles; the current UI creates MEMBER links.

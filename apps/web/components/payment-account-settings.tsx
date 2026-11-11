@@ -96,8 +96,8 @@ export function PaymentAccountsSettings({
             <p>PayPal sandbox checkout</p>
             <p className="muted">
               {data.providerConfigured
-                ? "Sandbox PayPal is configured. Payments are allocated only after provider verification."
-                : "Sandbox PayPal is not configured. Payments cannot be received until setup is complete."}
+                ? "Sandbox PayPal credentials are configured. Payments are allocated only after provider verification."
+                : "Sandbox PayPal credentials are not configured. Checkout is unavailable."}
             </p>
           </section>
           <section className="section">
@@ -206,7 +206,7 @@ export function PaymentAccountsSettings({
                             onClick={async () => {
                               try {
                                 await navigator.clipboard.writeText(
-                                  `Hi ${m.name}, please open Fairshare, open our agreement, and add your sandbox merchant ID under Settings → Payment accounts so your agreed share can be paid. ${location.origin}`,
+                                  `Hi ${m.name}, please open Fairshare, open our agreement, and add your sandbox merchant ID under Settings → Payment accounts so your agreed share can be paid. ${location.origin}/app`,
                                 );
                                 setMessage(
                                   "Reminder copied. Share it directly with this collaborator. No email was sent.",

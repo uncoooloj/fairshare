@@ -13,10 +13,13 @@ test("agreement navigation discovers all authorized groups without conflating gr
   assert.match(app, /groups.workspaces.map/);
   assert.match(app, /workspaceBase\(group.id\)/);
   assert.match(app, /lists.flatMap/);
-  assert.match(app, /setWorkspace\(fresh.workspaceId\)/);
+  assert.match(
+    app,
+    /if \(a.workspaceId !== currentWorkspace.current\)\s*commitWorkspace\(a.workspaceId\)/,
+  );
   assert.match(app, /workspaceBase\(a.workspaceId\)/);
   assert.match(app, /workspaceBase\(p.agreement.workspaceId\)/);
-  assert.match(app, /request !== listRequest.current/);
+  assert.match(app, /request !== workspaceRequest.current/);
   assert.doesNotMatch(app, /aria-label="Workspace"|WorkspaceNameForm/);
 });
 
