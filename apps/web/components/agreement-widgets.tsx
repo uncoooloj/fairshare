@@ -78,40 +78,6 @@ export function Metric({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
-export function SimpleForm({
-  label,
-  button,
-  onSubmit,
-  busy,
-  type = "text",
-}: {
-  label: string;
-  button: string;
-  onSubmit: (v: string) => void;
-  busy: boolean;
-  type?: string;
-}) {
-  const [value, setValue] = useState("");
-  return (
-    <form
-      className="inline-form"
-      onSubmit={(e) => {
-        e.preventDefault();
-        onSubmit(value);
-      }}
-    >
-      <Field label={label}>
-        <input
-          required
-          type={type}
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-        />
-      </Field>
-      <Button disabled={busy || !value.trim()}>{button}</Button>
-    </form>
-  );
-}
 export { Auth } from "./designer-auth";
 
 function PersonAvatar({ name }: { name: string }) {

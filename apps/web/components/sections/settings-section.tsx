@@ -8,10 +8,9 @@ import {
 import { ProfileContact } from "../profile-contact";
 import { PaymentAccountsSettings } from "../payment-account-settings";
 import { ActivityLogSettings } from "../activity-log-settings";
-import { Heading, SimpleForm } from "../agreement-widgets";
+import { Heading } from "../agreement-widgets";
 import { MfaSettings } from "../mfa-settings";
 import { PasswordRow, ProfileForm } from "../profile-form";
-import { PrivateInvitation } from "../private-invitation";
 import { api, type User } from "../../lib/model";
 import { Button, Empty } from "../ui";
 import type { Run } from "./types";
@@ -27,7 +26,6 @@ export interface SettingsSectionProps {
   workspaces: any[];
   inviteLink: string;
   run: Run;
-  acceptInvitation: (token: string) => Promise<void>;
   setNotice: Dispatch<SetStateAction<string>>;
   setInviteLink: Dispatch<SetStateAction<string>>;
   setUser: Dispatch<SetStateAction<User | null>>;
@@ -46,7 +44,6 @@ export function SettingsSection({
   workspaces,
   inviteLink,
   run,
-  acceptInvitation,
   setNotice,
   setInviteLink,
   setUser,
@@ -187,23 +184,6 @@ export function SettingsSection({
                   clearSession();
                 }}
               />
-              <section className="panel">
-                <h2>Invites</h2>
-                {workspaces.find((w) => w.id === workspace)?.role ===
-                  "OWNER" && (
-                  <PrivateInvitation key={workspace} workspace={workspace} />
-                )}
-                <SimpleForm
-                  label="Invite code"
-                  button="Accept invitation"
-                  busy={busy}
-                  onSubmit={(token) =>
-                    run(async () => {
-                      await acceptInvitation(token);
-                    })
-                  }
-                />
-              </section>
             </>
           )}
         </div>
