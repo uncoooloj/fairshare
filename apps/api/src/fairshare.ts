@@ -1,5 +1,6 @@
 import {
   localDocumentReaders,
+  readUploadedPdf,
   type DocumentReaders,
 } from "./documentReaders.js";
 import { extractPdfOcr } from "./ocr.js";
@@ -403,10 +404,10 @@ export function registerFairshareRoutes(
           "OCR_UNAVAILABLE",
           "OCR is not enabled. Paste text or ask the server operator to enable it.",
         );
-      const parsed =
-        b.useLocalOcr === true
-          ? await readers.ocr(bytes)
-          : await readers.pdf(bytes);
+      const parsed = await readUploadedPdf(readers, bytes, {
+        ocrEnabled: !!options.localOcrEnabled,
+        forceOcr: b.useLocalOcr === true,
+      });
       // Recheck membership after asynchronous parsing; revoked sessions/members must not persist documents.
       access(req);
       const documentId = randomUUID();

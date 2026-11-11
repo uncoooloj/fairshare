@@ -142,12 +142,12 @@ export function AgreementDocument({
           <article className="panel source-paper">
             <span className="eyebrow">
               {document.provenance?.ocr
-                ? "OCR TEXT · REVIEW REQUIRED"
+                ? "Scanned document · check against the original"
                 : document.provenance?.inputType === "PDF"
-                  ? "EXTRACTED PDF TEXT"
+                  ? "Agreement text"
                   : document.provenance?.inputType === "DOCX"
-                    ? "EXTRACTED DOCX TEXT"
-                    : "SAVED AGREEMENT TEXT"}
+                    ? "Agreement text"
+                    : "Agreement text"}
             </span>
             <pre>{document.text}</pre>
           </article>

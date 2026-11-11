@@ -1,5 +1,6 @@
 import {
   localDocumentReaders,
+  readUploadedPdf,
   type DocumentReaders,
 } from "./documentReaders.js";
 import { randomUUID } from "node:crypto";
@@ -232,9 +233,10 @@ export function registerAgreementIntake(
               "OCR is not enabled. Paste text instead.",
             );
           original = decodePdfBase64(input.base64);
-          const parsed = input.useLocalOcr
-            ? await readers.ocr(original)
-            : await readers.pdf(original);
+          const parsed = await readUploadedPdf(readers, original, {
+            ocrEnabled: !!options.localOcrEnabled,
+            forceOcr: input.useLocalOcr === true,
+          });
           text = parsed.text;
           provenance = {
             inputType: "PDF",

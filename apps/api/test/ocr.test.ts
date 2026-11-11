@@ -1,4 +1,5 @@
 import test from "node:test";
+import { randomUUID } from "node:crypto";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
@@ -50,7 +51,7 @@ test("local OCR validates file and timeout without echoing document data", async
     (e: any) => e.code === "OCR_TIMEOUT" && !e.message.includes("Maya"),
   );
 });
-test("OCR is disabled by default and never runs merely because file has no text", async () => {
+test("OCR is disabled by default and a legacy client hint never starts it", async () => {
   const app = await buildApp({ dbPath: ":memory:" });
   try {
     const owner = app.store.register({
@@ -96,7 +97,7 @@ test("OCR is disabled by default and never runs merely because file has no text"
   }
 });
 test(
-  "enabled OCR requires explicit request flag and persists original plus marked provenance",
+  "enabled OCR automatically reads a scan and persists original plus marked provenance",
   { skip: !available },
   async () => {
     const app = await buildApp({ dbPath: ":memory:", localOcrEnabled: true });
@@ -118,16 +119,6 @@ test(
         })
       ).json();
       const path = `${base}/${c.id}/documents`;
-      const denied = await app.inject({
-        method: "POST",
-        url: path + "/pdf",
-        headers,
-        payload: {
-          mimeType: "application/pdf",
-          base64: bytes.toString("base64"),
-        },
-      });
-      assert.equal(denied.json().error.code, "PDF_NO_EXTRACTABLE_TEXT");
       const response = await app.inject({
         method: "POST",
         url: path + "/pdf",
@@ -135,7 +126,6 @@ test(
         payload: {
           mimeType: "application/pdf",
           base64: bytes.toString("base64"),
-          useLocalOcr: true,
         },
       });
       assert.equal(response.statusCode, 201, response.body);
@@ -149,6 +139,32 @@ test(
       assert.equal(doc.extraction, null);
       assert.equal(doc.hasOriginal, true);
       assert.match(doc.text, /Maya receives/);
+      const payload = {
+        requestId: randomUUID(),
+        mimeType: "application/pdf",
+        base64: bytes.toString("base64"),
+        filename: "agreement.pdf",
+      };
+      const intake = await app.inject({
+        method: "POST",
+        url: "/api/agreements/intake",
+        headers,
+        payload,
+      });
+      assert.equal(intake.statusCode, 201, intake.body);
+      assert.equal(intake.json().document.provenance.ocr, true);
+      assert.match(intake.json().document.text, /Maya receives/);
+      const replay = await app.inject({
+        method: "POST",
+        url: "/api/agreements/intake",
+        headers,
+        payload,
+      });
+      assert.equal(replay.statusCode, 200, replay.body);
+      assert.equal(
+        replay.json().document.documentId,
+        intake.json().document.documentId,
+      );
     } finally {
       await app.close();
     }
