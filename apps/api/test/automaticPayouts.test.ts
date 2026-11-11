@@ -75,7 +75,7 @@ test("missing destination holds only its item; readiness later sends exactly onc
   assert.equal(calls, 2);
   f.db.close();
 });
-test("racing dispatch and manual-style reservation never submit twice", async () => {
+test("a hold after claim is retained without a duplicate payout", async () => {
   let calls = 0,
     release!: () => void;
   const f = fixture(async () => {
@@ -87,9 +87,12 @@ test("racing dispatch and manual-style reservation never submit twice", async ()
   const pending = f.service.dispatch(job.id, () => {});
   await f.service.dispatch(job.id, () => {});
   assert.equal(calls, 1);
+  f.agreement.reviewHold = true;
   release();
   await pending;
+  assert.equal(f.agreement.reviewHold, true);
   await f.service.dispatch(job.id, () => {});
+  await f.run();
   assert.equal(calls, 1);
   f.db.close();
 });

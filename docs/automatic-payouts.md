@@ -8,7 +8,10 @@ Cloudflare runs the same queue from its Durable Object alarm.
    approved integer-cent allocations. An invoice's `PAID` label alone is insufficient.
 2. Each allocation is considered separately. Participants save their own PayPal
    recipient ID. Missing/invalid IDs produce `WAITING_RECIPIENT`, not guessed recipients.
-3. Holds, missing approvals, adverse webhooks and refund records block outgoing funds.
+3. Holds, missing approvals, adverse webhooks and refund records are checked while
+   claiming an outgoing payout. A hold that arrives after submission is retained for
+   explicit resolution; Fairshare does not assume it can cancel or claw back a
+   provider payout.
 4. A unique `(capture_id,user_id)` reservation is committed before submission. Manual
    dispatch and concurrent workers cannot create another payout for that allocation.
 5. Provider acceptance becomes `PENDING`, not success. Existing item-level provider
