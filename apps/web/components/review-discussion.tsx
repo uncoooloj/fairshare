@@ -657,9 +657,7 @@ export function RuleComments(props: RuleCommentsProps) {
               parentName={parent ? memberName(agreement, parent.authorId) : ""}
               autoFocus={!count}
               onCancelReply={() => setParent(undefined)}
-              onPosted={() => {
-                thread.clearDraft(topic);
-              }}
+              onPosted={() => undefined}
               value={draft.body}
               onValueChange={setDraft}
             />

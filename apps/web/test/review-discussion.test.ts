@@ -308,6 +308,23 @@ test("thread-owned drafts survive a collapsed view and clear after a successful 
   await thread.post("Keep this", CommentTopic.SPLIT, parent);
   assert.deepEqual(thread.draft(CommentTopic.SPLIT), { body: "" });
 });
+test("a completed post cannot clear text entered after its request started", async () => {
+  let release: () => void = () => {};
+  const thread = new CommentThread(
+    "comments",
+    async <T>(_path: string, method?: string) => {
+    if (method === "POST")
+      await new Promise<void>((resolve) => (release = resolve));
+    return { comments: [], nextCursor: null } as T;
+    },
+  );
+  thread.setDraft(CommentTopic.SPLIT, { body: "First comment" });
+  const post = thread.post("First comment", CommentTopic.SPLIT);
+  thread.setDraft(CommentTopic.SPLIT, { body: "Newer draft" });
+  release();
+  assert.equal(await post, true);
+  assert.equal(thread.draft(CommentTopic.SPLIT).body, "Newer draft");
+});
 test("thread-owned drafts never cross version endpoints or rule topics", () => {
   const fetcher = async <T>() => ({ comments: [], nextCursor: null }) as T;
   const first = new CommentThread("agreements/a/versions/1/comments", fetcher);
