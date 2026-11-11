@@ -145,6 +145,12 @@ test("the Agreement tab follows the design: no payment preview, versions beside 
   );
   assert.match(detail, /label: "Upload amended agreement"/);
   assert.match(detail, /organizer && selected\.value\.versions\.length > 0/);
+  // An amendment starts from a new local source; it must not reuse the
+  // approved version's immutable document or extraction.
+  assert.match(
+    detail,
+    /label: "Upload amended agreement"[\s\S]*?if \(!mayLeaveDraft\(\)\) return;[\s\S]*?setSource\(""\);[\s\S]*?setDocumentId\(""\);[\s\S]*?setExtraction\(null\);[\s\S]*?setEditing\(true\)/,
+  );
 });
 test("rule cards carry their own comments; Term shares the overall thread", () => {
   const terms = readFileSync(

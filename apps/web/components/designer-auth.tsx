@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { useEmailDelivery } from "../lib/email-capability";
 import { prepareAuthForm } from "../lib/auth-form";
 import styles from "./designer-auth.module.css";
+import { AuthErrorNotice } from "./auth-error-notice";
 import { LogoMark } from "./logo-mark";
 
 function Brand() {
@@ -237,23 +238,29 @@ export function AccessPrompt({
   kind,
   email,
   busy,
+  error = "",
   onContinue,
   onCancel,
+  standalone = false,
 }: {
   kind: "verification" | "invitation";
   email: string;
   busy: boolean;
+  error?: string;
   onContinue: () => void;
   onCancel?: () => void;
+  /** Email verification has no application context, so it uses the auth canvas. */
+  standalone?: boolean;
 }) {
   const isInvitation = kind === "invitation";
   const handleContinue = () => {
     if (!busy) onContinue();
   };
 
-  return (
+  const prompt = (
     <section className={styles.access} aria-busy={busy}>
       <h2>{isInvitation ? "You’ve been invited" : "Verify your email"}</h2>
+      <AuthErrorNotice className={styles.error} message={error} />
       <p>
         {isInvitation
           ? "You will join using your signed-in account:"
@@ -277,11 +284,26 @@ export function AccessPrompt({
             ? "Accept invitation"
             : "Verify email"}
       </button>
-      {isInvitation && onCancel && (
-        <button type="button" disabled={busy} onClick={onCancel}>
-          Not now
-        </button>
+      {onCancel && (
+        isInvitation ? (
+          <button type="button" disabled={busy} onClick={onCancel}>
+            Not now
+          </button>
+        ) : (
+          <button type="button" disabled={busy} onClick={onCancel}>
+            Back to Fairshare
+          </button>
+        )
       )}
     </section>
+  );
+  return standalone ? (
+    <main className={styles.accessPage}>
+      <Brand />
+      <div className={styles.accessColumn}>{prompt}</div>
+      <footer className={styles.footer}>Sandbox build. No live money.</footer>
+    </main>
+  ) : (
+    prompt
   );
 }

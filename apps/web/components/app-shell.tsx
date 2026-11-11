@@ -171,6 +171,32 @@ export function AppShell({
                 {s}
               </button>
             ))}
+            <button
+              type="button"
+              className="nav-item nav-sign-out"
+              onClick={() => {
+                if (!mayLeaveDraft()) return;
+                return run(async () => {
+                  await api("auth/logout", "POST", {});
+                  clearSession();
+                });
+              }}
+            >
+              <svg
+                width="21"
+                height="21"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M10 17l5-5-5-5M15 12H3M21 4v16" />
+              </svg>
+              Sign out
+            </button>
           </nav>
           <div className="sidebar-bottom">
             <button
@@ -195,18 +221,6 @@ export function AppShell({
                 <small title={user.email}>{user.email}</small>
               </div>
             </div>
-            <button
-              className="text-button sign-out"
-              onClick={() => {
-                if (!mayLeaveDraft()) return;
-                return run(async () => {
-                  await api("auth/logout", "POST", {});
-                  clearSession();
-                });
-              }}
-            >
-              Sign out
-            </button>
           </div>
         </div>
       </aside>
@@ -265,27 +279,29 @@ export function AppShell({
             </svg>
           </button>
         </div>
-        {error && (
-          <div className="message error" role="alert">
-            {error}
-            {error.includes("Reload") && (
-              <Button variant="quiet" onClick={guardedRefresh}>
-                Reload latest
-              </Button>
-            )}
-          </div>
-        )}
-        {notice && (
-          <div className="message" role="status">
-            {notice}
-          </div>
-        )}
-        {busy && (
-          <div className="progress" role="status">
-            Working…
-          </div>
-        )}
-        {children}
+        <div className="app-content">
+          {error && (
+            <div className="message error" role="alert">
+              {error}
+              {error.includes("Reload") && (
+                <Button variant="quiet" onClick={guardedRefresh}>
+                  Reload latest
+                </Button>
+              )}
+            </div>
+          )}
+          {notice && (
+            <div className="message" role="status">
+              {notice}
+            </div>
+          )}
+          {busy && (
+            <div className="progress" role="status">
+              Working…
+            </div>
+          )}
+          {children}
+        </div>
       </main>
     </div>
   );
