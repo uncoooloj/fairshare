@@ -47,13 +47,11 @@ export function AllocationCalculation({
   const ownsAdvance = a.recoupmentCents > 0;
   const toneClass = `tone-${tone ?? 0}`;
   const advanceHolder = ownsAdvance ? name : advanceTo;
+  // Clauses follow the steps: the advance clause first whenever this payment repaid it.
   const showAdvanceClause = Boolean(
-    trace.advanceSource && (ownsAdvance || trace.poolCents === 0),
+    trace.advanceSource && (trace.recoupedCents > 0 || trace.poolCents === 0),
   );
   const showSplitClause = a.shareCents > 0 || !showAdvanceClause;
-  const showTrailingAdvanceClause = Boolean(
-    trace.advanceSource && !showAdvanceClause && trace.recoupedCents > 0,
-  );
   let step = 1;
   return (
     <section className="calculation" aria-label={`Calculation for ${name}`}>
@@ -139,9 +137,7 @@ export function AllocationCalculation({
                   )}
                 </span>
                 <small>
-                  {a.recoupmentCents > 0
-                    ? `${name} is paid back first`
-                    : `Paid back to ${advanceTo || "the advance holder"} first`}
+                  {`Paid back to ${advanceHolder || "the advance holder"} first`}
                 </small>
               </td>
               <td className="numeric">
@@ -190,7 +186,7 @@ export function AllocationCalculation({
       </table>
 
       <h3 className="calculation-label">
-        {(showAdvanceClause && showSplitClause) || showTrailingAdvanceClause
+        {showAdvanceClause && showSplitClause
           ? "Source clauses"
           : "Source clause"}
       </h3>
@@ -206,12 +202,6 @@ export function AllocationCalculation({
           <blockquote>
             {trace.source.excerpt || "Source excerpt not recorded."}
           </blockquote>
-        </figure>
-      )}
-      {showTrailingAdvanceClause && trace.advanceSource && (
-        <figure className="clause-card">
-          <span className="clause-chip">§ {trace.advanceSource.clause}</span>
-          <blockquote>{trace.advanceSource.excerpt}</blockquote>
         </figure>
       )}
 
