@@ -21,15 +21,15 @@ const row = (status: S, amountCents = 100): PaymentGridRow => ({
   currency: "USD",
   status,
 });
-test("pending, unclaimed and uncertain funds are never counted as paid", () => {
+test("reserved, pending, unclaimed and uncertain funds are never counted as paid", () => {
   assert.deepEqual(
     summarizePayouts(Object.values(S).map((status) => row(status))),
     {
       paid: 100,
-      processing: 200,
+      processing: 300,
       attention: 600,
       paidCount: 1,
-      processingCount: 2,
+      processingCount: 3,
       attentionCount: 6,
     },
   );

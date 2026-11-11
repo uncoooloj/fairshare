@@ -184,6 +184,19 @@ test("refund hold does not erase recorded shares", () => {
   assert.equal(allocationRows(a).length, 3);
 });
 
+test("refund recovery adjustments preserve the recorded payment trace", () => {
+  const a = agreement();
+  const riley = a.value.revenue[0].allocations.find(
+    (allocation) => allocation.userId === "riley",
+  )!;
+  riley.offsetCents = 5000;
+  riley.totalCents -= riley.offsetCents;
+
+  const trace = allocationTrace(a, "capture", "riley", 15000);
+  assert.equal(trace?.allocation.offsetCents, 5000);
+  assert.equal(trace?.allocation.totalCents, 15000);
+});
+
 test("ledger order is newest first and former participant names are explicit", () => {
   const a = agreement();
   const next = structuredClone(a.value.revenue[0]);

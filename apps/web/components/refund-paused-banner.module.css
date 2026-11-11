@@ -1,0 +1,33 @@
+.banner {
+  margin: 0 0 16px;
+}
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
+.review p {
+  line-height: 1.6;
+}
+.owed {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 20px;
+  border: 1px solid var(--color-line, #e6e9e7);
+  border-radius: 12px;
+}
+.owed li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+}
+.owed li + li {
+  border-top: 1px solid var(--color-line, #e6e9e7);
+}
+.review textarea {
+  width: 100%;
+}

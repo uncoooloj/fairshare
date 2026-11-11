@@ -1,14 +1,23 @@
 import { randomUUID } from "node:crypto";
 import type { FastifyRequest } from "fastify";
-import { DomainError, holdReversedRevenue } from "@fairshare/domain";
+import { DomainError, resumePayouts } from "@fairshare/domain";
 import { reconcileCapture, type PayPalSandbox } from "@fairshare/payments";
 import type { FairshareApp, AggregateStore } from "./fairshare.js";
 import type { PaymentProvider } from "./paymentRoutes.js";
 import {
-  payoutWasNeverSubmitted,
   webhookBelongsOnlyTo,
   pendingWebhookBlocksPayout,
+  pendingWebhookForAgreement,
 } from "./paymentSafety.js";
+import {
+  settleRefundOp,
+  capturePayoutState,
+  ensureRefundSchema,
+  notePayoutStatus,
+  openDisputeCount,
+  unrefundedCents,
+  UNSETTLED_REFUND_SQL,
+} from "./refundReversal.js";
 const fail = (code: string, message: string): never => {
   throw new DomainError(code, message);
 };
@@ -26,7 +35,35 @@ interface Context {
   applyCapture: (op: any) => Promise<unknown>;
   processEvent?: (eventId: string) => Promise<void>;
 }
-/** Evidence-only recovery. Never clears holds, edits allocations, or replays an unknown write. */
+/** Where an organizer refund stands for the people in the agreement. */
+export enum RefundOutcome {
+  /** PayPal confirmed it and it came back out of that payment's split. */
+  REVERSED_BY_SPLIT = "REVERSED_BY_SPLIT",
+  /** PayPal confirmed it and payouts are paused for the organizer to review. */
+  PAUSED_FOR_REVIEW = "PAUSED_FOR_REVIEW",
+  /** Not confirmed yet; that payment's payouts wait. */
+  WAITING_FOR_PAYPAL = "WAITING_FOR_PAYPAL",
+  NOT_REFUNDED = "NOT_REFUNDED",
+}
+/** Why payouts cannot resume yet. */
+export enum ResumeBlocker {
+  DISPUTE_OPEN = "DISPUTE_OPEN",
+  WEBHOOK_UNRECONCILED = "WEBHOOK_UNRECONCILED",
+  REFUND_UNRECONCILED = "REFUND_UNRECONCILED",
+}
+const resumeBlockerMessages: Record<ResumeBlocker, string> = {
+  [ResumeBlocker.DISPUTE_OPEN]:
+    "A PayPal dispute on this agreement is still open. Resume once it's closed.",
+  [ResumeBlocker.WEBHOOK_UNRECONCILED]:
+    "PayPal sent an update that hasn't been checked yet. Check it first.",
+  [ResumeBlocker.REFUND_UNRECONCILED]:
+    "A refund is still going through. Check its status first.",
+};
+const clientKey = (value: unknown) =>
+  typeof value === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(value)
+    ? value
+    : fail("INVALID_INPUT", "requestKey required");
+/** Evidence-only recovery, plus refunds and resuming after a refund. Never replays an unknown write. */
 export function registerPaymentRecovery({
   app,
   aggregates,
@@ -39,8 +76,10 @@ export function registerPaymentRecovery({
   const db = app.store.db,
     tx = <T>(fn: () => T) => app.store.tx(fn),
     base = "/api/workspaces/:workspaceId/collaborations/:collaborationId";
-  db.exec(`CREATE TABLE IF NOT EXISTS fairshare_refund_ops(id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL,collaboration_id TEXT NOT NULL,payment_id TEXT NOT NULL UNIQUE,capture_id TEXT NOT NULL UNIQUE,amount INTEGER NOT NULL,request_key TEXT NOT NULL UNIQUE,provider_refund_id TEXT UNIQUE,status TEXT NOT NULL,created_by TEXT NOT NULL,created_at TEXT NOT NULL);
- CREATE TABLE IF NOT EXISTS fairshare_recovery_audit(id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL,collaboration_id TEXT NOT NULL,actor_id TEXT NOT NULL,kind TEXT NOT NULL,operation_id TEXT NOT NULL,provider_id TEXT,created_at TEXT NOT NULL);`);
+  ensureRefundSchema(db, tx);
+  db.exec(
+    `CREATE TABLE IF NOT EXISTS fairshare_recovery_audit(id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL,collaboration_id TEXT NOT NULL,actor_id TEXT NOT NULL,kind TEXT NOT NULL,operation_id TEXT NOT NULL,provider_id TEXT,created_at TEXT NOT NULL);`,
+  );
   const audit = (
     ctx: any,
     kind: string,
@@ -96,10 +135,67 @@ export function registerPaymentRecovery({
           return false;
         }
       });
+  const resumeBlockers = (p: any): ResumeBlocker[] => [
+    ...(openDisputeCount(db, p.workspaceId, p.collaborationId)
+      ? [ResumeBlocker.DISPUTE_OPEN]
+      : []),
+    ...(pendingWebhookForAgreement(db, {
+      workspace_id: p.workspaceId,
+      collaboration_id: p.collaborationId,
+    })
+      ? [ResumeBlocker.WEBHOOK_UNRECONCILED]
+      : []),
+    ...(db
+      .prepare(
+        `SELECT id FROM fairshare_refund_ops WHERE workspace_id=? AND collaboration_id=? AND ${UNSETTLED_REFUND_SQL} LIMIT 1`,
+      )
+      .get(p.workspaceId, p.collaborationId)
+      ? [ResumeBlocker.REFUND_UNRECONCILED]
+      : []),
+  ];
+  const refundOutcome = (ctx: any, op: any): RefundOutcome => {
+    if (["FAILED", "CANCELLED"].includes(op.status))
+      return RefundOutcome.NOT_REFUNDED;
+    if (!op.applied_at) return RefundOutcome.WAITING_FOR_PAYPAL;
+    if (op.settled_by_hold) return RefundOutcome.PAUSED_FOR_REVIEW;
+    const applied = aggregates
+      .read(ctx.p.workspaceId, ctx.p.collaborationId)
+      .value.revenue.find((r) => r.providerCaptureId === op.capture_id)
+      ?.refunds?.find((r) => r.id === op.provider_refund_id);
+    // Not recorded on the payment: settled by an earlier pause or reversal instead.
+    return applied && !applied.held
+      ? RefundOutcome.REVERSED_BY_SPLIT
+      : RefundOutcome.PAUSED_FOR_REVIEW;
+  };
   app.get(`${base}/recovery`, async (req) => {
     const ctx = access(req, true);
     const p = ctx.p;
+    const agreement = ctx.row.value;
     return {
+      review: {
+        paused: !!agreement.reviewHold,
+        offsetActive: !!agreement.offsetOwedBack,
+        owed: Object.entries(agreement.owedBack ?? {})
+          .filter(([, cents]) => (cents as number) > 0)
+          .map(([userId, cents]) => ({
+            userId,
+            name:
+              agreement.members.find((m: any) => m.userId === userId)
+                ?.displayName ?? "Someone",
+            cents,
+          })),
+        // Kept back for a payout PayPal then never delivered; added to their next share.
+        credits: Object.entries(agreement.creditBack ?? {})
+          .filter(([, cents]) => (cents as number) > 0)
+          .map(([userId, cents]) => ({
+            userId,
+            name:
+              agreement.members.find((m: any) => m.userId === userId)
+                ?.displayName ?? "Someone",
+            cents,
+          })),
+        blockers: resumeBlockers(p),
+      },
       events: scopedEvents(p).map((event) => ({
         id: event.id,
         eventType: JSON.parse(event.action).eventType,
@@ -123,7 +219,7 @@ export function registerPaymentRecovery({
         .all(p.workspaceId, p.collaborationId),
       refunds: db
         .prepare(
-          "SELECT id,payment_id,capture_id,amount,provider_refund_id,status FROM fairshare_refund_ops WHERE workspace_id=? AND collaboration_id=?",
+          "SELECT id,payment_id,capture_id,amount,provider_refund_id,status,fee_returned,applied_at,settled_by_hold FROM fairshare_refund_ops WHERE workspace_id=? AND collaboration_id=? ORDER BY created_at,rowid",
         )
         .all(p.workspaceId, p.collaborationId),
       audit: db
@@ -132,7 +228,7 @@ export function registerPaymentRecovery({
         )
         .all(p.workspaceId, p.collaborationId),
       notice:
-        "Recovery verifies provider evidence only. It does not clear holds or retry uncertain payments.",
+        "Checking with PayPal never clears a pause or retries an uncertain payment.",
     };
   });
   app.post(`${base}/recovery/events/:eventId/reconcile`, async (req) => {
@@ -235,6 +331,14 @@ export function registerPaymentRecovery({
       db.prepare(
         "UPDATE fairshare_payout_ops SET batch_id=?,item_id=?,status=? WHERE id=?",
       ).run(batchId, verified.itemId, verified.status, payoutId);
+      notePayoutStatus(
+        db,
+        aggregates,
+        fresh,
+        fresh.status,
+        verified.status,
+        date(),
+      );
       audit(latest, "PAYOUT_EVIDENCE_LINKED", payoutId, batchId);
       return {
         id: payoutId,
@@ -286,45 +390,92 @@ export function registerPaymentRecovery({
         "UPDATE fairshare_refund_ops SET provider_refund_id=?,status=? WHERE id=?",
       ).run(refundId, result.status, op.id);
       audit(ctx, "REFUND_EVIDENCE_VERIFIED", op.id, refundId);
-      return {
-        id: op.id,
-        status: result.status,
-        amountCents: op.amount,
-        providerRefundId: refundId,
-        holdRemains: true,
-      };
+      if (settleRefundOp(db, aggregates, op.id, result, date()).applied)
+        audit(ctx, "REFUND_APPLIED_TO_SPLIT", op.id, refundId);
+      return refundView(ctx, op.id);
     });
   };
+  const refundView = (ctx: any, opId: string) => {
+    const op = db
+      .prepare("SELECT * FROM fairshare_refund_ops WHERE id=?")
+      .get(opId) as any;
+    return {
+      id: op.id,
+      status: op.status,
+      amountCents: op.amount,
+      providerRefundId: op.provider_refund_id,
+      outcome: refundOutcome(ctx, op),
+      holdRemains: !!aggregates.read(ctx.p.workspaceId, ctx.p.collaborationId)
+        .value.reviewHold,
+    };
+  };
+  /** Refund all or part of a payment before any of it is paid out. Fairshare reserves the refund
+   * first, which stops that payment's payouts, then asks PayPal. When PayPal confirms, the refund
+   * comes back out of that payment's split. Once a share is reserved or paid, refunds are made in
+   * PayPal and arrive as a provider refund, which pauses payouts for review. */
   app.post(`${base}/payments/:paymentId/refund`, async (req) => {
     const ctx = access(req, true),
       op = ownPayment(req);
-    const input = req.body as any;
-    if (input?.confirmFullRefund !== true)
-      fail(
-        "CONFIRMATION_REQUIRED",
-        "Explicit full sandbox refund confirmation required",
-      );
-    if (input.amountCents !== undefined || input.recipientId !== undefined)
-      fail("INVALID_INPUT", "Refund amount and recipient cannot be overridden");
+    const input = (req.body ?? {}) as any;
+    const full = input.confirmFullRefund === true;
+    if (!full && input.confirmRefund !== true)
+      fail("CONFIRMATION_REQUIRED", "Confirm the refund first");
+    if (input.recipientId !== undefined)
+      fail("INVALID_INPUT", "Refunds always go back to whoever paid");
+    if (full && input.amountCents !== undefined)
+      fail("INVALID_INPUT", "A full refund has no amount");
+    if (
+      !full &&
+      (!Number.isSafeInteger(input.amountCents) || input.amountCents < 1)
+    )
+      fail("INVALID_MONEY", "Refund amount must be whole cents above zero");
+    const key =
+      full && input.requestKey === undefined
+        ? "full"
+        : clientKey(input.requestKey);
     const p = refundProvider();
     const reservation = tx(() => {
       const latest = access(req, true),
         fresh = ownPayment(req);
       const prior = db
-        .prepare("SELECT * FROM fairshare_refund_ops WHERE payment_id=?")
-        .get(op.id) as any;
-      if (prior) return { created: false, op: prior };
+        .prepare(
+          "SELECT * FROM fairshare_refund_ops WHERE payment_id=? AND client_key=?",
+        )
+        .get(op.id, key) as any;
+      if (prior) {
+        const intent = db
+          .prepare(
+            "SELECT intent FROM fairshare_refund_intents WHERE refund_op_id=?",
+          )
+          .get(prior.id) as { intent: string } | undefined;
+        if (
+          (intent && intent.intent !== (full ? "FULL" : "PARTIAL")) ||
+          (!full && prior.amount !== input.amountCents)
+        )
+          fail(
+            "IDEMPOTENCY_CONFLICT",
+            "Request key reused with a different refund",
+          );
+        return { created: false, op: prior };
+      }
       if (fresh.status !== "ALLOCATED" || !fresh.provider_capture_id)
         fail("REFUND_NOT_READY", "Verified allocated capture required");
-      const payouts = db
-        .prepare(
-          "SELECT id,status,batch_id,item_id FROM fairshare_payout_ops WHERE capture_id=?",
-        )
-        .all(fresh.provider_capture_id);
-      if (payouts.some((payout) => !payoutWasNeverSubmitted(payout)))
+      if (
+        db
+          .prepare(
+            "SELECT id FROM fairshare_refund_ops WHERE payment_id=? AND settled_by_hold=1",
+          )
+          .get(op.id)
+      )
+        fail(
+          "REFUND_EXCEEDS_PAYMENT",
+          "This payment was already refunded in full.",
+        );
+      // Reserved counts as started: a dispatcher may claim it at any moment.
+      if (capturePayoutState(db, fresh.provider_capture_id).payoutsStarted)
         fail(
           "REFUND_AFTER_PAYOUT_UNSUPPORTED",
-          "A payout may have reached the provider; operator liability review is required",
+          "Part of this payment was already paid out, so it can't be refunded here.",
         );
       const row = aggregates.read(ctx.p.workspaceId, ctx.p.collaborationId);
       if (
@@ -336,52 +487,55 @@ export function registerPaymentRecovery({
         })
       )
         fail("PAYMENT_HOLD", "Resolve existing hold before a new refund");
-      const refundId = randomUUID(),
-        key = `refund-${refundId}`;
-      aggregates.updateInsideTransaction(
+      if (
+        db
+          .prepare(
+            `SELECT id FROM fairshare_refund_ops WHERE capture_id=? AND ${UNSETTLED_REFUND_SQL} LIMIT 1`,
+          )
+          .get(fresh.provider_capture_id)
+      )
+        fail(
+          "REFUND_IN_PROGRESS",
+          "Another refund on this payment is still going through",
+        );
+      const left = unrefundedCents(
+        aggregates,
         ctx.p.workspaceId,
         ctx.p.collaborationId,
-        row.revision,
-        (c) =>
-          holdReversedRevenue(
-            c,
-            fresh.provider_capture_id,
-            "Full original-capture refund requested; liabilities retained pending review",
-            date(),
-          ),
+        fresh.provider_capture_id,
       );
+      const amount = full ? left : (input.amountCents as number);
+      if (amount < 1 || amount > left)
+        fail(
+          "REFUND_EXCEEDS_PAYMENT",
+          `You can refund up to $${(left / 100).toFixed(2)} of this payment.`,
+        );
+      const refundId = randomUUID(),
+        requestKey = `refund-${refundId}`;
       db.prepare(
-        "INSERT INTO fairshare_refund_ops VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO fairshare_refund_ops(id,workspace_id,collaboration_id,payment_id,capture_id,amount,request_key,provider_refund_id,status,created_by,created_at,client_key) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
       ).run(
         refundId,
         ctx.p.workspaceId,
         ctx.p.collaborationId,
         op.id,
         fresh.provider_capture_id,
-        fresh.amount,
-        key,
+        amount,
+        requestKey,
         null,
         "SUBMITTING",
         latest.user.id,
         date(),
+        key,
       );
-      // This transaction owns both reservations. Preserve payout records, but
-      // make them permanently ineligible before the refund provider call starts.
-      // A dispatcher that claimed SUBMITTING first makes the check above fail.
-      for (const payout of payouts) {
-        db.prepare(
-          "UPDATE fairshare_payout_ops SET status='CANCELLED_FOR_REFUND' WHERE id=?",
-        ).run(payout.id);
-        audit(
-          latest,
-          "UNSUBMITTED_PAYOUT_CANCELLED_FOR_REFUND",
-          payout.id,
-          fresh.provider_capture_id,
-        );
-      }
+      db.prepare(
+        "INSERT INTO fairshare_refund_intents(refund_op_id,intent) VALUES(?,?)",
+      ).run(refundId, full ? "FULL" : "PARTIAL");
+      // The unsettled refund row is the reservation: payoutHoldReason stops this payment's
+      // payouts from here until PayPal settles it. A dispatcher that reserved first fails above.
       audit(
         latest,
-        "FULL_REFUND_RESERVED",
+        amount === left ? "FULL_REFUND_RESERVED" : "PARTIAL_REFUND_RESERVED",
         refundId,
         fresh.provider_capture_id,
       );
@@ -392,14 +546,7 @@ export function registerPaymentRecovery({
           .get(refundId) as any,
       };
     });
-    if (!reservation.created)
-      return {
-        id: reservation.op.id,
-        status: reservation.op.status,
-        amountCents: reservation.op.amount,
-        providerRefundId: reservation.op.provider_refund_id,
-        holdRemains: true,
-      };
+    if (!reservation.created) return refundView(ctx, reservation.op.id);
     const refund = reservation.op;
     let result;
     try {
@@ -410,25 +557,53 @@ export function registerPaymentRecovery({
         refund.request_key,
       );
     } catch {
-      db.prepare(
-        "UPDATE fairshare_refund_ops SET status='OUTCOME_UNKNOWN' WHERE id=?",
-      ).run(refund.id);
-      return { id: refund.id, status: "OUTCOME_UNKNOWN", holdRemains: true };
+      tx(() => {
+        const fresh = db
+          .prepare("SELECT status FROM fairshare_refund_ops WHERE id=?")
+          .get(refund.id) as any;
+        if (!["COMPLETED", "FAILED", "CANCELLED"].includes(fresh.status))
+          db.prepare(
+            "UPDATE fairshare_refund_ops SET status='OUTCOME_UNKNOWN' WHERE id=?",
+          ).run(refund.id);
+      });
+      return refundView(access(req, true), refund.id);
     }
+    const terminal = tx(() => {
+      const fresh = db
+        .prepare("SELECT status FROM fairshare_refund_ops WHERE id=?")
+        .get(refund.id) as any;
+      return ["COMPLETED", "FAILED", "CANCELLED"].includes(fresh.status);
+    });
+    if (terminal) return refundView(access(req, true), refund.id);
     // Preserve a known provider identifier even if access was revoked during the external write.
     if (
       !result.id ||
       result.amountCents !== refund.amount ||
       result.currency !== "USD"
     ) {
-      db.prepare(
-        "UPDATE fairshare_refund_ops SET status='OUTCOME_UNKNOWN' WHERE id=?",
-      ).run(refund.id);
+      tx(() => {
+        const fresh = db
+          .prepare("SELECT status FROM fairshare_refund_ops WHERE id=?")
+          .get(refund.id) as any;
+        if (!["COMPLETED", "FAILED", "CANCELLED"].includes(fresh.status))
+          db.prepare(
+            "UPDATE fairshare_refund_ops SET status='OUTCOME_UNKNOWN' WHERE id=?",
+          ).run(refund.id);
+      });
       fail("REFUND_MISMATCH", "Provider result requires investigation");
     }
-    db.prepare(
-      "UPDATE fairshare_refund_ops SET provider_refund_id=?,status='PENDING' WHERE id=?",
-    ).run(result.id, refund.id);
+    const settledBeforeVerify = tx(() => {
+      const fresh = db
+        .prepare("SELECT status FROM fairshare_refund_ops WHERE id=?")
+        .get(refund.id) as any;
+      if (["COMPLETED", "FAILED", "CANCELLED"].includes(fresh.status))
+        return true;
+      db.prepare(
+        "UPDATE fairshare_refund_ops SET provider_refund_id=?,status='PENDING' WHERE id=?",
+      ).run(result.id, refund.id);
+      return false;
+    });
+    if (settledBeforeVerify) return refundView(access(req, true), refund.id);
     access(req, true);
     return verifyRefund(req, refund, result.id);
   });
@@ -440,6 +615,67 @@ export function registerPaymentRecovery({
         "Provide provider refund evidence to recover this operation",
       );
     return verifyRefund(req, op, op.provider_refund_id);
+  });
+  /** Organizer clears the pause after reviewing a refund. Refused while PayPal still has
+   * something open. offsetFromFuturePayouts keeps each person's overpayment back from their
+   * next shares until settled; without it, owed amounts are recorded as settled outside. */
+  app.post(`${base}/payments/resume`, async (req) => {
+    const b = req.body as any;
+    if (!b || typeof b !== "object" || Array.isArray(b))
+      fail("INVALID_INPUT", "JSON object required");
+    if (!Number.isSafeInteger(b.expectedRevision) || b.expectedRevision < 1)
+      fail("INVALID_INPUT", "expectedRevision required");
+    const offset = b.offsetFromFuturePayouts ?? false;
+    if (typeof offset !== "boolean")
+      fail("INVALID_INPUT", "offsetFromFuturePayouts must be true or false");
+    if (b.note !== undefined && typeof b.note !== "string")
+      fail("INVALID_INPUT", "Note must be text");
+    return tx(() => {
+      const ctx = access(req, true),
+        p = ctx.p;
+      const blocker = resumeBlockers(p)[0];
+      if (blocker) fail(blocker, resumeBlockerMessages[blocker]);
+      const updated = aggregates.updateInsideTransaction(
+        p.workspaceId,
+        p.collaborationId,
+        b.expectedRevision,
+        (c) =>
+          resumePayouts(
+            c,
+            { offsetFromFuturePayouts: offset, note: b.note },
+            ctx.user.id,
+            date(),
+          ),
+      );
+      // Payouts a pause stopped before PayPal go back to waiting, at what the split now says.
+      const held = db
+        .prepare(
+          "SELECT id,capture_id,user_id FROM fairshare_payout_ops WHERE workspace_id=? AND collaboration_id=? AND status='HELD' AND batch_id IS NULL AND item_id IS NULL",
+        )
+        .all(p.workspaceId, p.collaborationId) as any[];
+      for (const payout of held) {
+        const total =
+          updated.value.revenue
+            .find((r) => r.providerCaptureId === payout.capture_id)
+            ?.allocations.find((a) => a.userId === payout.user_id)
+            ?.totalCents ?? 0;
+        if (total > 0)
+          db.prepare(
+            "UPDATE fairshare_payout_ops SET status='AUTO_HELD',amount=? WHERE id=?",
+          ).run(total, payout.id);
+        else
+          db.prepare(
+            "UPDATE fairshare_payout_ops SET status='CANCELLED_FOR_REFUND' WHERE id=?",
+          ).run(payout.id);
+      }
+      audit(
+        ctx,
+        offset ? "PAYOUTS_RESUMED_WITH_OFFSET" : "PAYOUTS_RESUMED",
+        `${p.collaborationId}:${updated.revision}`,
+        null,
+      );
+      return updated;
+    });
   });
   app.post(`${base}/refunds/:refundId/recover`, async (req) => {
     const op = ownRefund(req),

@@ -172,13 +172,11 @@ async function fixture() {
   };
 }
 
-test("full refund atomically cancels every unsubmitted reservation, preserves amounts and never replays", async () => {
+test("full refund before payouts cancels unsent payout rows, reverses the split and never replays", async () => {
   const f = await fixture();
   try {
-    for (const status of ["WAITING_RECIPIENT", "AUTO_HELD", "RESERVED", "HELD"])
+    for (const status of ["WAITING_RECIPIENT", "AUTO_HELD", "HELD"])
       f.reserve(status, null, null, status);
-    const before = f.aggregates.read(f.workspace.id, "agreement").value
-      .revenue[0];
     const result = await f.refund();
     assert.equal(result.statusCode, 200, result.body);
     assert.equal(result.json().status, "COMPLETED");
@@ -187,31 +185,36 @@ test("full refund atomically cancels every unsubmitted reservation, preserves am
     const payouts = f.app.store.db
       .prepare("SELECT status,amount FROM fairshare_payout_ops")
       .all();
-    assert.equal(payouts.length, 4);
+    assert.equal(payouts.length, 3);
     assert.ok(
       payouts.every(
         (p) => p.status === "CANCELLED_FOR_REFUND" && p.amount === 9700,
       ),
     );
     const after = f.aggregates.read(f.workspace.id, "agreement").value;
+    assert.equal(after.revenue[0].allocations[0].totalCents, 0);
+    // PayPal kept its fee (no breakdown), so the 300 fee is now owed and payouts pause.
+    assert.equal(result.json().outcome, "PAUSED_FOR_REVIEW");
     assert.equal(after.reviewHold, true);
-    assert.equal(
-      after.revenue[0].allocations[0].totalCents,
-      before.allocations[0].totalCents,
-    );
+    assert.deepEqual({ ...after.owedBack }, { [f.owner.user.id]: 300 });
     assert.equal(
       (await f.post("/payouts/dispatch", { captureId: "CAP" })).statusCode,
       400,
     );
     assert.equal(f.counts().payoutWrites, 0);
-    assert.equal(
-      f.app.store.db
-        .prepare(
-          "SELECT count(*) AS n FROM fairshare_recovery_audit WHERE kind='UNSUBMITTED_PAYOUT_CANCELLED_FOR_REFUND'",
-        )
-        .get().n,
-      4,
-    );
+  } finally {
+    await f.app.close();
+  }
+});
+
+test("a reserved payout counts as started, so the organizer cannot refund that payment here", async () => {
+  const f = await fixture();
+  try {
+    f.reserve("RESERVED");
+    const response = await f.refund();
+    assert.equal(response.statusCode, 400, response.body);
+    assert.equal(response.json().error.code, "REFUND_AFTER_PAYOUT_UNSUPPORTED");
+    assert.equal(f.counts().refundWrites, 0);
   } finally {
     await f.app.close();
   }
@@ -266,32 +269,32 @@ test("provider-linked, submitting, unknown and terminal payouts block refund wit
   }
 });
 
-test("refund hold and cancellation are durable before provider I/O, including an uncertain result", async () => {
+test("the refund reservation blocks that payment's payouts during provider I/O, including an uncertain result", async () => {
   const f = await fixture();
   try {
     f.reserve("WAITING_RECIPIENT");
     let calls = 0;
+    const seen: unknown[] = [];
     f.provider.refundCapture = async () => {
       calls++;
-      assert.equal(
+      seen.push(
         f.app.store.db.prepare("SELECT status FROM fairshare_payout_ops").get()
           .status,
-        "CANCELLED_FOR_REFUND",
-      );
-      assert.equal(
         f.aggregates.read(f.workspace.id, "agreement").value.reviewHold,
-        true,
-      );
-      assert.equal((await f.refund()).json().status, "SUBMITTING");
-      assert.equal(
+        (await f.refund()).json().status,
         (await f.post("/payouts/dispatch", { captureId: "CAP" })).statusCode,
-        400,
       );
       throw new Error("provider timeout after possible acceptance");
     };
     assert.equal((await f.refund()).json().status, "OUTCOME_UNKNOWN");
+    // Only this payment waits: the row is untouched and the agreement is not paused.
+    assert.deepEqual(seen, ["WAITING_RECIPIENT", false, "SUBMITTING", 400]);
     assert.equal((await f.refund()).json().status, "OUTCOME_UNKNOWN");
     assert.equal(calls, 1);
+    assert.equal(
+      (await f.post("/payouts/dispatch", { captureId: "CAP" })).statusCode,
+      400,
+    );
     assert.equal(f.counts().payoutWrites, 0);
   } finally {
     await f.app.close();

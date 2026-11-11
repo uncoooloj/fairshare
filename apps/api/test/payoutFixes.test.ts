@@ -300,7 +300,7 @@ test("agreement-wide holds still block everyone, even when some people are ready
       if (hold === "refund")
         s.app.store.db
           .prepare(
-            "INSERT INTO fairshare_refund_ops VALUES('r1',?,'collab','p1','CAP1',10000,'rk',NULL,'PENDING','x','now')",
+            "INSERT INTO fairshare_refund_ops(id,workspace_id,collaboration_id,payment_id,capture_id,amount,request_key,provider_refund_id,status,created_by,created_at,client_key) VALUES('r1',?,'collab','p1','CAP1',10000,'rk',NULL,'PENDING','x','now','full')",
           )
           .run(s.w.id);
       if (hold === "adverse")

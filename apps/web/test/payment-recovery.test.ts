@@ -4,6 +4,9 @@ import {
   recoveryRequest,
   refundBlocked,
   refundMessage,
+  refundableCents,
+  parseRefundAmount,
+  RefundOutcome,
   createSingleFlight,
 } from "../lib/payment-recovery";
 const payment = { id: "p1", status: "ALLOCATED", provider_capture_id: "cap1" };
@@ -28,44 +31,80 @@ test("recovery only constructs evidence-link endpoints and exact provider keys",
   ])
     assert.throws(() => recoveryRequest("payment", "p", input));
 });
-test("refund offer blocks unverified capture, existing refund, any reserved payout and hold", () => {
-  assert.equal(refundBlocked(payment, [], [], false), null);
+test("refund offer blocks unverified capture, an unsettled refund, any started payout, a pause and a fully refunded payment", () => {
+  const paid = { ...payment, amount: 10000 };
+  assert.equal(refundBlocked(paid, [], [], false), null);
   assert.match(
-    refundBlocked({ ...payment, status: "OUTCOME_UNKNOWN" }, [], [], false)!,
+    refundBlocked({ ...paid, status: "OUTCOME_UNKNOWN" }, [], [], false)!,
     /payment has been split/,
   );
   assert.match(
-    refundBlocked({ ...payment, provider_capture_id: null }, [], [], false)!,
+    refundBlocked({ ...paid, provider_capture_id: null }, [], [], false)!,
     /payment has been split/,
   );
   assert.match(
     refundBlocked(
-      payment,
+      paid,
       [],
-      [{ payment_id: "p1", status: "OUTCOME_UNKNOWN" }],
+      [{ payment_id: "p1", status: "OUTCOME_UNKNOWN", amount: 100 }],
       false,
     )!,
-    /already recorded/,
+    /still going through/,
   );
-  for (const status of ["RESERVED", "FAILED", "SUCCESS", "OUTCOME_UNKNOWN"])
-    assert.match(
-      refundBlocked(payment, [{ capture_id: "cap1", status }], [], false)!,
-      /payout has been reserved/,
-    );
-  assert.match(refundBlocked(payment, [], [], true)!, /hold/);
+  // A settled partial refund leaves the rest refundable; a fully refunded payment is not.
+  const settled = { payment_id: "p1", status: "COMPLETED", applied_at: "x" };
   assert.equal(
-    refundBlocked(payment, [{ capture_id: "other" }], [], false),
+    refundBlocked(paid, [], [{ ...settled, amount: 4000 }], false),
     null,
   );
+  assert.match(
+    refundBlocked(paid, [], [{ ...settled, amount: 10000 }], false)!,
+    /fully refunded/,
+  );
+  assert.match(
+    refundBlocked(
+      paid,
+      [{ capture_id: "cap1", status: "RESERVED" }],
+      [],
+      false,
+    )!,
+    /about to go out/,
+  );
+  for (const status of ["FAILED", "SUCCESS", "OUTCOME_UNKNOWN"])
+    assert.match(
+      refundBlocked(paid, [{ capture_id: "cap1", status }], [], false)!,
+      /already started/,
+    );
+  assert.match(refundBlocked(paid, [], [], true)!, /paused/);
+  assert.equal(refundBlocked(paid, [{ capture_id: "other" }], [], false), null);
+});
+test("refund amounts are whole cents between one cent and what is left", () => {
+  const refunds = [
+    { payment_id: "p1", amount: 3000, status: "COMPLETED" },
+    { payment_id: "p1", amount: 500, status: "FAILED" },
+    { payment_id: "p2", amount: 9000, status: "COMPLETED" },
+  ];
+  const left = refundableCents({ id: "p1", amount: 10000 }, refunds);
+  assert.equal(left, 7000);
+  assert.equal(parseRefundAmount("25.50", left), 2550);
+  assert.equal(parseRefundAmount("$70", left), 7000);
+  for (const bad of ["0", "70.01", "1.234", "abc", "-5"])
+    assert.throws(() => parseRefundAmount(bad, left));
 });
 test("refund wording never confuses request acceptance with verified completion", () => {
-  assert.match(refundMessage("COMPLETED"), /Refunded\..*paused/);
+  assert.match(
+    refundMessage("COMPLETED", RefundOutcome.REVERSED_BY_SPLIT),
+    /Refunded\..*split/,
+  );
+  assert.match(
+    refundMessage("COMPLETED", RefundOutcome.PAUSED_FOR_REVIEW),
+    /Refunded\..*paused/,
+  );
   assert.match(refundMessage("OUTCOME_UNKNOWN"), /Don’t refund again/);
-  for (const status of ["SUBMITTING", "PENDING", "FAILED", "CANCELLED"])
-    assert.match(
-      refundMessage(status),
-      /hasn’t completed|hasn’t confirmed completion/,
-    );
+  for (const status of ["SUBMITTING", "PENDING"])
+    assert.match(refundMessage(status), /hasn’t confirmed/);
+  for (const status of ["FAILED", "CANCELLED"])
+    assert.match(refundMessage(status), /didn’t go through/);
 });
 
 test("rapid repeated actions are ignored while a provider request is pending", async () => {
@@ -139,8 +178,8 @@ test("invoice receipts use invoice reconciliation and never checkout refunds", a
   );
 });
 
-test("refund permits only explicitly never-submitted reservations with no provider identity", () => {
-  for (const status of ["WAITING_RECIPIENT", "AUTO_HELD", "RESERVED", "HELD"]) {
+test("refund permits only unsent, unreserved payout rows with no provider identity", () => {
+  for (const status of ["WAITING_RECIPIENT", "AUTO_HELD", "HELD"]) {
     const reservation = {
       capture_id: "cap1",
       status,

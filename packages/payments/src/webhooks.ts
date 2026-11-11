@@ -19,6 +19,10 @@ export type WebhookAction = {
   orderId?: string;
   invoiceId?: string;
   refundId?: string;
+  /** PayPal dispute ID, so a later RESOLVED event can close the same dispute. */
+  disputeId?: string;
+  /** USD cents PayPal says moved, when the event states it (reversals). */
+  amountCents?: number;
   captureProvenance?: "related_id" | "parent_link";
   reason?: string;
 };
@@ -34,6 +38,16 @@ type Event = {
 };
 const text = (v: unknown): string | undefined =>
   typeof v === "string" && v.length > 0 && v.length <= 256 ? v : undefined;
+/** A USD amount from a verified event, or undefined when absent or not exact cents. */
+function usdCents(amount: any): number | undefined {
+  if (
+    amount?.currency_code !== "USD" ||
+    typeof amount.value !== "string" ||
+    !/^\d{1,10}\.\d{2}$/.test(amount.value)
+  )
+    return undefined;
+  return Number(amount.value.replace(".", ""));
+}
 const disputeEvents = ["CREATED", "RESOLVED", "UPDATED"].map(
   (suffix) => `CUSTOMER.DISPUTE.${suffix}`,
 );
@@ -208,6 +222,9 @@ export async function verifyAndPlanWebhook(
       kind: WebhookActionKind.HoldCapture,
       providerId: captureId,
       orderId,
+      ...(usdCents(r.amount) !== undefined
+        ? { amountCents: usdCents(r.amount) }
+        : {}),
       reason: eventType,
     };
   else if (eventType === "PAYMENT.SALE.COMPLETED") {
@@ -234,6 +251,7 @@ export async function verifyAndPlanWebhook(
       kind: WebhookActionKind.HoldCapture,
       providerId: providerIds[0],
       providerIds,
+      disputeId: text(r.dispute_id),
       reason: eventType,
     };
   } else if (payoutEvents.includes(eventType))

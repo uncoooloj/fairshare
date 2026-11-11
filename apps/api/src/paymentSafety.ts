@@ -155,6 +155,44 @@ export function pendingWebhookBlocksPayout(
     });
 }
 
+/** A PayPal event still waiting to be checked that is about this agreement: linked to it, or
+ * naming one of its payments. Events that cannot be linked to any agreement still stop payouts
+ * (pendingWebhookBlocksPayout) but do not block resuming every agreement. */
+export function pendingWebhookForAgreement(
+  db: Database,
+  target: AgreementScope,
+): boolean {
+  const captures = new Set(
+    (
+      db
+        .prepare(
+          "SELECT provider_capture_id FROM fairshare_captures WHERE workspace_id=? AND collaboration_id=?",
+        )
+        .all(target.workspace_id, target.collaboration_id) as any[]
+    ).map((r) => r.provider_capture_id as string),
+  );
+  return db
+    .prepare(
+      "SELECT action FROM fairshare_webhook_inbox WHERE status='PENDING'",
+    )
+    .all()
+    .some((entry) => {
+      try {
+        const scope = webhookScope(db, JSON.parse(entry.action));
+        return (
+          scope.captureIds.some((id) => captures.has(id)) ||
+          scope.agreements.some(
+            (s) =>
+              s.workspace_id === target.workspace_id &&
+              s.collaboration_id === target.collaboration_id,
+          )
+        );
+      } catch {
+        return false;
+      }
+    });
+}
+
 /** Never expose or replay an event involving another agreement or an unknown
  * target through an agreement organizer's recovery endpoint. */
 export function webhookBelongsOnlyTo(

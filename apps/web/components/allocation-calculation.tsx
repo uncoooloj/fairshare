@@ -58,6 +58,12 @@ export function AllocationCalculation({
     a.feeCents > 0
       ? `${money(a.feeCents)} PayPal fee came out of that share.`
       : undefined,
+    a.offsetCents
+      ? `${money(a.offsetCents)} was kept back to settle an earlier refund.`
+      : undefined,
+    a.creditCents
+      ? `${money(a.creditCents)} was added back after an earlier payout did not arrive.`
+      : undefined,
   ].filter(Boolean);
   const reason = reasonParts.length
     ? reasonParts.join(" ")
@@ -72,6 +78,12 @@ export function AllocationCalculation({
     trace.poolCents > 0 ? `${money(trace.poolCents)} split` : undefined,
     `${money(a.shareCents)} to ${name}`,
     a.feeCents > 0 ? `${money(a.feeCents)} recipient fee` : undefined,
+    (a.offsetCents ?? 0) > 0
+      ? `${money(a.offsetCents ?? 0)} kept back`
+      : undefined,
+    (a.creditCents ?? 0) > 0
+      ? `${money(a.creditCents ?? 0)} added back`
+      : undefined,
   ]
     .filter(Boolean)
     .join(", ");
@@ -220,6 +232,20 @@ export function AllocationCalculation({
               <td className="numeric">−{money(a.feeCents)}</td>
             </tr>
           )}
+          {a.offsetCents ? (
+            <tr>
+              <td>{step++}</td>
+              <td>Kept back for an earlier refund</td>
+              <td className="numeric">−{money(a.offsetCents)}</td>
+            </tr>
+          ) : null}
+          {a.creditCents ? (
+            <tr>
+              <td>{step++}</td>
+              <td>Returned payout credit</td>
+              <td className="numeric">+{money(a.creditCents)}</td>
+            </tr>
+          ) : null}
           <tr className="calculation-total">
             <td />
             <td>Owed to {name}</td>
