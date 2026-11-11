@@ -1,12 +1,20 @@
 "use client";
 
-import { useMemo, useState, useId, type ReactNode } from "react";
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { AgGridReact } from "ag-grid-react";
 import {
   AllCommunityModule,
   ModuleRegistry,
   themeQuartz,
   type ColDef,
+  type GridApi,
 } from "ag-grid-community";
 import {
   PaymentGridStatus,
@@ -61,6 +69,7 @@ export function PaymentGrid({
 }: PaymentGridProps) {
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const gridApiRef = useRef<GridApi<PaymentGridRow> | null>(null);
   const searchId = useId();
   const statusId = useId();
   const tipId = useId();
@@ -86,6 +95,15 @@ export function PaymentGrid({
   );
   // One readout only: AG Grid's pager when there are pages, our count otherwise.
   const paginated = !loading && filteredRows.length > PAYOUT_PAGE_SIZE;
+  useEffect(() => {
+    const api = gridApiRef.current;
+    if (!api) return;
+
+    // External filtering replaces rowData. Update the pagination option and
+    // reset the page in place so the grid keeps sorting and column state.
+    api.setGridOption("pagination", paginated);
+    api.paginationGoToFirstPage();
+  }, [filteredRows.length, paginated, query, status]);
   const selected = !loading
     ? data.rows.find((row) => row.id === selectedId)
     : undefined;
@@ -371,11 +389,7 @@ export function PaymentGrid({
         </div>
       ) : (
         <div className={styles.grid}>
-          {/* AG Grid keeps its internal pager when externally filtered rows
-              cross the page threshold; remounting on filter changes resets
-              the page and row count together with the pagination mode. */}
           <AgGridReact<PaymentGridRow>
-            key={`${paginated}:${status}:${query}`}
             theme={theme}
             rowData={loading ? [] : filteredRows}
             columnDefs={columns}
@@ -389,9 +403,12 @@ export function PaymentGrid({
             overlayNoRowsTemplate="<span>No payouts match. Try clearing your filters.</span>"
             suppressCellFocus={false}
             ensureDomOrder
-            onGridReady={(event) =>
-              event.api.setGridAriaProperty("label", "Agreement payout history")
-            }
+            onGridReady={(event) => {
+              gridApiRef.current = event.api;
+              event.api.setGridAriaProperty("label", "Agreement payout history");
+              event.api.setGridOption("pagination", paginated);
+              event.api.paginationGoToFirstPage();
+            }}
           />
         </div>
       )}

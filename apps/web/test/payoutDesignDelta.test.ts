@@ -40,7 +40,12 @@ test("payout grid resets pager state when external filters change the row count"
     grid,
     /const paginated = !loading && filteredRows\.length > PAYOUT_PAGE_SIZE/,
   );
-  assert.match(grid, /key=\{`\$\{paginated\}:\$\{status\}:\$\{query\}`\}/);
+  assert.match(grid, /api\.setGridOption\("pagination", paginated\)/);
+  assert.match(grid, /api\.paginationGoToFirstPage\(\)/);
+  assert.doesNotMatch(
+    grid,
+    /key=\{`\$\{paginated\}:\$\{status\}:\$\{query\}`\}/,
+  );
 });
 test("payout grid resets the global .ag-header margin that overlapped the first row", () => {
   const css = readFileSync(
