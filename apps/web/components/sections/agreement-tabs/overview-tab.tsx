@@ -27,6 +27,8 @@ export interface AgreementOverviewTabProps {
   changeAgreementTab: (next: AgreementTab) => void;
   setBreakdown: Dispatch<SetStateAction<Revenue | null>>;
   navigate: (s: Section) => boolean;
+  /** Organizer only: opens the guided change to the split. */
+  onChangeSplit?: () => void;
 }
 
 /** Agreement overview: the split in plain sentences, recent payments, activity and money. */
@@ -40,6 +42,7 @@ export function AgreementOverviewTab({
   changeAgreementTab,
   setBreakdown,
   navigate,
+  onChangeSplit,
 }: AgreementOverviewTabProps) {
   // Before the split is switched on, describe the one waiting for approval.
   const shown = active ?? selected.value.versions.at(-1);
@@ -53,13 +56,24 @@ export function AgreementOverviewTab({
           <div className="ag-card-head">
             <h2>The split</h2>
             {shown && (
-              <button
-                type="button"
-                className="text-button"
-                onClick={() => changeAgreementTab(AgreementTab.Terms)}
-              >
-                Read the agreement →
-              </button>
+              <span className="ag-card-actions">
+                {onChangeSplit && (
+                  <button
+                    type="button"
+                    className="text-button"
+                    onClick={onChangeSplit}
+                  >
+                    Change the split
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={() => changeAgreementTab(AgreementTab.Terms)}
+                >
+                  Read the agreement →
+                </button>
+              </span>
             )}
           </div>
           {shown ? (

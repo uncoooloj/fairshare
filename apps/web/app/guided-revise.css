@@ -1,0 +1,99 @@
+/* Guided change: a collaborator's request, pinned where the organizer fixes it. */
+.wc-card.wc-flagged {
+  border-color: var(--color-warning);
+  box-shadow: 0 0 0 1px var(--color-warning);
+}
+
+.wc-flag-note {
+  margin-bottom: var(--space-1);
+}
+
+.gr-flag,
+.gr-note {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-sm);
+  background: var(--color-warning-bg);
+}
+
+.gr-flag figcaption,
+.gr-note figcaption {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-2);
+  color: var(--color-warning);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+}
+
+.gr-note time {
+  color: var(--color-muted);
+  font-weight: normal;
+}
+
+.gr-flag blockquote,
+.gr-note blockquote {
+  margin: var(--space-2) 0 0;
+  color: var(--color-ink);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.gr-flag-hint {
+  margin: var(--space-2) 0 0;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}
+
+.gr-request {
+  display: grid;
+  align-content: start;
+  gap: var(--space-3);
+}
+
+.gr-request h2 {
+  outline: none;
+}
+
+/* The organizer's request card on the Agreement tab. */
+.gr-request-card {
+  display: grid;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--color-warning);
+  border-radius: var(--radius-md);
+  background: var(--color-canvas);
+}
+
+.gr-request-card h2 {
+  margin: 0;
+  font-size: var(--text-lg);
+}
+
+.gr-request-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.gr-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: var(--space-4);
+  background: rgb(0 0 0 / 0.35);
+}
+
+.gr-dialog {
+  box-sizing: border-box;
+}
+
+.ag-card-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}

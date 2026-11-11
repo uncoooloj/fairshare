@@ -108,12 +108,15 @@ function newKey() {
 export function SplitDrawer({
   people: initial,
   lockedKeys = [],
+  canAdd = true,
   onSave,
   onCancel,
 }: {
   people: PersonAnswer[];
   /** People who can't be removed here, such as you or whoever is paid back first. */
   lockedKeys?: string[];
+  /** False once the agreement was sent: the people are fixed, only shares change. */
+  canAdd?: boolean;
   onSave(people: PersonAnswer[]): void;
   onCancel(): void;
 }) {
@@ -287,13 +290,15 @@ export function SplitDrawer({
       </div>
       {adding === undefined ? (
         <div className="sd-actions">
-          <button
-            type="button"
-            className="wc-link"
-            onClick={() => setAdding("")}
-          >
-            + Add a person
-          </button>
+          {canAdd ? (
+            <button
+              type="button"
+              className="wc-link"
+              onClick={() => setAdding("")}
+            >
+              + Add a person
+            </button>
+          ) : null}
           {people.length > 1 ? (
             <button
               type="button"

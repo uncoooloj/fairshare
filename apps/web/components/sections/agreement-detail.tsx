@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useState,
   type Dispatch,
   type MutableRefObject,
   type SetStateAction,
@@ -11,6 +12,12 @@ import { AgreementVersions } from "../agreement-versions";
 import { StageAction } from "../../lib/agreement-status";
 import { AgreementName } from "../agreement-name";
 import { AgreementSetup } from "../agreement-setup";
+import { AgreementReviseWizard } from "../agreement-revise-wizard";
+import {
+  ChangeRequestDrawer,
+  openChangeRequests,
+  type ChangeRequestView,
+} from "../change-request-drawer";
 import {
   AgreementTab,
   Section,
@@ -140,6 +147,18 @@ export function AgreementDetail({
         .getElementById(target)
         ?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [tab]);
+  // Guided change: the request drawer, then the full-screen revise wizard.
+  const [requestOpen, setRequestOpen] = useState(false);
+  const [revising, setRevising] = useState<{
+    request?: ChangeRequestView;
+  } | null>(null);
+  const requests = openChangeRequests(selected);
+  const revise = organizer
+    ? (request?: ChangeRequestView) => {
+        setRequestOpen(false);
+        setRevising({ request });
+      }
+    : undefined;
   const onStatusAction = (action: StageAction) => {
     if (action === StageAction.GetPaid) {
       changeAgreementTab(AgreementTab.Payments);
@@ -148,15 +167,41 @@ export function AgreementDetail({
           .getElementById("get-paid")
           ?.scrollIntoView({ behavior: "smooth", block: "start" }),
       );
-    } else if (
+    } else if (action === StageAction.SeeRequest && organizer)
+      setRequestOpen(true);
+    else if (
       action === StageAction.Approve ||
       action === StageAction.SeeRequest
     )
       changeAgreementTab(AgreementTab.Terms);
   };
+  if (revising)
+    return (
+      <AgreementReviseWizard
+        key={`${selected.id}:${selected.revision}`}
+        agreement={selected}
+        owner={user}
+        request={revising.request}
+        onBusyChange={setBusy}
+        onClose={() => setRevising(null)}
+        onDone={(next) => {
+          setRevising(null);
+          setSelected(next);
+          changeAgreementTab(AgreementTab.Overview);
+          void refresh().catch(() => {});
+        }}
+      />
+    );
   return (
     <>
       <>
+        {requestOpen && organizer && (
+          <ChangeRequestDrawer
+            requests={requests}
+            onFix={(request) => revise?.(request)}
+            onClose={() => setRequestOpen(false)}
+          />
+        )}
         <AgreementHeader
           key={JSON.stringify([selected.workspaceId, selected.id])}
           agreement={selected}
@@ -220,6 +265,11 @@ export function AgreementDetail({
               changeAgreementTab={changeAgreementTab}
               setBreakdown={setBreakdown}
               navigate={navigate}
+              onChangeSplit={
+                revise && selected.value.versions.length
+                  ? () => revise(requests.at(-1))
+                  : undefined
+              }
             />
           )}
           {shown === AgreementTab.People && (
@@ -271,6 +321,9 @@ export function AgreementDetail({
                 setSource={setSource}
                 setDocumentId={setDocumentId}
                 setExtraction={setExtraction}
+                requests={requests}
+                onSeeRequest={() => setRequestOpen(true)}
+                onRevise={revise}
               />
               {!editing && selected.value.versions.length > 0 && (
                 <>

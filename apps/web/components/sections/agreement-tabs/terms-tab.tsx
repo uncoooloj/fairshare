@@ -26,6 +26,10 @@ import {
   type Version,
 } from "../../../lib/model";
 import { Button, Field } from "../../ui";
+import {
+  partPhrase,
+  type ChangeRequestView,
+} from "../../change-request-drawer";
 import type { Mutate, Run } from "../types";
 
 export interface AgreementTermsTabProps {
@@ -60,6 +64,11 @@ export interface AgreementTermsTabProps {
   setSource: Dispatch<SetStateAction<string>>;
   setDocumentId: Dispatch<SetStateAction<string>>;
   setExtraction: Dispatch<SetStateAction<any>>;
+  /** Change requests waiting on the organizer. */
+  requests?: ChangeRequestView[];
+  onSeeRequest?: () => void;
+  /** Organizer only: the guided change (replaces the old rules editor once something was sent). */
+  onRevise?: (request?: ChangeRequestView) => void;
 }
 
 /** Terms: the latest proposal and its review, or the source and rules draft. */
@@ -94,6 +103,9 @@ export function AgreementTermsTab({
   setSource,
   setDocumentId,
   setExtraction,
+  requests = [],
+  onSeeRequest,
+  onRevise,
 }: AgreementTermsTabProps) {
   const isOrganizer =
     selected.value.members.find((m) => m.userId === user.id)?.role ===
@@ -148,6 +160,30 @@ export function AgreementTermsTab({
       {!editing && latest ? (
         <div className="ag-terms">
           <div className="ag-terms-main">
+            {requests.length > 0 && onRevise && (
+              <section
+                className="gr-request-card"
+                aria-labelledby="agreement-change-request"
+              >
+                <h2 id="agreement-change-request">
+                  {[...new Set(requests.map((r) => r.name))].join(" and ")}{" "}
+                  asked for a change to {partPhrase(requests.at(-1)!.part)}
+                </h2>
+                <figure className="gr-note">
+                  <blockquote>{requests.at(-1)!.note}</blockquote>
+                </figure>
+                <div className="gr-request-actions">
+                  <Button onClick={() => onRevise(requests.at(-1))}>
+                    Fix it
+                  </Button>
+                  {onSeeRequest && (
+                    <Button variant="secondary" onClick={onSeeRequest}>
+                      See request
+                    </Button>
+                  )}
+                </div>
+              </section>
+            )}
             <div className="ag-section-head">
               <div>
                 <div className="ag-title">
@@ -176,10 +212,11 @@ export function AgreementTermsTab({
                 disabled={busy}
                 onClick={() => {
                   setPreview(null);
-                  setEditing(true);
+                  if (onRevise) onRevise(requests.at(-1));
+                  else setEditing(true);
                 }}
               >
-                Propose revised terms
+                Change the agreement
               </Button>
             </div>
             <RuleSteps
