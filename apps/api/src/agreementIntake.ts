@@ -226,16 +226,9 @@ export function registerAgreementIntake(
       };
       if (input.base64 !== undefined) {
         if (input.mimeType === "application/pdf") {
-          if (input.useLocalOcr && !options.localOcrEnabled)
-            throw new ApiError(
-              400,
-              "OCR_UNAVAILABLE",
-              "OCR is not enabled. Paste text instead.",
-            );
           original = decodePdfBase64(input.base64);
           const parsed = await readUploadedPdf(readers, original, {
             ocrEnabled: !!options.localOcrEnabled,
-            forceOcr: input.useLocalOcr === true,
           });
           text = parsed.text;
           provenance = {

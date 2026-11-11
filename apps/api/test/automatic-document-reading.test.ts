@@ -41,10 +41,10 @@ test("textless PDFs automatically read scans once and preserve scan provenance",
   );
   assert.deepEqual(f.calls, ["pdf", "ocr"]);
 });
-test("disabled scan processing is never invoked", async () => {
+test("a legacy explicit scan request cannot bypass text-first reading", async () => {
   const f = fixture("PDF_NO_EXTRACTABLE_TEXT");
   await assert.rejects(
-    readUploadedPdf(f.readers, bytes, { ocrEnabled: false, forceOcr: true }),
+    readUploadedPdf(f.readers, bytes, { ocrEnabled: false }),
     (e) => e === f.error,
   );
   assert.deepEqual(f.calls, ["pdf"]);

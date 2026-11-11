@@ -26,9 +26,13 @@ Provider and AI secrets are environment bindings, never client bundles. PayPal i
 sandbox-only. Reconciliation uses opt-in Durable Object alarms and existing fenced
 leases; no process polling loop is started. The authority creates an alarm only
 when a configured provider exists and `PAYPAL_RECONCILIATION_ENABLED=true`.
-A private `DOCUMENT_PARSER` binding is required for PDF/DOCX; OCR additionally
-requires `OCR_ENABLED=true` and per-upload consent. Missing parser fails with 503
-without partial intake writes. See `../parser-container/README.md`.
+A private `DOCUMENT_PARSER` binding is required for PDF/DOCX. With
+`OCR_ENABLED=true`, the parser reads native PDF text first and automatically tries
+scan reading once only when the PDF has no extractable text; there is no per-upload
+OCR consent control. Limits, parser failures and timeouts do not fall back. This
+document-reading path is separate from the explicit per-extraction consent that
+sends agreement text to Cloudflare AI for rule suggestions. Missing parser fails
+with 503 without partial intake writes. See `../parser-container/README.md`.
 
 Toolchain versions are pinned in the API package; `npm run check:cloudflare -w
 @fairshare/api` checks Worker types and local runtime. `wrangler deploy --dry-run --containers-rollout=none` validates
