@@ -422,8 +422,7 @@ export default function FairshareApp() {
     // Invitation and verification routes retain their fragments through sign-in.
     // Only ordinary app/auth entry points redirect with the session state so
     // Next can render the destination route's metadata as well as its page.
-    if (ready && user && location.pathname === "/login")
-      router.replace("/app");
+    if (ready && user && location.pathname === "/login") router.replace("/app");
     else if (ready && !user && location.pathname === "/app")
       router.replace("/login");
   }, [ready, user, router]);
