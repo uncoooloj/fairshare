@@ -77,6 +77,10 @@ export function PaymentAccountsSettings({
     [confirm, setConfirm] = useState(false);
   const pending = useRef(false),
     path = `workspaces/${encodeURIComponent(workspace)}/payment-accounts?version=2`;
+  const payoutLabel =
+    !changing && data?.own?.type === PayoutRecipientType.PAYPAL_ID
+      ? "PayPal account"
+      : "PayPal email";
   async function load() {
     setData(await api(path));
   }
@@ -169,7 +173,9 @@ export function PaymentAccountsSettings({
               {saved && <SavedNote key={saved} text={saved} />}
             </div>
             <p className="muted">
-              Your share from every agreement goes to this PayPal email.
+              {!changing && data.own?.type === PayoutRecipientType.PAYPAL_ID
+                ? "Your share from every agreement goes to this PayPal account."
+                : "Your share from every agreement goes to this PayPal email."}
             </p>
             {data.own && !changing ? (
               <div className="settings-payout-saved">
@@ -246,7 +252,7 @@ export function PaymentAccountsSettings({
             {confirm && (
               <div role="alert" className="settings-confirm">
                 <p>
-                  Remove your PayPal email? We can’t send your share until you
+                  Remove your {payoutLabel}? We can’t send your share until you
                   add one again.
                 </p>
                 <Button disabled={busy} onClick={() => void remove()}>
