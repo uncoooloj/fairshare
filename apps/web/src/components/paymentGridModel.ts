@@ -2,6 +2,7 @@ import type { AllocationTrace } from "../../lib/allocation-trace";
 /** Read-only projection: amounts originate in the server's deterministic ledger. */
 export enum PaymentGridStatus {
   Unclaimed = "UNCLAIMED",
+  WaitingRecipient = "WAITING_RECIPIENT",
   Pending = "PENDING",
   Held = "HELD",
   Processing = "PROCESSING",
@@ -28,6 +29,7 @@ export interface PaymentGridRow {
 }
 export const paymentStatusLabels: Record<PaymentGridStatus, string> = {
   UNCLAIMED: "Unclaimed",
+  WAITING_RECIPIENT: "Waiting for PayPal details",
   PENDING: "Pending",
   HELD: "On hold",
   PROCESSING: "Processing",

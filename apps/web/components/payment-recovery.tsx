@@ -153,8 +153,8 @@ export function PaymentRecovery({
           <details>
             <summary>Refund a payment</summary>
             <p>
-              Sends the full amount back to whoever paid. Only before anyone’s
-              been paid out. Payouts pause while you sort out the shares.
+              Sends the full amount back to whoever paid. Only before a payout
+              is reserved. Payouts pause while you sort out the shares.
             </p>
             <Field label="Payment">
               <select

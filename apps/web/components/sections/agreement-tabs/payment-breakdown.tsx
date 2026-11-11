@@ -63,7 +63,7 @@ export function PaymentBreakdown({
               });
               await refresh();
               setNotice(
-                "Payouts sent (test). Check Payouts to see when they land.",
+                "Payout dispatch recorded. Check Payouts for status.",
               );
             })
           }

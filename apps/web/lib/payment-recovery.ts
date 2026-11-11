@@ -28,7 +28,7 @@ export function refundBlocked(
   if (payment.status !== "ALLOCATED" || !payment.provider_capture_id)
     return "Wait until this payment has been split.";
   if (payouts.some((p) => p.capture_id === payment.provider_capture_id))
-    return "A payout has already started from this. Sort out the shares before refunding; we can’t pull money back.";
+    return "A payout has been reserved from this payment. Sort out the shares before refunding; we can’t pull money back.";
   if (held)
     return "This agreement is on hold. A new refund cannot be submitted.";
   return null;

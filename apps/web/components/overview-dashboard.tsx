@@ -252,7 +252,7 @@ export function OverviewDashboard({
         <StatCard
           label="Still to pay"
           value={summary.remaining}
-          note="Owed, not sent yet"
+          note="Owed, not yet confirmed paid"
         />
       </div>
       <p

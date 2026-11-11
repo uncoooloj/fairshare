@@ -50,7 +50,7 @@ test("refund offer blocks unverified capture, existing refund, any reserved payo
   for (const status of ["RESERVED", "FAILED", "SUCCESS", "OUTCOME_UNKNOWN"])
     assert.match(
       refundBlocked(payment, [{ capture_id: "cap1", status }], [], false)!,
-      /payout has already started/,
+      /payout has been reserved/,
     );
   assert.match(refundBlocked(payment, [], [], true)!, /hold/);
   assert.equal(

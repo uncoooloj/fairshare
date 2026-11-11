@@ -46,6 +46,9 @@ test("CSV uses the payout operation ID, never the internal scoped grid key", () 
 });
 test("all payout states have truthful guidance and uncertain transfers prohibit retry", () => {
   assert.equal(Object.keys(payoutGuidance).length, Object.values(S).length);
+  assert.match(payoutGuidance.WAITING_RECIPIENT, /recipient’s PayPal details/);
+  assert.match(payoutGuidance.FAILED, /payout evidence/);
+  assert.doesNotMatch(payoutGuidance.FAILED, /try again|retry|resend/i);
   assert.match(payoutGuidance.UNKNOWN, /Don’t send it again/);
   assert.match(payoutGuidance.REVERSED, /doesn’t count as paid/);
   assert.match(payoutGuidance.UNCLAIMED, /haven’t collected/);

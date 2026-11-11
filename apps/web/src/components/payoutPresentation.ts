@@ -6,11 +6,11 @@ import {
 } from "./paymentGridModel";
 export const payoutGuidance: Record<PaymentGridStatus, string> = {
   PAID: "PayPal says this arrived.",
+  WAITING_RECIPIENT: "Waiting for the recipient’s PayPal details.",
   PENDING: "Pending. Don’t send it again.",
   PROCESSING: "PayPal is processing this. Don’t send it again.",
   HELD: "Paused. Check the agreement before doing anything.",
-  FAILED:
-    "This payout failed. Check the person’s PayPal details, then try again from the agreement.",
+  FAILED: "This payout failed. Check the agreement and payout evidence before taking another action.",
   UNCLAIMED: "They haven’t collected this in PayPal yet.",
   REVERSED: "PayPal reversed this, so it doesn’t count as paid.",
   UNKNOWN:

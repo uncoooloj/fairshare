@@ -655,7 +655,7 @@ export default function FairshareApp() {
                   setUser(r.user);
                   setNotice(
                     r.verificationMode === "DEMO_SIMULATION"
-                      ? "Email confirmed (test mode)."
+                      ? "Test account email marked verified."
                       : "Email verified.",
                   );
                 } else {
