@@ -472,6 +472,51 @@ test("revise wizard opens on Check with the request pinned to the split card", (
   assert.doesNotMatch(html, /Upload|Who should we send this to/);
 });
 
+test("a refunds request shows the hold policy without promising an editable question", () => {
+  let c = team();
+  c = submitForApproval(c, rules() as DomainRules, "maya", at);
+  const html = renderToStaticMarkup(
+    createElement(AgreementReviseWizard, {
+      agreement: wrap(c),
+      owner: { id: "maya", name: "Maya", email: "maya@example.test" },
+      request: {
+        userId: "jordan",
+        name: "Jordan",
+        part: WrongPart.REFUNDS,
+        note: "What about refunds?",
+        at,
+      },
+      onDone() {},
+      onClose() {},
+    }),
+  );
+  assert.match(html, /Jordan asked for a change to refunds/);
+  assert.match(
+    html,
+    /If a payment is refunded, payouts pause while it(’|'|&#x27;)s checked\./,
+  );
+  assert.match(html, /This policy can(’|'|&#x27;)t be changed here\./);
+  assert.doesNotMatch(html, /change this on the next screen/);
+
+  const feesHtml = renderToStaticMarkup(
+    createElement(AgreementReviseWizard, {
+      agreement: wrap(c),
+      owner: { id: "maya", name: "Maya", email: "maya@example.test" },
+      request: {
+        userId: "jordan",
+        name: "Jordan",
+        part: WrongPart.FEES,
+        note: "I thought Maya covered fees.",
+        at,
+      },
+      onDone() {},
+      onClose() {},
+    }),
+  );
+  assert.match(feesHtml, /Use the Change link on PayPal fees below\./);
+  assert.doesNotMatch(feesHtml, /change this on the next screen/);
+});
+
 test("revise keeps a former organizer as fee bearer unless the fee choice is changed", () => {
   // The organizer role moved from Maya to Jordan; Maya still covers the fees.
   const c = createCollaboration(

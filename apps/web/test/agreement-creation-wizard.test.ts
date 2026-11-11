@@ -7,6 +7,7 @@ import {
   AgreementCreationWizard,
   checkProblem,
   clearPersonInvitation,
+  deleteDraftForReplacement,
   detailsPatch,
   mergeQuestions,
   resumedAnswers,
@@ -25,7 +26,7 @@ import {
 import { CheckMode } from "../components/wizard-check-step";
 import { emptyAnswers, FeeChoice, AnswerSource } from "../lib/rules-answers";
 import { StandardQuestionId, feeQuestion } from "../lib/standard-questions";
-import type { Agreement } from "../lib/model";
+import { ApiError, type Agreement } from "../lib/model";
 import { saveDraftAnswers } from "../lib/wizard-persistence";
 import { appSource } from "./app-source";
 import {
@@ -227,6 +228,82 @@ test("the draft is saved on Read my agreement; people on People; one submit on S
   const submit = send.indexOf("await submitForApproval(");
   assert.ok(rules > 0 && submit > rules);
   assert.doesNotMatch(wizard, /consentToCloudflare|fetch\(/);
+});
+
+test("replacing a non-agreement deletes its private draft before clearing wizard state", () => {
+  const replace = wizard.slice(wizard.indexOf("async function uploadAgain()"));
+  const deleteAt = replace.indexOf("await deleteDraftForReplacement(");
+  const clearAt = replace.indexOf("clearDraftAnswers(");
+  const refsAt = replace.indexOf("setCreated(null)");
+  assert.ok(deleteAt >= 0 && clearAt > deleteAt && refsAt > clearAt);
+  assert.match(replace, /readingGeneration\.current\+\+/);
+  assert.match(replace, /catch \(cause\)/);
+  assert.match(replace, /We couldn’t replace this draft\. Try again\./);
+  assert.match(wizard, /onUploadAgain=\{\(\) => void uploadAgain\(\)\}/);
+});
+
+test("replacement confirms a lost delete response before local cleanup", async () => {
+  const original = globalThis.fetch;
+  const calls: Array<{ method: string; url: string }> = [];
+  globalThis.fetch = (async (input: string, init?: RequestInit) => {
+    calls.push({ method: init?.method ?? "GET", url: input });
+    if (init?.method === "DELETE")
+      return new Response(
+        JSON.stringify({ error: { code: "TEMPORARY", message: "Try again" } }),
+        { status: 503 },
+      );
+    return new Response(
+      JSON.stringify({
+        error: { code: "NOT_FOUND", message: "Collaboration not found" },
+      }),
+      { status: 404 },
+    );
+  }) as typeof fetch;
+  try {
+    await deleteDraftForReplacement("w", "a", 7);
+  } finally {
+    globalThis.fetch = original;
+  }
+  assert.deepEqual(calls, [
+    {
+      method: "DELETE",
+      url: "/api/service/workspaces/w/collaborations/a?expectedRevision=7",
+    },
+    { method: "GET", url: "/api/service/workspaces/w/collaborations/a" },
+  ]);
+});
+
+test("replacement retains the original error when the draft still exists or cannot be read", async () => {
+  const original = globalThis.fetch;
+  for (const read of [
+    new Response(JSON.stringify({ id: "a", revision: 8 })),
+    new Response(
+      JSON.stringify({ error: { code: "FORBIDDEN", message: "No access" } }),
+      { status: 403 },
+    ),
+    new Response(
+      JSON.stringify({ error: { code: "TEMPORARY", message: "Try again" } }),
+      { status: 503 },
+    ),
+  ]) {
+    globalThis.fetch = (async (_input: string, init?: RequestInit) =>
+      init?.method === "DELETE"
+        ? new Response(
+            JSON.stringify({
+              error: { code: "TEMPORARY", message: "Try again" },
+            }),
+            { status: 503 },
+          )
+        : read) as typeof fetch;
+    try {
+      await assert.rejects(
+        deleteDraftForReplacement("w", "a", 7),
+        (cause: unknown) => cause instanceof ApiError && cause.status === 503,
+      );
+    } finally {
+      globalThis.fetch = original;
+    }
+  }
 });
 
 test("a lost submit reply is recovered only for this attempt's newly sent rules", () => {

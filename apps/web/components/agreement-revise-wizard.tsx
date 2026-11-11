@@ -27,7 +27,12 @@ import { workspaceBase } from "../lib/workspace-base";
 import { checkProblem, detailsPatch } from "./agreement-creation-wizard";
 import { partPhrase, type ChangeRequestView } from "./change-request-drawer";
 import { WrongPart } from "./something-wrong-drawer";
-import { CheckCard, CheckMode, WizardCheckStep } from "./wizard-check-step";
+import {
+  CheckCard,
+  CheckMode,
+  REFUND_LINE,
+  WizardCheckStep,
+} from "./wizard-check-step";
 import { WizardFrame } from "./wizard-chrome";
 import { WizardQuestionsStep } from "./wizard-questions-step";
 
@@ -143,8 +148,14 @@ function RequestNote({ request }: { request: ChangeRequestView }) {
         {request.name} asked for a change to {partPhrase(request.part)}
       </figcaption>
       <blockquote>“{request.note}”</blockquote>
-      {request.part === WrongPart.REFUNDS || request.part === WrongPart.FEES ? (
-        <p className="gr-flag-hint">You can change this on the next screen.</p>
+      {request.part === WrongPart.REFUNDS ? (
+        <p className="gr-flag-hint">
+          {REFUND_LINE} This policy can’t be changed here.
+        </p>
+      ) : request.part === WrongPart.FEES ? (
+        <p className="gr-flag-hint">
+          Use the Change link on PayPal fees below.
+        </p>
       ) : null}
     </figure>
   );
