@@ -1714,3 +1714,28 @@ td:last-child {
     max-height: calc(100dvh - 112px);
   }
 }
+
+.people-table-scroll {
+  overflow-x: auto;
+}
+.people-table-scroll th[scope="row"] {
+  font-weight: 500;
+  text-align: left;
+}
+.people-table-scroll td > small {
+  display: block;
+  margin-top: 4px;
+}
+.people-actions {
+  min-width: 110px;
+  max-width: 280px;
+}
+.people-actions summary {
+  cursor: pointer;
+  color: #1f4ee8;
+  font-weight: 500;
+}
+.people-actions p {
+  font-size: 12px;
+  line-height: 1.5;
+}
