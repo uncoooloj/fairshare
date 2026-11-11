@@ -244,6 +244,7 @@ export function AgreementDocument({
             pendingCitation={pendingCitation}
             fileName={documentFileName(agreement, document)}
             nameOf={nameOf}
+            originalUrl={originalDocumentUrl(base, document)}
           />
           {!onDocument && (
             <>
