@@ -345,7 +345,7 @@ export function registerReviewCollaboration(
           "RECIPIENT_UNVERIFIED",
           "The participant must verify their email first.",
         );
-      const reminderLink = publicAppOrigin(options.publicAppOrigin) + "/";
+      const reminderLink = publicAppOrigin(options.publicAppOrigin) + "/app";
       const reminderId = randomUUID(),
         createdAt = app.store.now();
       app.store.limit(`reminders:${user.id}`, 10, 3600000);
