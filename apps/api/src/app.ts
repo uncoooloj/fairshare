@@ -77,6 +77,7 @@ function domainErrorStatus(code: string): number {
       "STALE_VERSION",
       "APPROVALS_REQUIRED",
       "ADVANCE_UNCONFIRMED",
+      "ADVANCE_ALREADY_CONFIRMED",
       "INVALID_STATE",
       "MEMBERS_LOCKED",
       "PENDING_MEMBER",

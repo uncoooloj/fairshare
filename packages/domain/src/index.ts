@@ -769,10 +769,22 @@ export function proposeVersion(
     )
   )
     latest.status = VersionStatus.SUPERSEDED;
+  const next = copy(rules);
+  // Confirming an advance was paid is a fact about that advance, so a revision that
+  // keeps it (same ID) stays confirmed.
+  if (
+    next.advance &&
+    c.versions.some(
+      (old) =>
+        old.rules.advance?.id === next.advance!.id &&
+        old.rules.advance.verified,
+    )
+  )
+    next.advance.verified = true;
   const v: AgreementVersion = {
     id: (latest?.id ?? 0) + 1,
     status: VersionStatus.DRAFT,
-    rules: copy(rules),
+    rules: next,
     approvals: {},
     changeRequests: [],
     createdAt: at,
@@ -930,7 +942,7 @@ export function activateVersion(
   return out;
 }
 /**
- * Organizer confirms the advance in the current proposal was paid. The terms everyone
+ * Organizer confirms the advance in the sent proposal was paid. The terms everyone
  * approved already say it was put in upfront, so this records a fact, not a new version:
  * approvals stand. When everyone has approved, the rules switch on in the same transition.
  */
@@ -942,17 +954,19 @@ export function confirmAdvancePaid(
 ): Collaboration {
   organizer(c, actorId);
   nonempty(advanceId, "Advance ID");
+  timestamp(at);
   const out = copy(c);
   const v = out.versions.at(-1);
   if (
     !v ||
-    ![VersionStatus.DRAFT, VersionStatus.AWAITING_APPROVAL].includes(v.status)
+    ![VersionStatus.AWAITING_APPROVAL, VersionStatus.ACTIVE].includes(v.status)
   )
-    fail("INVALID_STATE", "No agreement waiting on an advance");
+    fail("INVALID_STATE", "Send the agreement before confirming the advance");
   const advance = v!.rules.advance;
   if (!advance || advance.id !== advanceId)
     fail("STALE_VERSION", "This advance is not in the current agreement");
-  if (advance!.verified) return out;
+  if (advance!.verified)
+    fail("ADVANCE_ALREADY_CONFIRMED", "This advance is already confirmed");
   advance!.verified = true;
   audit(out, AuditType.ADVANCE_CONFIRMED, actorId, at, {
     versionId: v!.id,
@@ -1062,6 +1076,13 @@ export function allocateConfirmedRevenue(
   at: string,
 ): Collaboration {
   noPendingMembers(c);
+  // Activation already waits for the advance; never split money against an unpaid one.
+  const v = c.versions.find((v) => v.id === c.activeVersionId);
+  if (v && advanceUnconfirmed(v))
+    fail(
+      "ADVANCE_UNCONFIRMED",
+      "Confirm the advance is paid before payments are split",
+    );
   return allocate(c, input, at);
 }
 function allocate(

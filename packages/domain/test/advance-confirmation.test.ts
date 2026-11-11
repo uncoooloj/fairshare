@@ -1,7 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  acceptOrganizerHandover,
   activateVersion,
+  offerOrganizerHandover,
   allocateConfirmedRevenue,
   approveAndSwitchOn,
   AuditType,
@@ -110,7 +112,7 @@ test("confirming before approvals only records it; the last approval then switch
   // Once switched on there is nothing left to confirm.
   assert.throws(
     () => confirmAdvancePaid(c, "adv-1", "maya", at),
-    code("INVALID_STATE"),
+    code("ADVANCE_ALREADY_CONFIRMED"),
   );
 });
 
@@ -128,13 +130,127 @@ test("only the organizer confirms, and only the current advance", () => {
     () => confirmAdvancePaid(pair(), "adv-1", "maya", at),
     code("INVALID_STATE"),
   );
-  // A change request leaves a draft; confirming it is still allowed.
+  // Only a sent agreement: a change request returns it to a draft.
   const draft = requestChange(c, 1, "Wait", "jordan", at);
-  assert.equal(
-    confirmAdvancePaid(draft, "adv-1", "maya", at).versions[0].rules.advance!
-      .verified,
-    true,
+  assert.throws(
+    () => confirmAdvancePaid(draft, "adv-1", "maya", at),
+    code("INVALID_STATE"),
   );
+});
+
+test("confirming twice is refused", () => {
+  const c = confirmAdvancePaid(
+    submitForApproval(pair(), rules(false), "maya", at),
+    "adv-1",
+    "maya",
+    at,
+  );
+  assert.throws(
+    () => confirmAdvancePaid(c, "adv-1", "maya", at),
+    code("ADVANCE_ALREADY_CONFIRMED"),
+  );
+});
+
+test("payments are never split against an unconfirmed advance", () => {
+  // Shape that activation now prevents, built by hand to check the allocation guard.
+  const c = approveAndSwitchOn(
+    submitForApproval(pair(), rules(true), "maya", at),
+    1,
+    "jordan",
+    at,
+  );
+  c.versions[0].rules.advance!.verified = false;
+  assert.throws(
+    () =>
+      allocateConfirmedRevenue(
+        c,
+        {
+          providerCaptureId: "cap-x",
+          currency: "USD",
+          grossCents: 1000,
+          feeCents: 0,
+        },
+        at,
+      ),
+    code("ADVANCE_UNCONFIRMED"),
+  );
+});
+
+test("a revision sent after a change request works, and a confirmed advance stays confirmed", () => {
+  let c = submitForApproval(pair(), rules(false), "maya", at);
+  c = requestChange(c, 1, "Make it 60/40", "jordan", at);
+  const revised = rules(false);
+  revised.shares = [
+    { userId: "maya", basisPoints: 6000 },
+    { userId: "jordan", basisPoints: 4000 },
+  ];
+  c = submitForApproval(c, revised, "maya", at);
+  assert.equal(c.versions[1].status, VersionStatus.AWAITING_APPROVAL);
+  c = confirmAdvancePaid(c, "adv-1", "maya", at);
+  c = approveAndSwitchOn(c, 2, "jordan", at);
+  assert.equal(c.activeVersionId, 2);
+  // A later revision keeping the same advance does not ask again.
+  c = submitForApproval(c, revised, "maya", at);
+  assert.equal(c.versions[2].rules.advance!.verified, true);
+  c = approveAndSwitchOn(c, 3, "jordan", at);
+  assert.equal(c.activeVersionId, 3);
+});
+
+test("after a handover the new organizer confirms; the old one no longer can", () => {
+  let c = submitForApproval(pair(), rules(false), "maya", at);
+  c = approveAndSwitchOn(c, 1, "jordan", at);
+  c = offerOrganizerHandover(c, "jordan", "maya", at);
+  c = acceptOrganizerHandover(c, "jordan", at);
+  assert.throws(
+    () => confirmAdvancePaid(c, "adv-1", "maya", at),
+    code("FORBIDDEN"),
+  );
+  c = confirmAdvancePaid(c, "adv-1", "jordan", at);
+  assert.equal(c.activeVersionId, 1);
+  assert.equal(c.audit.at(-1)!.details.automatic, true);
+});
+
+test("a replaced advance carries what was already paid back once confirmed", () => {
+  let c = approveAndSwitchOn(
+    submitForApproval(pair(), rules(true), "maya", at),
+    1,
+    "jordan",
+    at,
+  );
+  c = allocateConfirmedRevenue(
+    c,
+    {
+      providerCaptureId: "cap-1",
+      currency: "USD",
+      grossCents: 50000,
+      feeCents: 0,
+    },
+    at,
+  );
+  assert.equal(c.recoupedByAdvance["adv-1"], 50000);
+  const raised = rules(false);
+  raised.advance = { ...raised.advance!, id: "adv-2", amountCents: 300000 };
+  c = approveAndSwitchOn(
+    submitForApproval(c, raised, "maya", at),
+    2,
+    "jordan",
+    at,
+  );
+  assert.equal(c.activeVersionId, 1, "old rules stay in force until confirmed");
+  c = confirmAdvancePaid(c, "adv-2", "maya", at);
+  assert.equal(c.activeVersionId, 2);
+  assert.equal(c.recoupedByAdvance["adv-2"], 50000);
+  c = allocateConfirmedRevenue(
+    c,
+    {
+      providerCaptureId: "cap-2",
+      currency: "USD",
+      grossCents: 1000000,
+      feeCents: 0,
+    },
+    at,
+  );
+  assert.equal(c.revenue[1].allocations[0].recoupmentCents, 250000);
 });
 
 test("payback maths is the same whether the advance was confirmed at send or later", () => {

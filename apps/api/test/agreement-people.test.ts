@@ -559,6 +559,11 @@ test("an advance not paid yet: sent, approved, then confirmed by the organizer t
       value.audit.slice(-2).map((e: any) => e.type),
       [AuditType.ADVANCE_CONFIRMED, AuditType.ACTIVATED],
     );
+    const again = await f.post("/advance/confirm", f.owner, {
+      advanceId: "adv-1",
+    });
+    assert.equal(again.statusCode, 409);
+    assert.equal(again.json().error.code, "ADVANCE_ALREADY_CONFIRMED");
   } finally {
     await f.app.close();
   }
