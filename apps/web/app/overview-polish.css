@@ -477,21 +477,8 @@
   background-position: right 0 center;
 }
 
-/* Phones: list keeps name, status and amount; activity puts the agreement on its own line. */
+/* Phones: activity puts the agreement on its own line. */
 @media (max-width: 600px) {
-  .ov-table {
-    overflow-x: auto;
-  }
-  .ov-table table {
-    min-width: 0;
-    width: 100%;
-  }
-  .ov-table th:nth-child(3),
-  .ov-table td:nth-child(3),
-  .ov-table th:nth-child(4),
-  .ov-table td:nth-child(4) {
-    display: none;
-  }
   .ov-all-clear-meta {
     flex-basis: 100%;
     margin-left: 20px;
@@ -501,5 +488,177 @@
   }
   .ov-timeline .ov-activity-link {
     display: block;
+  }
+}
+
+/* Agreements list: the split reads as text ("● Maya 50 · ● Jordan 30"), with a thin
+ * bar under it for two or more people and every share in a hover/focus tooltip. */
+.ov-table.ag-list-table {
+  /* The split tooltip must escape the table box. */
+  overflow: visible;
+}
+.ag-list-table .ag-col-split {
+  min-width: 180px;
+}
+.ag-split {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 100%;
+  border-radius: var(--radius-sm, 6px);
+}
+.ag-split-text {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 6px;
+  row-gap: 2px;
+  color: var(--color-ink);
+  font-variant-numeric: tabular-nums;
+}
+.ag-split-part {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.ag-split-sep,
+.ag-split-more,
+.ag-split-none {
+  color: var(--color-muted);
+}
+.ag-split-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--tone);
+}
+.ag-split-you {
+  font-weight: 600;
+}
+.ag-split-pending {
+  color: var(--color-muted);
+}
+.ag-split-bar {
+  display: flex;
+  gap: 2px;
+  width: 100%;
+  max-width: 200px;
+  height: 3px;
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+.ag-split-bar > span {
+  min-width: 3px;
+  background: var(--tone);
+}
+.ag-split-tip {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 8px);
+  left: -12px;
+  display: none;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 220px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  background: var(--color-canvas);
+  box-shadow: var(--shadow-panel);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.ag-split:hover .ag-split-tip,
+.ag-split:focus .ag-split-tip {
+  display: flex;
+}
+.ag-split-tip-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ag-split-tip-pct {
+  margin-left: auto;
+  padding-left: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Phones: each agreement is a card (name and status, then split and received). */
+@media (max-width: 600px) {
+  .ov-table.ag-list-table {
+    border: 0;
+    background: none;
+  }
+  .agreement-list.ov-list-page {
+    overflow-x: visible;
+  }
+  .agreement-list .ag-list-table table,
+  .ag-list-table tbody {
+    display: block;
+    min-width: 0;
+  }
+  .ag-list-table thead,
+  .ag-list-table tr.ov-row > td.ag-col-people,
+  .ag-list-table tr.ov-row > td.ov-chevron-cell {
+    display: none;
+  }
+  .ag-list-table tr.ov-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "name received"
+      "status status"
+      "split split"
+      "action action";
+    gap: 10px 12px;
+    padding: 14px 16px;
+    margin-bottom: 10px;
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-md);
+    background: var(--color-canvas);
+  }
+  .ag-list-table tr.ov-row > td {
+    display: block;
+    padding: 0;
+    border: 0;
+    min-width: 0;
+  }
+  .ag-list-table .ag-col-name {
+    grid-area: name;
+  }
+  .ag-list-table .ag-col-status {
+    grid-area: status;
+    justify-self: start;
+  }
+  .ag-list-table .ag-col-split {
+    grid-area: split;
+  }
+  .ag-list-table .ag-col-received {
+    grid-area: received;
+    align-self: start;
+    font-weight: 600;
+  }
+  .ag-list-table .ov-draft-cell {
+    grid-area: action;
+    width: auto;
+  }
+  .ag-list-table .ov-draft-cell .button,
+  .ag-list-table .ov-draft-cell button {
+    width: 100%;
+  }
+  .ag-split {
+    width: 100%;
+  }
+  .ag-split-tip {
+    position: static;
+    min-width: 0;
+    max-width: 100%;
+    width: 100%;
+    box-sizing: border-box;
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 }
