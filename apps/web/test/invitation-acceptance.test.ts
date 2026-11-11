@@ -11,7 +11,14 @@ test("invitation acceptance adopts the committed workspace before any reload", (
   const accept = source
     .split("async function acceptInvitation(token: string) {")[1]
     .split("async function loadWorkspace")[0];
-  assert.match(accept, /api\("invitations\/accept", "POST", \{ token \}\)/);
+  assert.match(
+    accept,
+    /scoped \? "agreement-invitations\/accept" : "invitations\/accept"/,
+  );
+  assert.match(
+    accept,
+    /token: scoped \? token\.slice\(AGREEMENT_INVITE_PREFIX\.length\) : token/,
+  );
   assert.match(accept, /commitWorkspace\(result.workspace.id\)/);
   const commit = source
     .split("function commitWorkspace(id: string) {")[1]
