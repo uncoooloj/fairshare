@@ -1339,7 +1339,7 @@ export default function FairshareApp() {
                           <Heading
                             small
                             title="Incoming payments"
-                            description="Payments appear here once PayPal confirms them. Each share follows the agreed terms."
+                            description="Payments appear here when you create them, while they await buyer approval, and after PayPal confirms them. Shares are calculated only after confirmation."
                           />
                           <AgreementInvoices
                             key={selected.id}

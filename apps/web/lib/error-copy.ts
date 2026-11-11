@@ -2,7 +2,7 @@
 export function errorCopy(
   status: number,
   code?: string,
-  message?: string,
+  _message?: string,
 ): string {
   const messages: Record<string, string> = {
     REVISION_CONFLICT:
@@ -29,12 +29,12 @@ export function errorCopy(
     UNAUTHORIZED: "Please sign in to continue.",
     FORBIDDEN:
       "You don’t have access to this action. Ask the agreement organizer for help.",
+    BAD_EMAIL: "Enter a valid email address.",
   };
   if (code && messages[code]) return messages[code];
   if (status >= 500)
     return "We couldn’t complete that request. Refresh to check what was saved before trying again.";
   if (status === 429)
     return "A few too many requests arrived at once. Wait a moment, then try again.";
-  if (message && !/^[A-Z][A-Z_\d]+$/.test(message)) return message;
   return "That didn’t go through. Check your details and try again.";
 }

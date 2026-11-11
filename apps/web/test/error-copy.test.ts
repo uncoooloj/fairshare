@@ -24,7 +24,7 @@ test("unexpected errors never leak diagnostics or encourage repeating payments b
   assert.doesNotMatch(text, /Database|postgres/);
   assert.match(text, /Refresh to check what was saved/);
 });
-test("actionable validation messages survive while raw codes do not", () => {
+test("known validation messages remain actionable while unknown details do not leak", () => {
   assert.equal(
     errorCopy(400, "BAD_EMAIL", "Enter a valid email address."),
     "Enter a valid email address.",
@@ -32,6 +32,10 @@ test("actionable validation messages survive while raw codes do not", () => {
   assert.doesNotMatch(
     errorCopy(400, "UNKNOWN_CODE", "UNKNOWN_CODE"),
     /UNKNOWN_CODE/,
+  );
+  assert.doesNotMatch(
+    errorCopy(400, "UNKNOWN_CODE", "Database postgres connection refused"),
+    /Database|postgres/,
   );
   assert.match(errorCopy(409, "REVISION_CONFLICT"), /latest version/);
 });
