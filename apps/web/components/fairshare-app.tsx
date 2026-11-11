@@ -67,6 +67,7 @@ import { ProfileForm } from "./profile-form";
 import { recoverSourceDocument } from "../lib/source-recovery";
 import { createSandboxCheckout } from "../lib/checkout-retry";
 import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 const PaymentGrid = dynamic(
   () => import("../src/components/PaymentGrid").then((m) => m.PaymentGrid),
   { ssr: false, loading: () => <p>Loading payout history…</p> },
@@ -75,6 +76,7 @@ import { PaymentGridStatus } from "../src/components/paymentGridModel";
 import { Badge, Button, Empty, Field, Icon, Notice } from "./ui";
 const workspaceBase = (id: string) => `workspaces/${id}`;
 export default function FairshareApp() {
+  const router = useRouter();
   const emailDelivery = useEmailDelivery();
   const [settingsTab, setSettingsTab] = useState("Profile");
   const [useLocalOcr, setUseLocalOcr] = useState(false);
@@ -219,7 +221,7 @@ export default function FairshareApp() {
     commitWorkspace(result.workspace.id);
     setSection(Section.Agreements);
     setFlowToken("");
-    history.replaceState(null, "", "/");
+    router.replace("/app");
     setNotice(
       "Workspace joined. The organizer must add you to the agreement before you can review and approve its rules.",
     );
@@ -417,6 +419,14 @@ export default function FairshareApp() {
     ]).finally(() => setReady(true));
   }, []);
   useEffect(() => {
+    // Invitation and verification routes retain their fragments through sign-in.
+    // Only ordinary app/auth entry points redirect with the session state so
+    // Next can render the destination route's metadata as well as its page.
+    if (ready && user && location.pathname === "/login") router.replace("/app");
+    else if (ready && !user && location.pathname === "/app")
+      router.replace("/login");
+  }, [ready, user, router]);
+  useEffect(() => {
     if (user)
       run(async () => {
         await loadWorkspaces();
@@ -437,7 +447,7 @@ export default function FairshareApp() {
   function dismissAccessFlow() {
     setFlowToken("");
     setError("");
-    history.replaceState(null, "", "/");
+    router.replace("/app");
   }
   async function mutate(action: string, extra: Record<string, unknown> = {}) {
     const workspaceRequestId = workspaceRequest.current;
@@ -607,7 +617,7 @@ export default function FairshareApp() {
                   await acceptInvitation(flowToken);
                 }
                 setFlowToken("");
-                history.replaceState(null, "", "/");
+                router.replace("/app");
               })
             }
           />

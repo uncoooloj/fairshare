@@ -49,7 +49,7 @@ export default function ChangeEmail() {
       {error && <p role="alert">{error}</p>}
       {!token && !done && <p>Open the verification link from your email.</p>}
       <p>
-        <a href="/">Return to Fairshare</a>
+        <a href="/app">Return to Fairshare</a>
       </p>
     </main>
   );

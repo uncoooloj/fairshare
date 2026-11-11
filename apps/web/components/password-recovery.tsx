@@ -138,7 +138,7 @@ export function PasswordRecovery({ reset = false }: { reset?: boolean }) {
           </form>
         )}
         <p>
-          <a href="/">Back to sign in</a>
+          <a href="/login">Back to sign in</a>
           {reset && (
             <>
               {" "}
