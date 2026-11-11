@@ -242,13 +242,6 @@ export function OverviewDashboard({
 
   return (
     <>
-      <p className="ov-caveat">
-        {summary.scope === "personal"
-          ? "Your money, all agreements"
-          : summary.scope === "managed"
-            ? "All participants in agreements you manage · all time"
-            : "Everyone’s shares on agreements you run, and your own share on the rest"}
-      </p>
       <div className="ov-stats">
         <StatCard
           label={
@@ -270,12 +263,6 @@ export function OverviewDashboard({
           note="Owed, not yet confirmed paid"
         />
       </div>
-      <p
-        className="ov-caveat"
-        title="This is what people are owed, not money sitting in an account. Paid out only counts money PayPal says arrived."
-      >
-        <span aria-hidden="true">ⓘ</span> Owed, not money in an account.
-      </p>
       {!payoutsComplete && (
         <p className="ov-caveat" role={payoutsUnavailable ? "alert" : "status"}>
           {payoutsUnavailable
