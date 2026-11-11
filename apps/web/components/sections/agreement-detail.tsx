@@ -15,8 +15,8 @@ import {
   originalDocumentUrl,
   type LoadedDocument,
 } from "../agreement-document";
-import { AgreementVersions } from "../agreement-versions";
 import { StageAction } from "../../lib/agreement-status";
+import { AgreementVersions } from "../agreement-versions";
 import { AgreementName } from "../agreement-name";
 import { AgreementSetup } from "../agreement-setup";
 import { OrganizerHandoverBanner } from "../organizer-handover-banner";
@@ -375,8 +375,8 @@ export function AgreementDetail({
           onBack={() => navigate(Section.Agreements)}
           onViewPayouts={() => navigate(Section.Payouts)}
           renameSuggested={!!extraction?.suggestedTitle}
-          menuItems={
-            loadedDocument && shown === AgreementTab.Terms
+          menuItems={[
+            ...(loadedDocument && shown === AgreementTab.Terms
               ? [
                   ...(originalDocumentUrl(base, loadedDocument.document)
                     ? [
@@ -394,8 +394,22 @@ export function AgreementDetail({
                     onSelect: () => downloadDocumentText(loadedDocument),
                   },
                 ]
-              : []
-          }
+              : []),
+            // Owner only: a new file means new terms everyone approves again.
+            ...(organizer && selected.value.versions.length > 0 && !editing
+              ? [
+                  {
+                    label: "Upload amended agreement",
+                    note: "Owner only. Starts a new version and everyone approves again.",
+                    onSelect: () => {
+                      setPreview(null);
+                      setEditing(true);
+                      changeAgreementTab(AgreementTab.Terms);
+                    },
+                  },
+                ]
+              : []),
+          ]}
           rename={
             organizer
               ? (open, close) => (
@@ -539,19 +553,18 @@ export function AgreementDetail({
                 onSeeRequest={() => setRequestOpen(true)}
                 onRevise={revise}
               />
-              {!editing && selected.value.versions.length > 0 && (
-                <>
-                  {loadedDocument && (
-                    <DocumentFileDetails
-                      agreement={selected}
-                      loaded={loadedDocument}
-                    />
-                  )}
-                  <details className="panel ag-history">
-                    <summary>History</summary>
-                    <AgreementVersions agreement={selected} />
-                  </details>
-                </>
+              {!editing && loadedDocument && (
+                <DocumentFileDetails
+                  agreement={selected}
+                  loaded={loadedDocument}
+                />
+              )}
+              {/* Owners see versions in the rail beside the rules. */}
+              {!organizer && selected.value.versions.length > 0 && (
+                <details className="panel ag-history">
+                  <summary>History</summary>
+                  <AgreementVersions agreement={selected} />
+                </details>
               )}
             </div>
           )}

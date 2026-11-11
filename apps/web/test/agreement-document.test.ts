@@ -64,3 +64,20 @@ test("the Agreement tab leads with the document; downloads live in the header me
   assert.match(detail, /label: "Download text"/);
   assert.match(detail, /onDocument=\{setLoadedDocument\}/);
 });
+test("the Agreement tab follows the design: no payment preview, versions beside the rules", () => {
+  const terms = readFileSync(
+    new URL(
+      "../components/sections/agreement-tabs/terms-tab.tsx",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  assert.doesNotMatch(terms, /Try a payment|PreviewForm/);
+  assert.match(terms, /<aside className="ag-terms-rail">/);
+  const detail = readFileSync(
+    new URL("../components/sections/agreement-detail.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(detail, /label: "Upload amended agreement"/);
+  assert.match(detail, /organizer && selected\.value\.versions\.length > 0/);
+});

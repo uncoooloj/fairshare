@@ -404,6 +404,8 @@ export function StatusLine({
 /** One entry in the page header's "…" menu: a link or an action. */
 export interface HeaderMenuItem {
   label: string;
+  /** A short line under the label, such as who may use it. */
+  note?: string;
   href?: string;
   onSelect?: () => void;
 }
@@ -522,6 +524,9 @@ export function AgreementHeader({
                   onClick={() => choose(() => item.onSelect?.())}
                 >
                   {item.label}
+                  {item.note && (
+                    <span className="ag-menu-note">{item.note}</span>
+                  )}
                 </button>
               ),
             )}

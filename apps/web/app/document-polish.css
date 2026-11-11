@@ -461,3 +461,24 @@
 .ag-agreement .ag-agreement-document {
   margin: 0 0 var(--space-6);
 }
+
+/* Rules with the versions rail beside them, as in the design's Terms tab. */
+.ag-agreement .ag-terms {
+  grid-template-columns: minmax(0, 1fr) 340px;
+}
+.ag-agreement .ag-terms-rail {
+  display: block;
+}
+@media (max-width: 900px) {
+  .ag-agreement .ag-terms {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.ag-menu-list .ag-menu-note {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--text-xs);
+  line-height: 1.4;
+  color: var(--color-warning);
+  white-space: normal;
+}

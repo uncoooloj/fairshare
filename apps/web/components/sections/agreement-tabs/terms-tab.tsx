@@ -3,13 +3,7 @@ import { PostApprovalPayout } from "../../post-approval-payout";
 import { CollaboratorTerms } from "../../collaborator-review";
 import { ReviewDiscussion } from "../../review-discussion";
 import { RecoupmentCard, RevenueRulesCard } from "../../agreement-workspace";
-import {
-  Heading,
-  PreviewForm,
-  AllocationTable,
-  AIReview,
-  RulesEditor,
-} from "../../agreement-widgets";
+import { Heading, AIReview, RulesEditor } from "../../agreement-widgets";
 import { AgreementTermsFlow } from "../../agreement-terms-flow";
 import { AgreementVersions } from "../../agreement-versions";
 import {
@@ -270,28 +264,36 @@ export function AgreementTermsTab({
             {latest.id === selected.value.activeVersionId && (
               <RecoupmentCard agreement={selected} rules={latest.rules} />
             )}
-            <ContractReviewPanel
-              key={latest.id}
-              agreement={selected}
-              version={latest}
-              userId={user.id}
-              busy={busy}
-              onAction={async (action, payload) => {
-                setBusy(true);
-                setError("");
-                setNotice("");
-                try {
-                  const committed = await mutateWithResult(
-                    `/versions/${latest.id}/${action}`,
-                    payload,
-                  );
-                  if (action === "approve" && committed)
-                    setApprovedForPayout(selected.id);
-                } finally {
-                  setBusy(false);
-                }
-              }}
-            />
+            {/* Once the owner has approved, the header line and the versions
+                rail say who is left; the design shows no review block. */}
+            {!(
+              latest.status === "AWAITING_APPROVAL" &&
+              latest.approvals[user.id] &&
+              !latest.changeRequests.length
+            ) && (
+              <ContractReviewPanel
+                key={latest.id}
+                agreement={selected}
+                version={latest}
+                userId={user.id}
+                busy={busy}
+                onAction={async (action, payload) => {
+                  setBusy(true);
+                  setError("");
+                  setNotice("");
+                  try {
+                    const committed = await mutateWithResult(
+                      `/versions/${latest.id}/${action}`,
+                      payload,
+                    );
+                    if (action === "approve" && committed)
+                      setApprovedForPayout(selected.id);
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              />
+            )}
             {approvedForPayout === selected.id && (
               <PostApprovalPayout
                 base={base}
@@ -308,30 +310,6 @@ export function AgreementTermsTab({
               }
               onDirtyChange={setDraftDirty}
             />
-            <section className="section">
-              <h3>Try a payment</h3>
-              <p className="muted">Just a preview. No money moves.</p>
-              <PreviewForm
-                busy={busy}
-                onSubmit={(grossCents, feeCents) =>
-                  run(async () =>
-                    setPreview(
-                      await api(
-                        `${base}/versions/${latest.id}/preview`,
-                        "POST",
-                        { grossCents, feeCents },
-                      ),
-                    ),
-                  )
-                }
-              />
-              {preview && (
-                <AllocationTable
-                  allocations={preview.allocations}
-                  agreement={selected}
-                />
-              )}
-            </section>
           </div>
           <aside className="ag-terms-rail">
             <AgreementVersions agreement={selected} />
