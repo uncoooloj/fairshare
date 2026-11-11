@@ -91,15 +91,23 @@ test("new proposals reset approvals and stale approvals cannot activate", () => 
   assert.throws(() => approveVersion(c, 1, "c", at), code("STALE_VERSION"));
   assert.equal(c.activeVersionId, 1);
 });
-test("questions and unverified advances block sending rules for review", () => {
-  for (const r of [
-    { ...rules(), unresolvedQuestions: ["Gross or net?"] },
-    { ...rules(), advance: { ...rules().advance!, verified: false } },
-  ])
-    assert.throws(
-      () => sendForReview(proposeVersion(fresh(), r, "a", at), 1, "a", at),
-      code("UNRESOLVED_RULES"),
-    );
+test("open questions block sending rules for review; an unconfirmed advance does not", () => {
+  const asked = { ...rules(), unresolvedQuestions: ["Gross or net?"] };
+  assert.throws(
+    () => sendForReview(proposeVersion(fresh(), asked, "a", at), 1, "a", at),
+    code("UNRESOLVED_RULES"),
+  );
+  const unpaid = {
+    ...rules(),
+    advance: { ...rules().advance!, verified: false },
+  };
+  const sent = sendForReview(
+    proposeVersion(fresh(), unpaid, "a", at),
+    1,
+    "a",
+    at,
+  );
+  assert.equal(sent.versions[0].status, VersionStatus.AWAITING_APPROVAL);
 });
 test("shares need 100% and one entry for every participant", () => {
   for (const shares of [

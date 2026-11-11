@@ -490,3 +490,76 @@ test("a sent agreement cannot be deleted, even after a change request", async ()
     await f.app.close();
   }
 });
+
+test("an advance not paid yet: sent, approved, then confirmed by the organizer to switch on", async () => {
+  const f = await setup();
+  try {
+    const link = (
+      await f.app.inject({
+        method: "POST",
+        url: `${f.url}/invitation-links`,
+        headers: f.headers(),
+        payload: {},
+      })
+    ).json().invitation;
+    assert.equal((await f.accept(link.token)).statusCode, 200);
+    const advance = {
+      id: "adv-1",
+      recipientId: f.owner.user.id,
+      amountCents: 200000,
+      verified: false,
+      source: {
+        origin: RuleOrigin.HUMAN_PROPOSAL,
+        documentId: f.documentId,
+        clause: "Midnight",
+        excerpt: "Maya put in $2,000 upfront and is paid back first.",
+      },
+    };
+    const r = f.rules(
+      [
+        [f.owner.user.id, 6000],
+        [f.riley.user.id, 4000],
+      ],
+      { advance },
+    );
+    const sent = await f.submit(r);
+    assert.equal(sent.statusCode, 200, sent.body);
+    const approved = await f.post("/versions/1/approve", f.riley);
+    assert.equal(approved.statusCode, 200, approved.body);
+    assert.equal(approved.json().value.activeVersionId, undefined);
+    const manual = await f.post("/versions/1/activate");
+    assert.equal(manual.statusCode, 409);
+    assert.equal(manual.json().error.code, "ADVANCE_UNCONFIRMED");
+
+    const byCollaborator = await f.post("/advance/confirm", f.riley, {
+      advanceId: "adv-1",
+    });
+    assert.equal(byCollaborator.statusCode, 403);
+    const wrong = await f.post("/advance/confirm", f.owner, {
+      advanceId: "adv-2",
+    });
+    assert.equal(wrong.statusCode, 409);
+    const stale = await f.app.inject({
+      method: "POST",
+      url: `${f.url}/advance/confirm`,
+      headers: f.headers(),
+      payload: { expectedRevision: 1, advanceId: "adv-1" },
+    });
+    assert.equal(stale.statusCode, 409);
+
+    const confirmed = await f.post("/advance/confirm", f.owner, {
+      advanceId: "adv-1",
+    });
+    assert.equal(confirmed.statusCode, 200, confirmed.body);
+    const value = confirmed.json().value;
+    assert.equal(value.versions.length, 1);
+    assert.equal(value.versions[0].rules.advance.verified, true);
+    assert.equal(value.activeVersionId, 1);
+    assert.deepEqual(
+      value.audit.slice(-2).map((e: any) => e.type),
+      [AuditType.ADVANCE_CONFIRMED, AuditType.ACTIVATED],
+    );
+  } finally {
+    await f.app.close();
+  }
+});
