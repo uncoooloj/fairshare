@@ -1,4 +1,5 @@
 import { AgreementTab, Section } from "./model";
+import { isFullAgreementHistoryState } from "./full-agreement-history";
 
 /** What the signed-in app shows for a path under /app. */
 export enum AppView {
@@ -11,6 +12,8 @@ export enum AppView {
 export interface AppRoute {
   view: AppView;
   section: Section;
+  /** New agreement URLs carry this; old ID-only links remain readable if unique. */
+  workspaceId?: string;
   agreementId?: string;
   tab?: AgreementTab;
 }
@@ -42,27 +45,17 @@ const ID = /^[A-Za-z0-9-]{1,100}$/;
 const overview: AppRoute = { view: AppView.Section, section: Section.Overview };
 
 /** Reads a pathname. Unknown paths under /app fall back to Overview. */
-export function parseAppPath(pathname: string): AppRoute {
-  const parts = pathname.replace(/\/+$/, "").split("/").filter(Boolean);
-  if (parts[0] !== APP_ROOT.slice(1)) return overview;
-  const [, first, id, rest, ...extra] = parts;
-  if (!first) return overview;
-  if (first === sectionSlugs[Section.Payouts] && !id)
-    return { view: AppView.Section, section: Section.Payouts };
-  if (first === sectionSlugs[Section.Settings] && !id)
-    return { view: AppView.Section, section: Section.Settings };
-  if (first !== sectionSlugs[Section.Agreements] || extra.length)
-    return overview;
-  if (!id) return { view: AppView.Section, section: Section.Agreements };
-  if (id === NEW_SLUG && !rest)
-    return { view: AppView.NewAgreement, section: Section.Agreements };
-  if (!ID.test(id))
-    return { view: AppView.Section, section: Section.Agreements };
+function agreementRoute(
+  agreementId: string,
+  rest: string | undefined,
+  workspaceId?: string,
+): AppRoute {
   if (rest === SETUP_SLUG)
     return {
       view: AppView.DraftSetup,
       section: Section.Agreements,
-      agreementId: id,
+      ...(workspaceId ? { workspaceId } : {}),
+      agreementId,
     };
   const tab = rest
     ? [AgreementTab.Terms, AgreementTab.People, AgreementTab.Payments].find(
@@ -73,9 +66,42 @@ export function parseAppPath(pathname: string): AppRoute {
   return {
     view: AppView.Agreement,
     section: Section.Agreements,
-    agreementId: id,
+    ...(workspaceId ? { workspaceId } : {}),
+    agreementId,
     tab,
   };
+}
+
+export function parseAppPath(pathname: string): AppRoute {
+  const parts = pathname.replace(/\/+$/, "").split("/").filter(Boolean);
+  if (parts[0] !== APP_ROOT.slice(1)) return overview;
+  const [, first, ...agreementParts] = parts;
+  if (!first) return overview;
+  if (first === sectionSlugs[Section.Payouts] && !agreementParts.length)
+    return { view: AppView.Section, section: Section.Payouts };
+  if (first === sectionSlugs[Section.Settings] && !agreementParts.length)
+    return { view: AppView.Section, section: Section.Settings };
+  if (first !== sectionSlugs[Section.Agreements]) return overview;
+  if (!agreementParts.length)
+    return { view: AppView.Section, section: Section.Agreements };
+  if (agreementParts[0] === NEW_SLUG && agreementParts.length === 1)
+    return { view: AppView.NewAgreement, section: Section.Agreements };
+  if (agreementParts[0] === "workspace") {
+    const [, workspaceId, agreementId, rest, ...extra] = agreementParts;
+    if (
+      !workspaceId ||
+      !agreementId ||
+      extra.length ||
+      !ID.test(workspaceId) ||
+      !ID.test(agreementId)
+    )
+      return { view: AppView.Section, section: Section.Agreements };
+    return agreementRoute(agreementId, rest, workspaceId);
+  }
+  const [agreementId, rest, ...extra] = agreementParts;
+  if (!agreementId || extra.length || !ID.test(agreementId))
+    return { view: AppView.Section, section: Section.Agreements };
+  return agreementRoute(agreementId, rest);
 }
 
 /** The canonical path for a route. */
@@ -88,18 +114,52 @@ export function appPath(route: AppRoute): string {
     case AppView.DraftSetup:
       return join(
         sectionSlugs[Section.Agreements],
+        route.workspaceId ? "workspace" : "",
+        route.workspaceId ?? "",
         route.agreementId ?? "",
         SETUP_SLUG,
       );
     case AppView.Agreement:
       return join(
         sectionSlugs[Section.Agreements],
+        route.workspaceId ? "workspace" : "",
+        route.workspaceId ?? "",
         route.agreementId ?? "",
         tabSlugs[route.tab ?? AgreementTab.Overview],
       );
     default:
       return join(sectionSlugs[route.section]);
   }
+}
+
+/** Resolves a canonical workspace URL, or a legacy ID-only URL only when unique. */
+export function resolveRoutedAgreement<
+  T extends { workspaceId: string; id: string },
+>(agreements: readonly T[], route: AppRoute): T | undefined {
+  if (!route.agreementId) return undefined;
+  const matches = agreements.filter(
+    (agreement) =>
+      agreement.id === route.agreementId &&
+      (!route.workspaceId || agreement.workspaceId === route.workspaceId),
+  );
+  return matches.length === 1 ? matches[0] : undefined;
+}
+
+/** Restores the full document when its marker survives after detail unmounts. */
+export function routeForHistory<T extends { workspaceId: string; id: string }>(
+  route: AppRoute,
+  state: unknown,
+  agreement: T | undefined,
+): AppRoute {
+  return agreement &&
+    route.view === AppView.Agreement &&
+    isFullAgreementHistoryState(state, agreement.workspaceId, agreement.id)
+    ? {
+        ...route,
+        workspaceId: agreement.workspaceId,
+        tab: AgreementTab.Document,
+      }
+    : route;
 }
 
 /** True for paths the signed-in app owns (not /login, /invitation, ...). */
@@ -135,9 +195,7 @@ export function historyWorkspace(state: unknown): string | undefined {
     state && typeof state === "object"
       ? (state as Record<string, unknown>)[HISTORY_WORKSPACE_KEY]
       : undefined;
-  return typeof value === "string" && value.length <= 100
-    ? value
-    : undefined;
+  return typeof value === "string" && value.length <= 100 ? value : undefined;
 }
 
 export function markedState(

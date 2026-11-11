@@ -47,6 +47,8 @@ import {
   isAppPath,
   markedState,
   parseAppPath,
+  resolveRoutedAgreement,
+  routeForHistory,
   safeAppPath,
   type AppRoute,
 } from "../lib/app-routes";
@@ -560,6 +562,8 @@ export default function FairshareApp() {
                 ? {
                     view: AppView.DraftSetup,
                     section: Section.Agreements,
+                    workspaceId:
+                      resume?.created.workspaceId ?? currentWorkspace.current,
                     agreementId: resume?.created.agreementId ?? wizardDraftId,
                   }
                 : { view: AppView.NewAgreement, section: Section.Agreements },
@@ -569,6 +573,7 @@ export default function FairshareApp() {
           ? appPath({
               view: AppView.Agreement,
               section,
+              workspaceId: selected.workspaceId,
               agreementId: selected.id,
               tab,
             })
@@ -619,10 +624,12 @@ export default function FairshareApp() {
       return;
     }
     if (!applied.current) return;
-    // A rejected history move must also invalidate any older asynchronous open.
-    // Otherwise its reply can replace the screen after this address is restored.
-    openRequest.current++;
-    navigating.current = "";
+    // A rejected history move invalidates only a pending route open. Mutations
+    // share openRequest's freshness fence and must retain their committed reply.
+    if (navigating.current) {
+      openRequest.current++;
+      navigating.current = "";
+    }
     if (!mayLeaveDraft()) {
       // Put the address back to what is still on screen.
       if (routePath)
@@ -638,7 +645,11 @@ export default function FairshareApp() {
       return;
     }
     replaceNext.current = true;
-    applyRoute(parseAppPath(location.pathname), historyWorkspace(event.state));
+    applyRoute(
+      parseAppPath(location.pathname),
+      historyWorkspace(event.state),
+      event.state,
+    );
     setRouteTick((n) => n + 1);
   };
   useEffect(() => {
@@ -695,36 +706,34 @@ export default function FairshareApp() {
     else setCreating(false);
   }
   /** Opens what a URL names (leaving unsaved work was already confirmed). */
-  function applyRoute(route: AppRoute, workspaceId?: string) {
+  function applyRoute(route: AppRoute, workspaceId?: string, state?: unknown) {
     if (route.view === AppView.NewAgreement) return freshWizard();
     if (route.view === AppView.Section) return showSection(route.section);
-    if (
-      route.view === AppView.Agreement &&
-      selected?.id === route.agreementId &&
-      (!workspaceId || selected?.workspaceId === workspaceId) &&
-      !creating
-    ) {
-      setSection(Section.Agreements);
-      if (route.tab && visibleTab(route.tab) !== visibleTab(tab)) {
-        setTab(route.tab);
-        setBreakdown(null);
-      }
-      return;
-    }
-    const a = route.agreementId
-      ? agreements.find(
-          (item) =>
-            item.workspaceId === (workspaceId ?? currentWorkspace.current) &&
-            item.id === route.agreementId,
-        )
-      : undefined;
+    let routed = route;
+    if (!routed.workspaceId && workspaceId) routed = { ...route, workspaceId };
+    const a = resolveRoutedAgreement(agreements, routed);
     if (!a) {
       showSection(Section.Agreements);
       replaceNext.current = true;
       setNotice("We couldn’t find that agreement.");
       return;
     }
-    const target = appPath(route);
+    const historyRoute = routeForHistory(routed, state, a);
+    const requestedTab = historyRoute.tab;
+    if (
+      route.view === AppView.Agreement &&
+      selected?.id === a.id &&
+      selected.workspaceId === a.workspaceId &&
+      !creating
+    ) {
+      setSection(Section.Agreements);
+      if (requestedTab && visibleTab(requestedTab) !== visibleTab(tab)) {
+        setTab(requestedTab);
+        setBreakdown(null);
+      }
+      return;
+    }
+    const target = appPath(historyRoute);
     openRequest.current++;
     setCreating(false);
     setResume(null);
@@ -732,7 +741,7 @@ export default function FairshareApp() {
     navigating.current = target;
     void run(async () => {
       try {
-        await openAgreement(a, route.tab);
+        await openAgreement(a, requestedTab);
       } finally {
         // Opening can land elsewhere (a draft opens its setup) or fail:
         // correct the address to what is on screen.

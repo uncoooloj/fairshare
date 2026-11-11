@@ -11,6 +11,7 @@ import {
   isAppPath,
   markedState,
   parseAppPath,
+  resolveRoutedAgreement,
   safeAppPath,
 } from "../lib/app-routes";
 import { AgreementTab, Section, type Agreement } from "../lib/model";
@@ -28,6 +29,7 @@ const section = async () =>
 
 const app = readComponent("fairshare-app.tsx");
 const ID = "3f1c2a9e-5b7d-4e1a-9c2b-0d8e7f6a5b4c";
+const WORKSPACE = "workspace-a";
 
 test("every section and agreement tab has its own path, and deep links read back to it", () => {
   const cases: [string, ReturnType<typeof parseAppPath>][] = [
@@ -83,6 +85,16 @@ test("every section and agreement tab has its own path, and deep links read back
         agreementId: ID,
       },
     ],
+    [
+      `/app/agreements/workspace/${WORKSPACE}/${ID}/agreement`,
+      {
+        view: AppView.Agreement,
+        section: Section.Agreements,
+        workspaceId: WORKSPACE,
+        agreementId: ID,
+        tab: AgreementTab.Terms,
+      },
+    ],
   ];
   for (const [path, route] of cases) {
     assert.deepEqual(parseAppPath(path), route, path);
@@ -119,8 +131,31 @@ test("unknown or hostile paths fall back to a safe section", () => {
   assert.equal(safeAppPath("//evil.example/app"), "/app");
   assert.equal(safeAppPath("/login"), "/app");
   assert.equal(safeAppPath("/app/payouts"), "/app/payouts");
+  assert.equal(
+    safeAppPath(`/app/agreements/workspace/${WORKSPACE}/${ID}`),
+    `/app/agreements/workspace/${WORKSPACE}/${ID}`,
+  );
   assert.equal(isAppPath("/application"), false);
   assert.equal(isAppPath("/app/settings"), true);
+});
+
+test("fresh canonical deep links select their workspace, while legacy IDs must be unique", () => {
+  const agreements = [
+    { workspaceId: "workspace-a", id: ID, value: "A" },
+    { workspaceId: "workspace-b", id: ID, value: "B" },
+    { workspaceId: "workspace-b", id: "unique", value: "only" },
+  ];
+  const canonical = parseAppPath(`/app/agreements/workspace/workspace-b/${ID}`);
+  assert.equal(resolveRoutedAgreement(agreements, canonical)?.value, "B");
+  assert.equal(
+    resolveRoutedAgreement(agreements, parseAppPath(`/app/agreements/${ID}`)),
+    undefined,
+  );
+  assert.equal(
+    resolveRoutedAgreement(agreements, parseAppPath("/app/agreements/unique"))
+      ?.value,
+    "only",
+  );
 });
 
 test("history entries keep framework state, carry the app marker, and retain route workspace identity", () => {
@@ -150,7 +185,7 @@ test("Back never leaves the dashboard for the home or login page", () => {
   // Back and Forward inside the app open the address's screen.
   assert.match(
     app,
-    /applyRoute\(parseAppPath\(location\.pathname\), historyWorkspace\(event\.state\)\)/,
+    /applyRoute\(\s*parseAppPath\(location\.pathname\),\s*historyWorkspace\(event\.state\),\s*event\.state,?\s*\)/,
   );
   // Wizard close and Sent replace the wizard's entry instead of stacking it.
   for (const fn of ["function leaveWizard", "function finishCreation"]) {
@@ -159,17 +194,15 @@ test("Back never leaves the dashboard for the home or login page", () => {
   }
 });
 
-test("history routes use workspace-qualified agreement identity, cancel stale opens, and ask the wizard before leaving", () => {
-  assert.match(
-    app,
-    /item\.workspaceId === \(workspaceId \?\? currentWorkspace\.current\) &&\s*item\.id === route\.agreementId/,
-  );
+test("history routes cancel only pending opens and ask the wizard before leaving", () => {
   const popstate = app.slice(
     app.indexOf("onPopState.current ="),
     app.indexOf("useEffect(() => {\n    const listener"),
   );
-  assert.match(popstate, /openRequest\.current\+\+;/);
-  assert.match(popstate, /navigating\.current = "";/);
+  assert.match(
+    popstate,
+    /if \(navigating\.current\) \{\s*openRequest\.current\+\+;/,
+  );
   assert.match(app, /if \(!wizardMayLeave\.current\(\)\) return false;/);
   assert.match(app, /onLeaveAttempt=\{\(attempt\) =>/);
 });
