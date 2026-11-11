@@ -221,3 +221,37 @@ test("push-to-main releases retain gates while pull requests cannot publish", ()
   assert.match(workflow, /git ls-remote origin refs\/heads\/main/);
   assert.match(workflow, /if: steps\.current\.outputs\.deploy == 'true'/);
 });
+
+test("persistence waiver is manual-main-only and guards both gate invocations", () => {
+  const workflow = readFileSync(
+    new URL("../../.github/workflows/deploy.yml", import.meta.url),
+    "utf8",
+  );
+  assert.match(workflow, /workflow_dispatch:\s+inputs:/);
+  assert.match(
+    workflow,
+    /waive_persistence:[\s\S]*default: false[\s\S]*type: boolean/,
+  );
+  const manualMain =
+    "github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.waive_persistence == true";
+  assert.equal(workflow.split(manualMain).length - 1, 3);
+  assert.ok(
+    workflow.includes(
+      "github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && !(" +
+        manualMain +
+        ")",
+    ),
+  );
+  for (const text of [
+    "$GITHUB_ACTOR",
+    "$GITHUB_SHA",
+    "fairshare-api-sandbox",
+    "https://fairshare-api-sandbox.udaleamehoj.workers.dev",
+    "https://usefairshare.app",
+    "Checks not performed: restart, redeploy, restore, rollback",
+  ]) {
+    assert.ok(workflow.includes(text));
+  }
+  assert.match(workflow, /FAIRSHARE_PERSISTENCE_WAIVED/);
+  assert.match(workflow, /if \[ \"\$FAIRSHARE_PERSISTENCE_WAIVED\" = true \]/);
+});

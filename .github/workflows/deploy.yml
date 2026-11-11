@@ -5,6 +5,12 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      waive_persistence:
+        description: "Explicitly waive hosted persistence checks for this sandbox release"
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -34,10 +40,22 @@ jobs:
           scope=$(node deploy/cloudflare/persistence-gate.mjs --fingerprint)
           echo "Persistence scope SHA-256: $scope" >> "$GITHUB_STEP_SUMMARY"
       - name: Require current hosted persistence acceptance
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && !(github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.waive_persistence == true)
         env:
           FAIRSHARE_PERSISTENCE_ACCEPTANCE: ${{ vars.FAIRSHARE_PERSISTENCE_ACCEPTANCE }}
         run: node deploy/cloudflare/persistence-gate.mjs
+      - name: Record explicit sandbox persistence waiver
+        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.waive_persistence == true
+        run: |
+          {
+            echo "### Explicit sandbox persistence waiver"
+            echo "- Actor: $GITHUB_ACTOR"
+            echo "- Commit: $GITHUB_SHA"
+            echo "- Target worker: fairshare-api-sandbox"
+            echo "- Target API origin: https://fairshare-api-sandbox.udaleamehoj.workers.dev"
+            echo "- Target web origin: https://usefairshare.app"
+            echo "- Checks not performed: restart, redeploy, restore, rollback"
+          } >> "$GITHUB_STEP_SUMMARY"
       - run: npm ci
       - run: npm run format:check
       - run: npm test
@@ -63,9 +81,14 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           FAIRSHARE_PERSISTENCE_ACCEPTANCE: ${{ vars.FAIRSHARE_PERSISTENCE_ACCEPTANCE }}
+          FAIRSHARE_PERSISTENCE_WAIVED: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.waive_persistence == true }}
         run: |
           test -n "$CLOUDFLARE_API_TOKEN" || { echo 'Missing CLOUDFLARE_API_TOKEN repository secret'; exit 1; }
-          node deploy/cloudflare/persistence-gate.mjs
+          if [ "$FAIRSHARE_PERSISTENCE_WAIVED" = true ]; then
+            echo 'Explicit sandbox persistence waiver active; hosted persistence checks were not performed.'
+          else
+            node deploy/cloudflare/persistence-gate.mjs
+          fi
           actual=$(sha256sum apps/api/dist-cloudflare/worker.mjs | cut -d ' ' -f1)
           test "$actual" = "${{ steps.api_bundle.outputs.sha256 }}" || { echo 'Checked API bundle changed before deployment'; exit 1; }
           (cd apps/api && npx --no-install wrangler deploy --config wrangler.hosted.json --no-bundle --keep-vars)
