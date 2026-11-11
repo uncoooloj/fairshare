@@ -11,6 +11,18 @@ export const notificationKinds = [
   "exceptions",
 ] as const;
 type NotificationKind = (typeof notificationKinds)[number];
+type NotificationEvent = {
+  id: string;
+  kind: NotificationKind;
+  workspaceId: string;
+  agreementId: string;
+  agreementName: string;
+  at: string | null;
+  message: string;
+};
+function notificationReceiptKey(workspaceId: string, eventId: string) {
+  return `${workspaceId}\u0000${eventId}`;
+}
 
 function notificationKindForAuditEvent(
   type: string,
@@ -83,6 +95,12 @@ export function registerPreferences(app: FairshareApp) {
   store.db.exec(
     "CREATE TABLE IF NOT EXISTS user_preferences(user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,value TEXT NOT NULL)",
   );
+  // Keep v1 receipts untouched: their public event IDs lack workspace identity,
+  // so migrating them would wrongly mark a same-ID agreement in another workspace.
+  // This additive table is compatible with local SQLite and Durable Object SQLite.
+  store.db.exec(
+    "CREATE TABLE IF NOT EXISTS user_notification_read_receipts(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,workspace_id TEXT NOT NULL,event_id TEXT NOT NULL,read_at INTEGER NOT NULL,PRIMARY KEY(user_id,workspace_id,event_id))",
+  );
   const channels = {
     type: "object",
     additionalProperties: false,
@@ -136,27 +154,18 @@ export function registerPreferences(app: FairshareApp) {
     },
   );
   // Read actual agreement events and provider-confirmed payout states, never synthetic delivery.
-  app.get("/api/auth/notifications", async (req) => {
-    const user = app.requireSession(req),
-      preferences = readPreferences(store, user.id);
+  const eventsForUser = (userId: string) => {
+    const preferences = readPreferences(store, userId);
     const rows = store.db
       .prepare(
         "SELECT c.workspace_id,c.value FROM fairshare_collaborations c JOIN memberships m ON m.workspace_id=c.workspace_id WHERE m.user_id=?",
       )
-      .all(user.id) as { workspace_id: string; value: string }[];
-    const events: {
-      id: string;
-      kind: NotificationKind;
-      workspaceId: string;
-      agreementId: string;
-      agreementName: string;
-      at: string | null;
-      message: string;
-    }[] = [];
+      .all(userId) as { workspace_id: string; value: string }[];
+    const events: NotificationEvent[] = [];
     const agreements = new Map<string, Collaboration>();
     for (const row of rows) {
       const c = JSON.parse(row.value) as Collaboration;
-      if (!c.members.some((member) => member.userId === user.id)) continue;
+      if (!c.members.some((member) => member.userId === userId)) continue;
       agreements.set(`${row.workspace_id}:${c.id}`, c);
       for (const event of c.audit) {
         const kind = notificationKindForAuditEvent(event.type);
@@ -185,7 +194,7 @@ export function registerPreferences(app: FairshareApp) {
       .prepare(
         "SELECT id,workspace_id,collaboration_id,status FROM fairshare_payout_ops WHERE user_id=?",
       )
-      .all(user.id) as {
+      .all(userId) as {
       id: string;
       workspace_id: string;
       collaboration_id: string;
@@ -230,7 +239,41 @@ export function registerPreferences(app: FairshareApp) {
       if (visible.length < 100 && undatedIndex < undatedEvents.length)
         visible.push(undatedEvents[undatedIndex++]!);
     }
-    return { events: visible };
+    return visible;
+  };
+  app.get("/api/auth/notifications", async (req) => {
+    const user = app.requireSession(req);
+    const events = eventsForUser(user.id);
+    const readReceipts = new Set(
+      (
+        store.db
+          .prepare(
+            "SELECT workspace_id,event_id FROM user_notification_read_receipts WHERE user_id=?",
+          )
+          .all(user.id) as { workspace_id: string; event_id: string }[]
+      ).map((row) => notificationReceiptKey(row.workspace_id, row.event_id)),
+    );
+    return {
+      events: events.map((event) => ({
+        ...event,
+        read: readReceipts.has(
+          notificationReceiptKey(event.workspaceId, event.id),
+        ),
+      })),
+    };
+  });
+  app.post("/api/auth/notifications/mark-all-read", async (req) => {
+    const user = app.requireSession(req);
+    store.limit(`notifications:mark-read:${user.id}`, 60);
+    const events = eventsForUser(user.id);
+    store.tx(() => {
+      const mark = store.db.prepare(
+        "INSERT INTO user_notification_read_receipts(user_id,workspace_id,event_id,read_at) VALUES(?,?,?,?) ON CONFLICT(user_id,workspace_id,event_id) DO UPDATE SET read_at=excluded.read_at",
+      );
+      for (const event of events)
+        mark.run(user.id, event.workspaceId, event.id, store.now());
+    });
+    return { marked: events.length };
   });
 }
 export function requireApprovalEmail(store: IdentityStore, userId: string) {

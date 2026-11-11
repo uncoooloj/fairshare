@@ -15,7 +15,21 @@ test("notification panel uses the authenticated feed and distinguishes loading, 
   assert.match(panel, /active = false/);
   assert.match(panel, /role="alert"/);
   assert.match(panel, /Nothing yet\. Approvals and payouts show up here\./);
-  assert.doesNotMatch(panel, /mark.*read|unreadCount|"POST"/i);
+  assert.match(panel, /auth\/notifications\/mark-all-read/);
+  assert.match(panel, /"POST"/);
+});
+test("notification panel groups the live feed locally and renders persisted read state", () => {
+  assert.match(panel, /date\.getFullYear\(\).*now\.getFullYear\(\)/s);
+  assert.match(panel, /\["today", "earlier"\]/);
+  assert.match(panel, /<h3>\{group === "today" \? "Today" : "Earlier"\}<\/h3>/);
+  assert.match(panel, /<NotificationIcon kind=\{event\.kind\}/);
+  assert.match(panel, /className="notification-headline"/);
+  assert.match(panel, /className="notification-detail"/);
+  assert.match(panel, /read: boolean/);
+  assert.match(panel, /Mark all read/);
+  assert.match(panel, /notification-unread-dot/);
+  assert.match(panel, /is-unread/);
+  assert.match(panel, /setEvents\(\(current\).*read: true/s);
 });
 test("panel has keyboard dismissal, focus restoration and refreshes on open", () => {
   assert.match(panel, /aria-expanded=\{open\}/);
@@ -36,7 +50,7 @@ test("panel header is a gear and a ×, and each row opens its agreement", () => 
   assert.doesNotMatch(panel, />\s*(Close|Preferences|View agreement)\s*</);
   assert.match(
     panel,
-    /<button\s+type="button"\s+className="notification-row"\s+onClick/,
+    /<button\s+type="button"\s+className=\{`notification-row\$\{event\.read/s,
   );
 });
 test("notification navigation preserves draft guards and accounts are isolated", () => {

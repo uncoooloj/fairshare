@@ -1657,10 +1657,10 @@ td:last-child {
   right: 0;
   top: calc(100% + 12px);
   z-index: 40;
-  width: min(420px, calc(100vw - 32px));
+  width: min(400px, calc(100vw - 32px));
   max-height: min(640px, 80vh);
   overflow: auto;
-  padding: 24px;
+  padding: 0;
   border: 1px solid #e5e7eb;
   border-radius: 12px;
   background: #fff;
@@ -1671,16 +1671,32 @@ td:last-child {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  min-height: 56px;
+  padding: 0 16px;
+  border-bottom: 1px solid #e5e7eb;
 }
 .notification-heading h2 {
   margin: 0;
-  font-size: 20px;
+  font-size: 16px;
 }
 .notification-heading-actions {
   display: flex;
   align-items: center;
   gap: 4px;
   margin-right: -6px;
+}
+.notification-mark-read {
+  min-height: 32px;
+  padding: 4px 6px;
+  border: 0;
+  background: none;
+  color: #1f4ee8;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+}
+.notification-mark-read:disabled {
+  color: #94a3b8;
 }
 .notification-tip-anchor {
   position: relative;
@@ -1705,21 +1721,31 @@ td:last-child {
 .notification-tip-anchor:focus-within .notification-tip {
   opacity: 1;
 }
+.notification-group h3 {
+  margin: 0;
+  padding: 16px 16px 8px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+.notification-group + .notification-group {
+  border-top: 1px solid #e5e7eb;
+}
 .notification-events {
-  margin: 12px -12px 0;
+  margin: 0;
   padding: 0;
   list-style: none;
 }
-.notification-events li {
-  border-top: 1px solid #e5e7eb;
-}
 .notification-row {
   display: grid;
-  gap: 4px;
+  position: relative;
   width: 100%;
-  padding: 14px 12px;
+  min-height: 64px;
+  padding: 12px 16px;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: 0;
   background: none;
   color: inherit;
   font: inherit;
@@ -1729,27 +1755,113 @@ button.notification-row {
   cursor: pointer;
 }
 button.notification-row:hover {
-  background: var(--color-surface);
+  background: #f8fafc;
 }
-.notification-name {
-  font-size: 15px;
+.notification-row.is-unread {
+  background: #eff6ff;
+}
+button.notification-row.is-unread:hover {
+  background: #dbeafe;
+}
+.notification-row:focus-visible {
+  outline: 2px solid #1f4ee8;
+  outline-offset: -2px;
+}
+.notification-event-icon {
+  display: grid;
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 12px;
+}
+.notification-event-icon svg {
+  width: 18px;
+  height: 18px;
+}
+.notification-event-icon--blue {
+  background: #eff6ff;
+  color: #2563eb;
+}
+.notification-event-icon--green {
+  background: #ecfdf3;
+  color: #16a34a;
+}
+.notification-event-icon--red {
+  background: #fff1f2;
+  color: #ef4444;
+}
+.notification-event-copy {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+  padding-top: 1px;
+}
+.notification-row-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+}
+.notification-headline {
+  font-size: 14px;
   font-weight: 600;
 }
-.notification-events time,
-.notification-kind {
-  font-size: 12px;
+.notification-detail,
+.notification-access-note {
   color: #64748b;
+  font-size: 14px;
+  line-height: 1.35;
+}
+.notification-unread-dot {
+  position: absolute;
+  top: 50%;
+  right: 16px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #2563eb;
+  transform: translateY(-50%);
+}
+.notification-row.is-unread .notification-row-content,
+.notification-row.is-unread .notification-access-note {
+  padding-right: 20px;
+}
+.notification-access-note {
+  padding-left: 44px;
+  text-align: left;
 }
 .notification-empty {
-  padding: 24px 0;
+  margin: 0;
+  padding: 32px 16px;
   line-height: 1.6;
+}
+.notification-popover [role="status"],
+.notification-popover [role="alert"] {
+  display: block;
+  margin: 0;
+  padding: 32px 16px;
 }
 @media (max-width: 600px) {
   .notification-popover {
     position: fixed;
-    top: 80px;
-    right: 16px;
-    max-height: calc(100dvh - 112px);
+    top: 72px;
+    right: 12px;
+    width: min(400px, calc(100vw - 24px));
+    max-height: calc(100dvh - 84px);
+  }
+  .notification-heading {
+    min-height: 56px;
+    padding: 0 16px;
+  }
+  .notification-heading-actions {
+    gap: 0;
+  }
+  .notification-group h3 {
+    padding-inline: 16px;
+  }
+  .notification-row {
+    padding-inline: 16px;
   }
 }
 
