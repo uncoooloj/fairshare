@@ -13,8 +13,11 @@ test("invitation acceptance adopts the committed workspace before any reload", (
     .split("async function loadWorkspace")[0];
   assert.match(accept, /api\("invitations\/accept", "POST", \{ token \}\)/);
   assert.match(accept, /commitWorkspace\(result.workspace.id\)/);
-  assert.match(accept, /setSelected\(null\)/);
-  assert.match(accept, /setAgreements\(\[\]\)/);
+  const commit = source
+    .split("function commitWorkspace(id: string) {")[1]
+    .split("function clearSession")[0];
+  assert.match(commit, /setSelected\(null\)/);
+  assert.match(commit, /setAgreements\(\[\]\)/);
   assert.match(accept, /setFlowToken\(""\)/);
   assert.match(accept, /setSection\(Section.Agreements\)/);
   assert.doesNotMatch(accept, /await loadWorkspaces/);
