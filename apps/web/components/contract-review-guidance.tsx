@@ -1,4 +1,5 @@
 "use client";
+import { SendReviewConfirmation } from "./send-review-confirmation";
 import { useState } from "react";
 import type { Agreement, Version } from "../lib/model";
 import { contractReviewState, formatRuleChange } from "../lib/contract-review";
@@ -24,6 +25,7 @@ export function ContractReviewPanel({
   ) => Promise<unknown>;
 }) {
   const state = contractReviewState(agreement, version, userId);
+  const [confirmSend, setConfirmSend] = useState(false);
   const [reason, setReason] = useState("");
   const [rule, setRule] = useState("");
   const [error, setError] = useState("");
@@ -35,12 +37,14 @@ export function ContractReviewPanel({
     try {
       await onAction(action, payload);
       if (action === "request-change") setReason("");
+      return true;
     } catch (cause) {
       setError(
         cause instanceof Error
           ? cause.message
           : "Could not save this action. Reload the latest agreement and try again.",
       );
+      return false;
     } finally {
       setSubmitting(false);
     }
@@ -75,11 +79,23 @@ export function ContractReviewPanel({
           ))}
         </ul>
       )}
+      {confirmSend && (
+        <SendReviewConfirmation
+          agreement={agreement}
+          version={version}
+          userId={userId}
+          busy={disabled}
+          canSend={state.canSend}
+          requestError={error}
+          onSend={() => act("send")}
+          onClose={() => setConfirmSend(false)}
+        />
+      )}
       <div className="actions">
         {version.status === "DRAFT" && (
           <Button
             disabled={disabled || !state.canSend}
-            onClick={() => void act("send")}
+            onClick={() => setConfirmSend(true)}
           >
             Send for everyone’s review
           </Button>
