@@ -431,3 +431,141 @@ test("Keep as draft keeps this device's split; resuming reconciles pending peopl
     delete (globalThis as any).localStorage;
   }
 });
+
+test("resuming rebuilds an unanswered advance question and replays an answered no", () => {
+  const store = new Map<string, string>();
+  (globalThis as any).localStorage = {
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, value: string) => store.set(key, value),
+    removeItem: (key: string) => store.delete(key),
+  };
+  try {
+    const review = fullReading();
+    review.facts = review.facts.map((fact: any) =>
+      fact.kind === "ADVANCE" ? { ...fact, recoupedBeforeSplit: null } : fact,
+    );
+    review.sections.ADVANCE.status = Status.ASK;
+    const agreement = {
+      workspaceId: "w-advance",
+      id: "a-advance",
+      revision: 1,
+      value: {
+        name: "Advance review",
+        members: [
+          { userId: "owner", displayName: "Maya Okafor", role: "ORGANIZER" },
+        ],
+        versions: [],
+      },
+    } as unknown as Agreement;
+    const resume = {
+      created: {
+        workspaceId: "w-advance",
+        agreementId: "a-advance",
+        documentId: "d",
+        documentText: MIDNIGHT,
+        agreement,
+      },
+      extraction: review,
+    };
+    const initial = answersFromExtraction(review, MIDNIGHT, self).answers;
+    const question = initial.questions.find((item) => item.id === "advance")!;
+    saveDraftAnswers("w-advance", "a-advance", initial);
+    const reopened = resumedAnswers(resume, self).answers;
+    assert.equal(
+      reopened.questions.find((item) => item.id === "advance")?.quote,
+      question.quote,
+    );
+    const no = question.choices.find((item) => item.id === "not-paid-back")!;
+    const answered = no.apply(initial);
+    answered.questions = answered.questions.map((item) =>
+      item.id === question.id ? { ...item, answeredChoiceId: no.id } : item,
+    );
+    saveDraftAnswers("w-advance", "a-advance", answered);
+    const reopenedNo = resumedAnswers(resume, self).answers;
+    assert.equal(reopenedNo.advance, undefined);
+    assert.equal(
+      reopenedNo.questions.find((item) => item.id === "advance")
+        ?.answeredChoiceId,
+      no.id,
+    );
+  } finally {
+    delete (globalThis as any).localStorage;
+  }
+});
+
+test("resuming never overwrites a later manual edit with a saved reading choice", () => {
+  const store = new Map<string, string>();
+  (globalThis as any).localStorage = {
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, value: string) => store.set(key, value),
+    removeItem: (key: string) => store.delete(key),
+  };
+  try {
+    const review = fullReading();
+    review.facts = review.facts.map((fact: any) =>
+      fact.kind === "ADVANCE" ? { ...fact, recoupedBeforeSplit: null } : fact,
+    );
+    review.sections.ADVANCE.status = Status.ASK;
+    const agreement = {
+      workspaceId: "w-manual",
+      id: "a-manual",
+      revision: 1,
+      value: {
+        name: "Advance review",
+        members: [
+          { userId: "owner", displayName: "Maya Okafor", role: "ORGANIZER" },
+        ],
+        versions: [],
+      },
+    } as unknown as Agreement;
+    const resume = {
+      created: {
+        workspaceId: "w-manual",
+        agreementId: "a-manual",
+        documentId: "d",
+        documentText: MIDNIGHT,
+        agreement,
+      },
+      extraction: review,
+    };
+    const initial = answersFromExtraction(review, MIDNIGHT, self).answers;
+    const question = initial.questions.find((item) => item.id === "advance")!;
+    const yes = question.choices.find((item) => item.id === "paid-back-first")!;
+    const manuallyEdited = yes.apply(initial);
+    manuallyEdited.advance = {
+      value: { recipientKey: "owner", amountCents: 123_400 },
+      source: AnswerSource.PERSON,
+    };
+    manuallyEdited.questions = manuallyEdited.questions.map((item) =>
+      item.id === question.id ? { ...item, answeredChoiceId: yes.id } : item,
+    );
+    saveDraftAnswers("w-manual", "a-manual", manuallyEdited);
+    const reopened = resumedAnswers(resume, self).answers;
+    assert.equal(reopened.advance?.value.amountCents, 123_400);
+    assert.equal(
+      reopened.questions.find((item) => item.id === "advance")
+        ?.answeredChoiceId,
+      undefined,
+    );
+    const noRecipient = {
+      ...manuallyEdited,
+      advance: undefined,
+      people: {
+        ...manuallyEdited.people,
+        value: manuallyEdited.people.value.map((person) =>
+          person.key === "owner" ? { ...person, name: "Renamed" } : person,
+        ),
+      },
+    };
+    saveDraftAnswers("w-manual", "a-manual", noRecipient);
+    const reopenedNoRecipient = resumedAnswers(resume, self).answers;
+    assert.equal(reopenedNoRecipient.advance, undefined);
+    assert.equal(
+      reopenedNoRecipient.questions.find((item) => item.id === "advance")
+        ?.answeredChoiceId,
+      undefined,
+    );
+  } finally {
+    delete (globalThis as any).localStorage;
+  }
+});

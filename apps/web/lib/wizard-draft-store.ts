@@ -5,7 +5,14 @@ import type { AgreementAnswers } from "./rules-answers";
  * stores the document and pending people before sending, so without this a resumed draft
  * would lose its split. Browser storage can be missing; every call is best effort.
  */
-type StoredAnswers = Omit<AgreementAnswers, "questions">;
+interface StoredQuestionAnswer {
+  id: string;
+  answeredChoiceId?: string;
+}
+export type StoredAnswers = Omit<AgreementAnswers, "questions"> & {
+  /** Choice metadata only: source questions and their closures are rebuilt on resume. */
+  questionAnswers?: StoredQuestionAnswer[];
+};
 
 const key = (workspaceId: string, agreementId: string) =>
   `fairshare:wizard-draft:${workspaceId}:${agreementId}`;
@@ -16,10 +23,16 @@ export function saveDraftAnswers(
   answers: AgreementAnswers,
 ) {
   try {
-    const { questions: _questions, ...stored } = answers;
+    const { questions, ...stored } = answers;
     localStorage.setItem(
       key(workspaceId, agreementId),
-      JSON.stringify(stored satisfies StoredAnswers),
+      JSON.stringify({
+        ...stored,
+        questionAnswers: questions.map(({ id, answeredChoiceId }) => ({
+          id,
+          ...(answeredChoiceId ? { answeredChoiceId } : {}),
+        })),
+      } satisfies StoredAnswers),
     );
   } catch {
     // Private mode or blocked storage: resuming falls back to the document.
