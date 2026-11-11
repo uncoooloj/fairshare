@@ -23,12 +23,29 @@ export function refundBlocked(
   refunds: any[],
   held: boolean,
 ): string | null {
+  if (payment.invoice_id)
+    return "Invoice refunds must be handled in PayPal, then checked using the invoice status action. They are not supported here.";
   if (refunds.some((r) => r.payment_id === payment.id))
     return "A refund is already recorded. Check its status below; do not submit another.";
   if (payment.status !== "ALLOCATED" || !payment.provider_capture_id)
     return "Wait until this payment has been split.";
-  if (payouts.some((p) => p.capture_id === payment.provider_capture_id))
-    return "A payout has been reserved from this payment. Sort out the shares before refunding; we can’t pull money back.";
+  const blockingPayout = payouts.find(
+    (p) =>
+      p.capture_id === payment.provider_capture_id &&
+      !(
+        ["WAITING_RECIPIENT", "AUTO_HELD", "RESERVED", "HELD"].includes(
+          p.status,
+        ) &&
+        p.batch_id === null &&
+        p.item_id === null
+      ),
+  );
+  if (blockingPayout)
+    return blockingPayout.batch_id ||
+      blockingPayout.item_id ||
+      blockingPayout.status === "SUBMITTING"
+      ? "A payout has already started from this payment. Sort out the shares before refunding; we can’t pull money back."
+      : "A payout has been reserved from this payment. Sort out the shares before refunding; we can’t pull money back.";
   if (held)
     return "This agreement is on hold. A new refund cannot be submitted.";
   return null;
@@ -55,4 +72,19 @@ export function createSingleFlight() {
       inFlight = false;
     }
   };
+}
+
+export function paymentReconcilePath(payment: {
+  id: string;
+  invoice_id?: string | null;
+}) {
+  return payment.invoice_id
+    ? `invoices/${encodeURIComponent(payment.invoice_id)}/reconcile`
+    : `payments/${encodeURIComponent(payment.id)}/reconcile`;
+}
+
+export function refundablePayments<
+  T extends { id: string; invoice_id?: string | null },
+>(payments: T[]): T[] {
+  return payments.filter((payment) => !payment.invoice_id);
 }

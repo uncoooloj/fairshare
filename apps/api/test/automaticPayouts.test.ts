@@ -127,7 +127,15 @@ test("disabled payout capability stays held because no provider write was attemp
   f.db.close();
 });
 test("review, refund, adverse webhook and allocation holds prevent sending", async () => {
-  for (const hold of ["review", "refund", "event", "allocation", "approval"]) {
+  for (const hold of [
+    "review",
+    "refund",
+    "event",
+    "invoice-event",
+    "invoice-unknown",
+    "allocation",
+    "approval",
+  ]) {
     let calls = 0;
     const f = fixture(async () => {
       calls++;
@@ -140,6 +148,21 @@ test("review, refund, adverse webhook and allocation holds prevent sending", asy
       f.db
         .prepare("INSERT INTO fairshare_webhook_inbox VALUES(?,'PENDING')")
         .run(JSON.stringify({ kind: "HOLD_CAPTURE" }));
+    if (hold === "invoice-event" || hold === "invoice-unknown")
+      f.db
+        .prepare("INSERT INTO fairshare_webhook_inbox VALUES(?,'PENDING')")
+        .run(
+          JSON.stringify({
+            kind:
+              hold === "invoice-event"
+                ? "RECONCILE_INVOICE"
+                : "RECORD_UNMATCHED",
+            eventType:
+              hold === "invoice-event"
+                ? "INVOICING.INVOICE.REFUNDED"
+                : "INVOICING.INVOICE.NEW_ADVERSE",
+          }),
+        );
     if (hold === "allocation")
       f.agreement.revenue[0].allocations[0].status = "HELD";
     if (hold === "approval") delete f.agreement.versions[0].approvals.one;
@@ -147,6 +170,22 @@ test("review, refund, adverse webhook and allocation holds prevent sending", asy
     assert.equal(calls, 0, hold);
     f.db.close();
   }
+});
+test("a known webhook hold for another capture does not block automatic payout", async () => {
+  let calls = 0;
+  const f = fixture(async () => {
+    calls++;
+    return { batchId: "batch" };
+  });
+  f.db
+    .prepare("INSERT INTO fairshare_captures VALUES(?,?,?)")
+    .run("other-capture", "workspace", "other-agreement");
+  f.db
+    .prepare("INSERT INTO fairshare_webhook_inbox VALUES(?,'PENDING')")
+    .run(JSON.stringify({ kind: "HOLD_CAPTURE", providerId: "other-capture" }));
+  await f.run();
+  assert.equal(calls, 1);
+  f.db.close();
 });
 test("expired lease after provider write leaves reserved unknown outcome without retry", async () => {
   let calls = 0,

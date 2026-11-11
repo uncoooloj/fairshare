@@ -1,10 +1,11 @@
 "use client";
 import { statusLabel } from "../lib/status-labels";
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { api, money } from "../lib/model";
 import {
   recoveryRequest,
   refundBlocked,
+  refundablePayments,
   refundMessage,
   createSingleFlight,
 } from "../lib/payment-recovery";
@@ -81,7 +82,8 @@ export function PaymentRecovery({
       }
     });
   }
-  const payment = payments.find((p) => p.id === chosen);
+  const refundOptions = refundablePayments(payments);
+  const payment = refundOptions.find((p) => p.id === chosen);
   return (
     <section
       className={styles.root}
@@ -116,6 +118,50 @@ export function PaymentRecovery({
         </p>
       ) : (
         <>
+          {data.providerHold && (
+            <Notice warning>
+              A verified provider event is awaiting reconciliation. A recheck
+              never clears an existing payment hold.
+            </Notice>
+          )}
+          {!!data.events?.length && (
+            <section aria-label="Provider event recovery">
+              <h4>Provider events needing review</h4>
+              {data.events.map((event: any) => (
+                <div key={event.id} className="actions">
+                  <span>
+                    {event.eventType} · {event.error || event.status}
+                  </span>
+                  <Button
+                    variant="quiet"
+                    disabled={busy}
+                    onClick={() =>
+                      run(async () => {
+                        const result = await api(
+                          `${base}/recovery/events/${encodeURIComponent(event.id)}/reconcile`,
+                          "POST",
+                          {},
+                        );
+                        setNotice(
+                          result.status === "DONE"
+                            ? "Provider event reconciled. Existing payment holds remain in place."
+                            : "The event still needs matching provider evidence. No payment was resent.",
+                        );
+                      })
+                    }
+                  >
+                    Recheck provider event
+                  </Button>
+                </div>
+              ))}
+            </section>
+          )}
+          {data.providerHold && !data.events?.length && (
+            <p>
+              An event cannot yet be matched safely to this agreement. Operator
+              review is required; do not retry a payment or clear the hold.
+            </p>
+          )}
           <details>
             <summary>Check a stuck payment</summary>
             {!data.payments.length && !data.payouts.length && (
@@ -156,6 +202,10 @@ export function PaymentRecovery({
               Sends the full amount back to whoever paid. Only before a payout
               is reserved. Payouts pause while you sort out the shares.
             </p>
+            <p>
+              Invoice payments are refunded in PayPal only. After refunding one
+              there, use Check status on the invoice to update it here.
+            </p>
             <Field label="Payment">
               <select
                 value={chosen}
@@ -166,7 +216,7 @@ export function PaymentRecovery({
                 disabled={busy}
               >
                 <option value="">Choose a payment</option>
-                {payments.map((p) => (
+                {refundOptions.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.id.slice(0, 8)} · {money(p.amount)} ·{" "}
                     {statusLabel(p.status)}
@@ -175,9 +225,19 @@ export function PaymentRecovery({
               </select>
             </Field>
             {payment &&
-              (refundBlocked(payment, payouts, data.refunds, held) ? (
+              (refundBlocked(
+                payment,
+                payouts,
+                data.refunds,
+                held || !!data.providerHold,
+              ) ? (
                 <Notice warning>
-                  {refundBlocked(payment, payouts, data.refunds, held)}
+                  {refundBlocked(
+                    payment,
+                    payouts,
+                    data.refunds,
+                    held || !!data.providerHold,
+                  )}
                 </Notice>
               ) : (
                 <>

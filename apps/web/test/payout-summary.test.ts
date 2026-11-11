@@ -22,10 +22,10 @@ test("pending, unclaimed and uncertain funds are never counted as paid", () => {
     {
       paid: 100,
       processing: 200,
-      attention: 500,
+      attention: 600,
       paidCount: 1,
       processingCount: 2,
-      attentionCount: 5,
+      attentionCount: 6,
     },
   );
 });
