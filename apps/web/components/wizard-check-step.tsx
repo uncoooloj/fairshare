@@ -164,7 +164,9 @@ export function feeLine(answers: AgreementAnswers) {
       return "PayPal fees come off the top, before the split.";
     case FeeChoice.ORGANIZER_SHARE: {
       const organizer =
-        answers.people.value.find((p) => p.isSelf) ?? answers.people.value[0];
+        answers.people.value.find((p) => p.key === answers.feeBearerId) ??
+        answers.people.value.find((p) => p.isSelf) ??
+        answers.people.value[0];
       const name = organizer
         ? shortNames(answers.people.value).get(organizer.key)
         : "The organizer";

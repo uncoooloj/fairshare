@@ -8,7 +8,13 @@ import {
   revisedRules,
 } from "../lib/answers-from-rules";
 import { joinNames } from "../lib/agreement-status";
-import { api, type Agreement, type Rules, type User } from "../lib/model";
+import {
+  ApiError,
+  api,
+  type Agreement,
+  type Rules,
+  type User,
+} from "../lib/model";
 import {
   blockingReasons,
   summarySentences,
@@ -96,6 +102,25 @@ export function approverNames(answers: AgreementAnswers) {
     .map((p) => p.name.trim().split(/\s+/)[0] || p.name);
 }
 
+/** A retry may only adopt a submit whose new version contains this attempt's rules. */
+export function revisedSubmissionWasCommitted(
+  before: Agreement,
+  recovered: Agreement,
+  rules: Rules,
+): boolean {
+  return recovered.value.versions
+    .slice(before.value.versions.length)
+    .some(
+      (version) =>
+        version.status !== "DRAFT" &&
+        JSON.stringify(version.rules) === JSON.stringify(rules),
+    );
+}
+
+function mayHaveCommitted(cause: unknown): boolean {
+  return !(cause instanceof ApiError) || cause.status >= 500;
+}
+
 function RequestNote({ request }: { request: ChangeRequestView }) {
   return (
     <figure className="gr-flag">
@@ -158,6 +183,7 @@ export function AgreementReviseWizard({
   onDone,
   onClose,
   onBusyChange,
+  onDirtyChange,
 }: {
   agreement: Agreement;
   owner: User;
@@ -167,6 +193,7 @@ export function AgreementReviseWizard({
   onDone: (agreement: Agreement) => void;
   onClose: () => void;
   onBusyChange?: (busy: boolean) => void;
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const [rules] = useState<Rules | undefined>(() => revisableRules(agreement));
   const [initial] = useState(() =>
@@ -211,6 +238,10 @@ export function AgreementReviseWizard({
   }
 
   const dirty = JSON.stringify(answers) !== JSON.stringify(initial);
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
   function close() {
     if (busy) return;
     if (dirty) setConfirmClose(true);
@@ -244,23 +275,32 @@ export function AgreementReviseWizard({
     setBusy(true);
     setError("");
     try {
-      let current = agreement;
-      const patch = detailsPatch(current, answers);
-      if (patch)
-        current = await api<Agreement>(`${root}/details`, "POST", {
-          expectedRevision: current.revision,
-          ...patch,
-        });
       const next = revisedRules(answers, rules, {
         organizerId: owner.id,
         documentText,
       });
-      current = await submitForApproval(
-        agreement.workspaceId,
-        agreement.id,
-        current.revision,
-        next,
-      );
+      const patch = detailsPatch(agreement, answers);
+      let current: Agreement;
+      try {
+        current = await submitForApproval(
+          agreement.workspaceId,
+          agreement.id,
+          agreement.revision,
+          next,
+          patch,
+        );
+      } catch (cause) {
+        if (!mayHaveCommitted(cause)) throw cause;
+        try {
+          const recovered = await api<Agreement>(root);
+          if (!revisedSubmissionWasCommitted(agreement, recovered, next))
+            throw cause;
+          current = recovered;
+        } catch {
+          throw cause;
+        }
+      }
+      onDirtyChange?.(false);
       onDone(current);
     } catch (cause) {
       setError(

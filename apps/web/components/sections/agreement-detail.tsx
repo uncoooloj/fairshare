@@ -183,11 +183,16 @@ export function AgreementDetail({
         owner={user}
         request={revising.request}
         onBusyChange={setBusy}
-        onClose={() => setRevising(null)}
+        onDirtyChange={setDraftDirty}
+        onClose={() => {
+          setDraftDirty(false);
+          setRevising(null);
+        }}
         onDone={(next) => {
+          setDraftDirty(false);
           setRevising(null);
           setSelected(next);
-          changeAgreementTab(AgreementTab.Overview);
+          setTab(AgreementTab.Overview);
           void refresh().catch(() => {});
         }}
       />

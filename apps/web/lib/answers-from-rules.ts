@@ -62,6 +62,9 @@ export function answersFromRules(
     name: { value: agreement.value.name, source: AnswerSource.PERSON },
     people: cited(people, rules.source),
     fees: cited(feeChoiceOf(rules), rules.source),
+    ...(rules.feeBearerId
+      ? { feeBearerId: rules.feeBearerId, feeBearerChoice: "KEEP" as const }
+      : {}),
     questions: [],
   };
   if (details?.effectiveFrom)
@@ -111,9 +114,9 @@ export function feeChoiceOf(rules: Rules): FeeChoice {
 
 /**
  * The rules a revise sends. Same as `toRules`, with the advance compared against the prior
- * one, and one exception: while the fee choice is unchanged the prior fee bearer stays,
- * even if the organizer role has since moved to someone else. Only an explicit change of
- * the fee choice in the revise flow moves the fees to the current organizer.
+ * one, and one exception: an unchanged fee choice keeps its actual bearer, even if the
+ * organizer role has since moved to someone else. Choosing organizer-paid fees again
+ * explicitly moves the fees to the current organizer.
  */
 export function revisedRules(
   answers: AgreementAnswers,
@@ -128,7 +131,7 @@ export function revisedRules(
   });
   if (
     next.feePolicy === ORGANIZER_SHARE &&
-    feeChoiceOf(prior) === FeeChoice.ORGANIZER_SHARE &&
+    answers.feeBearerChoice === "KEEP" &&
     prior.feeBearerId
   )
     next.feeBearerId = prior.feeBearerId;

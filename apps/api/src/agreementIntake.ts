@@ -80,6 +80,25 @@ function detailFields(
   return Object.fromEntries(present.map((key) => [key, value[key]]));
 }
 
+/** Validates the optional metadata bundled with a submit request. */
+export function submitDetails(input: unknown): {
+  name?: string;
+  patch?: AgreementDetailsPatch;
+} {
+  if (!input || typeof input !== "object" || Array.isArray(input))
+    invalid("Details must be a JSON object.");
+  const value = input as Record<string, unknown>;
+  if (
+    Object.keys(value).some((key) => !["name", ...DETAIL_FIELDS].includes(key))
+  )
+    invalid("Unknown agreement detail.");
+  const name = value.name === undefined ? undefined : agreementName(value.name);
+  const patch = detailFields(value) as AgreementDetailsPatch | undefined;
+  if (name === undefined && !patch)
+    invalid("Provide a name, currency or effective dates to change.");
+  return { name, patch };
+}
+
 function validateInput(raw: unknown): Intake {
   if (!raw || typeof raw !== "object" || Array.isArray(raw))
     invalid("JSON object required.");
@@ -473,7 +492,9 @@ export function registerAgreementIntake(
       if (
         Object.keys(input).some(
           (key) =>
-            !["expectedRevision", "name", ...DETAIL_FIELDS].includes(key),
+            key !== "expectedRevision" &&
+            key !== "name" &&
+            !DETAIL_FIELDS.includes(key as any),
         )
       )
         invalid("Unknown agreement detail.");
@@ -482,11 +503,11 @@ export function registerAgreementIntake(
         Number(input.expectedRevision) < 1
       )
         invalid("expectedRevision required.");
-      const name =
-        input.name === undefined ? undefined : agreementName(input.name);
-      const patch = detailFields(input) as AgreementDetailsPatch | undefined;
-      if (name === undefined && !patch)
-        invalid("Provide a name, currency or effective dates to change.");
+      const { name, patch } = submitDetails(
+        Object.fromEntries(
+          Object.entries(input).filter(([key]) => key !== "expectedRevision"),
+        ),
+      );
       return aggregates.update(
         workspaceId,
         collaborationId,

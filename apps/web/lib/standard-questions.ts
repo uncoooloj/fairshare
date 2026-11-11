@@ -52,7 +52,13 @@ export function feeQuestion(answers: AgreementAnswers): Question {
     id: value,
     label,
     explanation,
-    apply: (a) => ({ ...a, fees: fromPerson(value) }),
+    apply: (a) => ({
+      ...a,
+      fees: fromPerson(value),
+      ...(value === FeeChoice.ORGANIZER_SHARE
+        ? { feeBearerChoice: "ORGANIZER" as const }
+        : {}),
+    }),
   });
   return {
     id: StandardQuestionId.FEES,

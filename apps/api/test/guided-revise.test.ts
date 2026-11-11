@@ -189,3 +189,45 @@ test("revise an agreement that is already on: the current split stays on until e
     await f.app.close();
   }
 });
+
+test("submit rolls back details when a revised advance is below what was recouped", async () => {
+  const f = await setup();
+  try {
+    const first = f.rules([5000, 3000, 2000]);
+    first.advance = {
+      id: "advance-1",
+      recipientId: f.jordan.user.id,
+      amountCents: 50_000,
+      verified: true,
+      source: first.source,
+    };
+    await f.post("/submit", f.maya, { rules: first });
+    await f.post("/versions/1/approve", f.jordan);
+    await f.post("/versions/1/approve", f.riley);
+    const active = await f.read();
+    active.value.recoupedByAdvance["advance-1"] = 40_000;
+    f.app.store.db
+      .prepare(
+        "UPDATE fairshare_collaborations SET value=? WHERE workspace_id=? AND id=?",
+      )
+      .run(JSON.stringify(active.value), active.workspaceId, active.id);
+    const before = await f.read();
+    const invalid = structuredClone(first);
+    invalid.advance!.amountCents = 30_000;
+    const response = await f.app.inject({
+      method: "POST",
+      url: `/api/workspaces/${before.workspaceId}/collaborations/${before.id}/submit`,
+      headers: { authorization: `Bearer ${f.maya.token}` },
+      payload: {
+        expectedRevision: before.revision,
+        rules: invalid,
+        details: { name: "Changed title", effectiveFrom: "2026-12-01" },
+      },
+    });
+    assert.equal(response.statusCode, 400, response.body);
+    assert.equal(response.json().error.code, "ADVANCE_BELOW_RECOUPED");
+    assert.deepEqual(await f.read(), before);
+  } finally {
+    await f.app.close();
+  }
+});

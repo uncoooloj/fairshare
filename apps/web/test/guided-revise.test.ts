@@ -31,13 +31,14 @@ import {
   toRules,
   type AgreementAnswers,
 } from "../lib/rules-answers";
-import { StandardQuestionId } from "../lib/standard-questions";
+import { feeQuestion, StandardQuestionId } from "../lib/standard-questions";
 import {
   openChangeRequests,
   parseChangeRequest,
 } from "../components/change-request-drawer";
 import {
   AgreementReviseWizard,
+  revisedSubmissionWasCommitted,
   reviseQuestions,
 } from "../components/agreement-revise-wizard";
 import {
@@ -157,6 +158,8 @@ test("answersFromRules round-trips: organizer covers fees", () => {
   });
   const a = answersFromRules(wrap(team()), r, "maya");
   assert.equal(a.fees?.value, FeeChoice.ORGANIZER_SHARE);
+  assert.equal(a.feeBearerId, "maya");
+  assert.equal(a.feeBearerChoice, "KEEP");
   assert.deepEqual(money(again(a, r)), money(r));
 });
 
@@ -474,29 +477,58 @@ test("revise keeps a former organizer as fee bearer unless the fee choice is cha
     kept.shares.map((s) => s.basisPoints),
     [5000, 5000],
   );
-  // Explicitly changing the fee choice is what moves it.
-  const before = revisedRules(
-    {
-      ...a,
-      fees: { value: FeeChoice.BEFORE_SPLIT, source: AnswerSource.PERSON },
-    },
-    prior,
-    { organizerId: "jordan" },
-  );
-  assert.equal(before.feePolicy, "BEFORE_SPLIT");
-  assert.equal(before.feeBearerId, undefined);
-  const priorBefore = rules({
-    shares: prior.shares,
-    feePolicy: "BEFORE_SPLIT" as never,
-  });
-  const b = answersFromRules(agreement, priorBefore, "jordan");
-  const switched = revisedRules(
-    {
-      ...b,
-      fees: { value: FeeChoice.ORGANIZER_SHARE, source: AnswerSource.PERSON },
-    },
-    priorBefore,
-    { organizerId: "jordan" },
-  );
+  // Answering the visible question explicitly picks today's organizer, even if the
+  // selected policy is the same as the old one.
+  const b = feeQuestion(a)
+    .choices.find((choice) => choice.id === FeeChoice.ORGANIZER_SHARE)!
+    .apply(a);
+  const switched = revisedRules(b, prior, { organizerId: "jordan" });
   assert.equal(switched.feeBearerId, "jordan");
+});
+
+test("revise submit recovery adopts only this attempt's exact sent rules", () => {
+  const before = wrap(team(), 3);
+  const submitted = rules();
+  const committed = {
+    ...before,
+    revision: 4,
+    value: {
+      ...before.value,
+      versions: [
+        {
+          id: 1,
+          status: "AWAITING_APPROVAL",
+          rules: submitted,
+          approvals: {},
+          changeRequests: [],
+        },
+      ],
+    },
+  } as Agreement;
+  assert.equal(
+    revisedSubmissionWasCommitted(before, committed, submitted),
+    true,
+  );
+  assert.equal(
+    revisedSubmissionWasCommitted(
+      before,
+      {
+        ...committed,
+        value: {
+          ...committed.value,
+          versions: [
+            {
+              id: 1,
+              status: "AWAITING_APPROVAL",
+              rules: rules({ source: source("Other") }),
+              approvals: {},
+              changeRequests: [],
+            },
+          ],
+        },
+      },
+      submitted,
+    ),
+    false,
+  );
 });
