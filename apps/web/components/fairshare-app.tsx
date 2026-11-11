@@ -29,6 +29,29 @@ import { AgreementsSection } from "./sections/agreements-section";
 import { AgreementDetail } from "./sections/agreement-detail";
 import { PayoutsSection } from "./sections/payouts-section";
 import { SettingsSection } from "./sections/settings-section";
+const JOINED_AGREEMENT_KEY = "fairshare-joined-agreement";
+const JOINED_AGREEMENT_TTL_MS = 2 * 60_000;
+/** The agreement a just-accepted invitation should open, read only on /app. */
+function joinedAgreementIntent(): { workspaceId: string; id: string } | null {
+  try {
+    if (location.pathname !== "/app") return null;
+    const value = JSON.parse(
+      sessionStorage.getItem(JOINED_AGREEMENT_KEY) || "null",
+    );
+    if (
+      typeof value?.workspaceId !== "string" ||
+      typeof value?.id !== "string" ||
+      !(Date.now() - Number(value.at) < JOINED_AGREEMENT_TTL_MS)
+    ) {
+      sessionStorage.removeItem(JOINED_AGREEMENT_KEY);
+      return null;
+    }
+    return value;
+  } catch {
+    return null;
+  }
+}
+
 export default function FairshareApp() {
   const router = useRouter();
   const emailDelivery = useEmailDelivery();
@@ -65,6 +88,7 @@ export default function FairshareApp() {
     [flowKind, setFlowKind] = useState("");
   const [draftDirty, setDraftDirty] = useState(false);
   const workspaceRequest = useRef(0);
+  const joinedIntent = useRef<{ workspaceId: string; id: string } | null>(null);
   const currentWorkspace = useRef("");
   const openRequest = useRef(0);
   const rulesDirty = useRef(false);
@@ -218,6 +242,18 @@ export default function FairshareApp() {
     setFlowToken("");
     router.replace("/app");
     if (result.agreement) {
+      // /invitation and /app are separate pages, so this state is lost on
+      // navigation. Remember the agreement to open once /app has loaded it.
+      try {
+        sessionStorage.setItem(
+          JOINED_AGREEMENT_KEY,
+          JSON.stringify({
+            workspaceId: result.agreement.workspaceId,
+            id: result.agreement.id,
+            at: Date.now(),
+          }),
+        );
+      } catch {}
       setAgreements([result.agreement]);
       setSelected(result.agreement);
       setTab(AgreementTab.People);
@@ -262,6 +298,33 @@ export default function FairshareApp() {
       );
       setWorkspaces(groups.workspaces);
       setAgreements(visibleAgreements);
+      // Keep an open agreement in step with the reloaded list (e.g. newly
+      // accepted members), without touching unsaved drafts held elsewhere.
+      setSelected((current) =>
+        current
+          ? (visibleAgreements.find(
+              (a) =>
+                a.workspaceId === current.workspaceId && a.id === current.id,
+            ) ?? current)
+          : current,
+      );
+      const joined = joinedIntent.current;
+      const joinedAgreement =
+        joined &&
+        visibleAgreements.find(
+          (a) => a.workspaceId === joined.workspaceId && a.id === joined.id,
+        );
+      if (joinedAgreement) {
+        joinedIntent.current = null;
+        setSection(Section.Agreements);
+        void run(async () => {
+          await openAgreement(joinedAgreement);
+          setTab(AgreementTab.People);
+          setNotice(
+            "You joined this agreement. Joining has not approved any rules or moved money.",
+          );
+        });
+      }
       setMembers(m.members);
       setPayouts([]);
       setPayoutsComplete(false);
@@ -439,6 +502,17 @@ export default function FairshareApp() {
       throw error;
     }
   }
+  useEffect(() => {
+    // Only the instance that mounts on /app may act on a just-accepted invite;
+    // the /invitation instance is still mounted when the URL changes.
+    // Effects may run twice in development; keep the first read.
+    if (joinedIntent.current) return;
+    joinedIntent.current = joinedAgreementIntent();
+    if (joinedIntent.current)
+      try {
+        sessionStorage.removeItem(JOINED_AGREEMENT_KEY);
+      } catch {}
+  }, []);
   useEffect(() => {
     const token = location.hash.slice(1).replace(/^token=/, "");
     if (token && ["/verify-email", "/invitation"].includes(location.pathname)) {
