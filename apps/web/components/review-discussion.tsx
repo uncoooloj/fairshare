@@ -607,36 +607,22 @@ export function RuleComments(props: RuleCommentsProps) {
   const { agreement, version, topic, onCountChange } = props;
   const [thread, state] = useThread(threadPath(props, version.id));
   const [open, setOpen] = useState(Boolean(props.defaultOpen));
-  // A rule draft belongs to both its version endpoint and its fixed API topic.
-  const resource = `${thread.path}:${topic}`;
-  const [draftState, setDraftState] = useState({ resource, body: "" });
-  const [replyState, setReplyState] = useState<{
-    resource: string;
-    parent?: ReviewComment;
-  }>({ resource });
-  const draft = draftState.resource === resource ? draftState.body : "";
-  const parent =
-    replyState.resource === resource ? replyState.parent : undefined;
-  const setDraft = (body: string) => setDraftState({ resource, body });
-  const setParent = (next: ReviewComment | undefined) =>
-    setReplyState({ resource, parent: next });
-  useEffect(() => {
-    setDraftState((current) =>
-      current.resource === resource ? current : { resource, body: "" },
-    );
-    setReplyState((current) =>
-      current.resource === resource ? current : { resource },
-    );
-  }, [resource]);
+  // This thread is keyed by the agreement/version endpoint, so its per-topic
+  // draft survives a parent rule-card collapse without crossing resources.
+  const draft = thread.draft(topic);
+  const parent = draft.parent;
+  const setDraft = (body: string, parent = draft.parent) =>
+    thread.setDraft(topic, { body, parent });
+  const setParent = (parent: ReviewComment | undefined) =>
+    setDraft(draft.body, parent);
   const threads = discussionThreads(state.comments, topic);
   const count = state.comments.filter((c) => c.ruleKey === topic).length;
   useEffect(() => {
     if (state.loaded) onCountChange?.(count);
   }, [count, state.loaded, onCountChange]);
   useEffect(() => {
-    props.onDirtyChange?.(Boolean(draft.trim()));
-    return () => props.onDirtyChange?.(false);
-  }, [draft, props.onDirtyChange]);
+    props.onDirtyChange?.(Boolean(draft.body.trim()));
+  }, [draft.body, props.onDirtyChange]);
   const writable =
     props.canWrite !== false &&
     version.status !== "SUPERSEDED" &&
@@ -663,7 +649,7 @@ export function RuleComments(props: RuleCommentsProps) {
           />
           {writable && (
             <Composer
-              key={resource}
+              key={`${thread.path}:${topic}`}
               thread={thread}
               topics={[{ id: topic, label }]}
               fixedTopic={topic}
@@ -672,10 +658,9 @@ export function RuleComments(props: RuleCommentsProps) {
               autoFocus={!count}
               onCancelReply={() => setParent(undefined)}
               onPosted={() => {
-                setDraft("");
-                setParent(undefined);
+                thread.clearDraft(topic);
               }}
-              value={draft}
+              value={draft.body}
               onValueChange={setDraft}
             />
           )}
