@@ -55,8 +55,8 @@ Payment endpoint wiring is in `paymentRoutes.ts`; HTTP tests exercise injected p
 
 Workspace owners create a single-use member/viewer link using
 `POST /api/workspaces/:id/invitation-links` with `{ "role": "MEMBER" }`.
-Settings → Workspace invitations and an agreement's People section expose
-**Create private invitation link**, **Copy link**, and **Revoke link**.
+Settings → Workspace invitations exposes **Create private invitation link**,
+**Copy link**, and **Revoke link**.
 This is the primary invitation flow. Send the link privately to one intended collaborator. The link expires in 48 hours.
 The recipient signs in (or creates an account), then explicitly accepts it.
 
@@ -68,6 +68,14 @@ memory, and placed in the URL fragment, not a query string. The database stores 
 hash; audit events omit secrets. Refreshing loses the displayed link. Existing
 email invitations retain their independently verified-email requirement in
 SANDBOX; private links require no mail provider in either environment.
+
+An agreement's People section has a separate draft-only link flow. A workspace
+OWNER who is also that agreement's ORGANIZER creates it with
+`POST /api/workspaces/:workspaceId/collaborations/:agreementId/invitation-links`.
+The recipient accepts it through `POST /api/agreement-invitations/accept` and
+becomes a workspace MEMBER plus an agreement COLLABORATOR. It never approves
+rules or moves money, cannot be used after the first proposal exists, and does
+not change the workspace-only link behavior above.
 
 ## Invitation landing
 

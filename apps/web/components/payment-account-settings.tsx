@@ -99,15 +99,15 @@ export function PaymentAccountsSettings({
             <p>PayPal sandbox checkout</p>
             <p className="muted">
               {data.providerConfigured
-                ? "PayPal is connected. Received payments are split according to your agreement."
-                : "PayPal isn’t connected yet. Payments can’t be received until setup is complete."}
+                ? "PayPal sandbox credentials are configured. Payments are confirmed with PayPal before allocation."
+                : "PayPal sandbox credentials are not configured. Checkout is unavailable."}
             </p>
           </section>
           <section className="section">
             <h3>Sending payouts</h3>
             <p className="muted">
-              Fairshare sends each person their agreed share through PayPal.
-              These are test payments; no real money moves.
+              The server’s sandbox merchant account sends agreed shares. These
+              are test payments; no real money moves.
             </p>
           </section>
           <section className="section">
@@ -207,7 +207,7 @@ export function PaymentAccountsSettings({
                             onClick={async () => {
                               try {
                                 await navigator.clipboard.writeText(
-                                  `Hi ${m.name}, please open Fairshare, select our workspace, and add your sandbox merchant ID under Settings → Payment accounts so your agreed share can be paid. ${location.origin}`,
+                                  `Hi ${m.name}, please open Fairshare, select our workspace, and add your sandbox merchant ID under Settings → Payment accounts so your agreed share can be paid. ${location.origin}/app`,
                                 );
                                 setMessage(
                                   "Reminder copied. Share it directly with this collaborator. No email was sent.",
