@@ -93,13 +93,28 @@ interface IssuedInvite {
 }
 
 const PRIVACY_LINE =
-  "Your document is read by AI to suggest the split. Nothing is shared with anyone else.";
+  "Read my agreement sends it to AI (Cloudflare Workers AI, with an Anthropic fallback) to suggest the split.";
 
 /** Pending people the server holds for this draft. */
 function pendingMembers(agreement: Agreement) {
   return (agreement.value.members as AgreementMember[]).flatMap((member) =>
     member.pending ? [{ ...member, pending: member.pending }] : [],
   );
+}
+
+/** A retry may only adopt a submit whose new version contains this attempt's rules. */
+export function submissionWasCommitted(
+  before: Agreement,
+  recovered: Agreement,
+  rules: ReturnType<typeof toRules>,
+): boolean {
+  return recovered.value.versions
+    .slice(before.value.versions.length)
+    .some(
+      (version) =>
+        version.status !== "DRAFT" &&
+        JSON.stringify(version.rules) === JSON.stringify(rules),
+    );
 }
 
 /**
@@ -408,6 +423,8 @@ export function AgreementCreationWizard({
         current.revision,
         member.userId,
       );
+      // Each deletion advances the revision. Retain it before the next deletion or retry.
+      setAgreement(current);
     }
     setAgreement(current);
     setInvites(issued);
@@ -441,17 +458,36 @@ export function AgreementCreationWizard({
           "POST",
           { expectedRevision: current.revision, ...patch },
         );
+      // Details and submit are separate revisioned commits. Keep the acknowledged
+      // details revision even when sending fails, so retry does not conflict.
+      setAgreement(current);
       const rules = toRules(answers, {
         documentId,
         organizerId: owner.id,
         documentText: created.documentText,
       });
-      current = await submitForApproval(
-        workspaceId,
-        agreementId,
-        current.revision,
-        rules,
-      );
+      try {
+        current = await submitForApproval(
+          workspaceId,
+          agreementId,
+          current.revision,
+          rules,
+        );
+      } catch (cause) {
+        // A response can be lost after the server commits. Re-read once, and only
+        // finish when the new version is exactly the rules this attempt submitted.
+        try {
+          const recovered = await api<Agreement>(
+            `${workspaceBase(workspaceId)}/collaborations/${agreementId}`,
+          );
+          setAgreement(recovered);
+          if (submissionWasCommitted(current, recovered, rules))
+            current = recovered;
+          else throw cause;
+        } catch {
+          throw cause;
+        }
+      }
       setAgreement(current);
       clearDraftAnswers(workspaceId, agreementId);
       setStage(WizardStage.SENT);
@@ -567,6 +603,7 @@ export function AgreementCreationWizard({
           return outcome;
         }}
         onDone={() => setStage(WizardStage.CHECK)}
+        onCancel={() => setStage(WizardStage.CHECK)}
       />,
     );
 

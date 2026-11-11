@@ -9,6 +9,7 @@ import {
   detailsPatch,
   mergeQuestions,
   resumedAnswers,
+  submissionWasCommitted,
   STAGE_STEP,
   WizardStage,
 } from "../components/agreement-creation-wizard";
@@ -82,10 +83,10 @@ test("the wizard opens on Upload with the spec's copy and one privacy line", () 
   assert.match(html, /Read my agreement/);
   assert.match(html, /Set it up myself/);
   assert.equal(
-    (html.match(/Your document is read by AI to suggest the split/g) || [])
-      .length,
+    (html.match(/Read my agreement sends it to AI/g) || []).length,
     1,
   );
+  assert.match(html, /Cloudflare Workers AI, with an Anthropic fallback/);
   assert.doesNotMatch(html, /sandbox|Agreement name|Details/i);
 });
 
@@ -228,6 +229,63 @@ test("the draft is saved on Read my agreement; people on People; one submit on S
   const submit = send.indexOf("await submitForApproval(");
   assert.ok(rules > 0 && submit > rules);
   assert.doesNotMatch(wizard, /consentToCloudflare|fetch\(/);
+});
+
+test("a lost submit reply is recovered only for this attempt's newly sent rules", () => {
+  const before = {
+    workspaceId: "w",
+    id: "a",
+    revision: 4,
+    value: { versions: [] },
+  } as unknown as Agreement;
+  const rules = {
+    currency: "USD",
+    shares: [{ userId: "owner", basisPoints: 10000 }],
+    feePolicy: "BEFORE_SPLIT",
+    source: {
+      origin: "HUMAN_PROPOSAL",
+      documentId: "d",
+      clause: "",
+      excerpt: "",
+    },
+    unresolvedQuestions: [],
+  } as any;
+  const committed = {
+    ...before,
+    revision: 5,
+    value: {
+      ...before.value,
+      versions: [{ id: 1, status: "AWAITING_APPROVAL", rules }],
+    },
+  } as Agreement;
+  assert.equal(submissionWasCommitted(before, committed, rules), true);
+  assert.equal(
+    submissionWasCommitted(
+      before,
+      {
+        ...committed,
+        value: {
+          ...committed.value,
+          versions: [
+            {
+              ...committed.value.versions[0],
+              rules: { ...rules, feePolicy: "ORGANIZER" },
+            },
+          ],
+        },
+      },
+      rules,
+    ),
+    false,
+  );
+  assert.equal(
+    submissionWasCommitted(
+      before,
+      { ...committed, value: { ...committed.value, versions: [] } },
+      rules,
+    ),
+    false,
+  );
 });
 
 test("finishing lands on the agreement Overview; drafts reopen the wizard", () => {

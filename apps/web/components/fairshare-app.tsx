@@ -513,10 +513,13 @@ export default function FairshareApp() {
     setError("");
     router.replace("/app");
   }
-  async function mutate(action: string, extra: Record<string, unknown> = {}) {
+  async function mutateWithResult(
+    action: string,
+    extra: Record<string, unknown> = {},
+  ): Promise<boolean> {
     const workspaceRequestId = workspaceRequest.current;
     const openRequestId = openRequest.current;
-    if (selected?.workspaceId !== currentWorkspace.current) return;
+    if (selected?.workspaceId !== currentWorkspace.current) return false;
     try {
       const a = await api<Agreement>(base + action, "POST", {
         expectedRevision: selected!.revision,
@@ -526,7 +529,7 @@ export default function FairshareApp() {
         workspaceRequestId !== workspaceRequest.current ||
         openRequestId !== openRequest.current
       )
-        return;
+        return false;
       setSelected(a);
       try {
         await loadWorkspace(currentWorkspace.current);
@@ -535,19 +538,20 @@ export default function FairshareApp() {
           "Agreement updated. Refresh to reload the rest of your workspace.",
         );
       }
+      return true;
     } catch (cause) {
       if (
         workspaceRequestId !== workspaceRequest.current ||
         openRequestId !== openRequest.current
       )
-        return;
+        return false;
       if (cause instanceof ApiError && cause.code === "REVISION_CONFLICT") {
         const current = await api<Agreement>(base);
         if (
           workspaceRequestId !== workspaceRequest.current ||
           openRequestId !== openRequest.current
         )
-          return;
+          return false;
         setSelected(current);
         throw new Error(
           "Agreement changed. Latest version loaded; review before trying again.",
@@ -555,6 +559,9 @@ export default function FairshareApp() {
       }
       throw cause;
     }
+  }
+  async function mutate(action: string, extra: Record<string, unknown> = {}) {
+    await mutateWithResult(action, extra);
   }
   if (!ready)
     return (
@@ -756,6 +763,7 @@ export default function FairshareApp() {
               rulesDirty={rulesDirty}
               run={run}
               mutate={mutate}
+              mutateWithResult={mutateWithResult}
               refresh={refresh}
               loadWorkspace={loadWorkspace}
               navigate={navigate}

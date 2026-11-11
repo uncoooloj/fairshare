@@ -50,6 +50,10 @@ export interface AgreementDetailProps {
   rulesDirty: MutableRefObject<boolean>;
   run: Run;
   mutate: Mutate;
+  mutateWithResult: (
+    action: string,
+    extra?: Record<string, unknown>,
+  ) => Promise<boolean>;
   refresh: () => Promise<void>;
   loadWorkspace: (id: string) => Promise<void>;
   navigate: (s: Section) => boolean;
@@ -100,6 +104,7 @@ export function AgreementDetail({
   rulesDirty,
   run,
   mutate,
+  mutateWithResult,
   refresh,
   loadWorkspace,
   navigate,
@@ -222,6 +227,7 @@ export function AgreementDetail({
               rulesDirty={rulesDirty}
               run={run}
               mutate={mutate}
+              mutateWithResult={mutateWithResult}
               mayLeaveDraft={mayLeaveDraft}
               changeAgreementTab={changeAgreementTab}
               setBusy={setBusy}
