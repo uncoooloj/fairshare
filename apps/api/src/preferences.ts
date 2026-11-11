@@ -25,18 +25,22 @@ function notificationKindForAuditEvent(
   }
 }
 
-function notificationMessage(kind: NotificationKind) {
+function notificationMessage(kind: NotificationKind, payoutStatus?: string) {
   switch (kind) {
     case "approvalRequests":
-      return "Sent for your approval";
+      return "An agreement version was sent for review";
     case "versionChanges":
-      return "The split was changed";
+      return "A new agreement version was proposed";
     case "exceptions":
       return "A payment is on hold";
     case "payoutCompleted":
       return "Your payout was sent";
     case "payoutFailed":
-      return "Your payout didn’t go through";
+      if (payoutStatus === "RETURNED")
+        return "Your payout was returned after being sent";
+      if (payoutStatus === "REFUNDED")
+        return "Your payout was refunded after being sent";
+      return "Your payout was not completed";
   }
 }
 
@@ -201,7 +205,7 @@ export function registerPreferences(app: FairshareApp) {
         agreementId: agreement.id,
         agreementName: agreement.name,
         at: null,
-        message: notificationMessage(kind),
+        message: notificationMessage(kind, payout.status),
       });
     }
     const datedEvents = events
