@@ -42,6 +42,8 @@ The checked local API smoke covers authentication, validation, tenant isolation,
 
 Before running `cloudflare:deploy`, provide stable `FAIRSHARE_API_URL` and `FAIRSHARE_WEB_ORIGIN` HTTPS origins and set `FAIRSHARE_API_PERSISTENCE_VERIFIED=true` **only after** restart/redeploy/restore tests. The script validates configuration, not actual durability. Supply these two non-secret runtime variables in the Worker's environment as well; shell environment is not automatically deployed as Worker bindings. Do not place PayPal or AI credentials in the web Worker.
 
+The hosted release workflow is manual-only and requires that persistence acknowledgement before it installs, checks, or deploys. Persistence acceptance does not establish provider eligibility or safe money movement. Its hosted manifest keeps payouts, payout eligibility, reconciliation, and automatic payouts off. Each capability needs separate PayPal sandbox and operational acceptance plus a reviewed manifest change before its flag can be enabled.
+
 Use approved account access and secret storage. No `wrangler login`, secret upload, DNS change or paid-resource creation is automatic. Do not commit `.dev.vars`, `.wrangler`, generated bundles or credentials.
 
 Hosted acceptance remains: sign-in/cookie/CSRF checks; upload→review→all-party approval; cross-tenant rejection; preserved ledger after restart; duplicate/reordered signed PayPal webhook handling; idempotent payout reconciliation; parser privacy/bounds; alarm recovery; backup, migration and rollback. Register the stable public API webhook URL only after routing and signature checks work. A verified isolated webhook receiver is not proof the app ledger reconciles.
