@@ -8,6 +8,7 @@ import {
 } from "../src/components/paymentGridModel";
 const row: PaymentGridRow = {
   id: "p1",
+  payoutId: "payout-1",
   agreementId: "a1",
   agreementKey: '["w1","a1"]',
   agreementName: "Album",
@@ -33,6 +34,7 @@ test("rejects duplicates, unsafe amounts, invalid dates and unknown status", () 
     { createdAt: "wrong" },
     { status: "SUCCESS" },
     { currency: "GBP" },
+    { payoutId: "" },
   ]) {
     assert.throws(() =>
       validatePaymentRows([{ ...row, ...override } as PaymentGridRow]),

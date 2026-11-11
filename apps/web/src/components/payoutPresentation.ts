@@ -53,7 +53,7 @@ function csvCell(value: string) {
 }
 export function payoutCsv(rows: readonly PaymentGridRow[]) {
   const records = validatePaymentRows(rows).map((row) => [
-    row.id,
+    row.payoutId,
     row.agreementName,
     row.recipientName,
     `${Math.floor(row.amountCents / 100)}.${String(row.amountCents % 100).padStart(2, "0")}`,

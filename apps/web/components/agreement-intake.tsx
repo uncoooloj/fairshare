@@ -2,6 +2,7 @@
 import { useRef, useState } from "react";
 import { Button, Field, Notice } from "./ui";
 import { CreationStepper } from "./agreement-creation-wizard";
+import { DropZone } from "./drop-zone";
 
 export type AgreementIntakeInput = {
   requestId: string;
@@ -142,25 +143,19 @@ export function AgreementIntake({
           </label>
         </fieldset>
         <div hidden={method !== "upload"}>
-          <Field
-            label="Upload agreement"
+          <span className="field-label" id="upload-agreement-label">
+            Upload agreement
+          </span>
+          <DropZone
+            accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
+            disabled={disabled}
+            file={file}
             hint="PDF, DOCX or TXT · up to 5 MB. We’ll read your document when you continue."
-          >
-            <input
-              type="file"
-              accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
-              disabled={disabled}
-              onChange={(event) => {
-                changed();
-                setFile(event.target.files?.[0] || null);
-              }}
-            />
-          </Field>
-          {file && (
-            <p className="muted">
-              Selected: {file.name}. Your document is ready to read.
-            </p>
-          )}
+            onFile={(next) => {
+              changed();
+              setFile(next);
+            }}
+          />
         </div>
         <div hidden={method !== "paste"}>
           <Field label="Paste agreement text">

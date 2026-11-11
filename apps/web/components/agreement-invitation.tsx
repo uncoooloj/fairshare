@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../lib/model";
 import { Button, Notice } from "./ui";
+import { formatExact } from "../lib/dates";
 
 export const AGREEMENT_INVITE_PREFIX = "agreement:";
 export function AgreementInvitation({
@@ -66,8 +67,7 @@ export function AgreementInvitation({
             <input readOnly value={link} onFocus={(e) => e.target.select()} />
           </label>
           <p className="muted">
-            Expires {new Date(invitation.expiresAt).toLocaleString()}. No email
-            is sent.
+            Expires {formatExact(invitation.expiresAt)}. No email is sent.
           </p>
           <div className="actions">
             <Button
@@ -163,9 +163,7 @@ export function AgreementInvitationPreview({
             agreement. It does not grant access to other agreements. You will
             review and approve rules separately. No payment is made.
           </p>
-          <p className="muted">
-            Expires {new Date(preview.expiresAt).toLocaleString()}.
-          </p>
+          <p className="muted">Expires {formatExact(preview.expiresAt)}.</p>
           <Button disabled={busy} onClick={onAccept}>
             Accept and open agreement
           </Button>

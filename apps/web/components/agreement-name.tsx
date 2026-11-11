@@ -7,15 +7,26 @@ export function AgreementName({
   suggestion,
   busy,
   onSave,
+  defaultOpen = false,
+  onClose,
 }: {
   name: string;
   suggestion?: string;
   busy: boolean;
   onSave: (name: string) => void;
+  /** Opened from the header menu; collapsing it hands control back. */
+  defaultOpen?: boolean;
+  onClose?: () => void;
 }) {
   const [value, setValue] = useState(suggestion || name);
   return (
-    <details className="section" open={suggestion ? true : undefined}>
+    <details
+      className="section agreement-rename"
+      open={suggestion || defaultOpen ? true : undefined}
+      onToggle={(event) => {
+        if (!event.currentTarget.open) onClose?.();
+      }}
+    >
       <summary>
         {suggestion ? "Review suggested agreement name" : "Edit agreement name"}
       </summary>

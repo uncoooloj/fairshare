@@ -32,7 +32,7 @@ test("invitation confirmation suppresses competing application forms; creation r
     source,
     /if \(a.workspaceId !== currentWorkspace.current\)\s*commitWorkspace\(a.workspaceId\)/,
   );
-  assert.equal(source.match(/workspaceRole=\{workspaceRole\}/g)?.length, 2);
+  assert.equal(source.match(/workspaceRole=\{workspaceRole\}/g)?.length, 1);
 });
 
 test("expired or unwanted invitations can be dismissed without consuming them", () => {

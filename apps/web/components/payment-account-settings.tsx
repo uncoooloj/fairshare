@@ -1,7 +1,29 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../lib/model";
+import { toneForId } from "../lib/person";
+import { Avatar, AvatarSize } from "./person";
+import { SettingsPaneHeader } from "./settings-preferences";
 import { Button } from "./ui";
+
+function WalletIcon() {
+  return (
+    <span className="settings-provider-icon" aria-hidden="true">
+      <svg
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M4 7h15v12H4zM4 7V5h12M14 12h5v3h-5z" />
+      </svg>
+    </span>
+  );
+}
 type Accounts = {
   providerConfigured: boolean;
   ownPaypalId: string | null;
@@ -77,52 +99,84 @@ export function PaymentAccountsSettings({
   }
   if (!workspace)
     return (
-      <section className="panel">
-        <h2>Payment accounts</h2>
+      <section className="settings-pane">
+        <SettingsPaneHeader
+          title="Payment accounts"
+          description="Where money comes in and where shares go out."
+        />
         <p>Upload your first agreement before adding a payout destination.</p>
       </section>
     );
   return (
-    <section className="panel">
-      <h2>Payment accounts</h2>
-      <p className="muted">Where money comes in and where shares go out.</p>
+    <section className="settings-pane">
+      <SettingsPaneHeader
+        title="Payment accounts"
+        description="Where money comes in and where shares go out."
+      />
       {message && <p role="status">{message}</p>}
       {!data ? (
-        <p>Loading payment accounts…</p>
+        <p role="status">Loading payment accounts…</p>
       ) : (
         <>
-          <section className="section">
+          <section className="settings-card">
             <h3>Receiving payments</h3>
-            <p>PayPal sandbox checkout</p>
             <p className="muted">
               {data.providerConfigured
-                ? "Sandbox PayPal credentials are configured. Payments are allocated only after provider verification."
-                : "Sandbox PayPal credentials are not configured. Checkout is unavailable."}
+                ? "PayPal sandbox credentials are configured. Received payments follow your active agreement rules."
+                : "PayPal sandbox credentials are not configured. Payments can’t be received until setup is complete."}
             </p>
+            <div className="settings-provider">
+              <WalletIcon />
+              <div>
+                <strong>PayPal</strong>
+                <span className="muted">
+                  Sandbox checkout · test money only
+                </span>
+              </div>
+              <span
+                className={`status-chip ${data.providerConfigured ? "good" : "warning"}`}
+              >
+                {data.providerConfigured ? "Configured" : "Not configured"}
+              </span>
+            </div>
           </section>
-          <section className="section">
+          <section className="settings-card">
             <h3>Sending payouts</h3>
             <p className="muted">
-              Eligible payouts can be submitted through PayPal after the
-              agreement and payment have been verified. These are test payments;
-              no real money moves.
+              Save where your agreed share should be sent in the sandbox. Saving
+              a destination does not establish that server payout sending is
+              available or schedule a payout.
             </p>
-          </section>
-          <section className="section">
-            <h3>Your payout destination</h3>
+            <div className="settings-provider">
+              <WalletIcon />
+              <div>
+                <strong>PayPal payouts</strong>
+                <span className="muted">
+                  {data.ownPaypalId
+                    ? `Your destination · ${data.ownPaypalId}`
+                    : "No payout destination saved for you yet"}
+                </span>
+              </div>
+              <span
+                className={`status-chip ${data.ownPaypalId ? "" : "warning"}`}
+              >
+                {data.ownPaypalId ? "Saved · unverified" : "Missing"}
+              </span>
+            </div>
             <p className="muted">
-              Save your PayPal sandbox merchant ID for the selected agreement
-              and other agreements with the same team. This is not an OAuth
-              connection or an ownership verification.
+              This destination applies to the selected agreement and other
+              agreements with the same team. Saving it does not verify account
+              ownership.
             </p>
             <form
+              className="settings-inline-form"
               onSubmit={(e) => {
                 e.preventDefault();
                 void save();
               }}
             >
               <label>
-                Sandbox merchant ID
+                <span>Sandbox merchant ID</span>
                 <input
                   value={paypalId}
                   onChange={(e) =>
@@ -136,25 +190,26 @@ export function PaymentAccountsSettings({
                 />
               </label>
               <Button disabled={!canEdit || busy} type="submit">
-                {busy ? "Saving…" : "Save payout destination"}
+                {busy ? "Saving…" : "Save destination"}
               </Button>
+              {data.ownPaypalId && canEdit && (
+                <Button
+                  type="button"
+                  variant="quiet"
+                  disabled={busy}
+                  onClick={() => setConfirm(true)}
+                >
+                  Remove
+                </Button>
+              )}
             </form>
-            {!canEdit && (
-              <p className="muted">
-                Viewers cannot change payout destinations.
-              </p>
-            )}
-            {data.ownPaypalId && canEdit && (
-              <Button
-                variant="secondary"
-                disabled={busy}
-                onClick={() => setConfirm(true)}
-              >
-                Remove payout destination
-              </Button>
-            )}
+            <p className="muted settings-footnote">
+              {canEdit
+                ? "Saving an ID is not an OAuth connection or ownership check."
+                : "Viewers cannot change payout destinations."}
+            </p>
             {confirm && (
-              <div role="alert">
+              <div role="alert" className="settings-confirm">
                 <p>
                   Remove your saved destination? Future payouts to you need a
                   destination added again. Already submitted payouts cannot be
@@ -173,35 +228,54 @@ export function PaymentAccountsSettings({
               </div>
             )}
           </section>
-          <section className="section">
+          <section className="settings-collaborators">
             <h3>Collaborator accounts</h3>
             <p className="muted">
-              Each person adds their own PayPal account. An account being saved
-              doesn’t mean PayPal has verified it.
+              People need an account before their payouts can go out. Saved
+              doesn’t mean PayPal verified it.
             </p>
-            <div className="table-wrap">
+            <div className="settings-table">
               <table>
                 <thead>
                   <tr>
-                    <th>Person</th>
-                    <th>Account</th>
-                    <th>Status</th>
-                    <th>Reminder</th>
+                    <th scope="col">Person</th>
+                    <th scope="col">Account</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">
+                      <span className="visually-hidden">Reminder</span>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {data.members.map((m) => (
                     <tr key={m.id}>
-                      <td>{m.name}</td>
-                      <td>{m.accountHint ?? "None"}</td>
                       <td>
-                        {m.status === "MISSING"
-                          ? "Missing"
-                          : "Saved · unverified"}
+                        <span className="settings-person">
+                          <Avatar
+                            name={m.name}
+                            tone={toneForId(m.id)}
+                            size={AvatarSize.SMALL}
+                            label={false}
+                          />
+                          {m.name}
+                        </span>
+                      </td>
+                      <td className={m.accountHint ? "" : "muted"}>
+                        {m.accountHint ? `PayPal · ${m.accountHint}` : "None"}
                       </td>
                       <td>
+                        <span
+                          className={`status-chip ${m.status === "MISSING" ? "warning" : ""}`}
+                        >
+                          {m.status === "MISSING"
+                            ? "Missing"
+                            : "Saved · unverified"}
+                        </span>
+                      </td>
+                      <td className="settings-cell-action">
                         {m.status === "MISSING" && (
                           <Button
+                            type="button"
                             variant="secondary"
                             onClick={async () => {
                               try {
