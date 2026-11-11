@@ -1651,3 +1651,66 @@ td:last-child {
   color: #b91c1c;
   font-weight: 600;
 }
+
+.notification-anchor {
+  position: relative;
+}
+.notification-popover {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 12px);
+  z-index: 40;
+  width: min(420px, calc(100vw - 32px));
+  max-height: min(640px, 80vh);
+  overflow: auto;
+  padding: 24px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 16px 48px #1725541f;
+}
+.notification-heading,
+.notification-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.notification-heading h2 {
+  margin: 0;
+  font-size: 20px;
+}
+.notification-events {
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.notification-events li {
+  padding: 16px 0;
+  border-top: 1px solid #e5e7eb;
+}
+.notification-events h3 {
+  margin: 6px 0;
+  font-size: 15px;
+}
+.notification-events p {
+  margin: 6px 0;
+}
+.notification-events time,
+.notification-events small {
+  display: block;
+  font-size: 12px;
+  color: #64748b;
+}
+.notification-empty {
+  padding: 24px 0;
+  line-height: 1.6;
+}
+@media (max-width: 600px) {
+  .notification-popover {
+    position: fixed;
+    top: 80px;
+    right: 16px;
+    max-height: calc(100dvh - 112px);
+  }
+}

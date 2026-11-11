@@ -2,6 +2,7 @@
 import { OverviewDashboard } from "./overview-dashboard";
 import { AgreementAllocations } from "./agreement-allocations";
 import { allocationTrace } from "../lib/allocation-trace";
+import { NotificationPanel } from "./notification-panel";
 import { useEmailDelivery } from "../lib/email-capability";
 import { WorkspaceNameForm } from "./workspace-name-form";
 import {
@@ -449,13 +450,14 @@ export default function FairshareApp() {
     if (workspace && user) run(() => loadWorkspace(workspace));
   }, [workspace]);
   function navigate(s: Section) {
-    if (!mayLeaveDraft()) return;
+    if (!mayLeaveDraft()) return false;
     openRequest.current++;
     setSection(s);
     setSelected(null);
     setCreating(false);
     setError("");
     setNotice("");
+    return true;
   }
   function dismissAccessFlow() {
     setFlowToken("");
@@ -584,6 +586,21 @@ export default function FairshareApp() {
             <strong>{workspaces[0]?.name || "No workspace yet"}</strong>
           )}
           <span className="spacer" />
+          <NotificationPanel
+            key={`${user.id}:${workspace}`}
+            agreementIds={agreements.map((agreement) => agreement.id)}
+            onOpenAgreement={(id) => {
+              const agreement = agreements.find((item) => item.id === id);
+              if (!agreement || !mayLeaveDraft()) return false;
+              void run(() => openAgreement(agreement));
+              return true;
+            }}
+            onPreferences={() => {
+              if (!navigate(Section.Settings)) return false;
+              setSettingsTab("Notifications");
+              return true;
+            }}
+          />
           <Button variant="quiet" disabled={busy} onClick={() => run(refresh)}>
             ↻ Refresh
           </Button>
