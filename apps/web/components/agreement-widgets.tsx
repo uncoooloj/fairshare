@@ -662,8 +662,16 @@ export function RulesEditor({
       <form
         ref={formRef}
         inert={busy}
-        onChange={onDirty}
-        onChangeCapture={() => setDraftRevision((value) => value + 1)}
+        onChange={(event) => {
+          if ((event.target as HTMLElement).closest("[data-local-rule-edit]"))
+            return;
+          onDirty?.();
+        }}
+        onChangeCapture={(event) => {
+          if ((event.target as HTMLElement).closest("[data-local-rule-edit]"))
+            return;
+          setDraftRevision((value) => value + 1);
+        }}
         className="section rules-editor"
         onSubmit={(e) => {
           e.preventDefault();

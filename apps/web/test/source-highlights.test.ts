@@ -90,3 +90,25 @@ test("context editor keeps cancel local, validates 100%, and does not write a co
   );
   assert.doesNotMatch(source, /contentEditable|dangerouslySetInnerHTML/);
 });
+
+test("split edits stay local until apply", async () => {
+  const { readFileSync } = await import("node:fs");
+  const rules = readFileSync(
+    new URL("../components/agreement-widgets.tsx", import.meta.url),
+    "utf8",
+  );
+  const editor = readFileSync(
+    new URL("../components/split-rule-editor.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(editor, /data-local-rule-edit/);
+  assert.equal(
+    (rules.match(/closest\("\[data-local-rule-edit\]"\)/g) || []).length,
+    2,
+  );
+  const apply = rules
+    .split("onApply={(values) => {")[1]
+    .split("}}\n          />")[0];
+  assert.match(apply, /onDirty\?\.\(\)/);
+  assert.match(apply, /setDraftRevision/);
+});
