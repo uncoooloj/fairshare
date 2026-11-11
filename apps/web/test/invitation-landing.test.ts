@@ -47,7 +47,7 @@ test("expired or unwanted invitations can be dismissed without consuming them", 
     new URL("../components/designer-auth.tsx", import.meta.url),
     "utf8",
   );
-  assert.match(prompt, /isInvitation\s*&&\s*onCancel/);
+  assert.match(prompt, /onCancel\s*&&/);
   assert.match(prompt, /onClick=\{onCancel\}\s*>\s*Not now/);
   const source = appSource();
   assert.match(

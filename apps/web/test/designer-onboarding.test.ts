@@ -42,3 +42,22 @@ test("email-token verification keeps its existing API contract on the standalone
     /api\("auth\/verification\/confirm", "POST", \{\s+token: flowToken,/,
   );
 });
+
+test("standalone verification renders a failed confirmation and keeps retry or cancel available", async () => {
+  const { createElement } = await import("react");
+  const { renderToStaticMarkup } = await import("react-dom/server");
+  const { AuthErrorNotice } = await import("../components/auth-error-notice");
+  const html = renderToStaticMarkup(
+    createElement(AuthErrorNotice, {
+      className: "error",
+      message: "This verification link has expired.",
+    }),
+  );
+  assert.match(html, /role="alert"[^>]*>This verification link has expired\./);
+  assert.equal(
+    renderToStaticMarkup(createElement(AuthErrorNotice, { message: "" })),
+    "",
+  );
+  assert.match(source, /AuthErrorNotice className=\{styles\.error\} message=\{error\}/);
+  assert.match(source, /Back to Fairshare/);
+});

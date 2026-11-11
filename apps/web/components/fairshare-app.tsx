@@ -898,6 +898,8 @@ export default function FairshareApp() {
         kind="verification"
         email={user.email}
         busy={busy}
+        error={error}
+        onCancel={dismissAccessFlow}
         onContinue={() =>
           run(async () => {
             const r = await api("auth/verification/confirm", "POST", {
