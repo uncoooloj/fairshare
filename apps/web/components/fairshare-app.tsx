@@ -1050,7 +1050,6 @@ export default function FairshareApp() {
               setSettingsTab={setSettingsTab}
               workspace={workspace}
               workspaces={workspaces}
-              agreements={agreements}
               inviteLink={inviteLink}
               run={run}
               acceptInvitation={acceptInvitation}
