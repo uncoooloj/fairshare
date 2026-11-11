@@ -198,8 +198,8 @@ test("Check needs two people at 100%; questions keep answers and skip when settl
   assert.deepEqual(
     answered.questions.map((q) => [q.id, q.answeredChoiceId]),
     [
-      [StandardQuestionId.FEES, "BEFORE_SPLIT"],
       [StandardQuestionId.REFUNDS, undefined],
+      [StandardQuestionId.FEES, "BEFORE_SPLIT"],
     ],
   );
 });
