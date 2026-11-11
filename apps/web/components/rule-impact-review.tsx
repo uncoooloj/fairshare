@@ -45,6 +45,7 @@ export function RuleImpactReview({
       <div className="form-grid">
         <Field label="Illustrative receipt (USD)">
           <input
+            data-illustrative="true"
             value={gross}
             inputMode="decimal"
             onChange={(event) => {
@@ -55,6 +56,7 @@ export function RuleImpactReview({
         </Field>
         <Field label="Illustrative PayPal fee (USD)">
           <input
+            data-illustrative="true"
             value={fees}
             inputMode="decimal"
             onChange={(event) => {

@@ -1,4 +1,5 @@
 import { RuleImpactReview } from "./rule-impact-review";
+import { isRulesDraftChange } from "../lib/rule-impact";
 import { agreementEmptyState } from "../lib/agreement-empty-state";
 import { formatDate } from "../lib/preferences";
 import { ClarificationDecisions } from "./clarification-decisions";
@@ -623,8 +624,13 @@ export function RulesEditor({
       <form
         ref={formRef}
         inert={busy}
-        onChange={onDirty}
-        onChangeCapture={() => setDraftRevision((value) => value + 1)}
+        onChange={(event) => {
+          if (isRulesDraftChange(event.target)) onDirty?.();
+        }}
+        onChangeCapture={(event) => {
+          if (isRulesDraftChange(event.target))
+            setDraftRevision((value) => value + 1);
+        }}
         className="section rules-editor"
         onSubmit={(e) => {
           e.preventDefault();
