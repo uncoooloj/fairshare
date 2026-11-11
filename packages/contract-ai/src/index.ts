@@ -517,6 +517,39 @@ export function resolveDefinedDate(
   return matches.length === 1 ? matches[0] : null;
 }
 
+const MAX_CLAUSE_CHARS = 600;
+const RECOUP_SHOWN =
+  /recoup|repa(?:y|id)|recover|reimburs|paid back|deducted first/i;
+const RECOUP_NEGATED =
+  /\bnon-?(?:recoup|repay|refund)|\bnot\s+(?:be\s+)?(?:recoup|repa|recover|reimburs|deduct|paid back)|\bnever\b|\bno\s+(?:recoup|repayment)/i;
+/** The numbered clause or paragraph holding a citation: bounded by blank lines and by lines that
+ * start a new numbered clause ("4.2 ", "(b) "). Null unless that clause says the advance is paid back
+ * first and says nothing negating it. A different clause never counts. */
+export function clauseShowingRecoup(
+  text: string,
+  citation: Citation,
+): Citation | null {
+  const breaks =
+    /\n[ \t]*\n|\n(?=[ \t]*(?:\(?\d+(?:\.\d+)*[.)]?|\([a-z]{1,3}\))\s)/g;
+  let from = 0;
+  let to = text.length;
+  for (let m = breaks.exec(text); m; m = breaks.exec(text)) {
+    if (m.index + m[0].length <= citation.start) from = m.index + m[0].length;
+    else if (m.index >= citation.end) {
+      to = m.index;
+      break;
+    }
+  }
+  while (from < to && /\s/.test(text[from])) from++;
+  while (to > from && /\s/.test(text[to - 1])) to--;
+  const quote = text.slice(from, to);
+  if (quote.length > MAX_CLAUSE_CHARS || quote.length <= citation.quote.length)
+    return null;
+  const words = normalizeWhitespace(quote);
+  if (!RECOUP_SHOWN.test(words) || RECOUP_NEGATED.test(words)) return null;
+  return { start: from, end: to, quote };
+}
+
 const FACT_KEYS = [
   "kind",
   "subject",
@@ -621,13 +654,20 @@ function validateFact(raw: unknown, text: string): ExtractedFact {
           : recouped === false
             ? /non-?recoup|not (?:be )?(?:recouped|repaid|recovered|deducted|paid back)/i
             : null;
-      return {
-        kind,
-        ...base,
-        amountCents,
-        recoupedBeforeSplit:
-          shown && shown.test(normalizeWhitespace(q)) ? recouped : null,
-      };
+      if (shown && shown.test(normalizeWhitespace(q)))
+        return { kind, ...base, amountCents, recoupedBeforeSplit: recouped };
+      // "Paid back first" may sit in the next sentence of the same clause: accept it from the clause.
+      const clause =
+        recouped === false ? null : clauseShowingRecoup(text, citation);
+      if (clause)
+        return {
+          kind,
+          ...base,
+          citation: clause,
+          amountCents,
+          recoupedBeforeSplit: true,
+        };
+      return { kind, ...base, amountCents, recoupedBeforeSplit: null };
     }
     case FactKind.FEES: {
       requireNull(f, ["recoupedBeforeSplit", "refundStep", "termBoundary"]);

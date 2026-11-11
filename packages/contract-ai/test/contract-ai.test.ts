@@ -353,7 +353,11 @@ test("a recoup claim the quote does not show is kept as not stated, not dropped"
         ],
         issues: [],
       },
-      full,
+      // Paying back is stated, but in another paragraph, so it is not shown for this advance.
+      {
+        ...full,
+        text: "Maya Okafor received a $2,000 advance.\n\nIt is recouped from revenue before the split.",
+      },
     );
     assert.deepEqual(r.rejections, []);
     assert.equal(r.facts[0].kind, FactKind.ADVANCE);
@@ -610,6 +614,59 @@ test("a term start given only as the Effective Date cites the defining sentence"
     unrelated.rejections[0].reason,
     RejectionReason.SUBJECT_NOT_IN_QUOTE,
   );
+});
+
+test("paid back first is read from the same clause as the advance amount, never another clause", () => {
+  const amount = "4.1 Maya received an advance of $3,000 for studio costs.";
+  const advanceIn = (text: string, recouped: boolean | null = null) => {
+    const r = validateDraft(
+      {
+        facts: [
+          fact(FactKind.ADVANCE, "Maya", "$3,000", amount, {
+            recoupedBeforeSplit: recouped,
+          }),
+        ],
+        issues: [],
+      },
+      { documentId: "doc_adv", revision: 1, text },
+    );
+    return r.facts[0] as Extract<ExtractedFact, { kind: FactKind.ADVANCE }>;
+  };
+  // Same numbered clause, next sentence: paid back first, citing the whole clause.
+  const sameClause = `${amount} It is recouped from revenue before the split.\n4.2 Statements are quarterly.`;
+  const a = advanceIn(sameClause);
+  assert.equal(a.recoupedBeforeSplit, true);
+  assert.equal(
+    a.citation.quote,
+    `${amount} It is recouped from revenue before the split.`,
+  );
+  assert.equal(
+    sameClause.slice(a.citation.start, a.citation.end),
+    a.citation.quote,
+  );
+  // Same paragraph wrapped over lines, model claims true: still accepted.
+  assert.equal(
+    advanceIn(`${amount}\nIt is paid back from revenue first.`, true)
+      .recoupedBeforeSplit,
+    true,
+  );
+  // A different numbered clause or paragraph: not stated, citation stays the amount sentence.
+  for (const text of [
+    `${amount}\n4.2 The advance is recouped before the split.`,
+    `${amount}\n\nThe advance is recouped before the split.`,
+  ]) {
+    const other = advanceIn(text);
+    assert.equal(other.recoupedBeforeSplit, null, text);
+    assert.equal(other.citation.quote, amount);
+  }
+  // Negation in the same clause, or the model saying it is not paid back: not stated.
+  for (const [text, recouped] of [
+    [`${amount} It shall not be recouped from revenue.`, null],
+    [`${amount} It is non-recoupable and never repaid.`, null],
+    [`${amount} It is recouped from revenue before the split.`, false],
+  ] as const) {
+    assert.equal(advanceIn(text, recouped).recoupedBeforeSplit, null, text);
+  }
 });
 
 test("organizer-pays fees and refunds charged to a person carry the named person", () => {
