@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { api } from "../lib/model";
+import { publicWebOrigin } from "../lib/public-web-origin";
 import { workspaceBase } from "../lib/workspace-base";
 import { Button } from "./ui";
 
@@ -13,7 +14,7 @@ export function PrivateInvitation({ workspace }: { workspace: string }) {
   const pending = useRef(false);
   const [message, setMessage] = useState("");
   const link = invitation
-    ? `${location.origin}/invitation#token=${encodeURIComponent(invitation.token)}`
+    ? `${publicWebOrigin(location.origin)}/invitation#token=${encodeURIComponent(invitation.token)}`
     : "";
   async function act(action: () => Promise<void>) {
     if (pending.current) return;

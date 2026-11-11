@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../lib/model";
+import { publicWebOrigin } from "../lib/public-web-origin";
 import { Button, Notice } from "./ui";
 import { formatExact } from "../lib/dates";
 
@@ -21,7 +22,7 @@ export function AgreementInvitation({
     [message, setMessage] = useState("");
   const pending = useRef(false);
   const link = invitation
-    ? `${location.origin}/invitation#token=${encodeURIComponent(AGREEMENT_INVITE_PREFIX + invitation.token)}`
+    ? `${publicWebOrigin(location.origin)}/invitation#token=${encodeURIComponent(AGREEMENT_INVITE_PREFIX + invitation.token)}`
     : "";
   async function run(action: () => Promise<void>) {
     if (pending.current) return;
