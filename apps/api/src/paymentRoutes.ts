@@ -33,7 +33,11 @@ export type PaymentProvider = Pick<
 export interface PaymentOptions {
   provider?: PaymentProvider;
   publicOrigin?: string;
-  reconciliation?: { enabled: boolean; intervalMs?: number };
+  reconciliation?: {
+    enabled: boolean;
+    intervalMs?: number;
+    externalScheduling?: boolean;
+  };
 }
 const fail = (code: string, message: string): never => {
   throw new DomainError(code, message);
@@ -750,7 +754,8 @@ export function registerPaymentRoutes(
     : undefined;
   app.decorate("paymentReconciliation", worker ?? null);
   if (worker) {
-    app.addHook("onReady", async () => worker.start());
+    if (!options.reconciliation?.externalScheduling)
+      app.addHook("onReady", async () => worker.start());
     app.addHook("preClose", async () => worker.stop());
   }
   return { processEvent, worker };

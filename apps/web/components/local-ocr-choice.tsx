@@ -30,7 +30,7 @@ export function LocalOcrChoice({
     return (
       <p className="muted">
         For scanned PDFs, paste the text or ask the server operator to enable
-        local OCR.
+        OCR.
       </p>
     );
   return (
@@ -41,9 +41,10 @@ export function LocalOcrChoice({
         disabled={disabled}
         onChange={(event) => onChange(event.target.checked)}
       />
-      Use local OCR for scanned PDFs (English, up to 5 pages). The document
-      stays on this server. Review every amount and name against the original
-      before proposing rules.
+      Use OCR for scanned PDFs (English, up to 5 pages). The document is
+      processed privately on Fairshare’s servers (Cloudflare when hosted), not
+      by an external AI OCR service. Review every amount and name against the
+      original before proposing rules.
     </label>
   );
 }

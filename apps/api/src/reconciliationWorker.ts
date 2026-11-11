@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto";
-import type { DatabaseSync } from "node:sqlite";
+import type { Database } from "./database.js";
 
 export interface ReconciliationJob {
   kind: string;
   id: string;
 }
 export interface ReconciliationWorkerOptions {
-  db: DatabaseSync;
+  db: Database;
   discover: () => ReconciliationJob[];
   reconcile: (job: ReconciliationJob, assertLease: () => void) => Promise<void>;
   clock?: () => number;
@@ -95,7 +95,7 @@ export function createReconciliationWorker(
         },
         Math.max(250, Math.floor(lease / 3)),
       );
-      heartbeat.unref();
+      heartbeat.unref?.();
       let ok = false;
       try {
         await options.reconcile(job, assertLease);
@@ -145,7 +145,7 @@ export function createReconciliationWorker(
           if (!stopped) schedule();
         });
     }, interval);
-    timer.unref();
+    timer.unref?.();
   };
   return {
     tick,

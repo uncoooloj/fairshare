@@ -6,7 +6,7 @@ This repository is private and provides an MIT license for the source. It is not
 
 Local tests, typechecking, and builds establish code and build evidence only. The synthetic DEMO confirms no provider operation.
 
-The [Cloudflare deployment](CLOUDFLARE.md) notes and [Durable SQL prototype](../packages/cloudflare-storage/README.md) describe an adapter/prototype seam only. They do not establish a wired API, a deployed Worker, or durable acceptance.
+The optional [Cloudflare API](CLOUDFLARE.md) is wired to the [Durable SQL adapter](../packages/cloudflare-storage/README.md). Local runtime checks do not establish hosted deployment, backup/restore, alarm recovery or provider acceptance.
 
 ## Source publication gates
 

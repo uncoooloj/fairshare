@@ -1,3 +1,5 @@
+import type { DocumentReaders } from "./documentReaders.js";
+import type { DatabaseBackend } from "./database.js";
 import { registerProfileRoutes } from "./profileRoutes.js";
 import { registerPreferences } from "./preferences.js";
 import { registerAccountSettings } from "./accountSettings.js";
@@ -24,6 +26,8 @@ import {
   type User,
 } from "./identity.js";
 export interface AppOptions extends EmailOptions {
+  documentReaders?: DocumentReaders;
+  database?: DatabaseBackend;
   hackathonMfaSimulation?: boolean;
   mfaEncryptionKey?: string;
   dbPath?: string;
@@ -48,6 +52,8 @@ function domainErrorStatus(code: string): number {
   if (code === "PDF_BUSY") return 429;
   if (
     [
+      "PARSER_NOT_CONFIGURED",
+      "PARSER_UNAVAILABLE",
       "PAYPAL_NOT_CONFIGURED",
       "PAYOUT_NOT_CONFIGURED",
       "CALLBACK_NOT_CONFIGURED",
@@ -72,7 +78,8 @@ function domainErrorStatus(code: string): number {
 export async function buildApp(
   options: AppOptions = {},
 ): Promise<FairshareApp> {
-  if (options.localOcrEnabled) await verifyLocalOcrTools();
+  if (options.localOcrEnabled && !options.documentReaders)
+    await verifyLocalOcrTools();
   if (
     options.payment?.reconciliation?.enabled &&
     (options.demo || !options.payment.provider)
@@ -88,7 +95,8 @@ export async function buildApp(
   }) as unknown as FairshareApp;
   const mode = options.demo ? DataMode.DEMO : DataMode.SANDBOX;
   const store = new IdentityStore(
-    options.dbPath ??
+    options.database ??
+      options.dbPath ??
       process.env.DATABASE_PATH ??
       "./data/fairshare-sandbox.db",
     mode,
@@ -450,9 +458,11 @@ export async function buildApp(
     ai: options.ai,
     extract: options.extract,
     localOcrEnabled: options.localOcrEnabled,
+    documentReaders: options.documentReaders,
   });
   registerAgreementIntake(app, domainRoutes.store, {
     localOcrEnabled: options.localOcrEnabled,
+    documentReaders: options.documentReaders,
   });
   registerPaymentRoutes(app, domainRoutes.store, options.payment);
   registerReviewCollaboration(app, domainRoutes.store, options);

@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, URL } from "node:url";
 import { DomainError } from "@fairshare/domain";
 export const MAX_PDF_BYTES = 5 * 1024 * 1024;
 export const MAX_PDF_REQUEST_BYTES = Math.ceil(MAX_PDF_BYTES / 3) * 4 + 1024;

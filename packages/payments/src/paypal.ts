@@ -60,7 +60,7 @@ export class PayPalSandbox {
   private tokenPromise?: Promise<string>;
   constructor(
     private config: PayPalConfig,
-    private fetcher: typeof fetch = fetch,
+    private fetcher: typeof fetch = (...args) => fetch(...args),
   ) {
     if (!config.clientId || !config.clientSecret)
       throw new PayPalError("PAYPAL_NOT_CONFIGURED", 503);

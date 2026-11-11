@@ -19,4 +19,4 @@ PDF and DOCX files selected by an authorized agreement member are parsed locally
 
 ## Local OCR is opt-in
 
-Image-only PDFs can use local OCR only when the API operator enables the host-installed Poppler and Tesseract tools and the user explicitly selects that path. OCR runs on the API host and does not upload a document to an OCR provider; it has separate page, time, and resource limits. Text-layer PDF parsing never falls back to OCR. See [LOCAL-OCR.md](../LOCAL-OCR.md) for the implementation boundary and host acceptance requirements.
+Image-only PDFs can use local OCR only when the API operator enables the host-installed Poppler and Tesseract tools and the user explicitly selects that path. The Node API runs OCR on its host. The optional Cloudflare API transfers documents through its private parser Container binding, with no public parser route. Both paths have separate page, time, and resource limits. Text-layer PDF parsing never falls back to OCR. See [LOCAL-OCR.md](../LOCAL-OCR.md) for the implementation boundary and host acceptance requirements.

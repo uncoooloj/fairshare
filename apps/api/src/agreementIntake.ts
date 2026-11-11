@@ -1,3 +1,7 @@
+import {
+  localDocumentReaders,
+  type DocumentReaders,
+} from "./documentReaders.js";
 import { randomUUID } from "node:crypto";
 import { createCollaboration, MemberRole } from "@fairshare/domain";
 import { sourceHash, type SourceDocument } from "@fairshare/contract-ai";
@@ -130,8 +134,12 @@ function initialTitle(filename: string | undefined, text: string): string {
 export function registerAgreementIntake(
   app: FairshareApp,
   aggregates: AggregateStore,
-  options: { localOcrEnabled?: boolean } = {},
+  options: {
+    localOcrEnabled?: boolean;
+    documentReaders?: DocumentReaders;
+  } = {},
 ) {
+  const readers = options.documentReaders ?? localDocumentReaders;
   const db = app.store.db;
   db.exec(`CREATE TABLE IF NOT EXISTS agreement_intakes(
     user_id TEXT NOT NULL REFERENCES users(id), request_id TEXT NOT NULL,
@@ -221,12 +229,12 @@ export function registerAgreementIntake(
             throw new ApiError(
               400,
               "OCR_UNAVAILABLE",
-              "Local OCR is not enabled. Paste text instead.",
+              "OCR is not enabled. Paste text instead.",
             );
           original = decodePdfBase64(input.base64);
           const parsed = input.useLocalOcr
-            ? await extractPdfOcr(original)
-            : await extractPdf(original);
+            ? await readers.ocr(original)
+            : await readers.pdf(original);
           text = parsed.text;
           provenance = {
             inputType: "PDF",
@@ -236,7 +244,7 @@ export function registerAgreementIntake(
           };
         } else {
           original = decodeDocxBase64(input.base64);
-          const parsed = await extractDocx(original);
+          const parsed = await readers.docx(original);
           text = parsed.text;
           provenance = {
             inputType: "DOCX",
