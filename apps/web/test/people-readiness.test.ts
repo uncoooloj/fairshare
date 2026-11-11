@@ -43,20 +43,15 @@ test("row actions do not mutate membership or expose other people's destinations
     "utf8",
   );
   assert.doesNotMatch(source, /"DELETE"|"PATCH"|"POST"|"PUT"|ownPaypalId/);
-  assert.match(
-    source,
-    /canRemind\(\s*currentAgreement,\s*currentVersion,\s*userId,\s*member.userId,?\s*\)/,
-  );
+  assert.match(source, /<PersonShare/);
   assert.match(source, /member.userId === userId/);
   assert.doesNotMatch(source, /accountHint|PayPal ID|recipient ID|merchant/i);
   assert.match(source, /<PayoutEmailStep/);
   assert.match(source, /if \(active\)/);
 });
 
-test("organizers can recover a sent pending person's link without putting its token in a query", async () => {
-  const { isCurrentReissue, personInviteLink } = await import(
-    "../components/agreement-people"
-  );
+test("organizers make a new link only on request, without putting its token in a query", async () => {
+  const { personInviteLink } = await import("../components/agreement-people");
   const source = readFileSync(
     new URL("../components/agreement-people.tsx", import.meta.url),
     "utf8",
@@ -69,12 +64,10 @@ test("organizers can recover a sent pending person's link without putting its to
     link,
     "https://usefairshare.app/invitation#token=agreement%3Aone-time-token",
   );
-  assert.match(source, /organizer && sent && isPendingMember\(member\)/);
-  assert.match(source, /replacePersonLink\(/);
-  assert.match(source, /currentAgreement\.revision/);
-  assert.equal(isCurrentReissue(7, 7), true);
-  assert.equal(isCurrentReissue(7, 8), false, "late responses stay ignored");
-  assert.match(source, /onAgreementChange\?\.\(result\.agreement\)/);
+  assert.match(source, /organizer && isPendingMember\(member\)/);
+  assert.match(source, /Make a new link/);
+  assert.match(source, /The old link stops working\./);
+  assert.match(source, /onAgreementChange\?\.\(next\)/);
   assert.match(source, /agreementIdentityRef\.current !== requestIdentity/);
 });
 

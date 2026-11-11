@@ -302,15 +302,23 @@ test("agreement status line is role-aware and needs no organizer switch-on", asy
   const v = a.value.versions[0];
   v.status = "AWAITING_APPROVAL";
   v.approvals = { me: "2026-11-10T12:00:00Z" };
+  a.value.audit = [];
+  const waiting = agreementStatus(a, "me");
+  assert.equal(waiting.line, "Waiting for Riley and Jordan");
   assert.equal(
-    agreementStatus(a, "me").line,
-    "Waiting for Riley and Jordan to approve",
+    waiting.note,
+    "It switches on by itself once everyone approves.",
   );
+  assert.equal(waiting.action, StageAction.Nudge, "organizers can nudge");
   const riley = agreementStatus(a, "riley");
   assert.equal(riley.line, "Waiting for you to approve");
   assert.equal(riley.action, StageAction.Approve);
   v.approvals.riley = "2026-11-10T13:00:00Z";
-  assert.equal(agreementStatus(a, "riley").line, "Waiting for Jordan");
+  assert.equal(
+    agreementStatus(a, "riley").line,
+    "Maya approved · waiting for Jordan",
+  );
+  assert.equal(agreementStatus(a, "riley").action, StageAction.None);
   v.status = "DRAFT";
   v.approvals = {};
   v.changeRequests = [
@@ -325,6 +333,11 @@ test("agreement status line is role-aware and needs no organizer switch-on", asy
   assert.equal(
     agreementStatus(a, "me").line,
     "All set. Payments split automatically.",
+  );
+  assert.equal(
+    agreementStatus(a, "me").action,
+    StageAction.None,
+    "nothing to do once it's all set",
   );
   assert.equal(agreementStatus(a, "jordan").line, "All set");
   assert.equal(agreementStatus(a, "jordan").stage, AgreementStage.AllSet);
