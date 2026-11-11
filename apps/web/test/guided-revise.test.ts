@@ -193,7 +193,7 @@ test("answersFromRules round-trips: advance keeps its ID and its quoted clause",
   assert.equal(back.advance!.source.clause, "4.1");
 });
 
-test("answersFromRules round-trips the refunds choice and dates through the summary toRules writes", () => {
+test("answersFromRules reads dates back, and older refund notes; new rules write none", () => {
   const c = team();
   c.details = {
     currency: "USD" as never,
@@ -217,14 +217,40 @@ test("answersFromRules round-trips the refunds choice and dates through the summ
   assert.equal(first.refunds, undefined, "nothing said about refunds yet");
   assert.equal(first.effectiveFrom?.value, "2026-10-01");
   assert.equal(first.effectiveTo?.value, null);
-  for (const choice of [RefundChoice.SPLIT, RefundChoice.ADVANCE]) {
-    const written = toRules(
-      { ...first, refunds: { value: choice, source: AnswerSource.PERSON } },
-      { documentId: "doc1", organizerId: "maya" },
+  const written = toRules(
+    {
+      ...first,
+      refunds: { value: RefundChoice.SPLIT, source: AnswerSource.PERSON },
+    },
+    { documentId: "doc1", organizerId: "maya" },
+  );
+  assert.doesNotMatch(written.source.excerpt, /[Rr]efund/);
+  assert.deepEqual(
+    money(again(answersFromRules(agreement, written, "maya"), written)),
+    money(written),
+  );
+  // Rules sent before refunds stopped being asked still read back.
+  for (const [note, choice] of [
+    [
+      "Refund preference recorded for organizer review: shared split.",
+      RefundChoice.SPLIT,
+    ],
+    [
+      "Refund preference recorded for organizer review: Maya's advance.",
+      RefundChoice.ADVANCE,
+    ],
+  ] as const) {
+    const old = {
+      ...written,
+      source: {
+        ...written.source,
+        excerpt: `${written.source.excerpt} ${note}`,
+      },
+    };
+    assert.equal(
+      answersFromRules(agreement, old, "maya").refunds?.value,
+      choice,
     );
-    const read = answersFromRules(agreement, written, "maya");
-    assert.equal(read.refunds?.value, choice);
-    assert.deepEqual(money(again(read, written)), money(written));
   }
 });
 
@@ -379,7 +405,7 @@ test("advance change during a revise: new ID, the repaid amount carries over, ne
   assert.equal(c.recoupedByAdvance[raised.advance!.id], 30000);
 });
 
-test("revise questions: a fees request asks again from today's answer; open refunds are asked", () => {
+test("revise questions: a fees request asks again from today's answer; refunds are never asked", () => {
   const a = answersFromRules(
     wrap(team()),
     rules({
@@ -402,18 +428,19 @@ test("revise questions: a fees request asks again from today's answer; open refu
   });
   assert.deepEqual(
     questions.map((q) => [q.id, q.answeredChoiceId]),
-    [
-      [StandardQuestionId.FEES, FeeChoice.BEFORE_SPLIT],
-      [StandardQuestionId.REFUNDS, undefined],
-    ],
+    [[StandardQuestionId.FEES, FeeChoice.BEFORE_SPLIT]],
   );
   assert.equal(questions[0].quote, "I thought Maya covered fees.");
   assert.equal(questions[0].clause, "Jordan's note");
   // Nothing requested and nothing open: straight to Send.
+  assert.deepEqual(reviseQuestions(a), []);
   assert.deepEqual(
-    reviseQuestions({
-      ...a,
-      refunds: { value: RefundChoice.SPLIT, source: AnswerSource.PERSON },
+    reviseQuestions(a, {
+      userId: "jordan",
+      name: "Jordan",
+      part: WrongPart.REFUNDS,
+      note: "What about refunds?",
+      at,
     }),
     [],
   );
@@ -485,7 +512,9 @@ test("revise keeps a former organizer as fee bearer unless the fee choice is cha
     .choices.find((choice) => choice.id === FeeChoice.ORGANIZER_SHARE)!
     .apply(a);
   assert.equal(b.feeBearerId, undefined);
-  assert.ok(summarySentences(b).includes("Jordan covers the PayPal fees."));
+  assert.ok(
+    summarySentences(b).includes("PayPal fees come out of Jordan's share."),
+  );
   assert.equal(feeLine(b), "PayPal fees come out of Jordan's share.");
   const switched = revisedRules(b, prior, { organizerId: "jordan" });
   assert.equal(switched.feeBearerId, "jordan");

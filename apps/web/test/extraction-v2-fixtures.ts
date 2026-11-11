@@ -228,3 +228,35 @@ export function namesOnlyReading() {
     }),
   };
 }
+
+/** A product brief, not an agreement: names and a worked example in prose, no split. */
+export function briefReading() {
+  const doc = [
+    "Fairshare product and design brief",
+    "",
+    "Who it's for: small teams like Maya Okafor, Jordan Reyes and Riley Chen who share money from a project.",
+    "Example: Maya Okafor paid a $2,000 advance, which is paid back before any split.",
+    "Design: calm, plain words, no legal hedging.",
+  ].join("\n");
+  const names =
+    "Who it's for: small teams like Maya Okafor, Jordan Reyes and Riley Chen who share money from a project.";
+  return {
+    doc,
+    extraction: reading(doc, {
+      title: "Fairshare product and design brief",
+      facts: [
+        ...["Maya Okafor", "Jordan Reyes", "Riley Chen"].map((n) =>
+          person(doc, n, names),
+        ),
+        advance(doc, true),
+      ],
+      sections: {
+        SPLIT: Status.ASK,
+        ADVANCE: Status.READ,
+        PEOPLE: Status.READ,
+        FEES: Status.ASK,
+        REFUNDS: Status.ASK,
+      },
+    }),
+  };
+}

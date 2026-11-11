@@ -24,7 +24,7 @@ import {
 } from "../lib/answers-from-extraction";
 import { CheckMode } from "../components/wizard-check-step";
 import { emptyAnswers, FeeChoice, AnswerSource } from "../lib/rules-answers";
-import { StandardQuestionId } from "../lib/standard-questions";
+import { StandardQuestionId, feeQuestion } from "../lib/standard-questions";
 import type { Agreement } from "../lib/model";
 import { saveDraftAnswers } from "../lib/wizard-persistence";
 import { appSource } from "./app-source";
@@ -44,7 +44,7 @@ const self = { name: owner.name, userId: owner.id };
 const noop = () => {};
 
 const doc = MIDNIGHT;
-/** The v2 reading with the fees sentence left unread, so fees and refunds are both asked. */
+/** The v2 reading with the fees sentence left unread: fees default to before the split. */
 const extraction = (() => {
   const reading = fullReading();
   reading.facts = reading.facts.filter((f: any) => f.kind !== "FEES");
@@ -110,27 +110,22 @@ test("the v2 reading maps to answers, honestly: full split → FOUND_ALL", () =>
   assert.equal(read.answers.advance?.value.recipientKey, "owner");
   assert.equal(read.answers.advance?.source, AnswerSource.DOCUMENT);
   assert.equal(read.answers.fees?.value, FeeChoice.BEFORE_SPLIT);
-  // The document is silent on refunds: only that is asked. Silent fees are asked too.
-  assert.deepEqual(
-    read.answers.questions.map((q) => q.id),
-    [StandardQuestionId.REFUNDS],
-  );
-  assert.deepEqual(
-    answersFromExtraction(extraction, doc, self).answers.questions.map(
-      (q) => q.id,
-    ),
-    [StandardQuestionId.FEES, StandardQuestionId.REFUNDS],
-  );
+  // Refunds are never asked; silent fees aren't either (they come off the top).
+  assert.deepEqual(read.answers.questions, []);
+  const silent = answersFromExtraction(extraction, doc, self);
+  assert.deepEqual(silent.answers.questions, []);
+  assert.equal(silent.answers.fees, undefined);
+  assert.equal(silent.mode, CheckMode.FOUND_ALL);
 });
 
-test("names without percentages start equal; nothing read is MANUAL", () => {
+test("names only from prose are not an agreement; nothing read is MANUAL", () => {
   const only = namesOnlyReading();
   const names = answersFromExtraction(only.extraction, only.doc, self);
-  assert.equal(names.mode, CheckMode.FOUND_SOME);
-  assert.ok(names.equalSplitGuessed);
+  assert.equal(names.mode, CheckMode.NOT_AGREEMENT);
+  assert.equal(names.equalSplitGuessed, false);
   assert.deepEqual(
-    names.answers.people.value.map((p) => p.basisPoints),
-    [3334, 3333, 3333],
+    names.answers.people.value.map((p) => [p.name, p.basisPoints]),
+    [["Maya Okafor", 10000]],
   );
   for (const nothing of [
     null,
@@ -190,18 +185,18 @@ test("Check needs two people at 100%; questions keep answers and skip when settl
   assert.match(checkProblem(solo) ?? "", /Add the people/);
   const read = answersFromExtraction(extraction, doc, self).answers;
   assert.equal(checkProblem(read), undefined);
+  const fees = feeQuestion(read);
   const answered = mergeQuestions({
     ...read,
     fees: { value: FeeChoice.BEFORE_SPLIT, source: AnswerSource.PERSON },
-    questions: [{ ...read.questions[0], answeredChoiceId: "BEFORE_SPLIT" }],
+    questions: [{ ...fees, answeredChoiceId: "BEFORE_SPLIT" }],
   });
   assert.deepEqual(
     answered.questions.map((q) => [q.id, q.answeredChoiceId]),
-    [
-      [StandardQuestionId.REFUNDS, undefined],
-      [StandardQuestionId.FEES, "BEFORE_SPLIT"],
-    ],
+    [[StandardQuestionId.FEES, "BEFORE_SPLIT"]],
   );
+  // Nothing settled is asked again, and no refunds question appears.
+  assert.deepEqual(mergeQuestions(read).questions, []);
 });
 
 test("Send shows the summary, what blocks it, and the one safety line", () => {
@@ -209,9 +204,10 @@ test("Send shows the summary, what blocks it, and the one safety line", () => {
   const html = renderToStaticMarkup(
     createElement(WizardSendStep, { answers: read }),
   );
-  assert.match(html, /Ready to send/);
+  assert.match(html, /Almost ready to send/);
   assert.match(html, /Midnight Sessions/);
-  assert.match(html, /Answer the refunds question|Answer the fees question/);
+  assert.match(html, /Has Maya Okafor already paid the \$2,000\?/);
+  assert.doesNotMatch(html, /[Rr]efund/);
   assert.match(
     html,
     /Nothing is paid until everyone approves\. You can still change things if someone asks\./,
