@@ -51,7 +51,7 @@ test("local OCR validates file and timeout without echoing document data", async
     (e: any) => e.code === "OCR_TIMEOUT" && !e.message.includes("Maya"),
   );
 });
-test("OCR is disabled by default and never runs merely because file has no text", async () => {
+test("OCR is disabled by default and a legacy client hint never starts it", async () => {
   const app = await buildApp({ dbPath: ":memory:" });
   try {
     const owner = app.store.register({
