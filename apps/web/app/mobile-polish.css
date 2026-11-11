@@ -102,3 +102,66 @@ fieldset:disabled .intake-method-option {
     padding-inline: var(--space-3);
   }
 }
+
+/* Phones: keep everything inside 375px. */
+@media (max-width: 600px) {
+  .workspace-bar {
+    gap: var(--space-2);
+  }
+  .workspace-bar > span:first-child {
+    display: none;
+  }
+  .workspace-bar select {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: none;
+    text-overflow: ellipsis;
+  }
+  .workspace-bar .icon-button,
+  .workspace-bar .notification-anchor {
+    flex: none;
+  }
+  .agreement-tabs {
+    flex-wrap: wrap;
+    overflow: visible;
+    gap: 0 var(--space-5);
+  }
+  .agreement-tabs .tab-indicator {
+    display: none;
+  }
+  .agreement-tabs.has-indicator button.active {
+    border-bottom-color: var(--color-ink);
+  }
+  .ag-payments-card {
+    overflow-x: auto;
+  }
+  .row-open,
+  .text-button {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+  .creation-progress li,
+  .creation-progress button {
+    min-width: 44px;
+  }
+}
+
+/* Visually hidden table labels are absolutely positioned; keep them inside their scroll box. */
+.table-scroll,
+.ov-table,
+.panel > div[style*="overflow"],
+.ag-payments-card {
+  position: relative;
+}
+@media (max-width: 600px) {
+  [role="menuitem"] {
+    min-height: 44px;
+  }
+  select {
+    min-width: 44px;
+  }
+  .agreement-tabs button {
+    min-width: 44px;
+  }
+}
