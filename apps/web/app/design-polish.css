@@ -893,3 +893,17 @@ li.global-search-empty {
   position: relative;
   z-index: 30;
 }
+
+/* Shared × (components/close-button.tsx). */
+.close-button {
+  flex: none;
+  cursor: pointer;
+}
+.close-button:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+}
+.close-button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}

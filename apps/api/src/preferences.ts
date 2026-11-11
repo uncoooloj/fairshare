@@ -28,15 +28,15 @@ function notificationKindForAuditEvent(
 function notificationMessage(kind: NotificationKind) {
   switch (kind) {
     case "approvalRequests":
-      return "An agreement version was sent for approval.";
+      return "Sent for your approval";
     case "versionChanges":
-      return "A new agreement version is available.";
+      return "The split was changed";
     case "exceptions":
-      return "A payment was put on hold.";
+      return "A payment is on hold";
     case "payoutCompleted":
-      return "PayPal confirms your sandbox payout succeeded.";
+      return "Your payout was sent";
     case "payoutFailed":
-      return "";
+      return "Your payout didn’t go through";
   }
 }
 
@@ -201,10 +201,7 @@ export function registerPreferences(app: FairshareApp) {
         agreementId: agreement.id,
         agreementName: agreement.name,
         at: null,
-        message:
-          kind === "payoutFailed"
-            ? `Your sandbox payout needs attention (${payout.status.toLowerCase()}).`
-            : notificationMessage(kind),
+        message: notificationMessage(kind),
       });
     }
     const datedEvents = events

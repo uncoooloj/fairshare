@@ -1,11 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { api } from "../lib/model";
 import {
   formatDate,
   notificationLabels,
   type NotificationKind,
 } from "../lib/preferences";
-import { Button } from "./ui";
+import { CloseButton } from "./close-button";
+import { GearIcon } from "./icons";
 
 export interface NotificationEvent {
   id: string;
@@ -31,10 +32,11 @@ export function NotificationPanel({
   const [events, setEvents] = useState<NotificationEvent[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [refresh, setRefresh] = useState(0);
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const close = useRef<HTMLButtonElement>(null);
+  const settingsTip = useId();
+  // Fetches every time the panel opens, so there is no separate refresh control.
   useEffect(() => {
     if (!open) return;
     let active = true;
@@ -53,7 +55,7 @@ export function NotificationPanel({
     return () => {
       active = false;
     };
-  }, [open, refresh]);
+  }, [open]);
   useEffect(() => {
     if (!open) return;
     close.current?.focus();
@@ -110,34 +112,33 @@ export function NotificationPanel({
         >
           <div className="notification-heading">
             <h2>Notifications</h2>
-            <button
-              ref={close}
-              type="button"
-              className="text-button"
-              onClick={dismiss}
-              aria-label="Close notifications"
-            >
-              Close
-            </button>
-          </div>
-          <div className="notification-toolbar">
-            <Button
-              type="button"
-              variant="quiet"
-              disabled={loading}
-              onClick={() => setRefresh((value) => value + 1)}
-            >
-              Refresh updates
-            </Button>
-            <Button
-              type="button"
-              variant="quiet"
-              onClick={() => {
-                if (onPreferences()) setOpen(false);
-              }}
-            >
-              Preferences
-            </Button>
+            <div className="notification-heading-actions">
+              <span className="notification-tip-anchor">
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label="Notification settings"
+                  aria-describedby={settingsTip}
+                  onClick={() => {
+                    if (onPreferences()) setOpen(false);
+                  }}
+                >
+                  <GearIcon />
+                </button>
+                <span
+                  role="tooltip"
+                  id={settingsTip}
+                  className="notification-tip"
+                >
+                  Notification settings
+                </span>
+              </span>
+              <CloseButton
+                ref={close}
+                label="Close notifications"
+                onClick={dismiss}
+              />
+            </div>
           </div>
           {loading ? (
             <p role="status">Loading updates…</p>
@@ -149,38 +150,56 @@ export function NotificationPanel({
             </p>
           ) : (
             <ul className="notification-events">
-              {events.map((event) => (
-                <li key={`${event.workspaceId}:${event.id}`}>
-                  <small>
-                    {notificationLabels[event.kind]?.[0] ?? "Agreement update"}
-                  </small>
-                  <h3>{event.agreementName}</h3>
-                  <p>{event.message}</p>
-                  {event.at && (
-                    <time dateTime={event.at}>{formatDate(event.at)}</time>
-                  )}
-                  {agreements.some(
-                    (agreement) =>
-                      agreement.workspaceId === event.workspaceId &&
-                      agreement.id === event.agreementId,
-                  ) ? (
-                    <Button
-                      type="button"
-                      variant="quiet"
-                      onClick={() => {
-                        if (
-                          onOpenAgreement(event.workspaceId, event.agreementId)
-                        )
-                          setOpen(false);
-                      }}
-                    >
-                      View agreement
-                    </Button>
-                  ) : (
-                    <small>You no longer have access to this agreement.</small>
-                  )}
-                </li>
-              ))}
+              {events.map((event) => {
+                const label =
+                  notificationLabels[event.kind]?.[0] ?? "Agreement update";
+                const body = (
+                  <>
+                    <span className="notification-kind">{label}</span>
+                    <span className="notification-name">
+                      {event.agreementName}
+                    </span>
+                    <span className="notification-body">{event.message}</span>
+                    {event.at && (
+                      <time dateTime={event.at}>{formatDate(event.at)}</time>
+                    )}
+                  </>
+                );
+                const reachable = agreements.some(
+                  (agreement) =>
+                    agreement.workspaceId === event.workspaceId &&
+                    agreement.id === event.agreementId,
+                );
+                return (
+                  <li key={`${event.workspaceId}:${event.id}`}>
+                    {reachable ? (
+                      // The whole row opens the agreement.
+                      <button
+                        type="button"
+                        className="notification-row"
+                        onClick={() => {
+                          if (
+                            onOpenAgreement(
+                              event.workspaceId,
+                              event.agreementId,
+                            )
+                          )
+                            setOpen(false);
+                        }}
+                      >
+                        {body}
+                      </button>
+                    ) : (
+                      <div className="notification-row">
+                        {body}
+                        <span className="notification-kind">
+                          You no longer have access to this agreement.
+                        </span>
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </section>
