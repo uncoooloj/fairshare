@@ -29,6 +29,13 @@ tbody th {
   padding: var(--space-4) var(--table-cell-padding-x) !important;
 }
 
+tfoot td,
+tfoot th {
+  padding: var(--space-4) var(--table-cell-padding-x) !important;
+  font-size: var(--text-sm);
+  vertical-align: middle;
+}
+
 tbody tr {
   height: var(--table-row-min-height);
 }
@@ -36,6 +43,11 @@ tbody tr {
 thead th:first-child,
 tbody td:first-child,
 tbody th:first-child {
+  padding-left: var(--table-cell-padding-x) !important;
+}
+
+tfoot td:first-child,
+tfoot th:first-child {
   padding-left: var(--table-cell-padding-x) !important;
 }
 
