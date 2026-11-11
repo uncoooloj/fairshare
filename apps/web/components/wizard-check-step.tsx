@@ -201,6 +201,17 @@ function feesAsked(answers: AgreementAnswers) {
   );
 }
 
+/** Save a fee choice when it changed, or when the organizer explicitly picked the current
+ * policy again (which can move fees from a former organizer after a handover). */
+export function feesNeedSave(
+  answers: AgreementAnswers,
+  chosen: string,
+  explicitlyChosen: boolean,
+) {
+  const current = answers.fees?.value ?? FeeChoice.BEFORE_SPLIT;
+  return explicitlyChosen || chosen !== current;
+}
+
 function recipientName(answers: AgreementAnswers) {
   const key = answers.advance?.value.recipientKey;
   const person = answers.people.value.find((p) => p.key === key);
@@ -263,6 +274,7 @@ export function WizardCheckStep({
   peopleFixed = false,
   flag,
   onUploadAgain,
+  busy = false,
 }: {
   answers: AgreementAnswers;
   onChange(answers: AgreementAnswers): void;
@@ -275,6 +287,8 @@ export function WizardCheckStep({
   flag?: { card: CheckCard; note: ReactNode };
   /** Not an agreement: back to Upload for another file. */
   onUploadAgain?: () => void;
+  /** Disables both replacement choices while the current draft is being retired. */
+  busy?: boolean;
 }) {
   const [setUpMyself, setSetUpMyself] = useState(false);
   // Once they chose to set it up (or already added people), it's a manual setup.
@@ -328,6 +342,7 @@ export function WizardCheckStep({
             <button
               type="button"
               className="button primary"
+              disabled={busy}
               onClick={onUploadAgain}
             >
               Upload a different file
@@ -336,6 +351,7 @@ export function WizardCheckStep({
           <button
             type="button"
             className="button secondary"
+            disabled={busy}
             onClick={() => setSetUpMyself(true)}
           >
             Set it up myself
@@ -557,10 +573,10 @@ function FeesDrawer({
   const [chosen, setChosen] = useState<string>(
     answers.fees?.value ?? FeeChoice.BEFORE_SPLIT,
   );
+  const [explicitlyChosen, setExplicitlyChosen] = useState(false);
   const name = useId();
   function save() {
-    if (chosen === (answers.fees?.value ?? FeeChoice.BEFORE_SPLIT))
-      return onCancel();
+    if (!feesNeedSave(answers, chosen, explicitlyChosen)) return onCancel();
     const choice = question.choices.find((c) => c.id === chosen);
     onSave(choice ? choice.apply(answers) : answers);
   }
@@ -574,7 +590,11 @@ function FeesDrawer({
               type="radio"
               name={name}
               checked={chosen === choice.id}
-              onChange={() => setChosen(choice.id)}
+              onClick={() => setExplicitlyChosen(true)}
+              onChange={() => {
+                setExplicitlyChosen(true);
+                setChosen(choice.id);
+              }}
             />
             <span>
               <strong>{choice.label}</strong>
