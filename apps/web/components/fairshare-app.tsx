@@ -800,43 +800,43 @@ export default function FairshareApp() {
                         <>
                           <div className="detail-columns ag-overview">
                             <div className="ag-stack">
-                            <section className="panel ag-card">
-                              {!active && (
-                                <>
-                                  <h2>Revenue rules</h2>
-                                  <p className="muted">
-                                    No active rules yet. Review and approve a
-                                    version to begin.
-                                  </p>
-                                </>
-                              )}
-                              {active ? (
-                                <RevenueRules
-                                  key={`${selected.id}:${active.id}`}
-                                >
-                                  <RuleSteps
-                                    agreement={selected}
-                                    rules={active.rules}
-                                  />
-                                </RevenueRules>
-                              ) : (
-                                <Empty
-                                  title="Agree on the rules first"
-                                  action={
-                                    <Button
-                                      onClick={() =>
-                                        changeAgreementTab(AgreementTab.Terms)
-                                      }
-                                    >
-                                      Set up terms
-                                    </Button>
-                                  }
-                                >
-                                  Add your people, upload the agreement and
-                                  review a proposed split together.
-                                </Empty>
-                              )}
-                            </section>
+                              <section className="panel ag-card">
+                                {!active && (
+                                  <>
+                                    <h2>Revenue rules</h2>
+                                    <p className="muted">
+                                      No active rules yet. Review and approve a
+                                      version to begin.
+                                    </p>
+                                  </>
+                                )}
+                                {active ? (
+                                  <RevenueRules
+                                    key={`${selected.id}:${active.id}`}
+                                  >
+                                    <RuleSteps
+                                      agreement={selected}
+                                      rules={active.rules}
+                                    />
+                                  </RevenueRules>
+                                ) : (
+                                  <Empty
+                                    title="Agree on the rules first"
+                                    action={
+                                      <Button
+                                        onClick={() =>
+                                          changeAgreementTab(AgreementTab.Terms)
+                                        }
+                                      >
+                                        Set up terms
+                                      </Button>
+                                    }
+                                  >
+                                    Add your people, upload the agreement and
+                                    review a proposed split together.
+                                  </Empty>
+                                )}
+                              </section>
                               {active?.rules.advance && (
                                 <RecoupmentCard
                                   agreement={selected}
@@ -990,148 +990,148 @@ export default function FairshareApp() {
                           )}
                           {!editing && latest ? (
                             <div className="ag-terms">
-                            <div className="ag-terms-main">
-                              <div className="ag-section-head">
-                                <div>
-                                  <div className="ag-title">
-                                    <h2
-                                      id="agreement-proposal-review"
-                                      tabIndex={-1}
-                                    >
-                                      Rules in v{latest.id}
-                                    </h2>
-                                    <span
-                                      className={`status-chip ${
-                                        latest.id ===
-                                          selected.value.activeVersionId ||
-                                        latest.status === "APPROVED"
-                                          ? "good"
-                                          : ""
-                                      }`}
-                                    >
-                                      {latest.id ===
-                                      selected.value.activeVersionId
-                                        ? "Active"
-                                        : title(latest.status)}
-                                    </span>
-                                  </div>
-                                  <p className="muted">
-                                    People agree on the rules; the engine
-                                    calculates the money.
-                                  </p>
-                                </div>
-                                <Button
-                                  variant="secondary"
-                                  disabled={busy}
-                                  onClick={() => {
-                                    setPreview(null);
-                                    setEditing(true);
-                                  }}
-                                >
-                                  Propose revised terms
-                                </Button>
-                              </div>
-                              <RuleSteps
-                                agreement={selected}
-                                rules={latest.rules}
-                                layout={RuleStepsLayout.Cards}
-                              />
-                              {latest.rules.source.excerpt && (
-                                <figure className="ag-source">
-                                  <figcaption>
-                                    {latest.rules.source.origin ===
-                                    "HUMAN_PROPOSAL"
-                                      ? "Human proposal"
-                                      : "Source wording"}
-                                    {latest.rules.source.clause && (
-                                      <span className="clause-chip">
-                                        §{" "}
-                                        {latest.rules.source.clause.replace(
-                                          /^(clause|section)\s+/i,
-                                          "",
-                                        )}
+                              <div className="ag-terms-main">
+                                <div className="ag-section-head">
+                                  <div>
+                                    <div className="ag-title">
+                                      <h2
+                                        id="agreement-proposal-review"
+                                        tabIndex={-1}
+                                      >
+                                        Rules in v{latest.id}
+                                      </h2>
+                                      <span
+                                        className={`status-chip ${
+                                          latest.id ===
+                                            selected.value.activeVersionId ||
+                                          latest.status === "APPROVED"
+                                            ? "good"
+                                            : ""
+                                        }`}
+                                      >
+                                        {latest.id ===
+                                        selected.value.activeVersionId
+                                          ? "Active"
+                                          : title(latest.status)}
                                       </span>
-                                    )}
-                                  </figcaption>
-                                  <blockquote>
-                                    {latest.rules.source.excerpt}
-                                  </blockquote>
-                                </figure>
-                              )}
-                              <ContractReviewPanel
-                                key={latest.id}
-                                agreement={selected}
-                                version={latest}
-                                userId={user.id}
-                                busy={busy}
-                                onAction={async (action, payload) => {
-                                  setBusy(true);
-                                  setError("");
-                                  setNotice("");
-                                  try {
-                                    await mutate(
-                                      `/versions/${latest.id}/${action}`,
-                                      payload,
-                                    );
-                                    if (action === "approve")
-                                      setApprovedForPayout(selected.id);
-                                  } finally {
-                                    setBusy(false);
-                                  }
-                                }}
-                              />
-                              {approvedForPayout === selected.id && (
-                                <PostApprovalPayout
-                                  base={base}
-                                  onDismiss={() => setApprovedForPayout("")}
-                                  onSetup={() => {
-                                    setApprovedForPayout("");
-                                    changeAgreementTab(AgreementTab.People);
+                                    </div>
+                                    <p className="muted">
+                                      People agree on the rules; the engine
+                                      calculates the money.
+                                    </p>
+                                  </div>
+                                  <Button
+                                    variant="secondary"
+                                    disabled={busy}
+                                    onClick={() => {
+                                      setPreview(null);
+                                      setEditing(true);
+                                    }}
+                                  >
+                                    Propose revised terms
+                                  </Button>
+                                </div>
+                                <RuleSteps
+                                  agreement={selected}
+                                  rules={latest.rules}
+                                  layout={RuleStepsLayout.Cards}
+                                />
+                                {latest.rules.source.excerpt && (
+                                  <figure className="ag-source">
+                                    <figcaption>
+                                      {latest.rules.source.origin ===
+                                      "HUMAN_PROPOSAL"
+                                        ? "Human proposal"
+                                        : "Source wording"}
+                                      {latest.rules.source.clause && (
+                                        <span className="clause-chip">
+                                          §{" "}
+                                          {latest.rules.source.clause.replace(
+                                            /^(clause|section)\s+/i,
+                                            "",
+                                          )}
+                                        </span>
+                                      )}
+                                    </figcaption>
+                                    <blockquote>
+                                      {latest.rules.source.excerpt}
+                                    </blockquote>
+                                  </figure>
+                                )}
+                                <ContractReviewPanel
+                                  key={latest.id}
+                                  agreement={selected}
+                                  version={latest}
+                                  userId={user.id}
+                                  busy={busy}
+                                  onAction={async (action, payload) => {
+                                    setBusy(true);
+                                    setError("");
+                                    setNotice("");
+                                    try {
+                                      await mutate(
+                                        `/versions/${latest.id}/${action}`,
+                                        payload,
+                                      );
+                                      if (action === "approve")
+                                        setApprovedForPayout(selected.id);
+                                    } finally {
+                                      setBusy(false);
+                                    }
                                   }}
                                 />
-                              )}
-                              <ReviewDiscussion
-                                key={`${selected.id}:${latest.id}`}
-                                base={base}
-                                agreement={selected}
-                                version={latest}
-                                canWrite={
-                                  workspaces.find((w) => w.id === workspace)
-                                    ?.role !== "VIEWER"
-                                }
-                                onDirtyChange={setDraftDirty}
-                              />
-                              <section className="section">
-                                <h3>Preview an incoming payment</h3>
-                                <p className="muted">
-                                  Illustrative only. No payment or payout is
-                                  created.
-                                </p>
-                                <PreviewForm
-                                  busy={busy}
-                                  onSubmit={(grossCents, feeCents) =>
-                                    run(async () =>
-                                      setPreview(
-                                        await api(
-                                          `${base}/versions/${latest.id}/preview`,
-                                          "POST",
-                                          { grossCents, feeCents },
-                                        ),
-                                      ),
-                                    )
-                                  }
-                                />
-                                {preview && (
-                                  <AllocationTable
-                                    allocations={preview.allocations}
-                                    agreement={selected}
+                                {approvedForPayout === selected.id && (
+                                  <PostApprovalPayout
+                                    base={base}
+                                    onDismiss={() => setApprovedForPayout("")}
+                                    onSetup={() => {
+                                      setApprovedForPayout("");
+                                      changeAgreementTab(AgreementTab.People);
+                                    }}
                                   />
                                 )}
-                              </section>
-                            </div>
-                            <aside className="ag-terms-rail">
-                              <AgreementVersions agreement={selected} />
-                            </aside>
+                                <ReviewDiscussion
+                                  key={`${selected.id}:${latest.id}`}
+                                  base={base}
+                                  agreement={selected}
+                                  version={latest}
+                                  canWrite={
+                                    workspaces.find((w) => w.id === workspace)
+                                      ?.role !== "VIEWER"
+                                  }
+                                  onDirtyChange={setDraftDirty}
+                                />
+                                <section className="section">
+                                  <h3>Preview an incoming payment</h3>
+                                  <p className="muted">
+                                    Illustrative only. No payment or payout is
+                                    created.
+                                  </p>
+                                  <PreviewForm
+                                    busy={busy}
+                                    onSubmit={(grossCents, feeCents) =>
+                                      run(async () =>
+                                        setPreview(
+                                          await api(
+                                            `${base}/versions/${latest.id}/preview`,
+                                            "POST",
+                                            { grossCents, feeCents },
+                                          ),
+                                        ),
+                                      )
+                                    }
+                                  />
+                                  {preview && (
+                                    <AllocationTable
+                                      allocations={preview.allocations}
+                                      agreement={selected}
+                                    />
+                                  )}
+                                </section>
+                              </div>
+                              <aside className="ag-terms-rail">
+                                <AgreementVersions agreement={selected} />
+                              </aside>
                             </div>
                           ) : (
                             <>
@@ -1685,8 +1685,8 @@ export default function FairshareApp() {
                           key={workspace}
                           workspace={workspace}
                           canEdit={
-                            workspaces.find((w) => w.id === workspace)
-                              ?.role !== "VIEWER"
+                            workspaces.find((w) => w.id === workspace)?.role !==
+                            "VIEWER"
                           }
                         />
                       ) : (

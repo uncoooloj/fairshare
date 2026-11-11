@@ -21,7 +21,11 @@ import {
 } from "../lib/model";
 import { Badge, Button, Empty, Field, Notice } from "./ui";
 import { PaymentGridStatus } from "../src/components/paymentGridModel";
-import { Avatar as ListAvatar, AvatarSize as ListAvatarSize, SplitBar as ListSplitBar } from "./person";
+import {
+  Avatar as ListAvatar,
+  AvatarSize as ListAvatarSize,
+  SplitBar as ListSplitBar,
+} from "./person";
 import { toneInRoster as listTone } from "../lib/person";
 import { formatDay as listDay, formatExact as listExact } from "../lib/dates";
 export function Logo() {
@@ -160,7 +164,9 @@ export function AgreementList({
   const lastUpdated = (a: Agreement) =>
     a.value.audit.reduce<string | undefined>(
       (latest, event) =>
-        !latest || Date.parse(event.at) > Date.parse(latest) ? event.at : latest,
+        !latest || Date.parse(event.at) > Date.parse(latest)
+          ? event.at
+          : latest,
       undefined,
     );
   return (
@@ -168,7 +174,13 @@ export function AgreementList({
       <div className="list-toolbar ov-toolbar">
         <label className="search-field ov-search">
           <span className="sr-only">Search agreements</span>
-          <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none">
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+            width="16"
+            height="16"
+            fill="none"
+          >
             <path
               d="m20 20-4.2-4.2M17 11a6 6 0 1 1-12 0 6 6 0 0 1 12 0Z"
               stroke="currentColor"
@@ -184,7 +196,13 @@ export function AgreementList({
           />
         </label>
         <label className="agreement-status-filter ov-status-filter">
-          <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none">
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+            width="16"
+            height="16"
+            fill="none"
+          >
             <path
               d="M4 6h16M7 12h10m-7 6h4"
               stroke="currentColor"
@@ -234,11 +252,7 @@ export function AgreementList({
                 const status = agreementStatus(a);
                 const updated = lastUpdated(a);
                 return (
-                  <tr
-                    key={a.id}
-                    className="ov-row"
-                    onClick={() => onOpen(a)}
-                  >
+                  <tr key={a.id} className="ov-row" onClick={() => onOpen(a)}>
                     <td>
                       <button
                         className="text-button strong agreement-name"
@@ -266,7 +280,9 @@ export function AgreementList({
                       </div>
                     </td>
                     <td>
-                      <span className={`status-chip ${statusTone[status] || "neutral"}`}>
+                      <span
+                        className={`status-chip ${statusTone[status] || "neutral"}`}
+                      >
                         {status}
                       </span>
                     </td>
@@ -311,7 +327,13 @@ export function AgreementList({
                       )}
                     </td>
                     <td className="ov-chevron-cell" aria-hidden="true">
-                      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" className="ov-chevron">
+                      <svg
+                        viewBox="0 0 24 24"
+                        width="16"
+                        height="16"
+                        fill="none"
+                        className="ov-chevron"
+                      >
                         <path
                           d="m9 6 6 6-6 6"
                           stroke="currentColor"

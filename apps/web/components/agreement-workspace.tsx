@@ -1,6 +1,12 @@
 "use client";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { money, title, type Agreement, type Rules, type Version } from "../lib/model";
+import {
+  money,
+  title,
+  type Agreement,
+  type Rules,
+  type Version,
+} from "../lib/model";
 import { formatDay, formatExact } from "../lib/dates";
 import { toneInRoster } from "../lib/person";
 import { PaymentGridStatus } from "../src/components/paymentGridModel";

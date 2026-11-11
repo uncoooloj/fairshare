@@ -171,50 +171,50 @@ export function AgreementPeople({
                         </svg>
                       </summary>
                       <div className="ag-menu-list">
-                      {version &&
-                        canRemind(
-                          agreement,
-                          version,
-                          userId,
-                          member.userId,
-                        ) && (
-                          <ReviewReminder
-                            base={base}
-                            agreement={agreement}
-                            version={version}
-                            userId={userId}
-                            recipientId={member.userId}
-                          />
+                        {version &&
+                          canRemind(
+                            agreement,
+                            version,
+                            userId,
+                            member.userId,
+                          ) && (
+                            <ReviewReminder
+                              base={base}
+                              agreement={agreement}
+                              version={version}
+                              userId={userId}
+                              recipientId={member.userId}
+                            />
+                          )}
+                        {member.userId === userId && (
+                          <Button
+                            type="button"
+                            variant="quiet"
+                            onClick={() => {
+                              const form = document.getElementById(
+                                "agreement-payout-destination",
+                              );
+                              form?.scrollIntoView({
+                                behavior: "smooth",
+                                block: "center",
+                              });
+                              form
+                                ?.querySelector<HTMLInputElement>("input")
+                                ?.focus({ preventScroll: true });
+                            }}
+                          >
+                            Manage my payout destination
+                          </Button>
                         )}
-                      {member.userId === userId && (
-                        <Button
-                          type="button"
-                          variant="quiet"
-                          onClick={() => {
-                            const form = document.getElementById(
-                              "agreement-payout-destination",
-                            );
-                            form?.scrollIntoView({
-                              behavior: "smooth",
-                              block: "center",
-                            });
-                            form
-                              ?.querySelector<HTMLInputElement>("input")
-                              ?.focus({ preventScroll: true });
-                          }}
-                        >
-                          Manage my payout destination
-                        </Button>
-                      )}
-                      <p className="muted">
-                        {agreement.value.versions.length
-                          ? "This agreement’s participant list is locked because a proposal exists."
-                          : "Participants can be added before the first proposal. Removing participants or changing the organizer is not supported."}
-                      </p>
-                      <p className="muted">
-                        Workspace permissions cannot change while a person
-                        belongs to an agreement.
-                      </p>
+                        <p className="muted">
+                          {agreement.value.versions.length
+                            ? "This agreement’s participant list is locked because a proposal exists."
+                            : "Participants can be added before the first proposal. Removing participants or changing the organizer is not supported."}
+                        </p>
+                        <p className="muted">
+                          Workspace permissions cannot change while a person
+                          belongs to an agreement.
+                        </p>
                       </div>
                     </details>
                   </td>
