@@ -1669,8 +1669,7 @@ td:last-child {
   background: #fff;
   box-shadow: 0 16px 48px #1725541f;
 }
-.notification-heading,
-.notification-toolbar {
+.notification-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1680,25 +1679,67 @@ td:last-child {
   margin: 0;
   font-size: 20px;
 }
+.notification-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: -6px;
+}
+.notification-tip-anchor {
+  position: relative;
+  display: inline-flex;
+}
+.notification-tip {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 5;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--color-ink);
+  color: #fff;
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s;
+}
+.notification-tip-anchor:hover .notification-tip,
+.notification-tip-anchor:focus-within .notification-tip {
+  opacity: 1;
+}
 .notification-events {
-  margin: 12px 0 0;
+  margin: 12px -12px 0;
   padding: 0;
   list-style: none;
 }
 .notification-events li {
-  padding: 16px 0;
   border-top: 1px solid #e5e7eb;
 }
-.notification-events h3 {
-  margin: 6px 0;
-  font-size: 15px;
+.notification-row {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  padding: 14px 12px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
 }
-.notification-events p {
-  margin: 6px 0;
+button.notification-row {
+  cursor: pointer;
+}
+button.notification-row:hover {
+  background: var(--color-surface);
+}
+.notification-name {
+  font-size: 15px;
+  font-weight: 600;
 }
 .notification-events time,
-.notification-events small {
-  display: block;
+.notification-kind {
   font-size: 12px;
   color: #64748b;
 }

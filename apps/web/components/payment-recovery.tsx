@@ -94,8 +94,8 @@ export function PaymentRecovery({
         <div>
           <h3>Payment problems</h3>
           <p>
-            If a payment looks stuck, check it against PayPal. Checking never
-            sends money.
+            If a payment looks stuck, check it against PayPal. A confirmed
+            payment can be split and follow your payout settings.
           </p>
         </div>
         <span className={styles.sandbox}>Sandbox only</span>

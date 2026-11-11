@@ -17,12 +17,27 @@ test("notification panel uses the authenticated feed and distinguishes loading, 
   assert.match(panel, /Nothing yet\. Approvals and payouts show up here\./);
   assert.doesNotMatch(panel, /mark.*read|unreadCount|"POST"/i);
 });
-test("panel has keyboard dismissal, focus restoration and actual user-triggered refresh", () => {
+test("panel has keyboard dismissal, focus restoration and refreshes on open", () => {
   assert.match(panel, /aria-expanded=\{open\}/);
   assert.match(panel, /event.key === "Escape"/);
   assert.match(panel, /trigger.current\?\.focus\(\)/);
   assert.match(panel, /close.current\?\.focus\(\)/);
-  assert.match(panel, /setRefresh\(\(value\) => value \+ 1\)/);
+  assert.match(panel, /\}, \[open\]\);\s*useEffect/);
+  assert.doesNotMatch(panel, /Refresh updates|setRefresh/);
+});
+test("panel header is a gear and a ×, and each row opens its agreement", () => {
+  assert.match(
+    panel,
+    /<CloseButton\s+ref=\{close\}\s+label="Close notifications"/,
+  );
+  assert.match(panel, /aria-label="Notification settings"/);
+  assert.match(panel, /role="tooltip"/);
+  assert.match(panel, /<GearIcon \/>/);
+  assert.doesNotMatch(panel, />\s*(Close|Preferences|View agreement)\s*</);
+  assert.match(
+    panel,
+    /<button\s+type="button"\s+className="notification-row"\s+onClick/,
+  );
 });
 test("notification navigation preserves draft guards and accounts are isolated", () => {
   const wiring = app.slice(
@@ -37,7 +52,7 @@ test("notification navigation preserves draft guards and accounts are isolated",
   assert.match(panel, /agreement.id === event.agreementId/);
   assert.match(
     panel,
-    /onOpenAgreement\(event.workspaceId, event.agreementId\)/,
+    /onOpenAgreement\(\s*event.workspaceId,\s*event.agreementId,?\s*\)/,
   );
   assert.match(panel, /no longer have access to this agreement/);
 });

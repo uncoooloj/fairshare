@@ -184,6 +184,7 @@ export function AgreementCreationWizard({
   onKeepDraft,
   onClose,
   onBusyChange,
+  onLeaveAttempt = () => {},
 }: {
   owner: { id: string; name: string; email: string };
   prefill?: WizardPrefill;
@@ -196,6 +197,7 @@ export function AgreementCreationWizard({
   /** × before anything was saved, or after Discard deleted the draft. */
   onClose: () => void;
   onBusyChange: (busy: boolean) => void;
+  onLeaveAttempt?: (attempt: () => boolean) => void;
 }) {
   const self = { name: owner.name, userId: owner.id };
   const [initial] = useState(() =>
@@ -565,13 +567,26 @@ export function AgreementCreationWizard({
     }
   }
 
-  function close() {
-    if (busy || stage === WizardStage.READING) return;
-    if (stage === WizardStage.SENT && agreement) return onFinish(agreement);
+  function attemptLeave() {
+    if (busy || stage === WizardStage.READING) return false;
+    if (stage === WizardStage.SENT && agreement) {
+      onFinish(agreement);
+      return false;
+    }
     const dirty = !!file || !!text.trim();
-    if (!created && !dirty) return onClose();
+    if (!created && !dirty) return true;
     setCloseError("");
     setClosing(true);
+    return false;
+  }
+
+  useEffect(() => {
+    onLeaveAttempt(attemptLeave);
+    return () => onLeaveAttempt(() => true);
+  });
+
+  function close() {
+    if (attemptLeave()) onClose();
   }
 
   const dialog = closing && (
