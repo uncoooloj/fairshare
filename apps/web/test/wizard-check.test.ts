@@ -18,6 +18,7 @@ import {
   feeLine,
   feesNeedSave,
   splitSummary,
+  wizardCitations,
   REFUND_LINE,
 } from "../components/wizard-check-step";
 import { StandardQuestionId } from "../lib/standard-questions";
@@ -113,6 +114,42 @@ test("the card lines read like the spec", () => {
   assert.equal(
     clauseLabel({ value: 1, source: AnswerSource.PERSON, clause: "4.2" }),
     undefined,
+  );
+});
+
+test("Check reader only maps unique exact document quotes to highlights", () => {
+  const text = "1. Midnight Sessions\n4.2 Maya 50%, Jordan 30%, Riley 20%.";
+  const answers = midnight({
+    name: {
+      value: "Midnight Sessions",
+      source: AnswerSource.DOCUMENT,
+      clause: "1",
+      quote: "Midnight Sessions",
+    },
+    people: {
+      value: people,
+      source: AnswerSource.DOCUMENT,
+      clause: "4.2",
+      quote: "Maya 50%, Jordan 30%, Riley 20%.",
+    },
+  });
+  const citations = wizardCitations(answers, {
+    documentId: "draft-source",
+    text,
+    provenance: { pages: [{ page: 1, start: 0, end: text.length }] },
+  });
+  assert.deepEqual(citations.map((citation) => citation.id), [
+    "wizard-agreement",
+    "wizard-split",
+  ]);
+  assert.equal(citations[1].highlight?.start, text.indexOf("Maya"));
+  assert.equal(citations[1].page, 1);
+  assert.deepEqual(
+    wizardCitations(
+      { ...answers, people: { ...answers.people, quote: "Maya 50%" } },
+      { documentId: "draft-source", text: `${text}\nMaya 50%` },
+    ).map((citation) => citation.id),
+    ["wizard-agreement"],
   );
 });
 

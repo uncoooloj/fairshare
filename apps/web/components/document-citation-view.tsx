@@ -11,6 +11,7 @@ import {
   matchesCitationTarget,
   OPEN_CITATION_EVENT,
   type OpenCitationDetail,
+  type DocumentCitation,
   pageBlocks,
   pageIndexOf,
   SEARCH_PREFIX,
@@ -76,6 +77,8 @@ export function DocumentCitationView({
   nameOf,
   originalUrl,
   pendingCitation,
+  citations: suppliedCitations,
+  onCitationSelect,
 }: {
   version?: Version;
   document: {
@@ -94,6 +97,10 @@ export function DocumentCitationView({
   originalUrl?: string;
   /** A citation chosen from other terms or another source document, shown once it loads. */
   pendingCitation?: OpenCitationDetail;
+  /** Draft Check supplies only citations whose exact saved ranges are valid. */
+  citations?: DocumentCitation[];
+  /** Lets an embedding surface focus the rule that owns a selected highlight. */
+  onCitationSelect?: (id: string) => void;
 }) {
   const [selected, setSelected] = useState<string | null>(null);
   const [pageIndex, setPageIndex] = useState(0);
@@ -112,8 +119,8 @@ export function DocumentCitationView({
   const body = useRef<HTMLDivElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
   const all = useMemo(
-    () => documentCitations(version, document),
-    [version, document],
+    () => suppliedCitations ?? documentCitations(version, document),
+    [suppliedCitations, version, document],
   );
   // Rules the team typed are not clauses: count them, never cite them.
   const cited = all.filter(fromDocument);
@@ -200,6 +207,11 @@ export function DocumentCitationView({
     if (index >= 0) setPageIndex(index);
     setSelected(null);
     requestAnimationFrame(() => setSelected(id));
+    onCitationSelect?.(id);
+  }
+  function select(id: string) {
+    setSelected(id);
+    onCitationSelect?.(id);
   }
   useEffect(() => {
     if (
@@ -375,7 +387,7 @@ export function DocumentCitationView({
               clauses={pdfClauses}
               selected={selected}
               search={{ query, current: pageHit }}
-              onSelect={setSelected}
+              onSelect={select}
               onReady={(count) => {
                 setPdfPageCount(count);
                 setPdfState(PdfLoadState.Ready);
@@ -421,7 +433,7 @@ export function DocumentCitationView({
                               data-ids={ids}
                               data-selected={selected === clauseId}
                               aria-pressed={selected === clauseId}
-                              onClick={() => setSelected(clauseId)}
+                              onClick={() => select(clauseId)}
                             >
                               {segment.text}
                             </button>
@@ -457,7 +469,7 @@ export function DocumentCitationView({
       <aside className="dv-clauses" aria-labelledby="dv-clauses-title">
         <h3 id="dv-clauses-title">Cited clauses</h3>
         {cited.length > 0 && <p className="muted">Click one to jump to it.</p>}
-        {cited.length > 0 && version && (
+        {cited.length > 0 && (
           <ul>
             {cited.map((citation) => {
               const index = citation.highlight
@@ -484,7 +496,10 @@ export function DocumentCitationView({
                       )}
                     </span>
                     <span className="dv-clause-summary">
-                      {citationSummary(citation.id, version, nameOf)}
+                      {citation.summary ??
+                        (version
+                          ? citationSummary(citation.id, version, nameOf)
+                          : citation.label)}
                     </span>
                     {!citation.highlight && (
                       <span className="dv-clause-note">

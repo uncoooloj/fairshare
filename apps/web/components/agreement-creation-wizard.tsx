@@ -44,6 +44,7 @@ import {
 import { PeopleStep, validatePeopleEmails } from "./people-step";
 import { ReadingDocument } from "./reading-document";
 import { CheckMode, WizardCheckStep } from "./wizard-check-step";
+import { originalDocumentUrl, type DocumentRecord } from "./agreement-document";
 import { WizardFrame, WizardStep, WizardStepper } from "./wizard-chrome";
 import { WizardCloseDialog } from "./wizard-close-dialog";
 import {
@@ -919,6 +920,36 @@ export function AgreementCreationWizard({
           busy={busy}
           onUploadAgain={() => void uploadAgain()}
           onSetUpMyself={() => setCheckMode(CheckMode.MANUAL)}
+          document={{
+            documentId: created?.documentId ?? "",
+            text: created?.documentText ?? "",
+            provenance: {
+              inputType:
+                mode === DocumentMode.UPLOAD && file?.name.toLowerCase().endsWith(".pdf")
+                  ? "PDF"
+                  : mode === DocumentMode.UPLOAD && file?.name.toLowerCase().endsWith(".docx")
+                    ? "DOCX"
+                    : "TEXT",
+            },
+            hasOriginal: mode === DocumentMode.UPLOAD && !!file,
+          } satisfies DocumentRecord}
+          originalUrl={
+            created && mode === DocumentMode.UPLOAD
+              ? originalDocumentUrl(workspaceBase(created.workspaceId), {
+                  documentId: created.documentId,
+                  hasOriginal: true,
+                  text: created.documentText,
+                })
+              : undefined
+          }
+          fileName={
+            mode === DocumentMode.UPLOAD && file ? file.name : "Pasted agreement"
+          }
+          sourceDocumentIds={
+            created
+              ? { agreement: created.documentId, advance: created.documentId }
+              : undefined
+          }
         />
         {created?.lowConfidence && (
           <p className="wiz-warning" role="note">

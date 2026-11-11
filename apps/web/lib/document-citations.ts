@@ -5,6 +5,8 @@ export interface DocumentCitation {
   id: string;
   label: string;
   reference: Source;
+  /** A caller-provided rule summary, used before a draft has a Version. */
+  summary?: string;
   highlight?: SourceHighlight;
   page?: number;
   unavailable?: string;
