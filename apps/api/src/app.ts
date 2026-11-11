@@ -73,6 +73,7 @@ function domainErrorStatus(code: string): number {
       "MEMBERS_LOCKED",
       "PENDING_MEMBER",
       "PENDING_MEMBERS",
+      "PAYOUT_DESTINATION_CONFLICT",
       "NOT_A_DRAFT",
       "DUPLICATE_PERSON",
       "NOT_PENDING",
