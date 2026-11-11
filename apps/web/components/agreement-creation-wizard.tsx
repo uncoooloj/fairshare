@@ -440,6 +440,9 @@ export function AgreementCreationWizard({
   const [created, setCreated] = useState<CreatedAgreement | null>(
     resume?.created ?? null,
   );
+  // Persisted draft answers do not record their producing document. A fresh upload in
+  // this same wizard does, so it can restore source citations after replacement.
+  const [sourceIdentityKnown, setSourceIdentityKnown] = useState(!resume);
   const [agreement, setAgreement] = useState<Agreement | null>(
     resume?.created.agreement ?? null,
   );
@@ -589,6 +592,7 @@ export function AgreementCreationWizard({
       setBusy(false);
     }
     setCreated(made);
+    setSourceIdentityKnown(true);
     setAgreement(made.agreement);
     if (read) setStage(WizardStage.READING);
     else {
@@ -721,6 +725,7 @@ export function AgreementCreationWizard({
       readingGeneration.current++;
       requestId.current = "";
       setCreated(null);
+      setSourceIdentityKnown(false);
       setAgreement(null);
       setAnswers(null);
       setLinks({});
@@ -946,7 +951,7 @@ export function AgreementCreationWizard({
             mode === DocumentMode.UPLOAD && file ? file.name : "Pasted agreement"
           }
           sourceDocumentIds={
-            created && !resume
+            created && sourceIdentityKnown
               ? { agreement: created.documentId, advance: created.documentId }
               : undefined
           }
