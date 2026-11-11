@@ -269,7 +269,11 @@ export function DocumentCitationView({
         : "This is the text we read from your file.";
   const zoomAt = ZOOM_STEPS.indexOf(zoom);
   return (
-    <div className={hideCitationRail ? "dv-layout dv-layout-no-clauses" : "dv-layout"}>
+    <div
+      className={
+        hideCitationRail ? "dv-layout dv-layout-no-clauses" : "dv-layout"
+      }
+    >
       <div className="dv-viewer">
         <div className="dv-bar">
           <p className="dv-file">
@@ -469,72 +473,76 @@ export function DocumentCitationView({
           )}
         </div>
       </div>
-      {!hideCitationRail && <aside className="dv-clauses" aria-labelledby="dv-clauses-title">
-        <h3 id="dv-clauses-title">Cited clauses</h3>
-        {cited.length > 0 && <p className="muted">Click one to jump to it.</p>}
-        {cited.length > 0 && (
-          <ul>
-            {cited.map((citation) => {
-              const index = citation.highlight
-                ? pageIndexOf(pages, citation.highlight.start)
-                : -1;
-              const clause =
-                clauseLabel(citation.reference.clause) || citation.label;
-              return (
-                <li key={citation.id}>
-                  <button
-                    type="button"
-                    className="dv-clause"
-                    disabled={!citation.highlight}
-                    aria-pressed={selected === citation.id}
-                    onClick={() => show(citation.id)}
-                  >
-                    <span className="dv-clause-meta">
-                      <span className="dv-chip">
-                        <Icon d={FILE_ICON} size={12} />
-                        {clause}
+      {!hideCitationRail && (
+        <aside className="dv-clauses" aria-labelledby="dv-clauses-title">
+          <h3 id="dv-clauses-title">Cited clauses</h3>
+          {cited.length > 0 && (
+            <p className="muted">Click one to jump to it.</p>
+          )}
+          {cited.length > 0 && (
+            <ul>
+              {cited.map((citation) => {
+                const index = citation.highlight
+                  ? pageIndexOf(pages, citation.highlight.start)
+                  : -1;
+                const clause =
+                  clauseLabel(citation.reference.clause) || citation.label;
+                return (
+                  <li key={citation.id}>
+                    <button
+                      type="button"
+                      className="dv-clause"
+                      disabled={!citation.highlight}
+                      aria-pressed={selected === citation.id}
+                      onClick={() => show(citation.id)}
+                    >
+                      <span className="dv-clause-meta">
+                        <span className="dv-chip">
+                          <Icon d={FILE_ICON} size={12} />
+                          {clause}
+                        </span>
+                        {paged && index >= 0 && (
+                          <span>Page {pages[index].page}</span>
+                        )}
                       </span>
-                      {paged && index >= 0 && (
-                        <span>Page {pages[index].page}</span>
+                      <span className="dv-clause-summary">
+                        {citation.summary ??
+                          (version
+                            ? citationSummary(citation.id, version, nameOf)
+                            : citation.label)}
+                      </span>
+                      {!citation.highlight && (
+                        <span className="dv-clause-note">
+                          {citation.reference.documentId !== document.documentId
+                            ? "From an earlier file"
+                            : "We can't find this wording in the text"}
+                        </span>
                       )}
-                    </span>
-                    <span className="dv-clause-summary">
-                      {citation.summary ??
-                        (version
-                          ? citationSummary(citation.id, version, nameOf)
-                          : citation.label)}
-                    </span>
-                    {!citation.highlight && (
-                      <span className="dv-clause-note">
-                        {citation.reference.documentId !== document.documentId
-                          ? "From an earlier file"
-                          : "We can't find this wording in the text"}
-                      </span>
-                    )}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-        {!version ? (
-          <p className="muted">These appear once you propose a split.</p>
-        ) : !cited.length && !added ? (
-          <p className="muted">No clauses cited yet.</p>
-        ) : null}
-        {added > 0 && (
-          <p className="dv-added">
-            {added === 1
-              ? "1 rule was added by you, not from the document"
-              : `${added} rules were added by you, not from the document`}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          {!version ? (
+            <p className="muted">These appear once you propose a split.</p>
+          ) : !cited.length && !added ? (
+            <p className="muted">No clauses cited yet.</p>
+          ) : null}
+          {added > 0 && (
+            <p className="dv-added">
+              {added === 1
+                ? "1 rule was added by you, not from the document"
+                : `${added} rules were added by you, not from the document`}
+            </p>
+          )}
+          <p className="sr-only" role="status">
+            {chosen
+              ? `Showing clause ${clauseLabel(chosen.reference.clause)}`
+              : ""}
           </p>
-        )}
-        <p className="sr-only" role="status">
-          {chosen
-            ? `Showing clause ${clauseLabel(chosen.reference.clause)}`
-            : ""}
-        </p>
-      </aside>}
+        </aside>
+      )}
     </div>
   );
 }

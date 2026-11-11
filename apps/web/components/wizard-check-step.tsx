@@ -243,55 +243,109 @@ export function wizardCitations(
     cited?: Cited<unknown>;
     documentId?: string;
   }> = [
-    { id: "wizard-agreement", label: "The agreement", summary: answers.name.value || "Agreement details", cited: answers.name, documentId: sourceDocumentIds?.agreement },
+    {
+      id: "wizard-agreement",
+      label: "The agreement",
+      summary: answers.name.value || "Agreement details",
+      cited: answers.name,
+      documentId: sourceDocumentIds?.agreement,
+    },
     // The agreement card has one citation chip. Prefer its name citation; use a
     // term citation only when no document-sourced name exists.
-    { id: "wizard-dates", label: "Dates", summary: dateRange(answers), cited: answers.name.source === AnswerSource.DOCUMENT ? undefined : answers.effectiveFrom ?? answers.effectiveTo, documentId: sourceDocumentIds?.agreement },
-    { id: "wizard-split", label: "Who gets what", summary: splitSummary(answers.people.value), cited: answers.people, documentId: sourceDocumentIds?.agreement },
-    { id: "wizard-fees", label: "PayPal fees", summary: feeLine(answers), cited: answers.fees, documentId: sourceDocumentIds?.agreement },
-    { id: "wizard-advance", label: "Paid back first", summary: advanceSentence(answers) ?? "Advance", cited: answers.advance, documentId: sourceDocumentIds?.advance },
+    {
+      id: "wizard-dates",
+      label: "Dates",
+      summary: dateRange(answers),
+      cited:
+        answers.name.source === AnswerSource.DOCUMENT
+          ? undefined
+          : (answers.effectiveFrom ?? answers.effectiveTo),
+      documentId: sourceDocumentIds?.agreement,
+    },
+    {
+      id: "wizard-split",
+      label: "Who gets what",
+      summary: splitSummary(answers.people.value),
+      cited: answers.people,
+      documentId: sourceDocumentIds?.agreement,
+    },
+    {
+      id: "wizard-fees",
+      label: "PayPal fees",
+      summary: feeLine(answers),
+      cited: answers.fees,
+      documentId: sourceDocumentIds?.agreement,
+    },
+    {
+      id: "wizard-advance",
+      label: "Paid back first",
+      summary: advanceSentence(answers) ?? "Advance",
+      cited: answers.advance,
+      documentId: sourceDocumentIds?.advance,
+    },
   ];
   const exact = candidates.flatMap((candidate) => {
     const { cited, documentId } = candidate;
-    const quote = cited?.source === AnswerSource.DOCUMENT ? cited.quote?.trim() : undefined;
+    const quote =
+      cited?.source === AnswerSource.DOCUMENT ? cited.quote?.trim() : undefined;
     const start = quote ? document.text.indexOf(quote) : -1;
-    if (!quote || documentId !== document.documentId || start < 0 ||
-      document.text.indexOf(quote, start + 1) !== -1)
+    if (
+      !quote ||
+      documentId !== document.documentId ||
+      start < 0 ||
+      document.text.indexOf(quote, start + 1) !== -1
+    )
       return [];
     return [{ candidate, quote, start, end: start + quote.length }];
   });
-  return exact.flatMap(({ candidate: { id, label, summary, cited }, quote, start, end }) => {
-    // A shared or intersecting span cannot tell which rule the person selected.
-    // Leave every owner uncited instead of making one rule masquerade as another.
-    if (
-      exact.filter(
-        (other) => other.start < end && other.end > start,
-      ).length !== 1
-    )
-      return [];
-    const pages = document.provenance?.pages;
-    const matches = Array.isArray(pages)
-      ? pages.filter((page) =>
-          Number.isInteger(page.page) && page.page > 0 &&
-          Number.isInteger(page.start) && Number.isInteger(page.end) &&
-          page.start >= 0 && page.end >= end && page.start <= start &&
-          page.end <= document.text.length,
-        )
-      : [];
-    return [{
-      id,
-      label,
-      summary,
-      reference: {
-        origin: "SOURCE_CLAUSE",
-        documentId: document.documentId,
-        clause: cited?.clause?.trim() || label,
-        excerpt: quote,
-      },
-      highlight: { id, label, kind: "SAVED_RULE", rawValue: quote, quote, start, end },
-      ...(matches.length === 1 ? { page: matches[0].page } : {}),
-    }];
-  });
+  return exact.flatMap(
+    ({ candidate: { id, label, summary, cited }, quote, start, end }) => {
+      // A shared or intersecting span cannot tell which rule the person selected.
+      // Leave every owner uncited instead of making one rule masquerade as another.
+      if (
+        exact.filter((other) => other.start < end && other.end > start)
+          .length !== 1
+      )
+        return [];
+      const pages = document.provenance?.pages;
+      const matches = Array.isArray(pages)
+        ? pages.filter(
+            (page) =>
+              Number.isInteger(page.page) &&
+              page.page > 0 &&
+              Number.isInteger(page.start) &&
+              Number.isInteger(page.end) &&
+              page.start >= 0 &&
+              page.end >= end &&
+              page.start <= start &&
+              page.end <= document.text.length,
+          )
+        : [];
+      return [
+        {
+          id,
+          label,
+          summary,
+          reference: {
+            origin: "SOURCE_CLAUSE",
+            documentId: document.documentId,
+            clause: cited?.clause?.trim() || label,
+            excerpt: quote,
+          },
+          highlight: {
+            id,
+            label,
+            kind: "SAVED_RULE",
+            rawValue: quote,
+            quote,
+            start,
+            end,
+          },
+          ...(matches.length === 1 ? { page: matches[0].page } : {}),
+        },
+      ];
+    },
+  );
 }
 
 function ClauseChip({
@@ -418,12 +472,17 @@ export function WizardCheckStep({
     : [];
   const openCitation = (id?: string) => {
     if (!id || !citations.some((citation) => citation.id === id)) return;
-    window.dispatchEvent(new CustomEvent("fairshare:open-citation", { detail: id }));
+    window.dispatchEvent(
+      new CustomEvent("fairshare:open-citation", { detail: id }),
+    );
   };
   const focusRule = (id: string) => {
     const target =
-      id === "wizard-dates" ? "wizard-agreement" :
-      id === "wizard-fees" ? "wizard-split" : id;
+      id === "wizard-dates"
+        ? "wizard-agreement"
+        : id === "wizard-fees"
+          ? "wizard-split"
+          : id;
     globalThis.document
       .getElementById(`wc-rule-${target}`)
       ?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -502,153 +561,178 @@ export function WizardCheckStep({
       ) : null}
 
       <div className="wc-rules">
-      <article className="wc-card" id="wc-rule-wizard-agreement">
-        <CardHead
-          title="The agreement"
-          cited={answers.name.value ? answers.name : answers.effectiveFrom}
-          onOpenCitation={
-            citations.some((citation) => citation.id === (answers.name.value ? "wizard-agreement" : "wizard-dates"))
-              ? () => openCitation(answers.name.value ? "wizard-agreement" : "wizard-dates")
-              : undefined
-          }
-          hideUnavailableCitation={!!document}
-          onChange={() => setDrawer(OpenDrawer.AGREEMENT)}
-          changeLabel="Change the agreement name and dates"
-        />
-        <p className="wc-name">
-          {answers.name.value.trim() || (
-            <span className="wc-missing">No name yet</span>
-          )}
-        </p>
-        <p className="wc-meta">
-          <span>{dateRange(answers)}</span>
-          <span aria-hidden="true">·</span>
-          <span>USD</span>
-        </p>
-      </article>
-
-      <article className={flagged(CheckCard.SPLIT)} id="wc-rule-wizard-split">
-        {flagNote(CheckCard.SPLIT)}
-        <CardHead
-          title="Who gets what"
-          cited={answers.people}
-          onOpenCitation={citations.some((citation) => citation.id === "wizard-split") ? () => openCitation("wizard-split") : undefined}
-          hideUnavailableCitation={!!document}
-          onChange={() => setDrawer(OpenDrawer.SPLIT)}
-          changeLabel="Change who gets what"
-        />
-        <div className="wc-split">
-          <SplitBar
-            segments={people.map((person) => ({
-              userId: person.key,
-              name: names.get(person.key) ?? person.name,
-              basisPoints: person.basisPoints,
-              tone: rosterTone(person, people),
-            }))}
+        <article className="wc-card" id="wc-rule-wizard-agreement">
+          <CardHead
+            title="The agreement"
+            cited={answers.name.value ? answers.name : answers.effectiveFrom}
+            onOpenCitation={
+              citations.some(
+                (citation) =>
+                  citation.id ===
+                  (answers.name.value ? "wizard-agreement" : "wizard-dates"),
+              )
+                ? () =>
+                    openCitation(
+                      answers.name.value ? "wizard-agreement" : "wizard-dates",
+                    )
+                : undefined
+            }
+            hideUnavailableCitation={!!document}
+            onChange={() => setDrawer(OpenDrawer.AGREEMENT)}
+            changeLabel="Change the agreement name and dates"
           />
-          <ul className="wc-legend" aria-label="Split">
-            {people.map((person) => (
-              <li key={person.key}>
-                <span
-                  className={`wc-dot tone-${rosterTone(person, people)}`}
-                  aria-hidden="true"
-                />
-                <span className="wc-legend-name">{names.get(person.key)}</span>
-                <span className="wc-legend-share">
-                  {person.basisPoints > 0
-                    ? `${percentText(person.basisPoints)}%`
-                    : "Not in the split"}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
-        {equalSplitGuessed && !splitTouched ? (
-          <p className="wc-note">
-            We didn't find the percentages. Here's an equal split to start from.
+          <p className="wc-name">
+            {answers.name.value.trim() || (
+              <span className="wc-missing">No name yet</span>
+            )}
           </p>
-        ) : null}
-        {mode === CheckMode.MANUAL && people.length === 1 ? (
-          <p className="wc-note">Add the people you split the money with.</p>
-        ) : null}
-        {example && people.length > 1 ? (
-          <p className="wc-example">{example}</p>
-        ) : null}
-        <p className="wc-fees">
-          <span>{fees}</span>
-          <ClauseChip
-            cited={answers.fees}
-            onOpen={citations.some((citation) => citation.id === "wizard-fees") ? () => openCitation("wizard-fees") : undefined}
-            hideWhenUnavailable={!!document}
+          <p className="wc-meta">
+            <span>{dateRange(answers)}</span>
+            <span aria-hidden="true">·</span>
+            <span>USD</span>
+          </p>
+        </article>
+
+        <article className={flagged(CheckCard.SPLIT)} id="wc-rule-wizard-split">
+          {flagNote(CheckCard.SPLIT)}
+          <CardHead
+            title="Who gets what"
+            cited={answers.people}
+            onOpenCitation={
+              citations.some((citation) => citation.id === "wizard-split")
+                ? () => openCitation("wizard-split")
+                : undefined
+            }
+            hideUnavailableCitation={!!document}
+            onChange={() => setDrawer(OpenDrawer.SPLIT)}
+            changeLabel="Change who gets what"
           />
-          {feesAsked(answers) ? null : (
+          <div className="wc-split">
+            <SplitBar
+              segments={people.map((person) => ({
+                userId: person.key,
+                name: names.get(person.key) ?? person.name,
+                basisPoints: person.basisPoints,
+                tone: rosterTone(person, people),
+              }))}
+            />
+            <ul className="wc-legend" aria-label="Split">
+              {people.map((person) => (
+                <li key={person.key}>
+                  <span
+                    className={`wc-dot tone-${rosterTone(person, people)}`}
+                    aria-hidden="true"
+                  />
+                  <span className="wc-legend-name">
+                    {names.get(person.key)}
+                  </span>
+                  <span className="wc-legend-share">
+                    {person.basisPoints > 0
+                      ? `${percentText(person.basisPoints)}%`
+                      : "Not in the split"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          {equalSplitGuessed && !splitTouched ? (
+            <p className="wc-note">
+              We didn't find the percentages. Here's an equal split to start
+              from.
+            </p>
+          ) : null}
+          {mode === CheckMode.MANUAL && people.length === 1 ? (
+            <p className="wc-note">Add the people you split the money with.</p>
+          ) : null}
+          {example && people.length > 1 ? (
+            <p className="wc-example">{example}</p>
+          ) : null}
+          <p className="wc-fees">
+            <span>{fees}</span>
+            <ClauseChip
+              cited={answers.fees}
+              onOpen={
+                citations.some((citation) => citation.id === "wizard-fees")
+                  ? () => openCitation("wizard-fees")
+                  : undefined
+              }
+              hideWhenUnavailable={!!document}
+            />
+            {feesAsked(answers) ? null : (
+              <button
+                type="button"
+                className="wc-link wc-change"
+                onClick={() => setDrawer(OpenDrawer.FEES)}
+                aria-label="Change who covers the PayPal fees"
+              >
+                Change
+              </button>
+            )}
+          </p>
+          <p className="wc-fees wc-refunds">{REFUND_LINE}</p>
+        </article>
+
+        {advance ? (
+          <article
+            className={flagged(CheckCard.ADVANCE)}
+            id="wc-rule-wizard-advance"
+          >
+            {flagNote(CheckCard.ADVANCE)}
+            <CardHead
+              title="Paid back first"
+              cited={advance}
+              onOpenCitation={
+                citations.some((citation) => citation.id === "wizard-advance")
+                  ? () => openCitation("wizard-advance")
+                  : undefined
+              }
+              hideUnavailableCitation={!!document}
+              onChange={() => setDrawer(OpenDrawer.ADVANCE)}
+              changeLabel="Change who paid upfront and how much"
+            />
+            <p className="wc-sentence">{advanceSentence(answers)}</p>
+            <fieldset className="wc-paid">
+              <legend>
+                Has {advanceWho ?? "this person"} already paid the {amount}?
+              </legend>
+              <div className="wc-segmented">
+                <label>
+                  <input
+                    type="radio"
+                    name={paidName}
+                    checked={advance.value.alreadyPaid === true}
+                    onChange={() => setPaid(true)}
+                  />
+                  <span>Yes</span>
+                </label>
+                <label>
+                  <input
+                    type="radio"
+                    name={paidName}
+                    checked={advance.value.alreadyPaid === false}
+                    onChange={() => setPaid(false)}
+                  />
+                  <span>Not yet</span>
+                </label>
+              </div>
+              {advance.value.alreadyPaid === false ? (
+                <p className="wiz-hint" role="status">
+                  {NOT_PAID_YET}
+                </p>
+              ) : null}
+            </fieldset>
+          </article>
+        ) : (
+          <p className="wc-quiet">
             <button
               type="button"
-              className="wc-link wc-change"
-              onClick={() => setDrawer(OpenDrawer.FEES)}
-              aria-label="Change who covers the PayPal fees"
+              className="wc-link"
+              onClick={() => setDrawer(OpenDrawer.ADVANCE)}
             >
-              Change
+              Someone paid upfront?
             </button>
-          )}
-        </p>
-        <p className="wc-fees wc-refunds">{REFUND_LINE}</p>
-      </article>
-
-      {advance ? (
-        <article className={flagged(CheckCard.ADVANCE)} id="wc-rule-wizard-advance">
-          {flagNote(CheckCard.ADVANCE)}
-          <CardHead
-            title="Paid back first"
-            cited={advance}
-            onOpenCitation={citations.some((citation) => citation.id === "wizard-advance") ? () => openCitation("wizard-advance") : undefined}
-            hideUnavailableCitation={!!document}
-            onChange={() => setDrawer(OpenDrawer.ADVANCE)}
-            changeLabel="Change who paid upfront and how much"
-          />
-          <p className="wc-sentence">{advanceSentence(answers)}</p>
-          <fieldset className="wc-paid">
-            <legend>
-              Has {advanceWho ?? "this person"} already paid the {amount}?
-            </legend>
-            <div className="wc-segmented">
-              <label>
-                <input
-                  type="radio"
-                  name={paidName}
-                  checked={advance.value.alreadyPaid === true}
-                  onChange={() => setPaid(true)}
-                />
-                <span>Yes</span>
-              </label>
-              <label>
-                <input
-                  type="radio"
-                  name={paidName}
-                  checked={advance.value.alreadyPaid === false}
-                  onChange={() => setPaid(false)}
-                />
-                <span>Not yet</span>
-              </label>
-            </div>
-            {advance.value.alreadyPaid === false ? (
-              <p className="wiz-hint" role="status">
-                {NOT_PAID_YET}
-              </p>
-            ) : null}
-          </fieldset>
-        </article>
-      ) : (
-        <p className="wc-quiet">
-          <button
-            type="button"
-            className="wc-link"
-            onClick={() => setDrawer(OpenDrawer.ADVANCE)}
-          >
-            Someone paid upfront?
-          </button>
-        </p>
-      )}
+          </p>
+        )}
       </div>
 
       {drawer === OpenDrawer.AGREEMENT ? (

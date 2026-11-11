@@ -113,7 +113,8 @@ export function SendReviewConfirmation({
         />
       </Field>
       <p className="send-review-note">
-        The rules become binding when everyone approves this exact version. We don’t send email; copy the message after sending and share it yourself.
+        The rules become binding when everyone approves this exact version. We
+        don’t send email; copy the message after sending and share it yourself.
       </p>
       {(requestError || error) && <p role="alert">{requestError || error}</p>}
       {sent ? (

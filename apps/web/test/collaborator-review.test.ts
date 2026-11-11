@@ -265,7 +265,10 @@ test("something's not right: choices map to the existing change topics; note req
     "Refunds",
     "Agreement overall",
   ])
-    assert.match(html, new RegExp(`<option value="[A-Z]+"[^>]*>${label}</option>`));
+    assert.match(
+      html,
+      new RegExp(`<option value="[A-Z]+"[^>]*>${label}</option>`),
+    );
   assert.match(html, /\(required\)/);
   assert.match(html, /<textarea[^>]*required/);
 });

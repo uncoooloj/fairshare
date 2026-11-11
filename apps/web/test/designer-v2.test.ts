@@ -25,7 +25,10 @@ test("overview reuses the revenue rules card, without setup banners or hedges", 
   assert.match(app, /version=\{shown\}/);
   assert.match(app, /Change the agreement/);
   assert.match(app, /Read the agreement →/);
-  assert.match(app, /const shown = active \?\? selected\.value\.versions\.at\(-1\)/);
+  assert.match(
+    app,
+    /const shown = active \?\? selected\.value\.versions\.at\(-1\)/,
+  );
   assert.match(app, /No split yet\. Agree on one in Agreement\./);
   assert.doesNotMatch(app, /Agree on the rules first|Set up terms/);
   assert.doesNotMatch(app, /This\s+is\s+not\s+proof\s+of/);
