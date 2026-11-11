@@ -1,3 +1,5 @@
+import { RuleImpactReview } from "./rule-impact-review";
+import { isRulesDraftChange } from "../lib/rule-impact";
 import { agreementEmptyState } from "../lib/agreement-empty-state";
 import { formatDate } from "../lib/preferences";
 import { ClarificationDecisions } from "./clarification-decisions";
@@ -593,6 +595,7 @@ export function RulesEditor({
   onDirty?: () => void;
   onReviewPeople?: () => void;
 }) {
+  const [draftRevision, setDraftRevision] = useState(0);
   const formRef = useRef<HTMLFormElement>(null);
   const [prefilled, setPrefilled] = useState(false);
   const suggestions = suggestedShares(
@@ -607,317 +610,382 @@ export function RulesEditor({
     [advance, setAdvance] = useState(!!old?.advance),
     [origin, setOrigin] = useState(old?.source.origin || "HUMAN_PROPOSAL");
   return (
-    <form
-      ref={formRef}
-      inert={busy}
-      onChange={onDirty}
-      className="section rules-editor"
-      onSubmit={(e) => {
-        e.preventDefault();
-        try {
-          const f = new FormData(e.currentTarget);
-          if (
-            !agreement.value.versions.length &&
-            f.get("rosterConfirmed") !== "on"
-          )
-            throw new Error(
-              "Confirm everyone is included before saving the first proposal.",
-            );
-          const shares = agreement.value.members.map((m) => ({
-            userId: m.userId,
-            basisPoints: parseShare(String(f.get(m.userId))),
-          }));
-          if (shares.reduce((s, v) => s + v.basisPoints, 0) !== 10000)
-            throw new Error("Shares must add up to exactly 100%.");
-          const ref = {
-            origin,
-            documentId,
-            clause: String(f.get("clause")),
-            excerpt: String(f.get("excerpt")),
-          };
-          if (origin === "SOURCE_CLAUSE" && !source.includes(ref.excerpt))
-            throw new Error(
-              "The quoted text must appear exactly in your saved agreement.",
-            );
-          const rules: Rules = {
-            currency: "USD",
-            shares,
-            feePolicy: fee,
-            ...(fee === "ORGANIZER_SHARE"
-              ? {
-                  feeBearerId: agreement.value.members.find(
-                    (m) => m.role === "ORGANIZER",
-                  )!.userId,
-                }
-              : {}),
-            source: ref,
-            unresolvedQuestions: proposalQuestions(
-              String(f.get("questions") || ""),
-              extraction,
+    <div className="source-rules-review">
+      <aside
+        className="review-source panel"
+        aria-label="Saved agreement source"
+      >
+        <h3>Source agreement</h3>
+        <p className="muted">
+          Compare each proposed term with the saved text. This is extracted
+          text; Document shows its saved provenance and any retained original
+          file.
+        </p>
+        <div className="review-source-text" tabIndex={0}>
+          {source ||
+            "No saved source text. Add the agreement document before proposing rules."}
+        </div>
+      </aside>
+      <form
+        ref={formRef}
+        inert={busy}
+        onChange={(event) => {
+          if (isRulesDraftChange(event.target)) onDirty?.();
+        }}
+        onChangeCapture={(event) => {
+          if (isRulesDraftChange(event.target))
+            setDraftRevision((value) => value + 1);
+        }}
+        className="section rules-editor"
+        onSubmit={(e) => {
+          e.preventDefault();
+          try {
+            const f = new FormData(e.currentTarget);
+            if (
+              !agreement.value.versions.length &&
+              f.get("rosterConfirmed") !== "on"
+            )
+              throw new Error(
+                "Confirm everyone is included before saving the first proposal.",
+              );
+            const shares = agreement.value.members.map((m) => ({
+              userId: m.userId,
+              basisPoints: parseShare(String(f.get(m.userId))),
+            }));
+            if (shares.reduce((s, v) => s + v.basisPoints, 0) !== 10000)
+              throw new Error("Shares must add up to exactly 100%.");
+            const ref = {
+              origin,
               documentId,
-              new Set(f.getAll("resolvedAiQuestion").map(String)),
-            ),
-          };
-          if (advance)
-            rules.advance = {
-              id: old?.advance?.id || crypto.randomUUID(),
-              recipientId: String(f.get("recipient")),
-              amountCents: parseCents(String(f.get("advance"))),
-              verified: f.get("verified") === "on",
-              source: ref,
+              clause: String(f.get("clause")),
+              excerpt: String(f.get("excerpt")),
             };
-          onSave(rules);
-        } catch (e) {
-          setError((e as Error).message);
-        }
-      }}
-    >
-      <h3>Proposed rules</h3>
-      {source.trim() === sampleAgreement && (
-        <Notice warning>
-          <strong>Sample text is not your participants’ agreement.</strong>
-          <p>
-            This example names Maya, Jordan and Riley. Your current participants
-            are{" "}
-            {agreement.value.members
-              .map((member) => member.displayName)
-              .join(", ")}
-            . Check that each person corresponds to a party in the source before
-            proposing terms.
-          </p>
-          <p>
-            Add the correct people in People, or replace this text with their
-            agreement. The percentages below are editable defaults, not
-            extracted or approved terms. Check the shares, advance and fees
-            against the source; everyone must review and approve the proposal.
-          </p>
-        </Notice>
-      )}
-      <p className="muted">
-        All participants review this version. Add people first; membership is
-        locked once a proposal exists.
-      </p>
-      {!agreement.value.versions.length && (
-        <section className="panel" aria-label="Confirm agreement participants">
-          <h4>Is everyone included?</h4>
-          <p>
-            This proposal will include{" "}
-            {agreement.value.members
-              .map((member) => member.displayName)
-              .join(", ")}
-            . Once saved, people cannot be added to this agreement, even in a
-            revised version.
-          </p>
-          {agreement.value.members.length === 1 && (
+            if (origin === "SOURCE_CLAUSE" && !source.includes(ref.excerpt))
+              throw new Error(
+                "The quoted text must appear exactly in your saved agreement.",
+              );
+            const rules: Rules = {
+              currency: "USD",
+              shares,
+              feePolicy: fee,
+              ...(fee === "ORGANIZER_SHARE"
+                ? {
+                    feeBearerId: agreement.value.members.find(
+                      (m) => m.role === "ORGANIZER",
+                    )!.userId,
+                  }
+                : {}),
+              source: ref,
+              unresolvedQuestions: proposalQuestions(
+                String(f.get("questions") || ""),
+                extraction,
+                documentId,
+                new Set(f.getAll("resolvedAiQuestion").map(String)),
+              ),
+            };
+            if (advance) {
+              const id = old?.advance?.id || crypto.randomUUID();
+              const recipientId = String(f.get("recipient"));
+              const amountCents = parseCents(String(f.get("advance")));
+              const advanceSource =
+                old?.advance &&
+                old.advance.id === id &&
+                old.advance.recipientId === recipientId &&
+                old.advance.amountCents === amountCents
+                  ? old.advance.source
+                  : ref;
+              rules.advance = {
+                id,
+                recipientId,
+                amountCents,
+                verified: f.get("verified") === "on",
+                source: advanceSource,
+              };
+            }
+            onSave(rules);
+          } catch (e) {
+            setError((e as Error).message);
+          }
+        }}
+      >
+        <h3>Proposed rules</h3>
+        {source.trim() === sampleAgreement && (
+          <Notice warning>
+            <strong>Sample text is not your participants’ agreement.</strong>
             <p>
-              Only you are included. If the document names other parties, add
-              them in People before continuing. A one-person agreement is
-              allowed when that is intentional.
+              This example names Maya, Jordan and Riley. Your current
+              participants are{" "}
+              {agreement.value.members
+                .map((member) => member.displayName)
+                .join(", ")}
+              . Check that each person corresponds to a party in the source
+              before proposing terms.
             </p>
-          )}
-          {onReviewPeople && (
+            <p>
+              Add the correct people in People, or replace this text with their
+              agreement. The percentages below are editable defaults, not
+              extracted or approved terms. Check the shares, advance and fees
+              against the source; everyone must review and approve the proposal.
+            </p>
+          </Notice>
+        )}
+        <p className="muted">
+          All participants review this version. Add people first; membership is
+          locked once a proposal exists.
+        </p>
+        {!agreement.value.versions.length && (
+          <section
+            className="panel"
+            aria-label="Confirm agreement participants"
+          >
+            <h4>Is everyone included?</h4>
+            <p>
+              This proposal will include{" "}
+              {agreement.value.members
+                .map((member) => member.displayName)
+                .join(", ")}
+              . Once saved, people cannot be added to this agreement, even in a
+              revised version.
+            </p>
+            {agreement.value.members.length === 1 && (
+              <p>
+                Only you are included. If the document names other parties, add
+                them in People before continuing. A one-person agreement is
+                allowed when that is intentional.
+              </p>
+            )}
+            {onReviewPeople && (
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={busy}
+                onClick={onReviewPeople}
+              >
+                Review or add people
+              </Button>
+            )}
+            <label className="check">
+              <input
+                key={agreement.value.members
+                  .map((member) => member.userId)
+                  .join(":")}
+                type="checkbox"
+                name="rosterConfirmed"
+                required
+              />
+              Everyone who needs a share or approval is included.
+            </label>
+          </section>
+        )}
+        {Object.keys(suggestions).length > 0 && (
+          <Notice>
+            <p>
+              AI found source-backed shares for{" "}
+              {Object.keys(suggestions).length} people. Copy them into this
+              draft, then check every value and complete any missing terms.
+            </p>
             <Button
               type="button"
               variant="secondary"
               disabled={busy}
-              onClick={onReviewPeople}
+              onClick={() => {
+                for (const [id, value] of Object.entries(suggestions)) {
+                  const input = formRef.current?.elements.namedItem(id);
+                  if (input instanceof HTMLInputElement) input.value = value;
+                }
+                onDirty?.();
+                setPrefilled(true);
+                setDraftRevision((value) => value + 1);
+              }}
             >
-              Review or add people
+              Use suggested shares
             </Button>
-          )}
-          <label className="check">
-            <input
-              key={agreement.value.members
-                .map((member) => member.userId)
-                .join(":")}
-              type="checkbox"
-              name="rosterConfirmed"
-              required
-            />
-            Everyone who needs a share or approval is included.
-          </label>
-        </section>
-      )}
-      {Object.keys(suggestions).length > 0 && (
-        <Notice>
-          <p>
-            AI found source-backed shares for {Object.keys(suggestions).length}{" "}
-            people. Copy them into this draft, then check every value and
-            complete any missing terms.
-          </p>
-          <Button
-            type="button"
-            variant="secondary"
-            disabled={busy}
-            onClick={() => {
-              for (const [id, value] of Object.entries(suggestions)) {
-                const input = formRef.current?.elements.namedItem(id);
-                if (input instanceof HTMLInputElement) input.value = value;
-              }
-              onDirty?.();
-              setPrefilled(true);
-            }}
-          >
-            Use suggested shares
-          </Button>
-          {prefilled && (
-            <p role="status">
-              Shares copied into the draft. Nothing has been saved or approved.
-              Review them before saving.
-            </p>
-          )}
-        </Notice>
-      )}
-      {error && (
-        <Notice warning announcement="assertive">
-          {error}
-        </Notice>
-      )}
-      <div className="form-grid">
-        {agreement.value.members.map((m) => (
-          <Field key={m.userId} label={`${m.displayName} · share %`}>
-            <input
-              name={m.userId}
-              required
-              inputMode="decimal"
-              defaultValue={
-                old?.shares.find((s) => s.userId === m.userId)?.basisPoints !==
-                undefined
-                  ? String(
-                      old.shares.find((s) => s.userId === m.userId)!
-                        .basisPoints / 100,
-                    )
-                  : agreement.value.members.length === 1
-                    ? "100"
-                    : ""
-              }
-            />
-          </Field>
-        ))}
-      </div>
-      <fieldset>
-        <legend>How should processing fees be handled?</legend>
-        <label className="choice">
-          <input
-            type="radio"
-            name="feePolicy"
-            checked={fee === "BEFORE_SPLIT"}
-            onChange={() => setFee("BEFORE_SPLIT")}
-          />
-          <span>
-            <strong>Share fees proportionally</strong>
-            <small>
-              Fees are deducted before recoupment and splitting, reducing
-              everyone’s allocation.
-            </small>
-          </span>
-        </label>
-        <label className="choice">
-          <input
-            type="radio"
-            name="feePolicy"
-            checked={fee === "ORGANIZER_SHARE"}
-            onChange={() => setFee("ORGANIZER_SHARE")}
-          />
-          <span>
-            <strong>Organizer covers fees</strong>
-            <small>
-              Deduct fees from the organizer’s allocation. If it cannot cover
-              them, the payment needs review.
-            </small>
-          </span>
-        </label>
-      </fieldset>
-      <label className="check">
-        <input
-          type="checkbox"
-          checked={advance}
-          onChange={(e) => setAdvance(e.target.checked)}
-        />
-        Recoup an existing advance before splitting
-      </label>
-      {advance && (
-        <div className="panel">
-          <div className="form-grid">
-            <Field label="Advance (USD)">
+            {prefilled && (
+              <p role="status">
+                Shares copied into the draft. Nothing has been saved or
+                approved. Review them before saving.
+              </p>
+            )}
+          </Notice>
+        )}
+        {error && (
+          <Notice warning announcement="assertive">
+            {error}
+          </Notice>
+        )}
+        <div className="form-grid">
+          {agreement.value.members.map((m) => (
+            <Field key={m.userId} label={`${m.displayName} · share %`}>
               <input
-                name="advance"
+                name={m.userId}
                 required
+                inputMode="decimal"
                 defaultValue={
-                  old?.advance ? String(old.advance.amountCents / 100) : ""
+                  old?.shares.find((s) => s.userId === m.userId)
+                    ?.basisPoints !== undefined
+                    ? String(
+                        old.shares.find((s) => s.userId === m.userId)!
+                          .basisPoints / 100,
+                      )
+                    : agreement.value.members.length === 1
+                      ? "100"
+                      : ""
                 }
               />
             </Field>
-            <Field label="Who receives recoupment?">
-              <select name="recipient" defaultValue={old?.advance?.recipientId}>
-                {agreement.value.members.map((m) => (
-                  <option value={m.userId} key={m.userId}>
-                    {m.displayName}
-                  </option>
-                ))}
-              </select>
-            </Field>
-          </div>
-          <label className="check">
-            <input
-              type="checkbox"
-              name="verified"
-              defaultChecked={old?.advance?.verified}
-            />
-            I have verified that this prior advance and outstanding amount are
-            correct.
-          </label>
-          <small>
-            Uploading an agreement does not prove an advance was paid.
-          </small>
+          ))}
         </div>
-      )}
-      <Field label="Rule provenance">
-        <select value={origin} onChange={(e) => setOrigin(e.target.value)}>
-          <option value="HUMAN_PROPOSAL">
-            Human proposal for everyone to review
-          </option>
-          <option value="SOURCE_CLAUSE">Exact source clause</option>
-        </select>
-      </Field>
-      <Field label="Clause or proposal title">
-        <input
-          name="clause"
-          required
-          defaultValue={old?.source.clause || "Revenue sharing proposal"}
+        <fieldset>
+          <legend>How should processing fees be handled?</legend>
+          <label className="choice">
+            <input
+              type="radio"
+              name="feePolicy"
+              checked={fee === "BEFORE_SPLIT"}
+              onChange={() => setFee("BEFORE_SPLIT")}
+            />
+            <span>
+              <strong>Share fees proportionally</strong>
+              <small>
+                Fees are deducted before recoupment and splitting, reducing
+                everyone’s allocation.
+              </small>
+            </span>
+          </label>
+          <label className="choice">
+            <input
+              type="radio"
+              name="feePolicy"
+              checked={fee === "ORGANIZER_SHARE"}
+              onChange={() => setFee("ORGANIZER_SHARE")}
+            />
+            <span>
+              <strong>Organizer covers fees</strong>
+              <small>
+                Deduct fees from the organizer’s allocation. If it cannot cover
+                them, the payment needs review.
+              </small>
+            </span>
+          </label>
+        </fieldset>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={advance}
+            onChange={(e) => setAdvance(e.target.checked)}
+          />
+          Recoup an existing advance before splitting
+        </label>
+        {advance && (
+          <div className="panel">
+            <div className="form-grid">
+              <Field label="Advance (USD)">
+                <input
+                  name="advance"
+                  required
+                  defaultValue={
+                    old?.advance ? String(old.advance.amountCents / 100) : ""
+                  }
+                />
+              </Field>
+              <Field label="Who receives recoupment?">
+                <select
+                  name="recipient"
+                  defaultValue={old?.advance?.recipientId}
+                >
+                  {agreement.value.members.map((m) => (
+                    <option value={m.userId} key={m.userId}>
+                      {m.displayName}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+            <label className="check">
+              <input
+                type="checkbox"
+                name="verified"
+                defaultChecked={old?.advance?.verified}
+              />
+              I have verified that this prior advance and outstanding amount are
+              correct.
+            </label>
+            <small>
+              Uploading an agreement does not prove an advance was paid.
+            </small>
+          </div>
+        )}
+        <RuleImpactReview
+          agreement={agreement}
+          formRef={formRef}
+          advance={advance}
+          revision={draftRevision}
+          onChoose={(policy) => {
+            setFee(policy);
+            setOrigin("HUMAN_PROPOSAL");
+            const excerpt = formRef.current?.elements.namedItem("excerpt");
+            if (excerpt instanceof HTMLTextAreaElement) {
+              const proposal =
+                policy === "BEFORE_SPLIT"
+                  ? "Proposed fee clarification: deduct PayPal processing fees before recoupment and splitting."
+                  : "Proposed fee clarification: recoup and split gross revenue, then deduct PayPal processing fees from the organizer's allocation. Hold for review if that allocation cannot cover the fee.";
+              excerpt.value =
+                `${excerpt.value.replace(/\n?Proposed fee clarification:[^\n]*/g, "").trim()}\n${proposal}`.trim();
+            }
+            onDirty?.();
+            setDraftRevision((value) => value + 1);
+          }}
         />
-      </Field>
-      <Field
-        label={
-          origin === "SOURCE_CLAUSE"
-            ? "Exact quote from agreement"
-            : "Proposed clarification"
-        }
-      >
-        <textarea
-          name="excerpt"
-          required
-          rows={3}
-          defaultValue={old?.source.excerpt || ""}
+        <Field label="Rule provenance">
+          <select value={origin} onChange={(e) => setOrigin(e.target.value)}>
+            <option value="HUMAN_PROPOSAL">
+              Human proposal for everyone to review
+            </option>
+            <option value="SOURCE_CLAUSE">Exact source clause</option>
+          </select>
+        </Field>
+        <Field label="Clause or proposal title">
+          <input
+            name="clause"
+            required
+            defaultValue={old?.source.clause || "Revenue sharing proposal"}
+          />
+        </Field>
+        <Field
+          label={
+            origin === "SOURCE_CLAUSE"
+              ? "Exact quote from agreement"
+              : "Proposed clarification"
+          }
+        >
+          <textarea
+            name="excerpt"
+            required
+            rows={3}
+            defaultValue={old?.source.excerpt || ""}
+          />
+        </Field>
+        <ClarificationDecisions
+          extraction={extraction}
+          documentId={documentId}
         />
-      </Field>
-      <ClarificationDecisions extraction={extraction} documentId={documentId} />
-      <Field
-        label="Unresolved questions"
-        hint="One per line. Any unresolved question blocks sending for approval."
-      >
-        <textarea
-          name="questions"
-          rows={2}
-          defaultValue={old?.unresolvedQuestions.join("\n")}
-        />
-      </Field>
-      <Notice>
-        Saving creates a new version. It does not legally amend the source
-        contract or authorize a payout.
-      </Notice>
-      <Button disabled={busy}>Save proposal</Button>
-    </form>
+        <Field
+          label="Unresolved questions"
+          hint="One per line. Any unresolved question blocks sending for approval."
+        >
+          <textarea
+            name="questions"
+            rows={2}
+            defaultValue={old?.unresolvedQuestions.join("\n")}
+          />
+        </Field>
+        <Notice>
+          Saving creates a new version. It does not legally amend the source
+          contract or authorize a payout.
+        </Notice>
+        <Button disabled={busy}>Save proposal</Button>
+      </form>
+    </div>
   );
 }
 export function safePayPalUrl(url: string) {

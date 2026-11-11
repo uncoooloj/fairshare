@@ -1560,3 +1560,63 @@ td:last-child {
     gap: 8px;
   }
 }
+
+/* Source and draft stay together on wide screens; source collapses above on mobile. */
+.source-rules-review {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.85fr) minmax(0, 1.15fr);
+  gap: 24px;
+  align-items: start;
+}
+.source-rules-review .review-source {
+  position: sticky;
+  top: 24px;
+}
+.review-source-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 65vh;
+  overflow: auto;
+  line-height: 1.75;
+  padding: 12px 0;
+}
+.source-rules-review .rules-editor {
+  margin-top: 0;
+  min-width: 0;
+}
+.rule-impact-review summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.impact-options {
+  display: grid;
+  gap: 16px;
+  margin-top: 16px;
+}
+.impact-person {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid #e5e7eb;
+}
+.impact-person dd {
+  margin: 0;
+  text-align: right;
+}
+.impact-person small {
+  display: block;
+  font-size: 12px;
+  color: #64748b;
+}
+@media (max-width: 1000px) {
+  .source-rules-review {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .source-rules-review .review-source {
+    position: static;
+  }
+  .review-source-text {
+    max-height: 260px;
+  }
+}
