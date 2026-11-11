@@ -227,10 +227,10 @@ export function PaymentGrid({
               "Confirmed by PayPal",
             ],
             [
-              "Pending or processing",
+              "Ready, pending or processing",
               data.summary.processing,
               data.summary.processingCount,
-              "On the way",
+              "Ready or on the way",
             ],
             [
               "Needs attention",

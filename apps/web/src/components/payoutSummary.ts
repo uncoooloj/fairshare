@@ -18,9 +18,11 @@ export function summarizePayouts(rows: readonly PaymentGridRow[]) {
     const group =
       row.status === PaymentGridStatus.Paid
         ? "paid"
-        : [PaymentGridStatus.Pending, PaymentGridStatus.Processing].includes(
-              row.status,
-            )
+        : [
+              PaymentGridStatus.Reserved,
+              PaymentGridStatus.Pending,
+              PaymentGridStatus.Processing,
+            ].includes(row.status)
           ? "processing"
           : [
                 PaymentGridStatus.Failed,
