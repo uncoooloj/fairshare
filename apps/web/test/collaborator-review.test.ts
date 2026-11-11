@@ -249,14 +249,23 @@ test("something's not right: choices map to the existing change topics; note req
   const html = renderToStaticMarkup(
     createElement(SomethingWrongDrawer, {
       organizerName: "Maya",
+      versionId: 2,
       busy: false,
       onSend: noop,
       onClose: () => {},
     }),
   );
   assert.match(html, /role="dialog" aria-modal="true"/);
-  for (const label of ["Split", "Advance", "Fees", "Refunds", "Something else"])
-    assert.match(html, new RegExp(`<span>${label}</span>`));
+  assert.match(html, /Request changes to v2/);
+  assert.match(html, /<select/);
+  for (const label of [
+    "Revenue split",
+    "Advance and recoupment",
+    "Fees and net revenue",
+    "Refunds",
+    "Agreement overall",
+  ])
+    assert.match(html, new RegExp(`<option value="[A-Z]+"[^>]*>${label}</option>`));
   assert.match(html, /\(required\)/);
   assert.match(html, /<textarea[^>]*required/);
 });

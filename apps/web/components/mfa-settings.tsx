@@ -14,6 +14,8 @@ export function MfaSettings({ onSignOut }: { onSignOut: () => void }) {
       null,
     ),
     [recovery, setRecovery] = useState<string[]>([]),
+    [setupIntent, setSetupIntent] = useState(false),
+    [disableConfirmation, setDisableConfirmation] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const pending = useRef(false);
@@ -33,9 +35,36 @@ export function MfaSettings({ onSignOut }: { onSignOut: () => void }) {
       active = false;
     };
   }, []);
+  async function cancelSetup() {
+    if (pending.current) return;
+    pending.current = true;
+    setBusy(true);
+    setError("");
+    // Remove the secret and any entered code from the page before waiting for
+    // the server to discard its pending setup record. This does not disable
+    // an authenticator because pending setup is never enabled.
+    setSetup(null);
+    setSetupIntent(false);
+    try {
+      await api("auth/mfa/cancel", "POST", {});
+    } catch (e) {
+      setError(
+        e instanceof Error
+          ? e.message
+          : "Could not cancel authenticator setup.",
+      );
+    } finally {
+      pending.current = false;
+      setBusy(false);
+    }
+  }
+  function closeDisableConfirmation() {
+    setDisableConfirmation(false);
+    setError("");
+  }
   async function submit(
     form: HTMLFormElement,
-    action: "setup" | "activate" | "disable" | "cancel",
+    action: "setup" | "activate" | "disable",
   ) {
     if (pending.current) return;
     pending.current = true;
@@ -46,22 +75,20 @@ export function MfaSettings({ onSignOut }: { onSignOut: () => void }) {
       const result = await api(
         `auth/mfa/${action}`,
         "POST",
-        action === "cancel"
-          ? {}
-          : action === "activate"
-            ? { code: String(data.get("code")) }
-            : {
-                password: String(data.get("password")),
-                ...(action === "disable"
-                  ? { code: String(data.get("code")) }
-                  : {}),
-              },
+        action === "activate"
+          ? { code: String(data.get("code")) }
+          : {
+              password: String(data.get("password")),
+              ...(action === "disable"
+                ? { code: String(data.get("code")) }
+                : {}),
+            },
       );
       form.reset();
       if (action === "setup") setSetup(result);
-      if (action === "cancel") setSetup(null);
       if (action === "activate") {
         setSetup(null);
+        setSetupIntent(false);
         if (result.simulated) {
           onSignOut();
           return;
@@ -80,6 +107,12 @@ export function MfaSettings({ onSignOut }: { onSignOut: () => void }) {
       setBusy(false);
     }
   }
+  const switchChecked = !!status && (status.enabled || setupIntent || !!setup);
+  const switchLabel = status?.enabled
+    ? "Two-step sign-in enabled"
+    : switchChecked
+      ? "Finish setup to turn on two-step sign-in"
+      : "Two-step sign-in off";
   return (
     <section className="panel">
       <h2>
@@ -96,6 +129,43 @@ export function MfaSettings({ onSignOut }: { onSignOut: () => void }) {
         <p className="muted">
           Ask for a code from your phone each time you sign in.
         </p>
+      )}
+      {status?.available && !recovery.length && (
+        <label className="check">
+          <input
+            type="checkbox"
+            role="switch"
+            className="settings-switch"
+            aria-label={switchLabel}
+            aria-describedby="mfa-toggle-status"
+            aria-expanded={status.enabled ? disableConfirmation : undefined}
+            aria-controls={
+              status.enabled ? "mfa-disable-confirmation" : undefined
+            }
+            checked={switchChecked}
+            disabled={busy}
+            onChange={(event) => {
+              if (status.enabled) {
+                setDisableConfirmation(true);
+                return;
+              }
+              if (event.target.checked) {
+                setSetupIntent(true);
+                setError("");
+                return;
+              }
+              if (setup) void cancelSetup();
+              else setSetupIntent(false);
+            }}
+          />
+          <span id="mfa-toggle-status">
+            {status.enabled
+              ? "On"
+              : switchChecked
+                ? "Finish setup to turn on"
+                : "Off"}
+          </span>
+        </label>
       )}
       {error && <p role="alert">{error}</p>}
       {!!recovery.length ? (
@@ -179,16 +249,14 @@ export function MfaSettings({ onSignOut }: { onSignOut: () => void }) {
             type="button"
             variant="quiet"
             disabled={busy}
-            onClick={(event) => {
-              const form = event.currentTarget.closest("form");
-              if (form) void submit(form, "cancel");
-            }}
+            onClick={() => void cancelSetup()}
           >
             Cancel setup
           </Button>
         </form>
-      ) : status.enabled ? (
+      ) : status.enabled && disableConfirmation ? (
         <form
+          id="mfa-disable-confirmation"
           onSubmit={(event) => {
             event.preventDefault();
             void submit(event.currentTarget, "disable");
@@ -237,8 +305,16 @@ export function MfaSettings({ onSignOut }: { onSignOut: () => void }) {
                 ? "Disable simulated step and sign out"
                 : "Turn off"}
           </Button>
+          <Button
+            type="button"
+            variant="quiet"
+            disabled={busy}
+            onClick={closeDisableConfirmation}
+          >
+            Cancel
+          </Button>
         </form>
-      ) : (
+      ) : setupIntent ? (
         <form
           onSubmit={(event) => {
             event.preventDefault();
@@ -247,8 +323,8 @@ export function MfaSettings({ onSignOut }: { onSignOut: () => void }) {
         >
           <p>
             {status.simulated
-              ? "Off. In test mode this is a pretend step and doesn’t protect your account."
-              : "Off."}
+              ? "Finish setup to turn on this simulated step. It doesn’t protect your account."
+              : "Confirm your password to start authenticator setup. Two-step sign-in stays off until you verify a code."}
           </p>
           <Field label="Confirm current password">
             <input
@@ -268,7 +344,7 @@ export function MfaSettings({ onSignOut }: { onSignOut: () => void }) {
                 : "Set up authenticator"}
           </Button>
         </form>
-      )}
+      ) : null}
     </section>
   );
 }

@@ -79,6 +79,7 @@ export function DocumentCitationView({
   pendingCitation,
   citations: suppliedCitations,
   onCitationSelect,
+  hideCitationRail = false,
 }: {
   version?: Version;
   document: {
@@ -101,6 +102,8 @@ export function DocumentCitationView({
   citations?: DocumentCitation[];
   /** Lets an embedding surface focus the rule that owns a selected highlight. */
   onCitationSelect?: (id: string) => void;
+  /** Check already presents the matching rules beside the reader. */
+  hideCitationRail?: boolean;
 }) {
   const [selected, setSelected] = useState<string | null>(null);
   const [pageIndex, setPageIndex] = useState(0);
@@ -266,7 +269,7 @@ export function DocumentCitationView({
         : "This is the text we read from your file.";
   const zoomAt = ZOOM_STEPS.indexOf(zoom);
   return (
-    <div className="dv-layout">
+    <div className={hideCitationRail ? "dv-layout dv-layout-no-clauses" : "dv-layout"}>
       <div className="dv-viewer">
         <div className="dv-bar">
           <p className="dv-file">
@@ -466,7 +469,7 @@ export function DocumentCitationView({
           )}
         </div>
       </div>
-      <aside className="dv-clauses" aria-labelledby="dv-clauses-title">
+      {!hideCitationRail && <aside className="dv-clauses" aria-labelledby="dv-clauses-title">
         <h3 id="dv-clauses-title">Cited clauses</h3>
         {cited.length > 0 && <p className="muted">Click one to jump to it.</p>}
         {cited.length > 0 && (
@@ -531,7 +534,7 @@ export function DocumentCitationView({
             ? `Showing clause ${clauseLabel(chosen.reference.clause)}`
             : ""}
         </p>
-      </aside>
+      </aside>}
     </div>
   );
 }

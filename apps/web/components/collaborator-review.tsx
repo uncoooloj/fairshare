@@ -386,6 +386,7 @@ export function CollaboratorTerms({
       {drawer && (
         <SomethingWrongDrawer
           organizerName={organizer}
+          versionId={version.id}
           busy={busy}
           onSend={(reason) => onRequestChange(reason)}
           onClose={() => setDrawer(false)}

@@ -244,7 +244,9 @@ export function wizardCitations(
     documentId?: string;
   }> = [
     { id: "wizard-agreement", label: "The agreement", summary: answers.name.value || "Agreement details", cited: answers.name, documentId: sourceDocumentIds?.agreement },
-    { id: "wizard-dates", label: "Dates", summary: dateRange(answers), cited: answers.effectiveFrom ?? answers.effectiveTo, documentId: sourceDocumentIds?.agreement },
+    // The agreement card has one citation chip. Prefer its name citation; use a
+    // term citation only when no document-sourced name exists.
+    { id: "wizard-dates", label: "Dates", summary: dateRange(answers), cited: answers.name.source === AnswerSource.DOCUMENT ? undefined : answers.effectiveFrom ?? answers.effectiveTo, documentId: sourceDocumentIds?.agreement },
     { id: "wizard-split", label: "Who gets what", summary: splitSummary(answers.people.value), cited: answers.people, documentId: sourceDocumentIds?.agreement },
     { id: "wizard-fees", label: "PayPal fees", summary: feeLine(answers), cited: answers.fees, documentId: sourceDocumentIds?.agreement },
     { id: "wizard-advance", label: "Paid back first", summary: advanceSentence(answers) ?? "Advance", cited: answers.advance, documentId: sourceDocumentIds?.advance },
@@ -295,12 +297,14 @@ export function wizardCitations(
 function ClauseChip({
   cited,
   onOpen,
+  hideWhenUnavailable = false,
 }: {
   cited?: Cited<unknown>;
   onOpen?: (cited: Cited<unknown>) => void;
+  hideWhenUnavailable?: boolean;
 }) {
   const label = clauseLabel(cited);
-  if (!label) return null;
+  if (!label || (hideWhenUnavailable && !onOpen)) return null;
   return (
     <button
       type="button"
@@ -318,19 +322,25 @@ function CardHead({
   title,
   cited,
   onOpenCitation,
+  hideUnavailableCitation,
   onChange,
   changeLabel,
 }: {
   title: string;
   cited?: Cited<unknown>;
   onOpenCitation?: (cited: Cited<unknown>) => void;
+  hideUnavailableCitation?: boolean;
   onChange(): void;
   changeLabel: string;
 }) {
   return (
     <header className="wc-card-head">
       <h2>{title}</h2>
-      <ClauseChip cited={cited} onOpen={onOpenCitation} />
+      <ClauseChip
+        cited={cited}
+        onOpen={onOpenCitation}
+        hideWhenUnavailable={hideUnavailableCitation}
+      />
       <button
         type="button"
         className="wc-link wc-change"
@@ -486,6 +496,7 @@ export function WizardCheckStep({
             nameOf={(id) => names.get(id) ?? "A participant"}
             originalUrl={originalUrl}
             onCitationSelect={focusRule}
+            hideCitationRail
           />
         </div>
       ) : null}
@@ -495,7 +506,12 @@ export function WizardCheckStep({
         <CardHead
           title="The agreement"
           cited={answers.name.value ? answers.name : answers.effectiveFrom}
-          onOpenCitation={() => openCitation(answers.name.value ? "wizard-agreement" : "wizard-dates")}
+          onOpenCitation={
+            citations.some((citation) => citation.id === (answers.name.value ? "wizard-agreement" : "wizard-dates"))
+              ? () => openCitation(answers.name.value ? "wizard-agreement" : "wizard-dates")
+              : undefined
+          }
+          hideUnavailableCitation={!!document}
           onChange={() => setDrawer(OpenDrawer.AGREEMENT)}
           changeLabel="Change the agreement name and dates"
         />
@@ -516,7 +532,8 @@ export function WizardCheckStep({
         <CardHead
           title="Who gets what"
           cited={answers.people}
-          onOpenCitation={() => openCitation("wizard-split")}
+          onOpenCitation={citations.some((citation) => citation.id === "wizard-split") ? () => openCitation("wizard-split") : undefined}
+          hideUnavailableCitation={!!document}
           onChange={() => setDrawer(OpenDrawer.SPLIT)}
           changeLabel="Change who gets what"
         />
@@ -559,7 +576,11 @@ export function WizardCheckStep({
         ) : null}
         <p className="wc-fees">
           <span>{fees}</span>
-          <ClauseChip cited={answers.fees} onOpen={() => openCitation("wizard-fees")} />
+          <ClauseChip
+            cited={answers.fees}
+            onOpen={citations.some((citation) => citation.id === "wizard-fees") ? () => openCitation("wizard-fees") : undefined}
+            hideWhenUnavailable={!!document}
+          />
           {feesAsked(answers) ? null : (
             <button
               type="button"
@@ -580,7 +601,8 @@ export function WizardCheckStep({
           <CardHead
             title="Paid back first"
             cited={advance}
-            onOpenCitation={() => openCitation("wizard-advance")}
+            onOpenCitation={citations.some((citation) => citation.id === "wizard-advance") ? () => openCitation("wizard-advance") : undefined}
+            hideUnavailableCitation={!!document}
             onChange={() => setDrawer(OpenDrawer.ADVANCE)}
             changeLabel="Change who paid upfront and how much"
           />
