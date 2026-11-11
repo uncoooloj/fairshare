@@ -76,7 +76,7 @@ test("workspace changes fence in-flight reads and clear workspace-scoped state",
   );
   assert.ok(
     source.includes(
-      "function navigate(s: Section) {\n    if (!mayLeaveDraft()) return;\n    openRequest.current++;",
+      "function navigate(s: Section) {\n    if (!mayLeaveDraft()) return false;\n    openRequest.current++;",
     ),
   );
 
