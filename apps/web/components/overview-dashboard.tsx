@@ -207,7 +207,9 @@ export function OverviewDashboard({
           variant={kind === AttentionKind.WAITING ? "quiet" : "secondary"}
           className="ov-row-action"
           onClick={() =>
-            sendReminder ? onSendReminder(item.agreement) : onOpen(item.agreement)
+            sendReminder
+              ? onSendReminder(item.agreement)
+              : onOpen(item.agreement)
           }
         >
           {sendReminder ? "Send reminder" : actionLabel[kind]}
@@ -233,8 +235,10 @@ export function OverviewDashboard({
   }
 
   const activity = collapseActivity(summary.activity).slice(0, ACTIVITY_LIMIT);
+  const hasActionableAttention = summary.attention.length > 0;
+  const hasWaitingOnOthers = summary.waiting.length > 0;
   const allClear =
-    payoutsComplete && !summary.attention.length && !summary.waiting.length;
+    payoutsComplete && !hasActionableAttention && !hasWaitingOnOthers;
   const lastSplitAt = agreements
     .flatMap((a) => a.value.revenue.map((r) => r.at))
     .filter((at) => Number.isFinite(Date.parse(at)))
@@ -308,7 +312,7 @@ export function OverviewDashboard({
           >
             <h2 id="ov-attention-title" className="ov-card-title">
               Needs your attention
-              {summary.attention.length > 0 && (
+              {hasActionableAttention && (
                 <span
                   className="ov-count"
                   aria-label={`${summary.attention.length} items`}
@@ -317,20 +321,20 @@ export function OverviewDashboard({
                 </span>
               )}
             </h2>
-            {summary.attention.length ? (
+            {hasActionableAttention ? (
               <ul className="ov-list">
                 {summary.attention.map((item) =>
                   row(item, attentionKind(item)),
                 )}
               </ul>
-            ) : (
+            ) : !hasWaitingOnOthers ? (
               <p className="ov-empty">
                 {payoutsComplete
                   ? "Nothing needs you right now."
                   : "We’ll show payout issues once payouts load."}
               </p>
-            )}
-            {summary.waiting.length > 0 && (
+            ) : null}
+            {hasWaitingOnOthers && (
               <>
                 <h3 className="ov-subhead">Waiting on others</h3>
                 <ul className="ov-list">
