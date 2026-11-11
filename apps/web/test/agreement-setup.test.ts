@@ -10,23 +10,26 @@ test("setup does not guess completion or mutate financial state", () => {
     source,
     /if\s*\(\s*agreement\.value\.activeVersionId\s*\)\s*return null/,
   );
-  assert.match(source, /latest.approvals\[m.userId\]/);
+  // Once a split is sent, the header status line takes over from the banner.
+  assert.match(
+    source,
+    /if\s*\(\s*agreement\.value\.versions\.length\s*\)\s*return null/,
+  );
   assert.match(
     source,
     /if\s*\(\s*!busy\s*&&\s*name\.trim\(\)\s*\)\s*onCreate\(\s*name\.trim\(\)\s*\)/,
   );
   assert.doesNotMatch(source, /fetch\(|api\(|\/activate|\/payments|\/payouts/);
 });
-test("setup explains unanimous approval and sandbox rather than promising live movement", () => {
+test("setup says plainly that the split switches on when everyone approves", () => {
   assert.match(
     source,
-    /Everyone approves the same version before payments begin/,
+    /When the last person approves, payments split automatically/,
   );
-  assert.match(
+  assert.match(source, /No money moves yet/);
+  assert.match(source, /Invite everyone who gets a share/);
+  assert.doesNotMatch(
     source,
-    /Once everyone approves, these terms are used for payments/,
+    /organizer activates|Agree on the rules first|Set up terms/,
   );
-  assert.doesNotMatch(source, /organizer activates it/);
-  assert.match(source, /does not move money/);
-  assert.match(source, /accepted members before proposing/);
 });
