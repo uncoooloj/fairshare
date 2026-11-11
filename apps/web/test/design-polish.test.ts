@@ -124,7 +124,7 @@ test("money labels distinguish allocation from payout completion", () => {
     new URL("../components/agreement-workspace.tsx", import.meta.url),
     "utf8",
   );
-  assert.match(payments, /ALLOCATED: "Received and allocated"/);
+  assert.match(payments, /ALLOCATED: "Split"/);
   assert.doesNotMatch(payments, /ALLOCATED: "Paid and split"/);
   assert.match(workspace, /Advance paid back/);
   assert.match(workspace, /Advance allocation/);

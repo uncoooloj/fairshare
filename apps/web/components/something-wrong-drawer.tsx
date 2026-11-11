@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useId, useRef, useState } from "react";
 import { formatRuleChange } from "../lib/contract-review";
+import { CloseButton } from "./close-button";
 import { Button, Notice } from "./ui";
 
 /** The part of the agreement a collaborator says is wrong. */
@@ -96,7 +97,11 @@ export function SomethingWrongDrawer({
           if (!items.length) return;
           const first = items[0];
           const last = items[items.length - 1];
-          if (event.shiftKey && document.activeElement === first) {
+          // From the focused heading (not in the list), wrap to the × or the last button.
+          if (!items.includes(document.activeElement as HTMLElement)) {
+            event.preventDefault();
+            (event.shiftKey ? last : first).focus();
+          } else if (event.shiftKey && document.activeElement === first) {
             event.preventDefault();
             last.focus();
           } else if (!event.shiftKey && document.activeElement === last) {
@@ -107,9 +112,12 @@ export function SomethingWrongDrawer({
       >
         {sent ? (
           <div className="collab-drawer-done">
-            <span className="collab-check" aria-hidden="true">
-              ✓
-            </span>
+            <div className="collab-drawer-head">
+              <span className="collab-check" aria-hidden="true">
+                ✓
+              </span>
+              <CloseButton onClick={onClose} />
+            </div>
             <h2 id={titleId} tabIndex={-1}>
               Sent to {organizerName}
             </h2>
@@ -120,9 +128,6 @@ export function SomethingWrongDrawer({
                 : wrongPartLabels[part].toLowerCase()}{" "}
               and can send updated terms. Nothing is paid in the meantime.
             </p>
-            <div className="collab-drawer-actions">
-              <Button onClick={onClose}>Done</Button>
-            </div>
           </div>
         ) : (
           <form

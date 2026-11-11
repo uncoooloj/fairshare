@@ -32,6 +32,7 @@ export function AgreementIntake({
   onClose,
   onSkip,
   onBusyChange,
+  onLeaveAttempt,
 }: {
   first?: boolean;
   owner: { id: string; name: string; email: string };
@@ -42,6 +43,7 @@ export function AgreementIntake({
   onClose: () => void;
   onSkip?: () => void;
   onBusyChange: (busy: boolean) => void;
+  onLeaveAttempt?: (attempt: () => boolean) => void;
 }) {
   const [choice, setChoice] = useState<FirstAgreementChoice | null>(
     first && !resume ? null : FirstAgreementChoice.UPLOAD,
@@ -67,6 +69,7 @@ export function AgreementIntake({
       // A first-time user who saved nothing returns to the chooser; everyone else returns to the app.
       onClose={first && !resume ? () => setChoice(null) : onClose}
       onBusyChange={onBusyChange}
+      onLeaveAttempt={onLeaveAttempt}
     />
   );
 }

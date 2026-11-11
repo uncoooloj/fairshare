@@ -72,7 +72,9 @@ test("organizers still only get readiness labels", () => {
   assert.equal(payoutReadinessLabel(PayoutReadiness.READY), "Ready to be paid");
   const settings = source("components/payment-account-settings.tsx");
   // The member table renders status only; the verified line uses data.own.
-  const table = settings.slice(settings.indexOf("Collaborator accounts"));
+  const table = settings.slice(
+    settings.indexOf('className="settings-collaborators"'),
+  );
   assert.doesNotMatch(table, /Verified by PayPal|PayPalConnected|\.value/);
   // Connect with PayPal shows in the field step only when the server has it on.
   assert.match(settings, /place=\{PayoutStepPlace\.SETTINGS\}/);

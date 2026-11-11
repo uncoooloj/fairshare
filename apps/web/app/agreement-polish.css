@@ -803,6 +803,192 @@ button.ag-rule-source:hover {
   margin: var(--space-4) 0 0;
   font-size: var(--text-sm);
 }
+/* Invoices card: one header row, the button at the far right */
+.ag-invoices-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+.ag-invoices-head p {
+  margin: var(--space-1) 0 0;
+}
+.ag-invoices-head > .button {
+  flex: none;
+}
+.ag-invoices-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.ag-invoices-title h2 {
+  margin: 0;
+}
+.ag-invoices-empty {
+  margin: 0;
+}
+.ag-invoices-table td {
+  vertical-align: middle;
+}
+.ag-invoice-note {
+  display: block;
+  color: var(--color-muted);
+}
+.ag-invoice-due {
+  white-space: nowrap;
+}
+.ag-row-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  white-space: nowrap;
+}
+.row-menu-trigger {
+  width: 32px;
+  height: 32px;
+}
+.row-menu-list {
+  z-index: 60;
+  min-width: 180px;
+}
+.row-menu-list > button:disabled {
+  color: var(--color-subtle);
+  cursor: default;
+}
+
+/* Tooltip on a fixed layer (status details, info) */
+.tip {
+  display: inline-flex;
+}
+.tip-trigger {
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: help;
+  border-radius: 999px;
+}
+.tip-trigger:focus-visible {
+  outline: 2px solid var(--color-accent, #2563eb);
+  outline-offset: 2px;
+}
+.tip-body {
+  position: fixed;
+  top: -9999px;
+  left: -9999px;
+  max-width: 300px;
+  z-index: 70;
+  visibility: hidden;
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-ink);
+  color: var(--color-canvas);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  font-weight: var(--weight-normal);
+  letter-spacing: 0;
+  box-shadow: 0 8px 24px rgb(15 23 42 / 0.18);
+  white-space: normal;
+  text-align: left;
+}
+.tip-body[data-open] {
+  visibility: visible;
+}
+.tip-lines {
+  display: grid;
+  gap: 2px;
+}
+.ag-info .tip-trigger {
+  width: 18px;
+  height: 18px;
+  justify-content: center;
+  border: 1px solid var(--color-line);
+  color: var(--color-muted);
+  font-size: 11px;
+  font-weight: 600;
+  font-style: italic;
+  font-family: Georgia, serif;
+}
+.ag-info .tip-trigger:hover {
+  color: var(--color-ink);
+}
+
+/* Splits: a muted date tells payments apart once there's more than one */
+.ledger-table.has-dates td:first-child {
+  width: 88px;
+  white-space: nowrap;
+}
+.ledger-table.has-dates td:nth-child(2) {
+  width: 36%;
+  /* The name button's hit area stays in its own cell, as without dates. */
+  position: relative;
+}
+.ledger-table.has-dates td:nth-child(3) {
+  width: 140px;
+}
+.clause-chip.is-team {
+  border-style: dashed;
+}
+
+@media (max-width: 640px) {
+  .ag-invoices-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  /* Invoices stack: who and how much, then status and due date, then actions. */
+  .ag-invoices .table-wrap {
+    overflow: visible;
+  }
+  .ag-invoices-table,
+  .ag-invoices-table tbody {
+    display: block;
+  }
+  .ag-invoices-table thead {
+    display: none;
+  }
+  .ag-invoices-table tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--space-2) var(--space-3);
+    padding: var(--space-3) 0;
+    border-bottom: 1px solid var(--color-line);
+  }
+  .ag-invoices-table td {
+    display: block;
+    padding: 0;
+    border: 0;
+  }
+  .ag-invoices-table td:nth-child(3),
+  .ag-invoices-table td:nth-child(4) {
+    display: none;
+  }
+  .ag-invoices-table td:nth-child(5) {
+    grid-column: 2;
+    grid-row: 2;
+    text-align: right;
+    color: var(--color-muted);
+    font-size: var(--text-sm);
+  }
+  .ag-invoices-table td:nth-child(5)::before {
+    content: "Due ";
+  }
+  .ag-invoices-table td:nth-child(6) {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .ag-invoices-table td:nth-child(7) {
+    grid-column: 1 / -1;
+  }
+  .ag-invoices-table .ag-row-actions {
+    justify-content: space-between;
+  }
+}
 .ag-fix-link.is-held .text-button {
   color: var(--color-warning, #b45309);
   font-weight: var(--weight-medium, 500);

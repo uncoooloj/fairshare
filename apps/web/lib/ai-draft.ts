@@ -212,12 +212,8 @@ function reviewable(e: any, documentId: string): boolean {
 }
 /** Re-checks a stored fact against the saved source: exact range, sentence-length quote,
  * subject and value inside that quote. `source: null` skips the range check only. */
-function checkedFact(f: any, source: string | null): RawFact | null {
-  const c = f?.citation;
+function checkedCitation(c: any, source: string | null): string | null {
   if (
-    typeof f?.kind !== "string" ||
-    typeof f.subject !== "string" ||
-    typeof f.rawValue !== "string" ||
     !c ||
     typeof c.quote !== "string" ||
     !c.quote.trim() ||
@@ -226,12 +222,23 @@ function checkedFact(f: any, source: string | null): RawFact | null {
     !Number.isInteger(c.end) ||
     c.start < 0 ||
     c.end <= c.start ||
-    (source !== null && source.slice(c.start, c.end) !== c.quote) ||
-    !containsNormalizedEvidence(c.quote, f.subject) ||
-    !containsNormalizedEvidence(c.quote, f.rawValue)
+    (source !== null && source.slice(c.start, c.end) !== c.quote)
   )
     return null;
-  return { ...f, quote: c.quote };
+  return c.quote;
+}
+function checkedFact(f: any, source: string | null): RawFact | null {
+  const quote = checkedCitation(f?.citation, source);
+  if (
+    typeof f?.kind !== "string" ||
+    typeof f.subject !== "string" ||
+    typeof f.rawValue !== "string" ||
+    !quote ||
+    !containsNormalizedEvidence(quote, f.subject) ||
+    !containsNormalizedEvidence(quote, f.rawValue)
+  )
+    return null;
+  return { ...f, quote };
 }
 const ask = (
   reason: AskReason,

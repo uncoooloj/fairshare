@@ -420,6 +420,11 @@
   width: 40px;
   color: var(--color-subtle);
 }
+.ov-draft-cell {
+  width: 1%;
+  text-align: right;
+  white-space: nowrap;
+}
 .ov-chevron {
   display: block;
   transition:
