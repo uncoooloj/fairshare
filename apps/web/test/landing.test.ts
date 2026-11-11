@@ -23,22 +23,31 @@ test("public landing explains the v2 three-step story without exposing applicati
 });
 
 test("login and workspace retain the existing app and invitation entry points", () => {
-  for (const route of ["login", "app", "invitation", "verify-email"]) {
+  for (const route of [
+    "login",
+    "app/[[...path]]",
+    "invitation",
+    "verify-email",
+  ]) {
     assert.match(read(`../app/${route}/page.tsx`), /<FairshareApp/);
   }
   const app = appSource();
-  assert.match(app, /user && location\.pathname === "\/login"/);
-  assert.match(app, /!user && location\.pathname === "\/app"/);
+  // Login and its redirects replace history entries; Back never returns to them.
+  assert.match(
+    app,
+    /user && location\.pathname === "\/login"\)\s*router\.replace\(loginDestination\(\)\)/,
+  );
+  assert.match(app, /!user && isAppPath\(location\.pathname\)/);
   assert.match(app, /import \{ useRouter \} from "next\/navigation"/);
   assert.match(app, /router\.replace\("\/app"\)/);
-  assert.match(app, /router\.replace\("\/login"\)/);
+  assert.match(app, /\? "\/login"/);
+  assert.doesNotMatch(app, /router\.push\(/);
   assert.match(
     app,
     /\["\/verify-email", "\/invitation"\]\.includes\(location.pathname\)/,
   );
-  // Native history is used once: accepting an agreement invite swaps
-  // /invitation#token=… for /app without remounting the app (Next syncs it).
-  assert.equal(app.match(/history\.replaceState/g)?.length, 1);
+  // Accepting an agreement invite swaps /invitation#token=… for /app without
+  // remounting the app (Next syncs it); app routing then takes over the address.
   const accept = app.slice(
     app.indexOf("async function acceptInvitation"),
     app.indexOf("async function loadWorkspace("),

@@ -20,6 +20,7 @@ import { AgreementVersions } from "../agreement-versions";
 import { AgreementName } from "../agreement-name";
 import { AgreementSetup } from "../agreement-setup";
 import { OrganizerHandoverBanner } from "../organizer-handover-banner";
+import { RefundPausedBanner } from "../refund-paused-banner";
 import { AgreementReviseWizard } from "../agreement-revise-wizard";
 import {
   ChangeRequestDrawer,
@@ -273,15 +274,7 @@ export function AgreementDetail({
       }
     : undefined;
   const onStatusAction = (action: StageAction) => {
-    if (action === StageAction.GetPaid) {
-      changeAgreementTab(AgreementTab.Payments);
-      requestAnimationFrame(() =>
-        document
-          .getElementById("get-paid")
-          ?.scrollIntoView({ behavior: "smooth", block: "start" }),
-      );
-    } else if (action === StageAction.SeeRequest && organizer)
-      setRequestOpen(true);
+    if (action === StageAction.SeeRequest && organizer) setRequestOpen(true);
     else if (
       action === StageAction.Approve ||
       action === StageAction.SeeRequest
@@ -372,6 +365,7 @@ export function AgreementDetail({
           agreement={selected}
           userId={user.id}
           onStatusAction={onStatusAction}
+          onAgreementChange={onAgreementChange}
           onBack={() => navigate(Section.Agreements)}
           onViewPayouts={() => navigate(Section.Payouts)}
           renameSuggested={!!extraction?.suggestedTitle}
@@ -437,6 +431,12 @@ export function AgreementDetail({
           busy={busy}
           run={run}
           mutate={mutate}
+        />
+        <RefundPausedBanner
+          agreement={selected}
+          userId={user.id}
+          base={base}
+          refresh={refresh}
         />
         <AgreementSetup
           agreement={selected}

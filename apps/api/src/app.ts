@@ -76,6 +76,8 @@ function domainErrorStatus(code: string): number {
       "REVISION_CONFLICT",
       "STALE_VERSION",
       "APPROVALS_REQUIRED",
+      "ADVANCE_UNCONFIRMED",
+      "ADVANCE_ALREADY_CONFIRMED",
       "INVALID_STATE",
       "MEMBERS_LOCKED",
       "PENDING_MEMBER",
@@ -88,6 +90,11 @@ function domainErrorStatus(code: string): number {
       "ADVANCE_RECIPIENT_CHANGED",
       "ADVANCE_BELOW_RECOUPED",
       "NO_HANDOVER",
+      "NOT_PAUSED",
+      "DISPUTE_OPEN",
+      "WEBHOOK_UNRECONCILED",
+      "REFUND_UNRECONCILED",
+      "REFUND_IN_PROGRESS",
     ].includes(code)
   )
     return 409;

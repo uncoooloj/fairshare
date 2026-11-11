@@ -701,3 +701,27 @@ test("capture completion retains a strict invoice lookup hint without inventing 
   assert.equal(custom.action.kind, WebhookActionKind.RecordUnmatched);
   assert.equal(custom.action.invoiceId, undefined);
 });
+
+test("a reversal carries PayPal's stated USD amount only when it is exact cents", async () => {
+  const plan = (amount: unknown) =>
+    verifyAndPlanWebhook(
+      client,
+      {},
+      {
+        id: "rev",
+        event_type: "PAYMENT.CAPTURE.REVERSED",
+        resource: { id: "CAP1", amount },
+      },
+    );
+  assert.equal(
+    (await plan({ currency_code: "USD", value: "70.00" })).action.amountCents,
+    7000,
+  );
+  for (const bad of [
+    undefined,
+    { currency_code: "EUR", value: "70.00" },
+    { currency_code: "USD", value: "70" },
+    { currency_code: "USD", value: 70 },
+  ])
+    assert.equal((await plan(bad)).action.amountCents, undefined);
+});

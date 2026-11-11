@@ -6,7 +6,9 @@ import {
   recoveryRequest,
   refundBlocked,
   refundablePayments,
+  refundableCents,
   refundMessage,
+  parseRefundAmount,
   createSingleFlight,
 } from "../lib/payment-recovery";
 import styles from "./payment-recovery.module.css";
@@ -29,8 +31,14 @@ export function PaymentRecovery({
     [error, setError] = useState(""),
     [notice, setNotice] = useState("");
   const [chosen, setChosen] = useState(""),
-    [confirmed, setConfirmed] = useState(false);
+    [confirmed, setConfirmed] = useState(false),
+    [amount, setAmount] = useState("");
   const flight = useRef(createSingleFlight());
+  // One key per refund the organizer means to make, so a retried click never refunds twice.
+  const refundKey = useRef(crypto.randomUUID());
+  const newRefundKey = () => {
+    refundKey.current = crypto.randomUUID();
+  };
   async function load() {
     const result = await api(`${base}/recovery`);
     setData(result);
@@ -84,6 +92,14 @@ export function PaymentRecovery({
   }
   const refundOptions = refundablePayments(payments);
   const payment = refundOptions.find((p) => p.id === chosen);
+  const left = payment && data ? refundableCents(payment, data.refunds) : 0;
+  let amountCents = 0,
+    amountError = "";
+  try {
+    if (payment && amount.trim()) amountCents = parseRefundAmount(amount, left);
+  } catch (e) {
+    amountError = e instanceof Error ? e.message : "Check the amount.";
+  }
   return (
     <section
       className={styles.root}
@@ -94,8 +110,8 @@ export function PaymentRecovery({
         <div>
           <h3>Payment problems</h3>
           <p>
-            If a payment looks stuck, check it against PayPal. Checking never
-            sends money.
+            If a payment looks stuck, check it against PayPal. A confirmed
+            payment can be split and follow your payout settings.
           </p>
         </div>
         <span className={styles.sandbox}>Sandbox only</span>
@@ -199,8 +215,9 @@ export function PaymentRecovery({
           <details>
             <summary>Refund a payment</summary>
             <p>
-              Sends the full amount back to whoever paid. Only before a payout
-              is reserved. Payouts pause while you sort out the shares.
+              Sends money back to whoever paid. You can refund all or part of a
+              payment, before any of it is paid out. The refund comes back out
+              of everyone’s split for that payment, the same way it was split.
             </p>
             <p>
               Invoice payments are refunded in PayPal only. After refunding one
@@ -212,6 +229,15 @@ export function PaymentRecovery({
                 onChange={(e) => {
                   setChosen(e.target.value);
                   setConfirmed(false);
+                  newRefundKey();
+                  const next = refundOptions.find(
+                    (p) => p.id === e.target.value,
+                  );
+                  setAmount(
+                    next && data
+                      ? (refundableCents(next, data.refunds) / 100).toFixed(2)
+                      : "",
+                  );
                 }}
                 disabled={busy}
               >
@@ -242,30 +268,61 @@ export function PaymentRecovery({
               ) : (
                 <>
                   <Field
-                    label={`Confirm full ${money(payment.amount)} USD refund to the original sandbox payer`}
+                    label="Amount to refund (USD)"
+                    hint={
+                      amountError ||
+                      `Up to ${money(left)}. Leave it as is to refund everything that’s left.`
+                    }
                   >
                     <input
-                      type="checkbox"
-                      checked={confirmed}
-                      onChange={(e) => setConfirmed(e.target.checked)}
+                      inputMode="decimal"
+                      autoComplete="off"
+                      value={amount}
+                      aria-invalid={!!amountError}
+                      onChange={(e) => {
+                        setAmount(e.target.value);
+                        setConfirmed(false);
+                        newRefundKey();
+                      }}
                       disabled={busy}
                     />
                   </Field>
+                  {amountCents > 0 && (
+                    <Field
+                      label={`Confirm the ${money(amountCents)} refund to whoever paid (sandbox)`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={confirmed}
+                        onChange={(e) => setConfirmed(e.target.checked)}
+                        disabled={busy}
+                      />
+                    </Field>
+                  )}
                   <Button
-                    disabled={busy || !confirmed}
+                    disabled={busy || !confirmed || amountCents < 1}
                     onClick={() =>
                       run(async () => {
                         setConfirmed(false);
                         const result = await api(
                           `${base}/payments/${payment.id}/refund`,
                           "POST",
-                          { confirmFullRefund: true },
+                          {
+                            confirmRefund: true,
+                            amountCents,
+                            requestKey: refundKey.current,
+                          },
                         );
-                        setNotice(refundMessage(result.status));
+                        newRefundKey();
+                        setNotice(refundMessage(result.status, result.outcome));
                       })
                     }
                   >
-                    Refund in full
+                    {amountCents > 0 && amountCents === left
+                      ? `Refund all ${money(amountCents)}`
+                      : amountCents > 0
+                        ? `Refund ${money(amountCents)}`
+                        : "Refund"}
                   </Button>
                 </>
               ))}
@@ -279,7 +336,13 @@ export function PaymentRecovery({
                 {money(r.amount)} · <code>{r.id}</code>{" "}
                 <Badge value={r.status} />
               </p>
-              <p>{refundMessage(r.status)}</p>
+              <p>
+                {r.settled_by_hold
+                  ? "Refunded in full before refunds came out of the split. Payouts from this payment stay stopped."
+                  : r.applied_at
+                    ? "Refunded. It came back out of the split for this payment."
+                    : refundMessage(r.status)}
+              </p>
               {r.provider_refund_id ? (
                 <Button
                   variant="secondary"
@@ -291,7 +354,7 @@ export function PaymentRecovery({
                         "POST",
                         {},
                       );
-                      setNotice(refundMessage(result.status));
+                      setNotice(refundMessage(result.status, result.outcome));
                     })
                   }
                 >

@@ -11,13 +11,10 @@ test("revised agreement filter is labelled, native and wired to existing filter 
     source,
     /<select\s+aria-label="Filter agreements by status"\s+value=\{filter\}\s+onChange=\{\(event\)\s*=>\s*setFilter\(event\.target\.value\)\}/,
   );
+  assert.match(source, /\["All", \.\.\.Object\.values\(ListStatus\)\]/);
   assert.match(
     source,
-    /\["All", "Draft", "In review", "Approved", "Needs attention"\]/,
-  );
-  assert.match(
-    source,
-    /filter\s*===\s*"All"\s*\|\|\s*agreementStatus\(a\)\s*===\s*filter/,
+    /filter\s*===\s*"All"\s*\|\|\s*agreementStatus\(a, isDraft\(a\)\)\s*===\s*filter/,
   );
   assert.doesNotMatch(source, /className="filter-tabs"/);
   assert.match(source, /No matching agreements/);

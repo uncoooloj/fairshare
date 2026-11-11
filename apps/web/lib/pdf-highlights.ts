@@ -77,24 +77,15 @@ function spansOf(source: Compact, from: number, to: number): ItemSpan[] {
   return spans;
 }
 
-/** Shortest head/tail used when the full quote is not on the page (scans). */
-const ANCHOR = 24;
-
 /** Where a quote sits among one page's text items, or [] when it is not there.
- * Exact (ignoring spacing and case) first; then, best effort for scanned or
- * re-flowed text, the span from the quote's opening words to its closing ones. */
+ * Citations only highlight an exact normalized match. */
 export function locateQuote(items: string[], quote: string): ItemSpan[] {
   const needle = compact([quote]).text;
   if (needle.length < 2) return [];
   const page = compact(items);
   const exact = page.text.indexOf(needle);
   if (exact >= 0) return spansOf(page, exact, exact + needle.length);
-  if (needle.length < ANCHOR * 2) return [];
-  const head = page.text.indexOf(needle.slice(0, ANCHOR));
-  if (head < 0) return [];
-  const tail = page.text.indexOf(needle.slice(-ANCHOR), head + ANCHOR);
-  if (tail < 0 || tail + ANCHOR - head > needle.length * 1.5) return [];
-  return spansOf(page, head, tail + ANCHOR);
+  return [];
 }
 
 /** Every case-insensitive occurrence of the search words on one page. */

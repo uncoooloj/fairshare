@@ -7,6 +7,7 @@ import {
   wrongPartLabels,
   wrongPartTopics,
 } from "./something-wrong-drawer";
+import { CloseButton } from "./close-button";
 import { Button } from "./ui";
 
 /** A collaborator's "Something's not right", as the organizer reads it. */
@@ -114,7 +115,11 @@ export function ChangeRequestDrawer({
           if (!items.length) return;
           const first = items[0];
           const last = items[items.length - 1];
-          if (event.shiftKey && document.activeElement === first) {
+          // From the focused heading (not in the list), wrap to the × or the last button.
+          if (!items.includes(document.activeElement as HTMLElement)) {
+            event.preventDefault();
+            (event.shiftKey ? last : first).focus();
+          } else if (event.shiftKey && document.activeElement === first) {
             event.preventDefault();
             last.focus();
           } else if (!event.shiftKey && document.activeElement === last) {
@@ -123,11 +128,14 @@ export function ChangeRequestDrawer({
           }
         }}
       >
-        <h2 id={titleId} tabIndex={-1}>
-          {names.length
-            ? `${names.join(" and ")} asked for a change`
-            : "No change requested"}
-        </h2>
+        <div className="collab-drawer-head">
+          <h2 id={titleId} tabIndex={-1}>
+            {names.length
+              ? `${names.join(" and ")} asked for a change`
+              : "No change requested"}
+          </h2>
+          <CloseButton onClick={onClose} />
+        </div>
         {requests.map((request, index) => (
           <figure key={`${request.userId}:${index}`} className="gr-note">
             <figcaption>
@@ -140,16 +148,13 @@ export function ChangeRequestDrawer({
         <p className="muted collab-hint">
           Change what needs fixing and send it again. Everyone approves again.
         </p>
-        <div className="collab-drawer-actions">
-          <Button type="button" variant="secondary" onClick={onClose}>
-            Close
-          </Button>
-          {latest && (
+        {latest && (
+          <div className="collab-drawer-actions">
             <Button type="button" onClick={() => onFix(latest)}>
               Fix it
             </Button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );

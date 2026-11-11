@@ -49,21 +49,19 @@ function loadPdfJs() {
   return library;
 }
 
-function withTimeout<T>(promise: Promise<T>, ms: number) {
-  return Promise.race([
-    promise,
-    new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error("PDF load timed out")), ms),
-    ),
-  ]);
-}
-
 const itemText = (items: unknown[]) =>
   items.map((item) =>
     typeof (item as { str?: unknown }).str === "string"
       ? (item as { str: string }).str
       : "",
   );
+
+function isPdfCleanupError(error: unknown) {
+  if (error instanceof DOMException && error.name === "AbortError") return true;
+  return /cancel(?:led|ed)?|abort(?:ed)?|destroyed|terminated/i.test(
+    error instanceof Error ? error.message : String(error),
+  );
+}
 
 /** The real pages of an uploaded PDF, one at a time, with cited clauses
  * highlighted where their wording sits on the page. */
@@ -114,38 +112,55 @@ export function PdfPages({
 
   useEffect(() => {
     let stale = false;
+    let timedOut = false;
     let loaded: PDFDocumentProxy | null = null;
-    withTimeout(
-      (async () => {
-        const response = await fetch(url, {
-          credentials: "same-origin",
-          cache: "no-store",
-        });
-        if (!response.ok) throw new Error("Original not available");
-        const data = new Uint8Array(await response.arrayBuffer());
-        const pdfjs = await loadPdfJs();
-        return pdfjs.getDocument({
-          data,
-          isEvalSupported: false,
-          enableXfa: false,
-          // Nothing leaves this page: no font, CMap or wasm downloads.
-          disableFontFace: false,
-          useSystemFonts: true,
-        }).promise;
-      })(),
-      LOAD_TIMEOUT_MS,
-    )
+    let loading: ReturnType<PdfJs["getDocument"]> | null = null;
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+      void loading?.destroy();
+    }, LOAD_TIMEOUT_MS);
+    (async () => {
+      const response = await fetch(url, {
+        credentials: "same-origin",
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      if (!response.ok) throw new Error("Original not available");
+      const data = new Uint8Array(await response.arrayBuffer());
+      const pdfjs = await loadPdfJs();
+      loading = pdfjs.getDocument({
+        data,
+        isEvalSupported: false,
+        enableXfa: false,
+        // Nothing leaves this page: no font, CMap or wasm downloads.
+        disableFontFace: false,
+        useSystemFonts: true,
+      });
+      if (stale || timedOut) {
+        void loading.destroy();
+        throw new DOMException("PDF load was cancelled", "AbortError");
+      }
+      return loading.promise;
+    })()
       .then((document) => {
         loaded = document;
+        window.clearTimeout(timeout);
         if (stale) return void document.destroy();
         setPdf(document);
         callbacks.current.onReady(document.numPages);
       })
-      .catch(() => {
-        if (!stale) callbacks.current.onFail();
+      .catch((error) => {
+        window.clearTimeout(timeout);
+        if (!stale && (!isPdfCleanupError(error) || timedOut))
+          callbacks.current.onFail();
       });
     return () => {
       stale = true;
+      window.clearTimeout(timeout);
+      controller.abort();
+      void loading?.destroy();
       void loaded?.destroy();
     };
   }, [url]);
@@ -185,12 +200,14 @@ export function PdfPages({
       const viewport = page.getViewport({ scale });
       const ratio = Math.min(window.devicePixelRatio || 1, 2);
       const target = canvas.current!;
+      const canvasContext = target.getContext("2d");
+      if (!canvasContext) throw new Error("PDF canvas is unavailable");
       target.width = Math.floor(viewport.width * ratio);
       target.height = Math.floor(viewport.height * ratio);
       setSize({ width: viewport.width, height: viewport.height, scale });
       const render = page.render({
         canvas: target,
-        canvasContext: target.getContext("2d")!,
+        canvasContext,
         viewport,
         transform: ratio === 1 ? undefined : [ratio, 0, 0, ratio, 0, 0],
       });
@@ -207,8 +224,8 @@ export function PdfPages({
       if (cancelled) return;
       divs.current = text.textDivs;
       setItems([...text.textContentItemsStr]);
-    })().catch(() => {
-      // A cancelled render is expected when the page or zoom changes.
+    })().catch((error) => {
+      if (!cancelled && !isPdfCleanupError(error)) callbacks.current.onFail();
     });
     return () => {
       cancelled = true;
@@ -280,7 +297,9 @@ export function PdfPages({
           return;
         }
       }
-    })().catch(() => {});
+    })().catch((error) => {
+      if (!stale && !isPdfCleanupError(error)) callbacks.current.onFail();
+    });
     return () => {
       stale = true;
     };

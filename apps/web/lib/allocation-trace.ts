@@ -174,6 +174,8 @@ function replayRevenue(
         allocation.shareCents,
         allocation.feeCents,
         allocation.totalCents,
+        allocation.offsetCents ?? 0,
+        allocation.creditCents ?? 0,
       ].every(validCents)
     )
       return;
@@ -184,7 +186,12 @@ function replayRevenue(
       advance?.recipientId === allocation.userId ? recoupment : 0;
     const expectedFee =
       feeBearerId === allocation.userId ? revenue.feeCents : 0;
-    const expectedTotal = expectedRecoupment + expectedShare - expectedFee;
+    const expectedTotal =
+      expectedRecoupment +
+      expectedShare -
+      expectedFee -
+      (allocation.offsetCents ?? 0) +
+      (allocation.creditCents ?? 0);
     if (
       expectedTotal < 0 ||
       allocation.recoupmentCents !== expectedRecoupment ||
@@ -193,7 +200,10 @@ function replayRevenue(
       allocation.totalCents !== expectedTotal
     )
       return;
-    recordedTotal += allocation.totalCents;
+    recordedTotal +=
+      allocation.totalCents +
+      (allocation.offsetCents ?? 0) -
+      (allocation.creditCents ?? 0);
   }
   if (
     !Number.isSafeInteger(recordedTotal) ||

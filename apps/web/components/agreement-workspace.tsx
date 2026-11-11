@@ -1,9 +1,20 @@
 "use client";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { money, type Agreement, type Rules, type Version } from "../lib/model";
+import {
+  ApiError,
+  api,
+  money,
+  type Agreement,
+  type Rules,
+  type Version,
+} from "../lib/model";
 import { formatMoneyHeadline } from "../lib/preferences";
 import { statusLabel } from "../lib/status-labels";
-import { CitationId, OPEN_CITATION_EVENT } from "../lib/document-citations";
+import {
+  CitationId,
+  OPEN_CITATION_EVENT,
+  type OpenCitationDetail,
+} from "../lib/document-citations";
 import { formatDay, formatExact } from "../lib/dates";
 import { toneInRoster } from "../lib/person";
 import { RECEIVED_DEFINITION, receivedTotals } from "../lib/received";
@@ -15,12 +26,16 @@ import {
   type AgreementStatus,
 } from "../lib/agreement-status";
 import { Button } from "./ui";
+import { ActionMenu, type MenuItem } from "./action-menu";
+import { NudgeDrawer } from "./person-share";
+import { unconfirmedAdvance } from "../lib/advance-status";
+import { confirmAdvancePaid } from "../lib/agreement-api";
+import { forgetStaleInviteTokens } from "../lib/share-link";
 
 export enum RuleKind {
   Fees = "PayPal fee",
   Advance = "Advance paid back first",
   Split = "Split",
-  Term = "Term",
 }
 
 /** Where a rule came from: a clause in the document, or typed by the team. */
@@ -28,6 +43,8 @@ interface StepSource {
   origin: string;
   clause: string;
   citation: CitationId;
+  versionId: number;
+  documentId: string;
 }
 
 interface StepPerson {
@@ -57,7 +74,9 @@ function percent(basisPoints: number) {
 
 /** Calendar dates (YYYY-MM-DD) read the same in every time zone. */
 function calendarDay(value: string) {
-  return new Date(`${value}T00:00:00Z`).toLocaleDateString("en-US", {
+  const date = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return "Not recorded";
+  return date.toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -66,7 +85,11 @@ function calendarDay(value: string) {
 }
 
 /** Steps follow the order the engine applies them: fees, advance, split. */
-function ruleSteps(agreement: Agreement, rules: Rules): RuleStep[] {
+function ruleSteps(
+  agreement: Agreement,
+  rules: Rules,
+  versionId: number,
+): RuleStep[] {
   const steps: RuleStep[] = [];
   const beforeSplit = rules.feePolicy === "BEFORE_SPLIT";
   if (beforeSplit)
@@ -83,7 +106,12 @@ function ruleSteps(agreement: Agreement, rules: Rules): RuleStep[] {
         rules.advance.amountCents,
       )} advance back before any split.`,
       people: [{ userId: rules.advance.recipientId, name }],
-      source: { ...rules.advance.source, citation: CitationId.Advance },
+      source: {
+        ...rules.advance.source,
+        citation: CitationId.Advance,
+        versionId,
+        documentId: rules.advance.source.documentId,
+      },
     });
   }
   const shares = rules.shares.map((s) => ({
@@ -102,7 +130,12 @@ function ruleSteps(agreement: Agreement, rules: Rules): RuleStep[] {
             .map((s) => s.basisPoints / 100)
             .join(" / ")}.`,
     people: shares,
-    source: { ...rules.source, citation: CitationId.Rules },
+    source: {
+      ...rules.source,
+      citation: CitationId.Rules,
+      versionId,
+      documentId: rules.source.documentId,
+    },
   });
   if (!beforeSplit) {
     const bearer = rules.feeBearerId
@@ -116,24 +149,47 @@ function ruleSteps(agreement: Agreement, rules: Rules): RuleStep[] {
         : [],
     });
   }
-  const from = agreement.value.details?.effectiveFrom;
-  if (from) {
-    const to = agreement.value.details?.effectiveTo;
-    steps.push({
-      kind: RuleKind.Term,
-      sentence: to
-        ? `Applies to payments from ${calendarDay(from)} to ${calendarDay(to)}.`
-        : `Applies to payments from ${calendarDay(from)}, with no end date.`,
-      people: [],
-    });
-  }
   return steps;
 }
 
+function currentAgreementDates(agreement: Agreement) {
+  const details = agreement.value.details;
+  const from = details?.effectiveFrom;
+  const to = details?.effectiveTo;
+  if (from === undefined && to === undefined) return undefined;
+  return {
+    start: from ? calendarDay(from) : "Not recorded",
+    end: to === null ? "No end date" : to ? calendarDay(to) : "Not recorded",
+  };
+}
+
+function CurrentAgreementDetails({ agreement }: { agreement: Agreement }) {
+  const dates = currentAgreementDates(agreement);
+  if (!dates) return null;
+  return (
+    <section
+      className="ag-current-details"
+      aria-label="Current agreement dates"
+    >
+      <h3>Current agreement dates</h3>
+      <dl>
+        <div>
+          <dt>Start</dt>
+          <dd>{dates.start}</dd>
+        </div>
+        <div>
+          <dt>End</dt>
+          <dd>{dates.end}</dd>
+        </div>
+      </dl>
+    </section>
+  );
+}
+
 /** Ask the document below to show a clause; scroll to it if it can't. */
-function openClause(citation: CitationId) {
+function openClause(detail: OpenCitationDetail) {
   const event = new CustomEvent(OPEN_CITATION_EVENT, {
-    detail: citation,
+    detail,
     cancelable: true,
   });
   if (window.dispatchEvent(event))
@@ -168,7 +224,7 @@ function DocumentIcon() {
 function SourceChip({ source }: { source?: StepSource }) {
   if (!source) return null;
   if (source.origin === "HUMAN_PROPOSAL")
-    return <span className="ag-rule-source is-team">Added by you</span>;
+    return <span className="ag-rule-source is-team">Added by the team</span>;
   const clause = source.clause.replace(/^(clause|section|§)\s*/i, "").trim();
   if (!clause) return null;
   return (
@@ -176,7 +232,13 @@ function SourceChip({ source }: { source?: StepSource }) {
       type="button"
       className="ag-rule-source"
       aria-label={`Clause ${clause}: show it in the document`}
-      onClick={() => openClause(source.citation)}
+      onClick={() =>
+        openClause({
+          id: source.citation,
+          versionId: source.versionId,
+          documentId: source.documentId,
+        })
+      }
     >
       <DocumentIcon />
       {clause}
@@ -275,7 +337,7 @@ export function RevenueRulesCard({
   ruleSlot?: (kind: RuleKind) => ReactNode;
 }) {
   const [open, setOpen] = useState(true);
-  const steps = ruleSteps(agreement, version.rules);
+  const steps = ruleSteps(agreement, version.rules, version.id);
   const inUse = version.id === agreement.value.activeVersionId;
   const listId = `revenue-rules-${version.id}`;
   return (
@@ -344,6 +406,7 @@ export function RevenueRulesCard({
           ))}
         </div>
       )}
+      <CurrentAgreementDetails agreement={agreement} />
     </section>
   );
 }
@@ -388,20 +451,28 @@ export function StatusLine({
       ? "Review and approve"
       : status.action === StageAction.SeeRequest
         ? "See request"
-        : status.action === StageAction.GetPaid
-          ? "Get paid"
-          : "";
+        : status.action === StageAction.Nudge
+          ? "Nudge"
+          : status.action === StageAction.ConfirmAdvance
+            ? "Confirm it’s paid"
+            : "";
   return (
     <div
       className={`ag-status ${status.tone ? `is-${status.tone}` : ""}`}
       role="status"
     >
       <span className="ag-status-dot" aria-hidden="true" />
-      <p className="ag-status-line">{status.line}</p>
+      <p className="ag-status-line">
+        {status.line}
+        {status.note && <span className="ag-status-note"> {status.note}</span>}
+      </p>
       {label && (
         <Button
           variant={
-            status.action === StageAction.SeeRequest ? "secondary" : "primary"
+            status.action === StageAction.SeeRequest ||
+            status.action === StageAction.Nudge
+              ? "secondary"
+              : "primary"
           }
           onClick={() => onAction(status.action)}
         >
@@ -430,6 +501,7 @@ export function AgreementHeader({
   rename,
   renameSuggested = false,
   menuItems = [],
+  onAgreementChange,
 }: {
   agreement: Agreement;
   /** The viewer: the status line is written from their side. */
@@ -443,35 +515,89 @@ export function AgreementHeader({
   renameSuggested?: boolean;
   /** Extra menu entries, such as the agreement document's downloads. */
   menuItems?: HeaderMenuItem[];
+  /** Newer agreement after a link is created or the advance is confirmed. */
+  onAgreementChange?: (agreement: Agreement) => void;
 }) {
-  const menu = useRef<HTMLDetailsElement>(null);
-  const menuButton = useRef<HTMLElement>(null);
-  const [open, setOpen] = useState(false);
+  const menuButton = useRef<HTMLButtonElement>(null);
   const [renaming, setRenaming] = useState(false);
+  const [nudging, setNudging] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [confirmBusy, setConfirmBusy] = useState(false);
+  const [confirmError, setConfirmError] = useState("");
   const status = agreementStatus(agreement, userId);
-  const meta = versionMeta(agreement);
+  const advance = unconfirmedAdvance(agreement);
   useEffect(() => {
-    if (!open) return;
-    const close = (event: MouseEvent | KeyboardEvent) => {
-      if (event instanceof KeyboardEvent && event.key !== "Escape") return;
-      if (
-        event instanceof MouseEvent &&
-        menu.current?.contains(event.target as Node)
-      )
-        return;
-      if (menu.current) menu.current.open = false;
-    };
-    document.addEventListener("mousedown", close);
-    document.addEventListener("keydown", close);
-    return () => {
-      document.removeEventListener("mousedown", close);
-      document.removeEventListener("keydown", close);
-    };
-  }, [open]);
-  const choose = (action: () => void) => {
-    if (menu.current) menu.current.open = false;
-    action();
+    forgetStaleInviteTokens(agreement);
+  }, [agreement.workspaceId, agreement.id, agreement.revision]);
+  const statusAction = (action: StageAction) => {
+    if (action === StageAction.Nudge) setNudging(true);
+    else if (action === StageAction.ConfirmAdvance) {
+      setConfirmError("");
+      setConfirming(true);
+    } else onStatusAction(action);
   };
+  async function confirmPaid() {
+    if (!advance || confirmBusy) return;
+    setConfirmBusy(true);
+    setConfirmError("");
+    try {
+      const next = await confirmAdvancePaid(
+        agreement.workspaceId,
+        agreement.id,
+        agreement.revision,
+        advance.advanceId,
+      );
+      onAgreementChange?.(next);
+      setConfirming(false);
+    } catch (cause) {
+      if (cause instanceof ApiError && cause.code === "REVISION_CONFLICT") {
+        let refreshFailed = false;
+        try {
+          const current = await api<Agreement>(
+            `workspaces/${encodeURIComponent(agreement.workspaceId)}/collaborations/${encodeURIComponent(agreement.id)}`,
+          );
+          onAgreementChange?.(current);
+        } catch {
+          refreshFailed = true;
+        }
+        setConfirmError(
+          refreshFailed
+            ? "Couldn’t load the latest agreement. Reload and try again."
+            : "Someone else just changed this. Here’s the latest; try again.",
+        );
+      } else {
+        setConfirmError(
+          cause instanceof Error
+            ? cause.message
+            : "Couldn’t confirm it. Try again.",
+        );
+      }
+    } finally {
+      setConfirmBusy(false);
+    }
+  }
+  const meta = versionMeta(agreement);
+  const actionMenuItems: MenuItem[] = [
+    ...(rename
+      ? [
+          {
+            id: "rename",
+            label: "Edit agreement name",
+            onSelect: () => setRenaming(true),
+          },
+        ]
+      : []),
+    ...menuItems.map((item, index) => ({
+      id: `extra-${index}-${item.label}`,
+      label: item.label,
+      description: item.note,
+      onSelect: () => {
+        if (item.href) window.location.assign(item.href);
+        else item.onSelect?.();
+      },
+    })),
+    { id: "payouts", label: "View payouts", onSelect: onViewPayouts },
+  ];
   return (
     <header className="ag-header">
       <nav aria-label="Breadcrumb" className="ag-breadcrumb">
@@ -491,67 +617,52 @@ export function AgreementHeader({
             {meta.text}
           </p>
         </div>
-        <details
-          ref={menu}
-          className="ag-menu"
-          onToggle={(event) => setOpen(event.currentTarget.open)}
-        >
-          <summary
-            ref={menuButton}
-            className="icon-button"
-            aria-label="Agreement actions"
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-              <circle cx="3" cy="8" r="1.4" fill="currentColor" />
-              <circle cx="8" cy="8" r="1.4" fill="currentColor" />
-              <circle cx="13" cy="8" r="1.4" fill="currentColor" />
-            </svg>
-          </summary>
-          <div className="ag-menu-list" role="menu">
-            {rename && (
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => choose(() => setRenaming(true))}
-              >
-                Edit agreement name
-              </button>
-            )}
-            {menuItems.map((item) =>
-              item.href ? (
-                <a
-                  key={item.label}
-                  role="menuitem"
-                  href={item.href}
-                  onClick={() => choose(() => {})}
-                >
-                  {item.label}
-                </a>
-              ) : (
-                <button
-                  key={item.label}
-                  type="button"
-                  role="menuitem"
-                  onClick={() => choose(() => item.onSelect?.())}
-                >
-                  {item.label}
-                  {item.note && (
-                    <span className="ag-menu-note">{item.note}</span>
-                  )}
-                </button>
-              ),
-            )}
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => choose(onViewPayouts)}
-            >
-              View payouts
-            </button>
-          </div>
-        </details>
+        <ActionMenu
+          ref={menuButton}
+          label="Agreement actions"
+          items={actionMenuItems}
+        />
       </div>
-      <StatusLine status={status} onAction={onStatusAction} />
+      <StatusLine status={status} onAction={statusAction} />
+      {confirming &&
+        advance &&
+        status.action === StageAction.ConfirmAdvance && (
+          <div
+            className="ag-confirm-advance"
+            role="group"
+            aria-label="Confirm the advance"
+          >
+            <p>
+              Only confirm once the {money(advance.amountCents)} has actually
+              been paid. The split switches on right away.
+            </p>
+            {confirmError && <p role="alert">{confirmError}</p>}
+            <div className="row">
+              <Button
+                type="button"
+                disabled={confirmBusy}
+                onClick={() => void confirmPaid()}
+              >
+                {confirmBusy ? "Confirming…" : "Yes, it’s paid"}
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setConfirming(false)}
+              >
+                Not yet
+              </Button>
+            </div>
+          </div>
+        )}
+      {nudging && (
+        <NudgeDrawer
+          agreement={agreement}
+          userId={userId}
+          onClose={() => setNudging(false)}
+          onAgreementChange={onAgreementChange}
+        />
+      )}
       {rename &&
         (renaming || renameSuggested) &&
         rename(renaming, () => {
@@ -562,7 +673,7 @@ export function AgreementHeader({
   );
 }
 
-/** How much of the advance has been paid back, below the rules. */
+/** How much of the advance has been allocated, below the rules. */
 export function RecoupmentCard({
   agreement,
   rules,
@@ -587,20 +698,20 @@ export function RecoupmentCard({
   return (
     <section className="panel ag-card ag-recoupment">
       <div className="ag-card-head">
-        <h2>Advance paid back</h2>
+        <h2>Advance allocation</h2>
         <span className={`status-chip ${complete ? "good" : ""}`}>
-          {complete ? "Complete" : "In progress"}
+          {complete ? "Fully allocated" : "In progress"}
         </span>
       </div>
       <p className="ag-recoupment-amount numeric">
-        {formatMoneyHeadline(recouped)} of {formatMoneyHeadline(amount)} paid
-        back
+        {formatMoneyHeadline(recouped)} of {formatMoneyHeadline(amount)}{" "}
+        allocated toward the advance
       </p>
-      <ThinProgress value={recouped} max={amount} label="Advance paid back" />
+      <ThinProgress value={recouped} max={amount} label="Advance allocation" />
       <p className="ag-recoupment-note">
         {complete
-          ? `${name} has their advance back. Every payment now ${split}.`
-          : `${formatMoneyHeadline(amount - recouped)} left to pay back to ${name} before the split.`}
+          ? `The full ${formatMoneyHeadline(amount)} advance amount has been allocated. Every payment now ${split}.`
+          : `${formatMoneyHeadline(amount - recouped)} left to allocate toward ${name}'s advance before the split.`}
         {!rules.advance.verified && " The advance amount isn't confirmed yet."}
       </p>
       {children}

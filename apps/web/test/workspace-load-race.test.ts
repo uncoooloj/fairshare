@@ -58,7 +58,7 @@ test("workspace changes fence in-flight reads and clear workspace-scoped state",
   );
 
   const agreement = source
-    .split("async function openAgreement(a: Agreement) {")[1]
+    .split(/async function openAgreement\([^)]*\) \{/)[1]
     .split(/async function (?:resumeDraft|refresh)/)[0];
   assert.match(
     agreement,
@@ -73,9 +73,15 @@ test("workspace changes fence in-flight reads and clear workspace-scoped state",
     agreement,
     /catch \(error\) \{\s*if \(request !== openRequest\.current\) return/,
   );
+  // Navigation (sidebar or a URL) fences in-flight agreement opens.
   assert.ok(
     source.includes(
-      "function navigate(s: Section) {\n    if (!mayLeaveDraft()) return false;\n    openRequest.current++;",
+      "function showSection(s: Section) {\n    openRequest.current++;",
+    ),
+  );
+  assert.ok(
+    source.includes(
+      "function navigate(s: Section) {\n    if (!mayLeaveDraft()) return false;\n    showSection(s);",
     ),
   );
 

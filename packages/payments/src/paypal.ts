@@ -365,6 +365,26 @@ export class PayPalSandbox {
       capture: captures.length ? this.parseCapture(orderId, result) : null,
     };
   }
+  /** PayPal's seller_payable_breakdown: what the refund cost the merchant. paypal_fee is the
+   * part of the original fee PayPal gave back; absent breakdown means nothing is known returned. */
+  private refundAccounting(result: Json, amountCents: number) {
+    const breakdown = result.seller_payable_breakdown;
+    if (!breakdown) return undefined;
+    const currency = result.amount?.currency_code;
+    if (
+      breakdown.gross_amount?.currency_code !== currency ||
+      (breakdown.paypal_fee &&
+        breakdown.paypal_fee.currency_code !== currency) ||
+      breakdown.net_amount?.currency_code !== currency
+    )
+      throw new PayPalError("REFUND_ACCOUNTING_MISMATCH");
+    const gross = cents(breakdown.gross_amount.value),
+      fee = breakdown.paypal_fee ? cents(breakdown.paypal_fee.value) : 0,
+      net = cents(breakdown.net_amount.value);
+    if (gross !== amountCents || net + fee !== gross)
+      throw new PayPalError("REFUND_ACCOUNTING_MISMATCH");
+    return { grossCents: gross, feeReturnedCents: fee, netCents: net };
+  }
   async refundCapture(
     captureId: string,
     amountCents: number,
@@ -384,11 +404,13 @@ export class PayPalSandbox {
       result.amount?.currency_code !== currency
     )
       throw new PayPalError("REFUND_MISMATCH");
+    const accounting = this.refundAccounting(result, amountCents);
     return {
       id: result.id as string,
       status: result.status as string,
       amountCents,
       currency,
+      ...(accounting ? { accounting } : {}),
     };
   }
   async getRefund(refundId: string) {
@@ -418,11 +440,14 @@ export class PayPalSandbox {
       )
         captureId = url.pathname.split("/").at(-1);
     }
+    const amountCents = cents(result.amount.value);
+    const accounting = this.refundAccounting(result, amountCents);
     return {
       id: result.id as string,
       status: result.status as string,
-      amountCents: cents(result.amount.value),
+      amountCents,
       currency: result.amount.currency_code as string,
+      ...(accounting ? { accounting } : {}),
       captureId,
       reference:
         typeof result.invoice_id === "string" ? result.invoice_id : undefined,

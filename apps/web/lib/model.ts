@@ -23,6 +23,10 @@ export interface Allocation {
   recoupmentCents: number;
   shareCents: number;
   feeCents: number;
+  /** Refund recovery kept from this payment after the recorded split. */
+  offsetCents?: number;
+  /** Refund recovery returned to this payment after the recorded split. */
+  creditCents?: number;
   totalCents: number;
   status: string;
 }

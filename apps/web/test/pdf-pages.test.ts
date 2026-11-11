@@ -52,17 +52,23 @@ test("a quote that is not on the page is not placed", () => {
   assert.deepEqual(locateQuote(items, " "), []);
 });
 
-test("a scanned page with small reading errors still places a long quote by its ends", () => {
-  const scanned = [
-    "Net revenue is split fifty-fifty betvveen the Producer and the Artist, after the advance.",
-  ];
-  const spans = locateQuote(
-    scanned,
-    "Net revenue is split fifty-fifty between the Producer and the Artist, after the advance.",
+test("near wording never highlights a cited clause", () => {
+  assert.deepEqual(
+    locateQuote(
+      [
+        "Net revenue is split fifty-fifty betvveen the Producer and the Artist.",
+      ],
+      "Net revenue is split fifty-fifty between the Producer and the Artist.",
+    ),
+    [],
   );
-  assert.equal(spans.length, 1);
-  assert.equal(spans[0].start, 0);
-  assert.equal(spans[0].end, scanned[0].length);
+  assert.deepEqual(
+    locateQuote(
+      ["The Producer owns the masters after the advance is paid back."],
+      "The Artist owns the masters after the advance is paid back.",
+    ),
+    [],
+  );
 });
 
 test("search finds every match on the page", () => {
@@ -138,6 +144,10 @@ test("pdf.js loads lazily, from the authenticated proxy, never at module load", 
   );
   assert.match(pages, /import\("pdfjs-dist\/legacy\/build\/pdf\.mjs"\)/);
   assert.match(pages, /credentials: "same-origin"/);
+  assert.match(pages, /new AbortController\(\)/);
+  assert.match(pages, /signal: controller.signal/);
+  assert.match(pages, /void loading\?\.destroy\(\)/);
+  assert.match(pages, /callbacks\.current\.onFail\(\)/);
   assert.match(pages, /isEvalSupported: false/);
   const pkg = JSON.parse(
     readFileSync(new URL("../package.json", import.meta.url), "utf8"),

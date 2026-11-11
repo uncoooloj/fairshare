@@ -8,7 +8,9 @@ import {
   documentCitations,
   documentPages,
   fromDocument,
+  matchesCitationTarget,
   OPEN_CITATION_EVENT,
+  type OpenCitationDetail,
   pageBlocks,
   pageIndexOf,
   SEARCH_PREFIX,
@@ -73,6 +75,7 @@ export function DocumentCitationView({
   fileName,
   nameOf,
   originalUrl,
+  pendingCitation,
 }: {
   version?: Version;
   document: {
@@ -89,6 +92,8 @@ export function DocumentCitationView({
   nameOf: (userId: string) => string;
   /** The uploaded file through our proxy. A PDF shows as its real pages. */
   originalUrl?: string;
+  /** A citation chosen from other terms or another source document, shown once it loads. */
+  pendingCitation?: OpenCitationDetail;
 }) {
   const [selected, setSelected] = useState<string | null>(null);
   const [pageIndex, setPageIndex] = useState(0);
@@ -196,10 +201,29 @@ export function DocumentCitationView({
     setSelected(null);
     requestAnimationFrame(() => setSelected(id));
   }
-  // A rule's clause chip asks for its quote: show it when it can be found.
+  useEffect(() => {
+    if (
+      !pendingCitation ||
+      !matchesCitationTarget(
+        pendingCitation,
+        version?.id,
+        document.documentId,
+      ) ||
+      !cited.some(
+        (citation) => citation.id === pendingCitation.id && citation.highlight,
+      )
+    )
+      return;
+    show(pendingCitation.id);
+    // Runs when the requested citation or the loaded document changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [all, document.documentId, pendingCitation, version?.id]);
+  // Legacy callers can still ask the currently selected document to show a quote by ID.
   useEffect(() => {
     const open = (event: Event) => {
-      const id = (event as CustomEvent<string>).detail;
+      const detail = (event as CustomEvent<string | OpenCitationDetail>).detail;
+      if (typeof detail !== "string") return;
+      const id = detail;
       if (!cited.some((citation) => citation.id === id && citation.highlight))
         return;
       event.preventDefault();

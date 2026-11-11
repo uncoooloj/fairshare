@@ -53,4 +53,5 @@ test("raw payout states preserve recipient and automatic hold blockers", () => {
     PaymentGridStatus.WaitingRecipient,
   );
   assert.equal(payoutStatus("AUTO_HELD"), PaymentGridStatus.Held);
+  assert.equal(payoutStatus("RESERVED"), PaymentGridStatus.Reserved);
 });

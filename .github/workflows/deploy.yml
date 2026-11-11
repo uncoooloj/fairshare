@@ -1,8 +1,6 @@
 name: Deploy Fairshare
 
 on:
-  push:
-    branches: [main]
   pull_request:
   workflow_dispatch:
     inputs:
@@ -17,7 +15,9 @@ permissions:
 
 concurrency:
   group: ${{ github.event_name == 'pull_request' && format('fairshare-release-pr-{0}', github.event.pull_request.number) || 'fairshare-hosted-release' }}
-  cancel-in-progress: false
+  # PRs only validate Cloudflare-specific artifacts; replace stale runs for the same PR.
+  # Main and manually dispatched releases remain serial and are never cancelled in progress.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   release:
@@ -57,10 +57,17 @@ jobs:
             echo "- Checks not performed: restart, redeploy, restore, rollback"
           } >> "$GITHUB_STEP_SUMMARY"
       - run: npm ci
-      - run: npm run format:check
-      - run: npm test
-      - run: npm run typecheck
-      - run: npm run build
+      # CI already runs format, the full test suite, types, and the regular build for
+      # every PR. Keep those checks here for releases, where this workflow is the
+      # deployment validation path, while PRs prove only Cloudflare-specific artifacts.
+      - if: github.event_name != 'pull_request'
+        run: npm run format:check
+      - if: github.event_name != 'pull_request'
+        run: npm test
+      - if: github.event_name != 'pull_request'
+        run: npm run typecheck
+      - if: github.event_name != 'pull_request'
+        run: npm run build
       - run: npm run check:cloudflare -w @fairshare/api
       - name: Record checked API bundle
         id: api_bundle

@@ -4,9 +4,9 @@ Audited the designer's 48-page HTML export against the current aggregate API and
 
 ## Critical: preserve these working invariants
 
-- Clarification belongs inside agreement setup. Unresolved questions and unverified advances prevent sending rules for approval. A preview can still illustrate the proposed allocation, but must clearly say it is a preview requiring clarification.
+- Clarification belongs inside agreement setup. Unresolved questions prevent sending rules for approval; an unverified advance may be sent and approved, but leaves the version awaiting organizer confirmation before activation. A preview can still illustrate the proposed allocation, but must clearly say it is a preview requiring clarification.
 - Every participant must approve the exact proposed version. Request changes returns that version to draft and clears all approvals. A new proposal starts with zero approvals.
-- Previous active rules remain active while a revision is being reviewed. **Final approval does not automatically activate** the revision: the organizer must explicitly activate it. Show “All approved · Ready to activate” and an organizer-only action, not “Activated” on approval.
+- Previous active rules remain active while a revision is being reviewed. Final approval automatically activates the revision when its advance is already confirmed; an unconfirmed advance leaves the approved version awaiting confirmation. The organizer confirms it with `POST .../:collaborationId/advance/confirm` `{expectedRevision,advanceId}`, which may activate the revision once all approvals are present. Show the waiting confirmation state and an organizer-only confirmation action, and show “Activated” only after activation.
 - Source uploads are immutable records. Uploading a replacement source does not itself create a new version or revoke/change existing rules. The UI must explicitly propose a new version after reading/reviewing it.
 - All agreement writes carry the latest aggregate revision. On a 409, reload and explain that another person changed the agreement; do not silently replay an approval against changed terms.
 - Payments and payouts are different from approvals. Allocated/held/provider-confirmed values come from backend records, not designer sample rows.

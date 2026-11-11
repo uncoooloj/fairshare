@@ -13,34 +13,8 @@ permissions:
   contents: read
 
 jobs:
-  format:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-ci
-        with:
-          save-cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-      - run: npm run format:check
-
-  test_api_shard_1:
-    name: API tests (shard 1/2)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-ci
-      # Preserve the API test command while splitting its test-file glob across runners.
-      - run: cd apps/api && node --import tsx --test --test-shard=1/2 test/*.test.ts
-
-  test_api_shard_2:
-    name: API tests (shard 2/2)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-ci
-      - run: cd apps/api && node --import tsx --test --test-shard=2/2 test/*.test.ts
-
-  test_web_and_packages:
-    name: Web and package tests
+  tests:
+    name: Tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -58,52 +32,55 @@ jobs:
             echo "Found: $actual_workspaces"
             exit 1
           fi
-      - run: npm run test --workspace @fairshare/web --if-present
-      - run: npm run test --workspace @fairshare/cloudflare-storage --if-present
-      - run: npm run test --workspace @fairshare/contract-ai --if-present
-      - run: npm run test --workspace @fairshare/domain --if-present
-      - run: npm run test --workspace @fairshare/payments --if-present
+      - name: Run every test lane
+        run: |
+          set -uo pipefail
+          (cd apps/api && node --import tsx --test --test-shard=1/2 test/*.test.ts) &
+          shard_one=$!
+          (cd apps/api && node --import tsx --test --test-shard=2/2 test/*.test.ts) &
+          shard_two=$!
+          (
+            set -e
+            npm run test --workspace @fairshare/web --if-present
+            npm run test --workspace @fairshare/cloudflare-storage --if-present
+            npm run test --workspace @fairshare/contract-ai --if-present
+            npm run test --workspace @fairshare/domain --if-present
+            npm run test --workspace @fairshare/payments --if-present
+          ) &
+          workspace_tests=$!
+          status=0
+          for pid in "$shard_one" "$shard_two" "$workspace_tests"; do
+            wait "$pid" || status=1
+          done
+          exit "$status"
 
-  typecheck:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-ci
-      - run: npm run typecheck
-
-  build:
+  quality_and_build:
+    name: Quality and build
     runs-on: ubuntu-latest
     env:
       NEXT_TELEMETRY_DISABLED: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-ci
+        with:
+          save-cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
       - uses: actions/cache@v4
         with:
           path: apps/web/.next/cache
           key: ${{ runner.os }}-nextjs-${{ hashFiles('package-lock.json') }}-${{ hashFiles('apps/web/**') }}
           restore-keys: |
             ${{ runner.os }}-nextjs-${{ hashFiles('package-lock.json') }}-
+      # Keep these serial: build and typecheck both compile the workspace graph.
+      - run: npm run format:check
+      - run: npm run typecheck
       - run: npm run build
 
   verify:
     if: ${{ always() }}
-    needs:
-      [
-        format,
-        test_api_shard_1,
-        test_api_shard_2,
-        test_web_and_packages,
-        typecheck,
-        build,
-      ]
+    needs: [tests, quality_and_build]
     runs-on: ubuntu-latest
     steps:
       - name: Require every check to succeed
         run: |
-          test "${{ needs.format.result }}" = success
-          test "${{ needs.test_api_shard_1.result }}" = success
-          test "${{ needs.test_api_shard_2.result }}" = success
-          test "${{ needs.test_web_and_packages.result }}" = success
-          test "${{ needs.typecheck.result }}" = success
-          test "${{ needs.build.result }}" = success
+          test "${{ needs.tests.result }}" = success
+          test "${{ needs.quality_and_build.result }}" = success

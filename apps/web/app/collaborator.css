@@ -378,6 +378,11 @@
   margin: 0 0 var(--space-2);
 }
 
+.collab-payout-form > .payout-field-hint {
+  margin: calc(-1 * var(--space-1)) 0 0;
+  font-size: var(--text-xs);
+}
+
 @media (max-width: 640px) {
   .collab-review {
     padding: var(--space-4);
@@ -433,4 +438,13 @@
   .collab-invite-card {
     padding: var(--space-6) var(--space-4) var(--space-4);
   }
+}
+
+/* Drawer heading row with the shared × on the right. */
+.collab-drawer-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-right: calc(var(--space-2) * -1);
 }

@@ -8,6 +8,8 @@ import {
   feeResolutionOptions,
   locateQuote,
   parseDocumentDate,
+  findDefinedDates,
+  resolveDefinedDate,
   ExtractionStatus,
   ExtractionProvider,
   ExtractionSection,
@@ -24,6 +26,7 @@ import {
   DiagnosticCategory,
   DEFAULT_ANTHROPIC_MODEL,
   DEFAULT_CLOUDFLARE_MODEL,
+  type ExtractedFact,
   type ExtractionResult,
 } from "../src/index.js";
 
@@ -351,7 +354,11 @@ test("a recoup claim the quote does not show is kept as not stated, not dropped"
         ],
         issues: [],
       },
-      full,
+      // Paying back is stated, but in another paragraph, so it is not shown for this advance.
+      {
+        ...full,
+        text: "Maya Okafor received a $2,000 advance.\n\nIt is recouped from revenue before the split.",
+      },
     );
     assert.deepEqual(r.rejections, []);
     assert.equal(r.facts[0].kind, FactKind.ADVANCE);
@@ -443,6 +450,360 @@ test("term dates parse only unambiguous written dates", () => {
     r.sections[ExtractionSection.TERM].status,
     SectionStatus.NOT_FOUND,
   );
+});
+
+test("defined dates resolve from several phrasings to the defining sentence", () => {
+  const cases: [string, string, string, string][] = [
+    [
+      'This Agreement is dated October 1, 2026 (the "Effective Date") between Maya and Jordan.',
+      "Effective Date",
+      "October 1, 2026",
+      "2026-10-01",
+    ],
+    [
+      "Made as of 1st March 2027 (the “Commencement Date”), by Maya.",
+      "Commencement Date",
+      "1st March 2027",
+      "2027-03-01",
+    ],
+    [
+      'Signed on 2026-02-28 ("Start Date") by both.',
+      "Start Date",
+      "2026-02-28",
+      "2026-02-28",
+    ],
+    [
+      'Definitions apply. "Effective Date" means June 1, 2026.\nOther terms follow.',
+      "Effective Date",
+      "June 1, 2026",
+      "2026-06-01",
+    ],
+  ];
+  for (const [text, term, raw, date] of cases) {
+    const [found] = findDefinedDates(text);
+    assert.equal(found?.term, term, text);
+    assert.equal(found.raw, raw);
+    assert.equal(found.date, date);
+    assert.equal(
+      text.slice(found.citation.start, found.citation.end),
+      found.citation.quote,
+    );
+    assert.ok(found.citation.quote.includes(raw));
+    assert.ok(!found.citation.quote.includes("follow"));
+  }
+  // A date that is not the whole definition, a numeric date, or two different dates: no definition.
+  assert.deepEqual(
+    findDefinedDates(
+      '"Effective Date" means the later of June 1, 2026 and the first release.',
+    ),
+    [],
+  );
+  assert.deepEqual(
+    findDefinedDates('Dated 03/04/2026 (the "Effective Date").'),
+    [],
+  );
+  assert.deepEqual(
+    findDefinedDates(
+      'Dated June 1, 2026 (the "Effective Date"). Dated July 1, 2026 (the "Effective Date").',
+    ),
+    [],
+  );
+});
+
+test("defined-date helper requires the usage quote to name the term", () => {
+  const text =
+    'This agreement is dated October 1, 2026 (the "Effective Date"). Maya receives 60%.';
+  assert.equal(
+    resolveDefinedDate(text, "Maya receives 60%.", "Effective Date"),
+    null,
+  );
+});
+
+test("a term start given only as the Effective Date cites the defining sentence", () => {
+  const text = [
+    'This agreement is dated October 1, 2026 (the "Effective Date") between Maya and Jordan.',
+    "Maya receives 60% and Jordan receives 40% of gross revenue.",
+    "This agreement starts on the Effective Date and ends on December 31, 2027.",
+  ].join("\n");
+  const doc = { documentId: "doc_ed", revision: 1, text };
+  const usesTerm =
+    "This agreement starts on the Effective Date and ends on December 31, 2027.";
+  const start = { termBoundary: TermBoundary.START };
+  const r = validateDraft(
+    {
+      facts: [
+        fact(
+          FactKind.TERM,
+          "October 1, 2026",
+          "October 1, 2026",
+          usesTerm,
+          start,
+        ),
+        fact(
+          FactKind.TERM,
+          "December 31, 2027",
+          "December 31, 2027",
+          usesTerm,
+          {
+            termBoundary: TermBoundary.END,
+          },
+        ),
+      ],
+      issues: [],
+    },
+    doc,
+  );
+  assert.equal(r.rejections[0].reason, RejectionReason.SUBJECT_NOT_IN_QUOTE);
+  const [e] = r.facts as Extract<ExtractedFact, { kind: FactKind.TERM }>[];
+  assert.equal(e.citation.quote, usesTerm);
+  assert.equal(r.sections[ExtractionSection.TERM].status, SectionStatus.READ);
+
+  // The value may be the term itself, but it is not source-complete alone.
+  assert.throws(() =>
+    validateDraft(
+      {
+        facts: [
+          fact(
+            FactKind.TERM,
+            "the Effective Date",
+            "the Effective Date",
+            usesTerm,
+            start,
+          ),
+        ],
+        issues: [],
+      },
+      doc,
+    ),
+  );
+
+  // A date that does not match the definition, or no definition at all, stays dropped.
+  for (const [source, value] of [
+    [text, "November 1, 2026"],
+    [text.replace(' (the "Effective Date")', ""), "October 1, 2026"],
+  ]) {
+    assert.throws(
+      () =>
+        validateDraft(
+          {
+            facts: [fact(FactKind.TERM, value, value, usesTerm, start)],
+            issues: [],
+          },
+          { ...doc, text: source },
+        ),
+      /empty extraction/,
+    );
+  }
+  // The quote must name the defined term.
+  const unrelated = validateDraft(
+    {
+      facts: [
+        fact(
+          FactKind.TERM,
+          "October 1, 2026",
+          "October 1, 2026",
+          "Maya receives 60% and Jordan receives 40% of gross revenue.",
+          start,
+        ),
+        share(
+          "Maya",
+          "60%",
+          "Maya receives 60% and Jordan receives 40% of gross revenue.",
+        ),
+      ],
+      issues: [],
+    },
+    doc,
+  );
+  assert.equal(
+    unrelated.rejections[0].reason,
+    RejectionReason.SUBJECT_NOT_IN_QUOTE,
+  );
+});
+
+test("paid back first is read from the same clause as the advance amount, never another clause", () => {
+  const amount = "4.1 Maya received an advance of $3,000 for studio costs.";
+  const advanceIn = (
+    text: string,
+    recouped: boolean | null = null,
+    quote = amount,
+  ) => {
+    const r = validateDraft(
+      {
+        facts: [
+          fact(FactKind.ADVANCE, "Maya", "$3,000", quote, {
+            recoupedBeforeSplit: recouped,
+          }),
+        ],
+        issues: [],
+      },
+      { documentId: "doc_adv", revision: 1, text },
+    );
+    return r.facts[0] as Extract<ExtractedFact, { kind: FactKind.ADVANCE }>;
+  };
+  // Same numbered clause, next sentence: paid back first, citing the whole clause.
+  const sameClause = `${amount} It is recouped from revenue before the split.\n4.2 Statements are quarterly.`;
+  const a = advanceIn(sameClause);
+  assert.equal(a.recoupedBeforeSplit, null);
+  assert.equal(a.citation.quote, amount);
+  // Same paragraph wrapped over lines, model claims true: still accepted.
+  assert.equal(
+    advanceIn(`${amount}\nIt is paid back from revenue first.`, true)
+      .recoupedBeforeSplit,
+    null,
+  );
+  // A different numbered clause or paragraph: not stated, citation stays the amount sentence.
+  for (const text of [
+    `${amount}\n4.2 The advance is recouped before the split.`,
+    `${amount}\n\nThe advance is recouped before the split.`,
+  ]) {
+    const other = advanceIn(text);
+    assert.equal(other.recoupedBeforeSplit, null, text);
+    assert.equal(other.citation.quote, amount);
+  }
+  // Negation in the same clause, or the model saying it is not paid back: not stated.
+  for (const [text, recouped] of [
+    [`${amount} It shall not be recouped from revenue.`, null],
+    [`${amount} It is non-recoupable and never repaid.`, null],
+    [`${amount} It is recouped from revenue before the split.`, false],
+    [`${amount} It is recouped from revenue after the split.`, true],
+    [`${amount} It is repaid from Maya's share.`, true],
+    [`${amount} It is reimbursed from revenue.`, true],
+  ] as const) {
+    assert.equal(advanceIn(text, recouped).recoupedBeforeSplit, null, text);
+  }
+
+  assert.equal(
+    advanceIn(
+      `${amount} It is recouped from revenue before any distribution.`,
+      true,
+    ).recoupedBeforeSplit,
+    null,
+  );
+  const mixed = `${amount} Fees are deducted before the split. The advance is repaid from Maya's share.`;
+  assert.equal(advanceIn(mixed, true).recoupedBeforeSplit, null);
+  const badQuote =
+    "Maya received a $3,000 advance; fees are deducted before the split, and the advance is repaid from Maya's share.";
+  assert.equal(advanceIn(badQuote, true, badQuote).recoupedBeforeSplit, null);
+  const goodQuote =
+    "Maya received a $3,000 advance, deducted first from revenue before the split.";
+  assert.equal(advanceIn(goodQuote, true, goodQuote).recoupedBeforeSplit, true);
+});
+
+test("defined dates require a positive boundary use, not a bare or limited term reference", () => {
+  const definition =
+    'This agreement is dated October 1, 2026 (the "Effective Date").';
+  const limitation =
+    "This agreement shall not start earlier than the Effective Date.";
+  const text = `${definition}\n${limitation}`;
+  const result = validateDraft(
+    {
+      facts: [
+        fact(FactKind.TERM, "October 1, 2026", "October 1, 2026", limitation, {
+          termBoundary: TermBoundary.START,
+        }),
+        fact(FactKind.CURRENCY, "This", "This", definition),
+      ],
+      issues: [],
+    },
+    { documentId: "doc_limited_date", revision: 1, text },
+  );
+  assert.equal(
+    result.facts.some((fact) => fact.kind === FactKind.TERM),
+    false,
+  );
+});
+
+test("negated and conditional defined-date uses stay unverified", () => {
+  const definition =
+    'This agreement is dated October 1, 2026 (the "Effective Date").';
+  for (const invocation of [
+    "This agreement does not commence on the Effective Date.",
+    "This agreement may commence on the Effective Date.",
+  ]) {
+    const result = validateDraft(
+      {
+        facts: [
+          fact(
+            FactKind.TERM,
+            "October 1, 2026",
+            "October 1, 2026",
+            invocation,
+            { termBoundary: TermBoundary.START },
+          ),
+          fact(FactKind.CURRENCY, "This", "This", definition),
+        ],
+        issues: [],
+      },
+      {
+        documentId: "doc_conditional_date",
+        revision: 1,
+        text: `${definition}\n${invocation}`,
+      },
+    );
+    assert.equal(
+      result.facts.some((fact) => fact.kind === FactKind.TERM),
+      false,
+    );
+  }
+});
+
+test("paid back first is read from another clause only through the advance's defined name", () => {
+  const amount =
+    '4.1 Maya received an advance of $3,000 (the "Production Advance") for studio costs.';
+  const advanceIn = (text: string, quote = amount) => {
+    const r = validateDraft(
+      {
+        facts: [fact(FactKind.ADVANCE, "Maya", "$3,000", quote)],
+        issues: [],
+      },
+      { documentId: "doc_def", revision: 1, text },
+    );
+    return r.facts[0] as Extract<ExtractedFact, { kind: FactKind.ADVANCE }>;
+  };
+  const recoupClause =
+    "4.2 The Production Advance shall be recouped from revenue before the split.";
+  // Defined term in a different clause, plus a clause that only mentions recoupment as the way back.
+  const text = [
+    amount,
+    "",
+    recoupClause,
+    "",
+    "4.3 The Production Advance is not repayable other than by recoupment under clause 4.2.",
+  ].join("\n");
+  const a = advanceIn(text);
+  assert.equal(a.recoupedBeforeSplit, null);
+  assert.equal(a.citation.quote, amount);
+  assert.equal(a.recoupCitation, undefined);
+  // The "means" form of definition works too.
+  const means =
+    '"Studio Advance" means the $3,000 paid to Maya before release.';
+  assert.equal(
+    advanceIn(
+      `${means}\n\nThe Studio Advance is recouped before the split.`,
+      means,
+    ).recoupedBeforeSplit,
+    null,
+  );
+  // A different term, no definition, a negation, or a clause saying it is not recouped: not stated.
+  const notStated = [
+    [amount, "4.2 The Tour Advance shall be recouped before the split."],
+    [
+      "4.1 Maya received an advance of $3,000 for studio costs.",
+      "4.2 The Production Advance shall be recouped before the split.",
+    ],
+    [amount, "4.2 The Production Advance shall never be recouped."],
+    [
+      amount,
+      "4.2 The Production Advance shall be recouped before the split.\n4.3 The Production Advance shall not be recouped from tour income.",
+    ],
+  ];
+  for (const [first, rest] of notStated) {
+    const other = advanceIn(`${first}\n${rest}`, first);
+    assert.equal(other.recoupedBeforeSplit, null, rest);
+    assert.equal(other.recoupCitation, undefined);
+    assert.equal(other.citation.quote, first);
+  }
 });
 
 test("organizer-pays fees and refunds charged to a person carry the named person", () => {
@@ -913,6 +1274,302 @@ test("both providers failing returns MANUAL without partial facts or secrets", a
     fetch: async () => cfResponse({ facts: [], issues: [] }),
   });
   assert.equal(invalid.reason, FallbackReason.INVALID_OUTPUT);
+});
+
+// ---------- Claude fallback, end to end through the SDK with a mocked transport ----------
+/** A Claude reply with arbitrary content blocks, as the Messages API returns it. */
+const claudeReply = (content: unknown[], extra: Record<string, unknown> = {}) =>
+  new Response(
+    JSON.stringify({
+      id: "msg_fixture",
+      type: "message",
+      role: "assistant",
+      model: DEFAULT_ANTHROPIC_MODEL,
+      content,
+      stop_reason: "end_turn",
+      stop_sequence: null,
+      usage: { input_tokens: 1, output_tokens: 1 },
+      ...extra,
+    }),
+    { headers: { "content-type": "application/json" } },
+  );
+const failingCloudflare = {
+  ...config,
+  fetch: async () => new Response("upstream", { status: 500 }),
+};
+
+test("Claude request: Sonnet 5.5, bounded output, same prompt, structured JSON, no tools", async () => {
+  let body: any;
+  let headers: Headers | undefined;
+  const r = await extractContract(full, {
+    ...failingCloudflare,
+    anthropic: {
+      apiKey: anthropicKey,
+      fetch: async (_url, init) => {
+        body = JSON.parse(String(init!.body));
+        headers = new Headers(init!.headers as HeadersInit);
+        return claudeMessage(fullDraft);
+      },
+    },
+  });
+  assert.equal(r.status, ExtractionStatus.REVIEW_REQUIRED);
+  assert.equal(r.promptVersion, "contract-extraction-v5");
+  assert.equal(body.model, "claude-sonnet-5-5");
+  assert.equal(body.max_tokens, 16_000);
+  // Same system prompt and user payload as the Cloudflare path.
+  const [system, user] = buildMessages(full);
+  assert.equal(body.system, system.content);
+  assert.deepEqual(body.messages, [{ role: "user", content: user.content }]);
+  assert.equal(body.output_config.effort, "medium");
+  assert.equal(body.output_config.format.type, "json_schema");
+  assert.equal(body.output_config.format.schema.type, "object");
+  assert.equal(body.fallbacks, "default");
+  assert.match(
+    headers?.get("anthropic-beta") ?? "",
+    /server-side-fallback-2026-07-01/,
+  );
+  // Sonnet 5.5 rejects disabled thinking, budgets and sampling parameters; send none.
+  for (const key of ["thinking", "temperature", "top_p", "top_k", "tools"])
+    assert.equal(body[key], undefined, key);
+});
+
+test("Cloudflare invalid JSON falls back to Claude", async () => {
+  const diagnostics: any[] = [];
+  const r = await extractContract(full, {
+    ...config,
+    fetch: async () =>
+      new Response(
+        JSON.stringify({
+          success: true,
+          result: { response: '{"facts": [ {"kind": "SHARE", ' },
+        }),
+      ),
+    anthropic: {
+      apiKey: anthropicKey,
+      fetch: async () => claudeMessage(fullDraft),
+    },
+    onFailure: (d) => diagnostics.push(d),
+  });
+  assert.equal(r.status, ExtractionStatus.REVIEW_REQUIRED);
+  assert.equal(r.provider, ExtractionProvider.ANTHROPIC);
+  assert.equal(r.fallbackFrom, ExtractionProvider.CLOUDFLARE);
+  assert.deepEqual(diagnostics, [
+    {
+      provider: ExtractionProvider.CLOUDFLARE,
+      category: DiagnosticCategory.INVALID_OUTPUT,
+      httpStatus: 200,
+    },
+  ]);
+});
+
+test("Claude text is read from text blocks only, alongside thinking and fallback blocks", async () => {
+  const json = JSON.stringify(fullDraft);
+  const r = await extractContract(full, {
+    anthropic: {
+      apiKey: anthropicKey,
+      fetch: async () =>
+        claudeReply([
+          { type: "thinking", thinking: "", signature: "sig" },
+          { type: "text", text: json.slice(0, 40) },
+          { type: "text", text: json.slice(40) },
+        ]),
+    },
+  });
+  assert.equal(r.status, ExtractionStatus.REVIEW_REQUIRED);
+  assert.equal(r.facts.length, fullFacts.length);
+});
+
+test("Claude fenced, partial or empty JSON is rejected cleanly", async () => {
+  const json = JSON.stringify(fullDraft);
+  for (const content of [
+    [{ type: "text", text: "```json\n" + json + "\n```" }],
+    [{ type: "text", text: json.slice(0, json.length / 2) }],
+    [{ type: "text", text: "" }],
+    [],
+  ]) {
+    const diagnostics: any[] = [];
+    const r = await extractContract(full, {
+      ...failingCloudflare,
+      anthropic: {
+        apiKey: anthropicKey,
+        fetch: async () => claudeReply(content),
+      },
+      onFailure: (d) => diagnostics.push(d),
+    });
+    assert.equal(r.status, ExtractionStatus.MANUAL_REQUIRED);
+    assert.equal(r.reason, FallbackReason.INVALID_OUTPUT);
+    assert.deepEqual(r.facts, []);
+    assert.equal(r.provider, null);
+    assert.equal(diagnostics[1].category, DiagnosticCategory.INVALID_OUTPUT);
+  }
+});
+
+test("every non-end_turn Claude stop fails closed", async () => {
+  for (const stop_reason of [
+    "max_tokens",
+    "refusal",
+    "pause_turn",
+    "tool_use",
+    "stop_sequence",
+  ]) {
+    const diagnostics: any[] = [];
+    const r = await extractContract(full, {
+      anthropic: {
+        apiKey: anthropicKey,
+        fetch: async () => claudeMessage(fullDraft, stop_reason),
+      },
+      onFailure: (d) => diagnostics.push(d),
+    });
+    assert.equal(r.status, ExtractionStatus.MANUAL_REQUIRED, stop_reason);
+    assert.equal(r.reason, FallbackReason.PROVIDER_UNAVAILABLE);
+    assert.equal(diagnostics[0].category, DiagnosticCategory.PROVIDER_REJECTED);
+  }
+});
+
+test("Claude API errors become MANUAL_REQUIRED with the status, never a throw", async () => {
+  for (const status of [400, 401, 429, 500, 529]) {
+    const diagnostics: any[] = [];
+    const r = await extractContract(full, {
+      ...failingCloudflare,
+      anthropic: {
+        apiKey: anthropicKey,
+        fetch: async () =>
+          new Response(
+            JSON.stringify({
+              type: "error",
+              error: { type: "api_error", message: `echo ${anthropicKey}` },
+            }),
+            { status, headers: { "content-type": "application/json" } },
+          ),
+      },
+      onFailure: (d) => diagnostics.push(d),
+    });
+    assert.equal(r.status, ExtractionStatus.MANUAL_REQUIRED);
+    assert.equal(r.reason, FallbackReason.PROVIDER_UNAVAILABLE);
+    assert.deepEqual(diagnostics[1], {
+      provider: ExtractionProvider.ANTHROPIC,
+      category: DiagnosticCategory.HTTP_ERROR,
+      httpStatus: status,
+    });
+    assert.equal(
+      JSON.stringify([r, diagnostics]).includes(anthropicKey),
+      false,
+    );
+  }
+});
+
+test("the Claude call is bounded by the timeout and made once (no SDK retries)", async () => {
+  let calls = 0;
+  const diagnostics: any[] = [];
+  const r = await extractContract(full, {
+    anthropic: {
+      apiKey: anthropicKey,
+      timeoutMs: 5,
+      fetch: () => {
+        calls++;
+        return new Promise(() => {});
+      },
+    },
+    onFailure: (d) => diagnostics.push(d),
+  });
+  assert.equal(r.reason, FallbackReason.PROVIDER_UNAVAILABLE);
+  assert.equal(calls, 1);
+  assert.equal(diagnostics[0].provider, ExtractionProvider.ANTHROPIC);
+  assert.ok(
+    [DiagnosticCategory.TIMEOUT, DiagnosticCategory.TRANSPORT_ERROR].includes(
+      diagnostics[0].category,
+    ),
+  );
+});
+
+test("the stored reading records the Claude model that actually answered", async () => {
+  const r = await extractContract(full, {
+    ...failingCloudflare,
+    anthropic: {
+      apiKey: anthropicKey,
+      fetch: async () =>
+        claudeReply(
+          [
+            {
+              type: "fallback",
+              from: { model: "claude-sonnet-5-5" },
+              to: { model: "claude-opus-5-5" },
+            },
+            { type: "text", text: JSON.stringify(fullDraft) },
+          ],
+          { model: "claude-opus-5-5" },
+        ),
+    },
+  });
+  assert.equal(r.status, ExtractionStatus.REVIEW_REQUIRED);
+  assert.equal(r.provider, ExtractionProvider.ANTHROPIC);
+  assert.equal(r.model, "claude-opus-5-5");
+  assert.equal(r.fallbackFrom, ExtractionProvider.CLOUDFLARE);
+  // A Cloudflare answer records the Cloudflare model.
+  const cf = await invoke(fullDraft);
+  assert.equal(cf.provider, ExtractionProvider.CLOUDFLARE);
+  assert.equal(cf.model, DEFAULT_CLOUDFLARE_MODEL);
+});
+
+test("missing or malformed Claude model provenance fails closed without an attestation", async () => {
+  for (const model of [undefined, "", 42, "gpt-4o"] as unknown[]) {
+    const diagnostics: unknown[] = [];
+    const r = await extractContract(full, {
+      ...failingCloudflare,
+      anthropic: {
+        apiKey: anthropicKey,
+        fetch: async () =>
+          claudeReply([{ type: "text", text: JSON.stringify(fullDraft) }], {
+            model,
+          }),
+      },
+      onFailure: (d) => diagnostics.push(d),
+    });
+    assert.equal(r.status, ExtractionStatus.MANUAL_REQUIRED, String(model));
+    assert.equal(r.reason, FallbackReason.INVALID_OUTPUT, String(model));
+    assert.equal(r.provider, null, String(model));
+    assert.equal(r.model, null, String(model));
+    assert.deepEqual(diagnostics[1], {
+      provider: ExtractionProvider.ANTHROPIC,
+      category: DiagnosticCategory.INVALID_OUTPUT,
+      httpStatus: 200,
+    });
+  }
+});
+
+test("the Anthropic key never reaches the console, results or diagnostics", async () => {
+  const logged: string[] = [];
+  const methods = ["log", "info", "warn", "error", "debug"] as const;
+  const original = methods.map((m) => console[m]);
+  methods.forEach((m) => {
+    console[m] = (...args: unknown[]) => {
+      logged.push(args.map((a) => String(a)).join(" "));
+    };
+  });
+  const diagnostics: unknown[] = [];
+  const results: unknown[] = [];
+  try {
+    for (const fetch of [
+      async () => {
+        throw new Error(`boom ${anthropicKey}`);
+      },
+      async () => new Response(anthropicKey, { status: 401 }),
+      async () => claudeReply([{ type: "text", text: anthropicKey }]),
+      async () => claudeMessage(fullDraft),
+    ])
+      results.push(
+        await extractContract(full, {
+          ...failingCloudflare,
+          anthropic: { apiKey: anthropicKey, fetch },
+          onFailure: (d) => diagnostics.push(d),
+        }),
+      );
+  } finally {
+    methods.forEach((m, i) => (console[m] = original[i]));
+  }
+  const everything = JSON.stringify([logged, diagnostics, results]);
+  assert.equal(everything.includes(anthropicKey), false);
+  assert.equal(everything.includes("do-not-leak"), false);
 });
 
 // ---------- carried-over safety guarantees ----------

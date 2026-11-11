@@ -399,6 +399,8 @@ function Composer({
   parent,
   parentName,
   autoFocus,
+  value,
+  onValueChange,
   onCancelReply,
   onPosted,
   onDirtyChange,
@@ -410,13 +412,16 @@ function Composer({
   parent?: ReviewComment;
   parentName: string;
   autoFocus?: boolean;
+  /** Lets a parent preserve a draft while this composer is temporarily hidden. */
+  value?: string;
+  onValueChange?: (value: string) => void;
   onCancelReply: () => void;
   onPosted: () => void;
   onDirtyChange?: (dirty: boolean) => void;
   onPostingChange?: (posting: boolean) => void;
 }) {
   const id = useId();
-  const [body, setBody] = useState(""),
+  const [localBody, setLocalBody] = useState(""),
     [topic, setTopic] = useState<CommentTopic>(
       fixedTopic ??
         (topics.some((item) => item.id === CommentTopic.AGREEMENT)
@@ -428,6 +433,11 @@ function Composer({
     [notice, setNotice] = useState("");
   const field = useRef<HTMLTextAreaElement>(null);
   const alive = useRef(true);
+  const body = value ?? localBody;
+  const setBody = (next: string) => {
+    if (onValueChange) onValueChange(next);
+    else setLocalBody(next);
+  };
   useEffect(() => {
     // Set on every mount: dev strict mode unmounts and remounts once.
     alive.current = true;
@@ -438,6 +448,7 @@ function Composer({
   useEffect(() => {
     onDirtyChange?.(Boolean(body.trim()));
   }, [body, onDirtyChange]);
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
   useEffect(() => {
     if (parent || autoFocus) field.current?.focus();
   }, [parent, autoFocus]);
@@ -461,7 +472,11 @@ function Composer({
         setNotice("");
         try {
           const saved = await thread.post(body, topic, parent);
-          if (!alive.current || !saved) return;
+          if (!alive.current) return;
+          if (!saved) {
+            setError("Another comment is posting. Try again in a moment.");
+            return;
+          }
           setBody("");
           setNotice("Comment posted.");
           onPosted();
@@ -591,19 +606,29 @@ export interface RuleCommentsProps extends CommentsBaseProps {
 export function RuleComments(props: RuleCommentsProps) {
   const { agreement, version, topic, onCountChange } = props;
   const [thread, state] = useThread(threadPath(props, version.id));
-  const [open, setOpen] = useState(Boolean(props.defaultOpen)),
-    [parent, setParent] = useState<ReviewComment>();
+  const [open, setOpen] = useState(Boolean(props.defaultOpen));
+  // This thread is keyed by the agreement/version endpoint, so its per-topic
+  // draft survives a parent rule-card collapse without crossing resources.
+  const draft = thread.draft(topic);
+  const parent = draft.parent;
+  const setDraft = (body: string, parent = draft.parent) =>
+    thread.setDraft(topic, { body, parent });
+  const setParent = (parent: ReviewComment | undefined) =>
+    setDraft(draft.body, parent);
   const threads = discussionThreads(state.comments, topic);
   const count = state.comments.filter((c) => c.ruleKey === topic).length;
   useEffect(() => {
     if (state.loaded) onCountChange?.(count);
   }, [count, state.loaded, onCountChange]);
+  useEffect(() => {
+    props.onDirtyChange?.(Boolean(draft.body.trim()));
+  }, [draft.body, props.onDirtyChange]);
   const writable =
     props.canWrite !== false &&
     version.status !== "SUPERSEDED" &&
     agreement.value.versions.at(-1)?.id === version.id;
   const panel = useId();
-  if (!writable && !count) return null;
+  if (!writable && !count && !state.cursor) return null;
   const label = props.label ?? topicLabel(topic);
   return (
     <div className="rd-clause">
@@ -624,6 +649,7 @@ export function RuleComments(props: RuleCommentsProps) {
           />
           {writable && (
             <Composer
+              key={`${thread.path}:${topic}`}
               thread={thread}
               topics={[{ id: topic, label }]}
               fixedTopic={topic}
@@ -631,9 +657,20 @@ export function RuleComments(props: RuleCommentsProps) {
               parentName={parent ? memberName(agreement, parent.authorId) : ""}
               autoFocus={!count}
               onCancelReply={() => setParent(undefined)}
-              onPosted={() => setParent(undefined)}
-              onDirtyChange={props.onDirtyChange}
+              onPosted={() => undefined}
+              value={draft.body}
+              onValueChange={setDraft}
             />
+          )}
+          {state.cursor && (
+            <button
+              type="button"
+              className="rd-link"
+              disabled={state.loading}
+              onClick={() => void thread.load(state.cursor!)}
+            >
+              Show more comments
+            </button>
           )}
           {state.error && (
             <div role="alert">
