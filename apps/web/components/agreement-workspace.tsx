@@ -274,10 +274,12 @@ function RuleSteps({
   agreement,
   steps,
   id,
+  slot,
 }: {
   agreement: Agreement;
   steps: RuleStep[];
   id: string;
+  slot?: (kind: RuleKind) => ReactNode;
 }) {
   const roster = agreement.value.members;
   return (
@@ -309,6 +311,7 @@ function RuleSteps({
             ) : (
               <p className="ag-rule-everyone">Everyone</p>
             )}
+            {slot?.(step.kind)}
           </div>
           <SourceChip source={step.source} />
         </li>
@@ -323,12 +326,15 @@ export function RevenueRulesCard({
   version,
   headingId,
   action,
+  ruleSlot,
 }: {
   agreement: Agreement;
   version: Version;
   /** Focus lands here after saving new rules. */
   headingId?: string;
   action?: ReactNode;
+  /** Shown at the foot of a rule, such as its comments. */
+  ruleSlot?: (kind: RuleKind) => ReactNode;
 }) {
   const [open, setOpen] = useState(true);
   const steps = ruleSteps(agreement, version.rules, version.id);
@@ -378,7 +384,12 @@ export function RevenueRulesCard({
         </div>
       </div>
       {open ? (
-        <RuleSteps agreement={agreement} steps={steps} id={listId} />
+        <RuleSteps
+          agreement={agreement}
+          steps={steps}
+          id={listId}
+          slot={ruleSlot}
+        />
       ) : (
         <div className="ag-rules-summary">
           <span>
@@ -472,6 +483,15 @@ export function StatusLine({
   );
 }
 
+/** One entry in the page header's "…" menu: a link or an action. */
+export interface HeaderMenuItem {
+  label: string;
+  /** A short line under the label, such as who may use it. */
+  note?: string;
+  href?: string;
+  onSelect?: () => void;
+}
+
 export function AgreementHeader({
   agreement,
   userId,
@@ -480,6 +500,7 @@ export function AgreementHeader({
   onViewPayouts,
   rename,
   renameSuggested = false,
+  menuItems = [],
   onAgreementChange,
 }: {
   agreement: Agreement;
@@ -492,6 +513,8 @@ export function AgreementHeader({
   rename?: (open: boolean, close: () => void) => ReactNode;
   /** A suggested name keeps the review prompt visible without the menu. */
   renameSuggested?: boolean;
+  /** Extra menu entries, such as the agreement document's downloads. */
+  menuItems?: HeaderMenuItem[];
   /** Newer agreement after a link is created or the advance is confirmed. */
   onAgreementChange?: (agreement: Agreement) => void;
 }) {
@@ -554,7 +577,7 @@ export function AgreementHeader({
     }
   }
   const meta = versionMeta(agreement);
-  const menuItems: MenuItem[] = [
+  const actionMenuItems: MenuItem[] = [
     ...(rename
       ? [
           {
@@ -564,6 +587,15 @@ export function AgreementHeader({
           },
         ]
       : []),
+    ...menuItems.map((item, index) => ({
+      id: `extra-${index}-${item.label}`,
+      label: item.label,
+      description: item.note,
+      onSelect: () => {
+        if (item.href) window.location.assign(item.href);
+        else item.onSelect?.();
+      },
+    })),
     { id: "payouts", label: "View payouts", onSelect: onViewPayouts },
   ];
   return (
@@ -588,7 +620,7 @@ export function AgreementHeader({
         <ActionMenu
           ref={menuButton}
           label="Agreement actions"
-          items={menuItems}
+          items={actionMenuItems}
         />
       </div>
       <StatusLine status={status} onAction={statusAction} />

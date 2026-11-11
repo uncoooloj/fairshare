@@ -8,9 +8,15 @@ import {
 } from "react";
 import { AgreementHeader } from "../agreement-workspace";
 import { AgreementTabs, visibleTab } from "../agreement-tabs";
-import { AgreementDocument } from "../agreement-document";
-import { AgreementVersions } from "../agreement-versions";
+import {
+  AgreementDocument,
+  DocumentFileDetails,
+  downloadDocumentText,
+  originalDocumentUrl,
+  type LoadedDocument,
+} from "../agreement-document";
 import { StageAction } from "../../lib/agreement-status";
+import { AgreementVersions } from "../agreement-versions";
 import { AgreementName } from "../agreement-name";
 import { AgreementSetup } from "../agreement-setup";
 import { OrganizerHandoverBanner } from "../organizer-handover-banner";
@@ -160,6 +166,10 @@ export function AgreementDetail({
     !organizer &&
     collaboratorStage(selected, latest, user.id) === CollaboratorStage.REVIEW;
   const [reviewPinned, setReviewPinned] = useState("");
+  // The Agreement tab's document: its downloads sit in the header menu.
+  const [loadedDocument, setLoadedDocument] = useState<LoadedDocument | null>(
+    null,
+  );
   const fullHeading = useRef<HTMLHeadingElement>(null);
   const openDocument = useRef<HTMLButtonElement>(null);
   const reviewHeading = useRef<HTMLHeadingElement>(null);
@@ -358,6 +368,41 @@ export function AgreementDetail({
           onBack={() => navigate(Section.Agreements)}
           onViewPayouts={() => navigate(Section.Payouts)}
           renameSuggested={!!extraction?.suggestedTitle}
+          menuItems={[
+            ...(loadedDocument && shown === AgreementTab.Terms
+              ? [
+                  ...(originalDocumentUrl(base, loadedDocument.document)
+                    ? [
+                        {
+                          label: "Download original",
+                          href: originalDocumentUrl(
+                            base,
+                            loadedDocument.document,
+                          ),
+                        },
+                      ]
+                    : []),
+                  {
+                    label: "Download text",
+                    onSelect: () => downloadDocumentText(loadedDocument),
+                  },
+                ]
+              : []),
+            // Owner only: a new file means new terms everyone approves again.
+            ...(organizer && selected.value.versions.length > 0 && !editing
+              ? [
+                  {
+                    label: "Upload amended agreement",
+                    note: "Owner only. Starts a new version and everyone approves again.",
+                    onSelect: () => {
+                      setPreview(null);
+                      setEditing(true);
+                      changeAgreementTab(AgreementTab.Terms);
+                    },
+                  },
+                ]
+              : []),
+          ]}
           rename={
             organizer
               ? (open, close) => (
@@ -446,6 +491,22 @@ export function AgreementDetail({
           )}
           {shown === AgreementTab.Terms && (
             <div className="ag-agreement">
+              {/* The document comes first; the rules and file details follow. */}
+              {!editing && selected.value.versions.length > 0 && (
+                <section
+                  className="ag-agreement-document"
+                  id="agreement-document"
+                  aria-label="The agreement document"
+                >
+                  <AgreementDocument
+                    key={`${selected.id}:${latest?.id ?? ""}`}
+                    agreement={selected}
+                    base={base}
+                    reviewedVersionId={latest?.id}
+                    onDocument={setLoadedDocument}
+                  />
+                </section>
+              )}
               <AgreementTermsTab
                 selected={selected}
                 latest={latest}
@@ -485,25 +546,18 @@ export function AgreementDetail({
                 onSeeRequest={() => setRequestOpen(true)}
                 onRevise={revise}
               />
-              {!editing && selected.value.versions.length > 0 && (
-                <>
-                  <section
-                    className="ag-agreement-document"
-                    id="agreement-document"
-                    aria-label="The agreement document"
-                  >
-                    <AgreementDocument
-                      key={`${selected.id}:${latest?.id ?? ""}`}
-                      agreement={selected}
-                      base={base}
-                      reviewedVersionId={latest?.id}
-                    />
-                  </section>
-                  <details className="panel ag-history">
-                    <summary>History</summary>
-                    <AgreementVersions agreement={selected} />
-                  </details>
-                </>
+              {!editing && loadedDocument && (
+                <DocumentFileDetails
+                  agreement={selected}
+                  loaded={loadedDocument}
+                />
+              )}
+              {/* Owners see versions in the rail beside the rules. */}
+              {!organizer && selected.value.versions.length > 0 && (
+                <details className="panel ag-history">
+                  <summary>History</summary>
+                  <AgreementVersions agreement={selected} />
+                </details>
               )}
             </div>
           )}

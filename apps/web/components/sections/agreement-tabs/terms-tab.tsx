@@ -1,15 +1,23 @@
-import type { Dispatch, MutableRefObject, SetStateAction } from "react";
+import {
+  useRef,
+  type Dispatch,
+  type MutableRefObject,
+  type SetStateAction,
+} from "react";
 import { PostApprovalPayout } from "../../post-approval-payout";
 import { CollaboratorTerms } from "../../collaborator-review";
-import { ReviewDiscussion } from "../../review-discussion";
-import { RecoupmentCard, RevenueRulesCard } from "../../agreement-workspace";
 import {
-  Heading,
-  PreviewForm,
-  AllocationTable,
-  AIReview,
-  RulesEditor,
-} from "../../agreement-widgets";
+  AgreementComments,
+  RuleComments,
+  RuleStep,
+  ruleStepTopic,
+} from "../../review-discussion";
+import {
+  RecoupmentCard,
+  RevenueRulesCard,
+  RuleKind,
+} from "../../agreement-workspace";
+import { Heading, AIReview, RulesEditor } from "../../agreement-widgets";
 import { AgreementTermsFlow } from "../../agreement-terms-flow";
 import { AgreementVersions } from "../../agreement-versions";
 import {
@@ -135,6 +143,34 @@ export function CollaboratorReviewCard({
   );
 }
 
+/** Which rule cards carry comments. Term has none: it shares the overall thread. */
+const RULE_COMMENT_STEP: Partial<Record<RuleKind, RuleStep>> = {
+  [RuleKind.Fees]: RuleStep.FEES,
+  [RuleKind.Advance]: RuleStep.ADVANCE,
+  [RuleKind.Split]: RuleStep.SPLIT,
+};
+
+/** Each rule's own comments, at the foot of its step in the rules card. */
+function ruleCommentSlot(
+  agreement: Agreement,
+  version: Version,
+  canWrite: boolean,
+  onDirtyChange: (topic: RuleStep, dirty: boolean) => void,
+) {
+  return (kind: RuleKind) => {
+    const step = RULE_COMMENT_STEP[kind];
+    return step ? (
+      <RuleComments
+        agreement={agreement}
+        version={version}
+        topic={ruleStepTopic[step]}
+        canWrite={canWrite}
+        onDirtyChange={(dirty) => onDirtyChange(step, dirty)}
+      />
+    ) : null;
+  };
+}
+
 /** Terms: the latest proposal and its review, or the source and rules draft. */
 export function AgreementTermsTab({
   selected,
@@ -175,9 +211,29 @@ export function AgreementTermsTab({
   onSeeRequest,
   onRevise,
 }: AgreementTermsTabProps) {
+  const commentDrafts = useRef(new Map<string, boolean>());
+  const commentScope = `${selected.id}:${latest?.id ?? "draft"}`;
+  const previousCommentScope = useRef(commentScope);
+  if (previousCommentScope.current !== commentScope) {
+    previousCommentScope.current = commentScope;
+    commentDrafts.current.clear();
+  }
+  const setCommentDraftDirty = (topic: string, dirty: boolean) => {
+    if (dirty) commentDrafts.current.set(topic, true);
+    else commentDrafts.current.delete(topic);
+    setDraftDirty(commentDrafts.current.size > 0);
+  };
   const isOrganizer =
     selected.value.members.find((m) => m.userId === user.id)?.role ===
     "ORGANIZER";
+  const canWrite =
+    workspaces.find((w) => w.id === workspace)?.role !== "VIEWER";
+  const changeAgreement = () => {
+    if (!mayLeaveDraft()) return;
+    setPreview(null);
+    if (onRevise) onRevise(requests.at(-1));
+    else setEditing(true);
+  };
   // Collaborators see what they get and approve; drafting, sending and
   // proposing revised terms stay with the organizer.
   if (!isOrganizer)
@@ -200,16 +256,41 @@ export function AgreementTermsTab({
           />
         )}
         {latest && (
-          <ReviewDiscussion
-            key={`${selected.id}:${latest.id}`}
-            base={base}
-            agreement={selected}
-            version={latest}
-            canWrite={
-              workspaces.find((w) => w.id === workspace)?.role !== "VIEWER"
-            }
-            onDirtyChange={setDraftDirty}
-          />
+          <>
+            <RevenueRulesCard
+              agreement={selected}
+              version={latest}
+              ruleSlot={ruleCommentSlot(
+                selected,
+                latest,
+                canWrite,
+                setCommentDraftDirty,
+              )}
+            />
+            <section className="ag-comments" aria-label="Comments">
+              <h3>Comments</h3>
+              <AgreementComments
+                key={`${selected.id}:${latest.id}`}
+                base={base}
+                agreement={selected}
+                version={latest}
+                userId={user.id}
+                canWrite={canWrite}
+                compact
+                onDirtyChange={(dirty) =>
+                  setCommentDraftDirty(RuleStep.OVERALL, dirty)
+                }
+                onRequestChange={() => {
+                  const heading = reviewHeadingRef?.current;
+                  heading?.scrollIntoView({
+                    behavior: "smooth",
+                    block: "start",
+                  });
+                  heading?.focus({ preventScroll: true });
+                }}
+              />
+            </section>
+          </>
         )}
       </div>
     );
@@ -238,7 +319,7 @@ export function AgreementTermsTab({
                   <blockquote>{requests.at(-1)!.note}</blockquote>
                 </figure>
                 <div className="gr-request-actions">
-                  <Button onClick={() => onRevise(requests.at(-1))}>
+                  <Button onClick={changeAgreement}>
                     Fix it
                   </Button>
                   {onSeeRequest && (
@@ -253,15 +334,17 @@ export function AgreementTermsTab({
               agreement={selected}
               version={latest}
               headingId="agreement-proposal-review"
+              ruleSlot={ruleCommentSlot(
+                selected,
+                latest,
+                canWrite,
+                setCommentDraftDirty,
+              )}
               action={
                 <Button
                   variant="secondary"
                   disabled={busy}
-                  onClick={() => {
-                    setPreview(null);
-                    if (onRevise) onRevise(requests.at(-1));
-                    else setEditing(true);
-                  }}
+                  onClick={changeAgreement}
                 >
                   Change the agreement
                 </Button>
@@ -270,67 +353,57 @@ export function AgreementTermsTab({
             {latest.id === selected.value.activeVersionId && (
               <RecoupmentCard agreement={selected} rules={latest.rules} />
             )}
-            <ContractReviewPanel
-              key={latest.id}
-              agreement={selected}
-              version={latest}
-              userId={user.id}
-              busy={busy}
-              onAction={async (action, payload) => {
-                setBusy(true);
-                setError("");
-                setNotice("");
-                try {
-                  const committed = await mutateWithResult(
-                    `/versions/${latest.id}/${action}`,
-                    payload,
-                  );
-                  if (action === "approve" && committed)
-                    setApprovedForPayout(selected.id);
-                } finally {
-                  setBusy(false);
-                }
-              }}
-            />
+            {/* Once the owner has approved, the header line and the versions
+                rail say who is left; the design shows no review block. */}
+            {!(
+              latest.status === "AWAITING_APPROVAL" &&
+              latest.approvals[user.id] &&
+              !latest.changeRequests.length
+            ) && (
+              <ContractReviewPanel
+                key={latest.id}
+                agreement={selected}
+                version={latest}
+                userId={user.id}
+                busy={busy}
+                onAction={async (action, payload) => {
+                  setBusy(true);
+                  setError("");
+                  setNotice("");
+                  try {
+                    const committed = await mutateWithResult(
+                      `/versions/${latest.id}/${action}`,
+                      payload,
+                    );
+                    if (action === "approve" && committed)
+                      setApprovedForPayout(selected.id);
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              />
+            )}
             {approvedForPayout === selected.id && (
               <PostApprovalPayout
                 base={base}
                 onDone={() => setApprovedForPayout("")}
               />
             )}
-            <ReviewDiscussion
-              key={`${selected.id}:${latest.id}`}
-              base={base}
-              agreement={selected}
-              version={latest}
-              canWrite={
-                workspaces.find((w) => w.id === workspace)?.role !== "VIEWER"
-              }
-              onDirtyChange={setDraftDirty}
-            />
-            <section className="section">
-              <h3>Try a payment</h3>
-              <p className="muted">Just a preview. No money moves.</p>
-              <PreviewForm
-                busy={busy}
-                onSubmit={(grossCents, feeCents) =>
-                  run(async () =>
-                    setPreview(
-                      await api(
-                        `${base}/versions/${latest.id}/preview`,
-                        "POST",
-                        { grossCents, feeCents },
-                      ),
-                    ),
-                  )
+            <section className="ag-comments" aria-label="Comments">
+              <h3>Comments</h3>
+              <AgreementComments
+                key={`${selected.id}:${latest.id}`}
+                base={base}
+                agreement={selected}
+                version={latest}
+                userId={user.id}
+                canWrite={canWrite}
+                compact
+                onDirtyChange={(dirty) =>
+                  setCommentDraftDirty(RuleStep.OVERALL, dirty)
                 }
+                onRequestChange={changeAgreement}
               />
-              {preview && (
-                <AllocationTable
-                  allocations={preview.allocations}
-                  agreement={selected}
-                />
-              )}
             </section>
           </div>
           <aside className="ag-terms-rail">
