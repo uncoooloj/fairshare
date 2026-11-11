@@ -7,6 +7,7 @@ import {
   AgreementCreationWizard,
   checkProblem,
   clearPersonInvitation,
+  deleteDraftForReplacement,
   detailsPatch,
   mergeQuestions,
   resumedAnswers,
@@ -24,8 +25,8 @@ import {
 } from "../lib/answers-from-extraction";
 import { CheckMode } from "../components/wizard-check-step";
 import { emptyAnswers, FeeChoice, AnswerSource } from "../lib/rules-answers";
-import { StandardQuestionId } from "../lib/standard-questions";
-import type { Agreement } from "../lib/model";
+import { StandardQuestionId, feeQuestion } from "../lib/standard-questions";
+import { ApiError, type Agreement } from "../lib/model";
 import { saveDraftAnswers } from "../lib/wizard-persistence";
 import { appSource } from "./app-source";
 import {
@@ -44,7 +45,7 @@ const self = { name: owner.name, userId: owner.id };
 const noop = () => {};
 
 const doc = MIDNIGHT;
-/** The v2 reading with the fees sentence left unread, so fees and refunds are both asked. */
+/** The v2 reading with the fees sentence left unread: fees default to before the split. */
 const extraction = (() => {
   const reading = fullReading();
   reading.facts = reading.facts.filter((f: any) => f.kind !== "FEES");
@@ -110,27 +111,22 @@ test("the v2 reading maps to answers, honestly: full split → FOUND_ALL", () =>
   assert.equal(read.answers.advance?.value.recipientKey, "owner");
   assert.equal(read.answers.advance?.source, AnswerSource.DOCUMENT);
   assert.equal(read.answers.fees?.value, FeeChoice.BEFORE_SPLIT);
-  // The document is silent on refunds: only that is asked. Silent fees are asked too.
-  assert.deepEqual(
-    read.answers.questions.map((q) => q.id),
-    [StandardQuestionId.REFUNDS],
-  );
-  assert.deepEqual(
-    answersFromExtraction(extraction, doc, self).answers.questions.map(
-      (q) => q.id,
-    ),
-    [StandardQuestionId.FEES, StandardQuestionId.REFUNDS],
-  );
+  // Refunds are never asked; silent fees aren't either (they come off the top).
+  assert.deepEqual(read.answers.questions, []);
+  const silent = answersFromExtraction(extraction, doc, self);
+  assert.deepEqual(silent.answers.questions, []);
+  assert.equal(silent.answers.fees, undefined);
+  assert.equal(silent.mode, CheckMode.FOUND_ALL);
 });
 
-test("names without percentages start equal; nothing read is MANUAL", () => {
+test("names only from prose are not an agreement; nothing read is MANUAL", () => {
   const only = namesOnlyReading();
   const names = answersFromExtraction(only.extraction, only.doc, self);
-  assert.equal(names.mode, CheckMode.FOUND_SOME);
-  assert.ok(names.equalSplitGuessed);
+  assert.equal(names.mode, CheckMode.NOT_AGREEMENT);
+  assert.equal(names.equalSplitGuessed, false);
   assert.deepEqual(
-    names.answers.people.value.map((p) => p.basisPoints),
-    [3334, 3333, 3333],
+    names.answers.people.value.map((p) => [p.name, p.basisPoints]),
+    [["Maya Okafor", 10000]],
   );
   for (const nothing of [
     null,
@@ -190,18 +186,18 @@ test("Check needs two people at 100%; questions keep answers and skip when settl
   assert.match(checkProblem(solo) ?? "", /Add the people/);
   const read = answersFromExtraction(extraction, doc, self).answers;
   assert.equal(checkProblem(read), undefined);
+  const fees = feeQuestion(read);
   const answered = mergeQuestions({
     ...read,
     fees: { value: FeeChoice.BEFORE_SPLIT, source: AnswerSource.PERSON },
-    questions: [{ ...read.questions[0], answeredChoiceId: "BEFORE_SPLIT" }],
+    questions: [{ ...fees, answeredChoiceId: "BEFORE_SPLIT" }],
   });
   assert.deepEqual(
     answered.questions.map((q) => [q.id, q.answeredChoiceId]),
-    [
-      [StandardQuestionId.REFUNDS, undefined],
-      [StandardQuestionId.FEES, "BEFORE_SPLIT"],
-    ],
+    [[StandardQuestionId.FEES, "BEFORE_SPLIT"]],
   );
+  // Nothing settled is asked again, and no refunds question appears.
+  assert.deepEqual(mergeQuestions(read).questions, []);
 });
 
 test("Send shows the summary, what blocks it, and the one safety line", () => {
@@ -209,9 +205,10 @@ test("Send shows the summary, what blocks it, and the one safety line", () => {
   const html = renderToStaticMarkup(
     createElement(WizardSendStep, { answers: read }),
   );
-  assert.match(html, /Ready to send/);
+  assert.match(html, /Almost ready to send/);
   assert.match(html, /Midnight Sessions/);
-  assert.match(html, /Answer the refunds question|Answer the fees question/);
+  assert.match(html, /Has Maya Okafor already paid the \$2,000\?/);
+  assert.doesNotMatch(html, /[Rr]efund/);
   assert.match(
     html,
     /Nothing is paid until everyone approves\. You can still change things if someone asks\./,
@@ -231,6 +228,82 @@ test("the draft is saved on Read my agreement; people on People; one submit on S
   const submit = send.indexOf("await submitForApproval(");
   assert.ok(rules > 0 && submit > rules);
   assert.doesNotMatch(wizard, /consentToCloudflare|fetch\(/);
+});
+
+test("replacing a non-agreement deletes its private draft before clearing wizard state", () => {
+  const replace = wizard.slice(wizard.indexOf("async function uploadAgain()"));
+  const deleteAt = replace.indexOf("await deleteDraftForReplacement(");
+  const clearAt = replace.indexOf("clearDraftAnswers(");
+  const refsAt = replace.indexOf("setCreated(null)");
+  assert.ok(deleteAt >= 0 && clearAt > deleteAt && refsAt > clearAt);
+  assert.match(replace, /readingGeneration\.current\+\+/);
+  assert.match(replace, /catch \(cause\)/);
+  assert.match(replace, /We couldn’t replace this draft\. Try again\./);
+  assert.match(wizard, /onUploadAgain=\{\(\) => void uploadAgain\(\)\}/);
+});
+
+test("replacement confirms a lost delete response before local cleanup", async () => {
+  const original = globalThis.fetch;
+  const calls: Array<{ method: string; url: string }> = [];
+  globalThis.fetch = (async (input: string, init?: RequestInit) => {
+    calls.push({ method: init?.method ?? "GET", url: input });
+    if (init?.method === "DELETE")
+      return new Response(
+        JSON.stringify({ error: { code: "TEMPORARY", message: "Try again" } }),
+        { status: 503 },
+      );
+    return new Response(
+      JSON.stringify({
+        error: { code: "NOT_FOUND", message: "Collaboration not found" },
+      }),
+      { status: 404 },
+    );
+  }) as typeof fetch;
+  try {
+    await deleteDraftForReplacement("w", "a", 7);
+  } finally {
+    globalThis.fetch = original;
+  }
+  assert.deepEqual(calls, [
+    {
+      method: "DELETE",
+      url: "/api/service/workspaces/w/collaborations/a?expectedRevision=7",
+    },
+    { method: "GET", url: "/api/service/workspaces/w/collaborations/a" },
+  ]);
+});
+
+test("replacement retains the original error when the draft still exists or cannot be read", async () => {
+  const original = globalThis.fetch;
+  for (const read of [
+    new Response(JSON.stringify({ id: "a", revision: 8 })),
+    new Response(
+      JSON.stringify({ error: { code: "FORBIDDEN", message: "No access" } }),
+      { status: 403 },
+    ),
+    new Response(
+      JSON.stringify({ error: { code: "TEMPORARY", message: "Try again" } }),
+      { status: 503 },
+    ),
+  ]) {
+    globalThis.fetch = (async (_input: string, init?: RequestInit) =>
+      init?.method === "DELETE"
+        ? new Response(
+            JSON.stringify({
+              error: { code: "TEMPORARY", message: "Try again" },
+            }),
+            { status: 503 },
+          )
+        : read) as typeof fetch;
+    try {
+      await assert.rejects(
+        deleteDraftForReplacement("w", "a", 7),
+        (cause: unknown) => cause instanceof ApiError && cause.status === 503,
+      );
+    } finally {
+      globalThis.fetch = original;
+    }
+  }
 });
 
 test("a lost submit reply is recovered only for this attempt's newly sent rules", () => {
@@ -348,6 +421,12 @@ test("finishing lands on the agreement Overview; drafts reopen the wizard", () =
   assert.match(finish, /openAgreement\(agreement\)/);
   assert.doesNotMatch(finish, /AgreementTab\.Terms/);
   assert.match(app, /onBusyChange=\{setBusy\}/);
+});
+
+test("history navigation asks the wizard to close before unmounting local work", () => {
+  assert.match(wizard, /onLeaveAttempt\?: \(attempt: \(\) => boolean\) => void/);
+  assert.match(wizard, /onLeaveAttempt\(attemptLeave\)/);
+  assert.match(wizard, /setClosing\(true\);\s*return false;/);
 });
 
 test("Keep as draft keeps this device's split; resuming reconciles pending people", () => {

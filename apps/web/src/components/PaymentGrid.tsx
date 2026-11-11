@@ -1,12 +1,20 @@
 "use client";
 
-import { useMemo, useState, useId, type ReactNode } from "react";
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { AgGridReact } from "ag-grid-react";
 import {
   AllCommunityModule,
   ModuleRegistry,
   themeQuartz,
   type ColDef,
+  type GridApi,
 } from "ag-grid-community";
 import {
   PaymentGridStatus,
@@ -17,7 +25,7 @@ import {
   type PaymentGridRow,
 } from "./paymentGridModel";
 
-import { summarizePayouts } from "./payoutSummary";
+import { payoutCards, payoutCount, summarizePayouts } from "./payoutSummary";
 import { filterPayouts, payoutCsv } from "./payoutPresentation";
 import { PayoutDetails } from "./PayoutDetails";
 import styles from "./payouts.module.css";
@@ -36,6 +44,9 @@ const theme = themeQuartz.withParams({
   headerHeight: 44,
   wrapperBorderRadius: 12,
 });
+/** Above this many rows the grid pages; at or below it, no pagination shows at all. */
+export const PAYOUT_PAGE_SIZE = 20;
+const NO_DATE_HINT = "No date was recorded for this payout.";
 export interface PaymentGridProps {
   rows: readonly PaymentGridRow[];
   loading?: boolean;
@@ -58,8 +69,10 @@ export function PaymentGrid({
 }: PaymentGridProps) {
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const gridApiRef = useRef<GridApi<PaymentGridRow> | null>(null);
   const searchId = useId();
   const statusId = useId();
+  const tipId = useId();
   const [status, setStatus] = useState<PaymentGridStatus | "">("");
   const data = useMemo(() => {
     try {
@@ -80,6 +93,17 @@ export function PaymentGrid({
     () => filterPayouts(data.rows, status, query),
     [data.rows, status, query],
   );
+  // One readout only: AG Grid's pager when there are pages, our count otherwise.
+  const paginated = !loading && filteredRows.length > PAYOUT_PAGE_SIZE;
+  useEffect(() => {
+    const api = gridApiRef.current;
+    if (!api) return;
+
+    // External filtering replaces rowData. Update the pagination option and
+    // reset the page in place so the grid keeps sorting and column state.
+    api.setGridOption("pagination", paginated);
+    api.paginationGoToFirstPage();
+  }, [filteredRows.length, paginated, query, status]);
   const selected = !loading
     ? data.rows.find((row) => row.id === selectedId)
     : undefined;
@@ -100,6 +124,7 @@ export function PaymentGrid({
         headerName: "Agreement",
         minWidth: 210,
         flex: 1.5,
+        cellClass: styles.cell,
         cellRenderer: ({ data: row }: { data?: PaymentGridRow }) =>
           row && onOpenAgreement ? (
             <button
@@ -143,6 +168,7 @@ export function PaymentGrid({
         field: "status",
         headerName: "Status",
         minWidth: 185,
+        cellClass: styles.cell,
         cellRenderer: ({ data: row }: { data?: PaymentGridRow }) =>
           row ? (
             <span className={styles.status} data-status={row.status}>
@@ -159,13 +185,27 @@ export function PaymentGrid({
         sort: "desc",
         comparator: (a?: string, b?: string) =>
           (a ? Date.parse(a) : 0) - (b ? Date.parse(b) : 0),
+        cellClass: styles.cell,
         valueFormatter: (p) =>
           p.value
             ? new Date(p.value).toLocaleString(undefined, {
                 dateStyle: "medium",
                 timeStyle: "short",
               })
-            : "Not recorded",
+            : "—",
+        // The API stores no payout timestamp yet; say so instead of guessing.
+        cellRenderer: (p: {
+          value?: string;
+          valueFormatted?: string | null;
+        }) =>
+          p.value ? (
+            p.valueFormatted
+          ) : (
+            <span title={NO_DATE_HINT}>
+              <span aria-hidden="true">—</span>
+              <span className={styles.srOnly}>{NO_DATE_HINT}</span>
+            </span>
+          ),
       },
       {
         headerName: "Details",
@@ -173,11 +213,12 @@ export function PaymentGrid({
         width: 110,
         sortable: false,
         filter: false,
+        cellClass: styles.cell,
         cellRenderer: ({ data: row }: { data?: PaymentGridRow }) =>
           row ? (
             <button
               type="button"
-              className={styles.control}
+              className={`${styles.control} ${styles.cellButton}`}
               aria-label={`View payout to ${row.recipientName}`}
               onClick={() => setSelectedId(row.id)}
             >
@@ -218,99 +259,115 @@ export function PaymentGrid({
         </header>
       )}
       <div className={styles.summary} aria-label="Recorded payout totals">
-        {(
-          [
-            [
-              "Paid out",
-              data.summary.paid,
-              data.summary.paidCount,
-              "Confirmed by PayPal",
-            ],
-            [
-              "Pending or processing",
-              data.summary.processing,
-              data.summary.processingCount,
-              "On the way",
-            ],
-            [
-              "Needs attention",
-              data.summary.attention,
-              data.summary.attentionCount,
-              "Failed, paused, not collected or missing PayPal details",
-            ],
-          ] as const
-        ).map(([label, amount, count, detail]) => (
-          <div className={styles.card} key={label}>
-            <span className={styles.label}>{label}</span>
+        {payoutCards(data.summary).map((card) => (
+          <div className={styles.card} key={card.kind}>
+            <span className={styles.label}>
+              {card.label}
+              <span className={styles.info}>
+                <button
+                  type="button"
+                  className={styles.infoButton}
+                  aria-label={`About ${card.label}`}
+                  aria-describedby={`${tipId}-${card.kind}`}
+                >
+                  <svg viewBox="0 0 16 16" aria-hidden="true">
+                    <circle cx="8" cy="8" r="6.5" />
+                    <path d="M8 7.2v3.8M8 5h.01" />
+                  </svg>
+                </button>
+                <span
+                  role="tooltip"
+                  id={`${tipId}-${card.kind}`}
+                  className={styles.tooltip}
+                >
+                  {card.explanation}
+                </span>
+              </span>
+            </span>
             <strong className={styles.amount}>
-              {loading ? "—" : formatPaymentAmount(amount, "USD")}
+              {loading ? "—" : formatPaymentAmount(card.amountCents, "USD")}
             </strong>
             <span className={styles.caption}>
-              {loading ? "Loading…" : `${count} payouts · ${detail}`}
+              {loading ? "Loading…" : card.caption}
             </span>
           </div>
         ))}
       </div>
-      <div className={styles.toolbar}>
-        <label className={styles.field} htmlFor={searchId}>
-          Search payouts
-          <input
-            id={searchId}
-            type="search"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Agreement, person or reference"
-          />
-        </label>
-        <label className={styles.field} htmlFor={statusId}>
-          Status
-          <select
-            id={statusId}
-            value={status}
-            onChange={(event) =>
-              setStatus(event.target.value as PaymentGridStatus | "")
-            }
-          >
-            <option value="">All statuses</option>
-            {Object.values(PaymentGridStatus).map((value) => (
-              <option key={value} value={value}>
-                {paymentStatusLabels[value]}
-              </option>
-            ))}
-          </select>
-        </label>
-        <span className={styles.count} aria-live="polite">
-          {loading
-            ? "Loading payouts…"
-            : `${filteredRows.length} of ${data.rows.length} payouts`}
-        </span>
-        {(query || status) && (
-          <button
-            className={styles.control}
-            type="button"
-            onClick={() => {
-              setQuery("");
-              setStatus("");
-            }}
-          >
-            Clear filters
-          </button>
-        )}
-        {!title && (
-          <button
-            className={styles.control}
-            type="button"
-            onClick={exportCsv}
-            disabled={loading || !filteredRows.length}
-          >
-            Export CSV
-          </button>
-        )}
-      </div>
+      <p className={styles.totalsNote}>Totals are for all time.</p>
+      {(loading || data.rows.length > 0) && (
+        <div className={styles.toolbar}>
+          <label className={styles.field} htmlFor={searchId}>
+            Search payouts
+            <input
+              id={searchId}
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Agreement, person or reference"
+            />
+          </label>
+          <label className={styles.field} htmlFor={statusId}>
+            Status
+            <select
+              id={statusId}
+              value={status}
+              onChange={(event) =>
+                setStatus(event.target.value as PaymentGridStatus | "")
+              }
+            >
+              <option value="">All statuses</option>
+              {Object.values(PaymentGridStatus).map((value) => (
+                <option key={value} value={value}>
+                  {paymentStatusLabels[value]}
+                </option>
+              ))}
+            </select>
+          </label>
+          {!paginated && (
+            <span className={styles.count} aria-live="polite">
+              {loading
+                ? "Loading payouts…"
+                : filteredRows.length === data.rows.length
+                  ? payoutCount(data.rows.length)
+                  : `${filteredRows.length} of ${payoutCount(data.rows.length)}`}
+            </span>
+          )}
+          {(query || status) && (
+            <button
+              className={styles.control}
+              type="button"
+              onClick={() => {
+                setQuery("");
+                setStatus("");
+              }}
+            >
+              Clear filters
+            </button>
+          )}
+          {!title && (
+            <button
+              className={styles.control}
+              type="button"
+              onClick={exportCsv}
+              disabled={loading || !filteredRows.length}
+            >
+              Export CSV
+            </button>
+          )}
+        </div>
+      )}
       {!loading && !data.rows.length ? (
         <div className={styles.empty}>
+          <svg
+            className={styles.emptyIcon}
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <rect x="3" y="6" width="18" height="13" rx="2.5" />
+            <path d="M3 10h18M7 15h3" />
+          </svg>
           <h3>No payouts yet</h3>
-          <p>When you pay people, it shows up here.</p>
+          <p>When a payment splits, each person's payout shows here.</p>
           {emptyActions && (
             <div className={styles.emptyActions}>{emptyActions}</div>
           )}
@@ -331,7 +388,7 @@ export function PaymentGrid({
           </button>
         </div>
       ) : (
-        <div style={{ height: 460, width: "100%" }}>
+        <div className={styles.grid}>
           <AgGridReact<PaymentGridRow>
             theme={theme}
             rowData={loading ? [] : filteredRows}
@@ -339,15 +396,22 @@ export function PaymentGrid({
             defaultColDef={{ sortable: true, filter: false, resizable: true }}
             getRowId={(p) => p.data.id}
             loading={loading}
-            pagination
-            paginationPageSize={20}
-            paginationPageSizeSelector={[20, 50, 100]}
+            domLayout="autoHeight"
+            pagination={paginated}
+            paginationPageSize={PAYOUT_PAGE_SIZE}
+            paginationPageSizeSelector={false}
             overlayNoRowsTemplate="<span>No payouts match. Try clearing your filters.</span>"
             suppressCellFocus={false}
             ensureDomOrder
-            onGridReady={(event) =>
-              event.api.setGridAriaProperty("label", "Agreement payout history")
-            }
+            onGridReady={(event) => {
+              gridApiRef.current = event.api;
+              event.api.setGridAriaProperty(
+                "label",
+                "Agreement payout history",
+              );
+              event.api.setGridOption("pagination", paginated);
+              event.api.paginationGoToFirstPage();
+            }}
           />
         </div>
       )}
@@ -358,9 +422,6 @@ export function PaymentGrid({
           onOpenAgreement={onOpenAgreement}
         />
       )}
-      <p style={{ fontSize: 12, color: "var(--color-muted)" }}>
-        Totals are for all time.
-      </p>
     </section>
   );
 }

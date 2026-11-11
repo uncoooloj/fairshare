@@ -4,7 +4,6 @@ import {
   extractionDraft,
   matchMember,
   RulesSection,
-  RefundStep,
   type DraftQuestion,
   type RulesPatch,
 } from "./ai-draft";
@@ -15,7 +14,6 @@ import {
   AnswerSource,
   emptyAnswers,
   FeeChoice,
-  RefundChoice,
   TOTAL_BASIS_POINTS,
   type AdvanceAnswer,
   type AgreementAnswers,
@@ -355,7 +353,6 @@ export function answersFromExtraction(
   const split = sections[RulesSection.SPLIT];
   const advanceSection = sections[RulesSection.ADVANCE];
   const fees = sections[RulesSection.FEES];
-  const refunds = sections[RulesSection.REFUNDS];
   const term = sections[RulesSection.TERM];
   // Names only come from a reading the server marked for review, quote by quote.
   const facts =
@@ -383,6 +380,23 @@ export function answersFromExtraction(
     }
   for (const f of facts) if (f.kind === "PERSON") addName(f.subject);
   for (const f of facts) if (f.kind === "ADVANCE") addName(f.subject);
+
+  // A reading with no revenue-share terms at all (no split, no share quoted, no split
+  // question) is some other document, such as a brief. Nothing is filled from guesses.
+  // When the reader says it read a split we just couldn't verify, it's a manual setup.
+  const splitAsked = split.status === DraftStatus.ASK && !!split.question;
+  if (
+    e?.status === "REVIEW_REQUIRED" &&
+    e.sections?.[RulesSection.SPLIT]?.status !== ServerSection.READ &&
+    split.status !== DraftStatus.SHOWN &&
+    !shareNames.length &&
+    !splitAsked
+  )
+    return {
+      answers: base,
+      mode: CheckMode.NOT_AGREEMENT,
+      equalSplitGuessed: false,
+    };
 
   const title = draft.title ? cite(draft.title.value) : base.name;
   const dates: Partial<AgreementAnswers> =
@@ -497,13 +511,6 @@ export function answersFromExtraction(
     else feeBearerElsewhere = bearer ?? "someone else";
   }
 
-  // Refunds are recorded only: "before the split" is the split choice; anything else is asked.
-  const refundsAnswer =
-    refunds.status === DraftStatus.SHOWN &&
-    refunds.value.refundStep === RefundStep.BEFORE_SPLIT
-      ? cite(RefundChoice.SPLIT, refunds.quote)
-      : undefined;
-
   const answers: AgreementAnswers = {
     ...base,
     ...dates,
@@ -513,10 +520,10 @@ export function answersFromExtraction(
       : { value: people, source: AnswerSource.PERSON },
     ...(advance ? { advance } : {}),
     ...(feesAnswer ? { fees: feesAnswer } : {}),
-    ...(refundsAnswer ? { refunds: refundsAnswer } : {}),
   };
 
-  // Questions from the reading, money first; questionsFor adds fees/refunds when still open.
+  // Questions from the reading, money first. Fees are only asked when the document wants
+  // something Fairshare can't do; otherwise they come off the top. Refunds are never asked.
   const raised: Question[] = [];
   const askOf = (section: RulesSection) => {
     const s = sections[section];
@@ -547,7 +554,6 @@ export function answersFromExtraction(
       advanceQuestion(advanceFound, documentText);
     raised.push(q);
   }
-  const feesAsk = askOf(RulesSection.FEES);
   if (feeBearerElsewhere && fees.status === DraftStatus.SHOWN) {
     const standard = feeQuestion(answers);
     raised.push({
@@ -556,42 +562,15 @@ export function answersFromExtraction(
       quote: fees.quote,
       clause: clauseFor(documentText, fees.quote),
     });
-  } else if (feesAsk) {
-    const q =
-      feesAsk.question &&
-      readingQuestion(
-        StandardQuestionId.FEES,
-        feesAsk.question,
-        answers,
-        advanceFound,
-        documentText,
-      );
-    const quote = feesAsk.question?.quote ?? feesAsk.hint;
-    raised.push(
-      q ?? {
-        id: StandardQuestionId.FEES,
-        text: "",
-        choices: [],
-        ...(quote ? { quote, clause: clauseFor(documentText, quote) } : {}),
-      },
-    );
   }
-  const refundsAsk = askOf(RulesSection.REFUNDS);
-  const refundQuote =
-    refunds.status === DraftStatus.SHOWN ? refunds.quote : refundsAsk?.hint;
-  if (!refundsAnswer && refundQuote)
-    raised.push({
-      id: StandardQuestionId.REFUNDS,
-      text: "",
-      choices: [],
-      quote: refundQuote,
-      clause: clauseFor(documentText, refundQuote),
-    });
 
   const questions = questionsFor(answers, raised);
   const serverStatus = (s: RulesSection) => e?.sections?.[s]?.status;
+  // Fees and refunds never need the organizer unless a question was raised above.
   const unclear = SECTIONS.some(
     (s) =>
+      s !== RulesSection.FEES &&
+      s !== RulesSection.REFUNDS &&
       sections[s].status === DraftStatus.ASK &&
       serverStatus(s) !== ServerSection.NOT_FOUND,
   );

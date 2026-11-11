@@ -592,3 +592,84 @@ dialog.wd::backdrop {
     transition: none;
   }
 }
+
+/* Not an agreement */
+.wc-not-agreement {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+.wc-refunds {
+  color: var(--color-muted);
+}
+.wc-fee-choices {
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+.wc-fee-choice {
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+}
+.wc-fee-choice strong {
+  display: block;
+  font-weight: var(--weight-medium);
+}
+.wc-fee-explain {
+  display: block;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}
+
+/* Send: blockers fixed in place */
+.ws-advance {
+  margin: 0 0 var(--space-5);
+  padding: var(--space-4);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+}
+.ws-advance .wc-paid {
+  margin: 0;
+  padding: 0;
+  border-top: 0;
+}
+.ws-advance .wiz-hint {
+  margin: var(--space-3) 0 0;
+}
+.ws-blocking ul {
+  list-style: none;
+  padding-left: 0;
+  display: grid;
+  gap: var(--space-3);
+}
+.ws-item {
+  color: var(--color-ink);
+}
+.ws-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2) var(--space-3);
+}
+.ws-fix {
+  display: grid;
+  gap: var(--space-2);
+}
+.ws-fix-title {
+  margin: 0;
+  font-weight: var(--weight-medium);
+}
+.ws-choices,
+.ws-name-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.ws-name-row input,
+.ws-name-row select {
+  min-width: 0;
+  flex: 1 1 180px;
+}

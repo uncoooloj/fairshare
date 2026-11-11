@@ -6,6 +6,7 @@ import {
   TOTAL_BASIS_POINTS,
   exampleSplit,
 } from "../lib/rules-answers";
+import { StandardQuestionId, feeQuestion } from "../lib/standard-questions";
 import type {
   AdvanceAnswer,
   AgreementAnswers,
@@ -25,6 +26,8 @@ export enum CheckMode {
   MANUAL = "manual",
   /** Changing an agreement that was already sent. */
   REVISE = "revise",
+  /** The reading found no revenue-share terms: a brief, an invoice, something else. */
+  NOT_AGREEMENT = "not_agreement",
 }
 
 /** Where a note from someone else (such as a change request) is pinned. */
@@ -39,7 +42,12 @@ enum OpenDrawer {
   AGREEMENT = "agreement",
   SPLIT = "split",
   ADVANCE = "advance",
+  FEES = "fees",
 }
+
+/** True of the engine: a refund puts payouts on hold until it's checked. It isn't a choice. */
+export const REFUND_LINE =
+  "If a payment is refunded, payouts pause while it's checked.";
 
 /** The example payment every dollar line uses, per the spec. */
 export const EXAMPLE_PAYMENT_CENTS = 300000;
@@ -65,6 +73,11 @@ export function checkHeadline(mode: CheckMode) {
       return {
         title: "What should change?",
         lede: "Change what needs fixing. Everything else stays as it is.",
+      };
+    case CheckMode.NOT_AGREEMENT:
+      return {
+        title: "This doesn't look like a revenue-share agreement",
+        lede: "We couldn't find who gets what share of the money in it.",
       };
   }
 }
@@ -122,10 +135,11 @@ export function shortNames(people: PersonAnswer[]) {
   );
 }
 
-/** "Maya 50% · Jordan 30% · Riley 20%" */
+/** "Maya 50% · Jordan 30% · Riley 20%"; anyone at 0% is left out. */
 export function splitSummary(people: PersonAnswer[]) {
   const names = shortNames(people);
   return people
+    .filter((person) => person.basisPoints > 0)
     .map(
       (person) =>
         `${names.get(person.key)} ${percentText(person.basisPoints)}%`,
@@ -152,16 +166,16 @@ export function exampleLine(answers: AgreementAnswers) {
   if (!rows.length) return undefined;
   const names = shortNames(people);
   const amounts = rows
+    .filter((row) => row.cents !== 0)
     .map((row) => `${names.get(row.key)} ${formatMoneyHeadline(row.cents)}`)
     .join(", ");
   const caveat = answers.advance ? " (after the advance is paid back)" : "";
   return `On a ${formatMoneyHeadline(EXAMPLE_PAYMENT_CENTS)} payment: ${amounts}${caveat}.`;
 }
 
+/** Fees nobody chose come off the top: the recommended default, and what the rules store. */
 export function feeLine(answers: AgreementAnswers) {
   switch (answers.fees?.value) {
-    case FeeChoice.BEFORE_SPLIT:
-      return "PayPal fees come off the top, before the split.";
     case FeeChoice.ORGANIZER_SHARE: {
       const organizer =
         answers.people.value.find((p) => p.key === answers.feeBearerId) ??
@@ -173,8 +187,29 @@ export function feeLine(answers: AgreementAnswers) {
       return `PayPal fees come out of ${name}'s share.`;
     }
     default:
-      return undefined;
+      return "PayPal fees come off the top, before the split.";
   }
+}
+
+/** The document asked for a fee payer Fairshare can't charge; the question comes next. */
+function feesAsked(answers: AgreementAnswers) {
+  return (
+    !answers.fees &&
+    answers.questions.some(
+      (q) => q.id === StandardQuestionId.FEES && !q.answeredChoiceId,
+    )
+  );
+}
+
+/** Save a fee choice when it changed, or when the organizer explicitly picked the current
+ * policy again (which can move fees from a former organizer after a handover). */
+export function feesNeedSave(
+  answers: AgreementAnswers,
+  chosen: string,
+  explicitlyChosen: boolean,
+) {
+  const current = answers.fees?.value ?? FeeChoice.BEFORE_SPLIT;
+  return explicitlyChosen || chosen !== current;
 }
 
 function recipientName(answers: AgreementAnswers) {
@@ -234,10 +269,12 @@ function CardHead({
 export function WizardCheckStep({
   answers,
   onChange,
-  mode,
+  mode: givenMode,
   equalSplitGuessed = false,
   peopleFixed = false,
   flag,
+  onUploadAgain,
+  busy = false,
 }: {
   answers: AgreementAnswers;
   onChange(answers: AgreementAnswers): void;
@@ -248,7 +285,18 @@ export function WizardCheckStep({
   peopleFixed?: boolean;
   /** Highlights one card with a note on it. */
   flag?: { card: CheckCard; note: ReactNode };
+  /** Not an agreement: back to Upload for another file. */
+  onUploadAgain?: () => void;
+  /** Disables both replacement choices while the current draft is being retired. */
+  busy?: boolean;
 }) {
+  const [setUpMyself, setSetUpMyself] = useState(false);
+  // Once they chose to set it up (or already added people), it's a manual setup.
+  const mode =
+    givenMode === CheckMode.NOT_AGREEMENT &&
+    (setUpMyself || answers.people.value.length > 1)
+      ? CheckMode.MANUAL
+      : givenMode;
   const [drawer, setDrawer] = useState<OpenDrawer>();
   const [splitTouched, setSplitTouched] = useState(false);
   const headingId = useId();
@@ -257,7 +305,9 @@ export function WizardCheckStep({
   const people = answers.people.value;
   const names = shortNames(people);
   const example = exampleLine(answers);
-  const fees = feeLine(answers);
+  const fees = feesAsked(answers)
+    ? "We'll ask you about the PayPal fees next."
+    : feeLine(answers);
   const advance = answers.advance;
   const advanceWho = recipientName(answers);
   const amount = advance ? formatMoneyHeadline(advance.value.amountCents) : "";
@@ -279,6 +329,36 @@ export function WizardCheckStep({
       advance: { ...advance, value: { ...advance.value, alreadyPaid } },
     });
   }
+
+  if (mode === CheckMode.NOT_AGREEMENT)
+    return (
+      <section className="wiz-step wc" aria-labelledby={headingId}>
+        <h1 id={headingId} tabIndex={-1}>
+          {title}
+        </h1>
+        <p className="wiz-lede">{lede}</p>
+        <div className="wc-not-agreement">
+          {onUploadAgain ? (
+            <button
+              type="button"
+              className="button primary"
+              disabled={busy}
+              onClick={onUploadAgain}
+            >
+              Upload a different file
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="button secondary"
+            disabled={busy}
+            onClick={() => setSetUpMyself(true)}
+          >
+            Set it up myself
+          </button>
+        </div>
+      </section>
+    );
 
   return (
     <section className="wiz-step wc" aria-labelledby={headingId}>
@@ -333,7 +413,9 @@ export function WizardCheckStep({
                 />
                 <span className="wc-legend-name">{names.get(person.key)}</span>
                 <span className="wc-legend-share">
-                  {percentText(person.basisPoints)}%
+                  {person.basisPoints > 0
+                    ? `${percentText(person.basisPoints)}%`
+                    : "Not in the split"}
                 </span>
               </li>
             ))}
@@ -350,12 +432,21 @@ export function WizardCheckStep({
         {example && people.length > 1 ? (
           <p className="wc-example">{example}</p>
         ) : null}
-        {fees ? (
-          <p className="wc-fees">
-            <span>{fees}</span>
-            <ClauseChip cited={answers.fees} />
-          </p>
-        ) : null}
+        <p className="wc-fees">
+          <span>{fees}</span>
+          <ClauseChip cited={answers.fees} />
+          {feesAsked(answers) ? null : (
+            <button
+              type="button"
+              className="wc-link wc-change"
+              onClick={() => setDrawer(OpenDrawer.FEES)}
+              aria-label="Change who covers the PayPal fees"
+            >
+              Change
+            </button>
+          )}
+        </p>
+        <p className="wc-fees wc-refunds">{REFUND_LINE}</p>
       </article>
 
       {advance ? (
@@ -394,8 +485,7 @@ export function WizardCheckStep({
             </div>
             {advance.value.alreadyPaid === false ? (
               <p className="wiz-hint" role="status">
-                You can send this once {advanceWho ?? "the money"}{" "}
-                {advanceWho ? "has paid it" : "is in"}.
+                {NOT_PAID_YET}
               </p>
             ) : null}
           </fieldset>
@@ -441,6 +531,16 @@ export function WizardCheckStep({
           }}
         />
       ) : null}
+      {drawer === OpenDrawer.FEES ? (
+        <FeesDrawer
+          answers={answers}
+          onCancel={close}
+          onSave={(next) => {
+            onChange(next);
+            close();
+          }}
+        />
+      ) : null}
       {drawer === OpenDrawer.ADVANCE ? (
         <AdvanceDrawer
           answers={answers}
@@ -452,6 +552,58 @@ export function WizardCheckStep({
         />
       ) : null}
     </section>
+  );
+}
+
+/** "Not yet" on the advance: it can still be sent; the organizer confirms it later. */
+export const NOT_PAID_YET =
+  "You'll confirm it once it's paid. Nothing is split until then.";
+
+/** Who covers the PayPal fees: before the split (recommended) or the organizer's share. */
+function FeesDrawer({
+  answers,
+  onSave,
+  onCancel,
+}: {
+  answers: AgreementAnswers;
+  onSave(answers: AgreementAnswers): void;
+  onCancel(): void;
+}) {
+  const question = feeQuestion(answers);
+  const [chosen, setChosen] = useState<string>(
+    answers.fees?.value ?? FeeChoice.BEFORE_SPLIT,
+  );
+  const [explicitlyChosen, setExplicitlyChosen] = useState(false);
+  const name = useId();
+  function save() {
+    if (!feesNeedSave(answers, chosen, explicitlyChosen)) return onCancel();
+    const choice = question.choices.find((c) => c.id === chosen);
+    onSave(choice ? choice.apply(answers) : answers);
+  }
+  return (
+    <WizardDrawer title="PayPal fees" onSave={save} onCancel={onCancel}>
+      <fieldset className="wiz-fields wc-fee-choices">
+        <legend className="sr-only">Who covers the PayPal fees</legend>
+        {question.choices.map((choice) => (
+          <label key={choice.id} className="wiz-check wc-fee-choice">
+            <input
+              type="radio"
+              name={name}
+              checked={chosen === choice.id}
+              onClick={() => setExplicitlyChosen(true)}
+              onChange={() => {
+                setExplicitlyChosen(true);
+                setChosen(choice.id);
+              }}
+            />
+            <span>
+              <strong>{choice.label}</strong>
+              <span className="wc-fee-explain">{choice.explanation}</span>
+            </span>
+          </label>
+        ))}
+      </fieldset>
+    </WizardDrawer>
   );
 }
 

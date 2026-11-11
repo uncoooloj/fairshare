@@ -26,7 +26,7 @@ export interface AgreementsSectionProps {
   openAgreement: (a: Agreement) => Promise<void>;
 }
 
-/** Agreement list, with unsent drafts first. Creating one happens in the full-screen wizard. */
+/** Agreement table, unsent drafts first. Creating one happens in the full-screen wizard. */
 export function AgreementsSection({
   userId,
   canCreateAgreement,
@@ -38,8 +38,12 @@ export function AgreementsSection({
   openAgreement,
 }: AgreementsSectionProps) {
   const workspaceRole = workspaces.find((item) => item.id === workspace)?.role;
-  const drafts = agreements.filter((a) => isDraftAgreement(a, userId));
-  const sent = agreements.filter((a) => !drafts.includes(a));
+  // Drafts are rows in the same table, first, so a saved draft is never out of sight.
+  const isDraft = (a: Agreement) => isDraftAgreement(a, userId);
+  const ordered = [
+    ...agreements.filter(isDraft),
+    ...agreements.filter((a) => !isDraft(a)),
+  ];
   return (
     <>
       <Heading
@@ -53,33 +57,12 @@ export function AgreementsSection({
           )
         }
       />
-      {drafts.length > 0 && (
-        <section className="wiz-drafts" aria-label="Not sent yet">
-          <ul>
-            {drafts.map((a) => (
-              <li key={JSON.stringify([a.workspaceId, a.id])}>
-                <span className="wiz-drafts-name">
-                  <strong>{a.value.name}</strong>
-                  <small>Not sent yet</small>
-                </span>
-                <Button
-                  variant="secondary"
-                  onClick={() => run(() => openAgreement(a))}
-                >
-                  Finish setting up
-                </Button>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-      {(sent.length > 0 || drafts.length === 0) && (
-        <AgreementList
-          agreements={sent}
-          workspaceRole={workspaceRole}
-          onOpen={(a) => run(() => openAgreement(a))}
-        />
-      )}
+      <AgreementList
+        agreements={ordered}
+        workspaceRole={workspaceRole}
+        isDraft={isDraft}
+        onOpen={(a) => run(() => openAgreement(a))}
+      />
     </>
   );
 }

@@ -5,13 +5,13 @@ import { renderToStaticMarkup } from "react-dom/server";
 import {
   AnswerSource,
   FeeChoice,
-  RefundChoice,
   type AgreementAnswers,
   type Question,
 } from "../lib/rules-answers";
 import {
   StandardQuestionId,
   choiceEffect,
+  feeQuestion,
   questionsFor,
   sampleFeeCents,
 } from "../lib/standard-questions";
@@ -39,42 +39,25 @@ function midnight(overrides: Partial<AgreementAnswers> = {}): AgreementAnswers {
 const byKey = (rows: { key: string; cents: number }[] | undefined) =>
   Object.fromEntries((rows ?? []).map((r) => [r.key, r.cents]));
 
-test("silent fees and refunds become the two standard questions", () => {
-  const questions = questionsFor(midnight());
-  assert.deepEqual(
-    questions.map((q) => q.id),
-    [StandardQuestionId.FEES, StandardQuestionId.REFUNDS],
-  );
-  const fees = questions[0];
+/** The fee question as the reading raises it when the document wants someone we can't charge. */
+const cantCharge = (a: AgreementAnswers): Question => ({
+  ...feeQuestion(a),
+  text: "We can't have Jordan pay the PayPal fee yet. Who covers it?",
+});
+
+test("nothing is asked on its own: fees default to before the split, refunds never", () => {
+  assert.deepEqual(questionsFor(midnight()), []);
+  assert.deepEqual(questionsFor(midnight({ advance: undefined })), []);
+  const fees = feeQuestion(midnight());
   assert.equal(fees.text, "Who covers the PayPal fee?");
   assert.deepEqual(
     fees.choices.map((c) => c.id),
     [FeeChoice.BEFORE_SPLIT, FeeChoice.ORGANIZER_SHARE],
   );
   assert.equal(fees.choices[1].label, "Maya covers it from their share");
-  assert.deepEqual(
-    questions[1].choices.map((c) => c.id),
-    [RefundChoice.SPLIT, RefundChoice.ADVANCE],
-  );
 });
 
-test("settled answers ask nothing; no advance means no refunds question", () => {
-  assert.deepEqual(
-    questionsFor(
-      midnight({
-        fees: doc(FeeChoice.BEFORE_SPLIT),
-        refunds: doc(RefundChoice.SPLIT),
-      }),
-    ),
-    [],
-  );
-  assert.deepEqual(
-    questionsFor(midnight({ advance: undefined })).map((q) => q.id),
-    [StandardQuestionId.FEES],
-  );
-});
-
-test("extracted issues are capped at three, money questions first", () => {
+test("extracted issues are capped at three, money questions first; refunds dropped", () => {
   const wordOnly: Question = {
     id: "credit",
     text: "How should the credits read?",
@@ -103,37 +86,30 @@ test("extracted issues are capped at three, money questions first", () => {
       },
     ],
   };
-  const fromDoc: Question = {
+  const refunds: Question = {
     id: StandardQuestionId.REFUNDS,
-    text: "ignored",
+    text: "Refunds?",
     quote: "Refunds shall be deducted from future Net Revenue.",
-    clause: "§ 5.2",
-    choices: [],
+    choices: money.choices,
   };
-  const questions = questionsFor(midnight(), [wordOnly, money, fromDoc]);
+  const fees = cantCharge(midnight());
   assert.deepEqual(
-    questions.map((q) => q.id),
-    ["fees", "refunds", "net"],
+    questionsFor(midnight(), [wordOnly, money, refunds, fees]).map((q) => q.id),
+    ["net", StandardQuestionId.FEES, "credit"],
   );
-  assert.equal(questions[1].clause, "§ 5.2");
-  assert.equal(
-    questions[1].text,
-    "How should we record this refund preference for review?",
-  );
-  assert.equal(questions[1].choices.length, 2);
-  const settled = midnight({
-    fees: doc(FeeChoice.BEFORE_SPLIT),
-    refunds: doc(RefundChoice.SPLIT),
-  });
+  // Fees already settled: the fee question goes.
   assert.deepEqual(
-    questionsFor(settled, [wordOnly, money]).map((q) => q.id),
-    ["net", "credit"],
+    questionsFor(midnight({ fees: doc(FeeChoice.BEFORE_SPLIT) }), [
+      wordOnly,
+      fees,
+    ]).map((q) => q.id),
+    ["credit"],
   );
 });
 
 test("fee choices show real dollars on $3,000 with a $105 fee", () => {
   const answers = midnight();
-  const [fees] = questionsFor(answers);
+  const fees = cantCharge(answers);
   assert.equal(sampleFeeCents(300_000), 10_500);
   // Maya is paid back $2,000 first; the remaining $1,000 less the fee is split.
   const before = byKey(choiceEffect(answers, fees.choices[0], 300_000));
@@ -148,79 +124,43 @@ test("fee choices show real dollars on $3,000 with a $105 fee", () => {
   assert.ok(before.jordan < 30_000);
 });
 
-test("refund choices are recorded only: no promise about payouts", () => {
-  const [, refunds] = questionsFor(midnight());
-  for (const choice of refunds.choices)
-    assert.doesNotMatch(choice.explanation, /paid back less|shrinks/);
-  // Choosing changes the recorded answer, never the split or the advance.
-  const applied = refunds.choices[1].apply(midnight());
-  assert.equal(applied.refunds?.value, RefundChoice.ADVANCE);
-  assert.deepEqual(applied.people, midnight().people);
-  assert.deepEqual(applied.advance, midnight().advance);
-});
-
 test("answering records the choice and applies it", () => {
   const answers = midnight();
-  answers.questions = questionsFor(answers);
+  answers.questions = [cantCharge(answers)];
   const next = answerQuestion(answers, 0, answers.questions[0].choices[1]);
   assert.equal(next.fees?.value, FeeChoice.ORGANIZER_SHARE);
   assert.equal(next.fees?.source, AnswerSource.PERSON);
   assert.equal(next.questions[0].answeredChoiceId, FeeChoice.ORGANIZER_SHARE);
-  assert.equal(next.questions[1].answeredChoiceId, undefined);
   assert.equal(answers.fees, undefined);
 });
 
 test("the step renders one question as radio cards with dollars", () => {
   const answers = midnight();
-  answers.questions = questionsFor(answers);
+  answers.questions = [cantCharge(answers)];
   const noop = () => {};
   const html = renderToStaticMarkup(
     createElement(WizardQuestionsStep, {
       answers,
       onChange: noop,
-      index: 1,
+      index: 0,
       onNext: noop,
       onBack: noop,
     }),
   );
-  assert.match(html, /Question 2 of 2/);
-  assert.match(
-    html,
-    /How should we record this refund preference for review\?/,
-  );
+  assert.match(html, /Question 1 of 1/);
+  assert.match(html, /We can(’|'|&#x27;)t have Jordan pay the PayPal fee yet/);
   assert.match(html, /role="radiogroup"/);
   assert.equal(html.match(/role="radio"/g)?.length, 2);
-  // Refunds: the choices and one plain line, no dollars.
-  assert.match(
-    html,
-    /We(’|'|&#x27;)ll record this so everyone agrees\. Refunds are handled by the organizer for now\./,
-  );
-  assert.doesNotMatch(html, /\$\d|On a .* payment|refund:/);
+  assert.match(html, /On a \$3,000 payment/);
+  assert.match(html, /With a \$105 PayPal fee, each person gets:/);
+  assert.match(html, /\$300/);
+  assert.doesNotMatch(html, /[Rr]efund/);
   assert.match(html, /Not sure\? Skip for now/);
   assert.match(html, /<button[^>]*disabled=""[^>]*>Use this<\/button>/);
   assert.doesNotMatch(
     html,
     /recoup|allocation|basis points|provenance|activate/i,
   );
-});
-
-test("the fee question keeps its dollar effects", () => {
-  const answers = midnight();
-  answers.questions = questionsFor(answers);
-  const html = renderToStaticMarkup(
-    createElement(WizardQuestionsStep, {
-      answers,
-      onChange: () => {},
-      index: 0,
-      onNext: () => {},
-      onBack: () => {},
-    }),
-  );
-  assert.match(html, /Who covers the PayPal fee\?/);
-  assert.match(html, /On a \$3,000 payment/);
-  assert.match(html, /With a \$105 PayPal fee, each person gets:/);
-  assert.match(html, /\$300/);
-  assert.doesNotMatch(html, /Refunds are handled by the organizer/);
 });
 
 test("an extracted question with its own choices replaces the standard one", () => {
