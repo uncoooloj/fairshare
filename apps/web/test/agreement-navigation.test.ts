@@ -15,6 +15,11 @@ test("agreement navigation discovers all authorized groups without conflating gr
   assert.match(app, /lists.flatMap/);
   assert.match(
     app,
+    /JSON\.stringify\(\[agreement\.workspaceId, agreement\.id\]\)/,
+  );
+  assert.match(app, /agreementPickerValue\(item\) === e\.target\.value/);
+  assert.match(
+    app,
     /if \(a.workspaceId !== currentWorkspace.current\)\s*commitWorkspace\(a.workspaceId\)/,
   );
   assert.match(app, /workspaceBase\(a.workspaceId\)/);

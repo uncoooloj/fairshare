@@ -85,6 +85,9 @@ const PaymentGrid = dynamic(
 import { PaymentGridStatus } from "../src/components/paymentGridModel";
 import { Badge, Button, Empty, Field, Icon, Notice } from "./ui";
 const workspaceBase = (id: string) => `workspaces/${id}`;
+const agreementPickerValue = (
+  agreement: Pick<Agreement, "workspaceId" | "id">,
+) => JSON.stringify([agreement.workspaceId, agreement.id]);
 export default function FairshareApp() {
   const router = useRouter();
   const emailDelivery = useEmailDelivery();
@@ -639,7 +642,7 @@ export default function FairshareApp() {
               disabled={busy}
               onChange={(e) => {
                 const agreement = agreements.find(
-                  (item) => item.id === e.target.value,
+                  (item) => agreementPickerValue(item) === e.target.value,
                 );
                 if (!agreement || !mayLeaveDraft()) return;
                 void run(() => openAgreement(agreement));
@@ -649,7 +652,10 @@ export default function FairshareApp() {
                 Choose an agreement
               </option>
               {agreements.map((agreement) => (
-                <option key={agreement.id} value={agreement.id}>
+                <option
+                  key={agreementPickerValue(agreement)}
+                  value={agreementPickerValue(agreement)}
+                >
                   {agreement.value.name}
                 </option>
               ))}
