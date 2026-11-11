@@ -189,12 +189,13 @@ test("release gate fails closed without an acceptance variable", () => {
   assert.match(result.stderr, /genuine hosted acceptance receipt/);
 });
 
-test("push-to-main releases retain gates while pull requests cannot publish", () => {
+test("manual releases retain safeguards while pushes and pull requests cannot publish", () => {
   const workflow = readFileSync(
     new URL("../../.github/workflows/deploy.yml", import.meta.url),
     "utf8",
   );
-  assert.match(workflow, /push:\s+branches: \[main\]/);
+  assert.doesNotMatch(workflow, /^  push:/m);
+  assert.match(workflow, /workflow_dispatch:/);
   assert.match(workflow, /pull_request:/);
   assert.match(workflow, /vars\.FAIRSHARE_PERSISTENCE_ACCEPTANCE/);
   assert.match(

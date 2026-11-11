@@ -1,6 +1,6 @@
-# Deploy on merge to main
+# Deploy only on explicit instruction
 
-`.github/workflows/deploy.yml` starts automatically on every push to `main`, including a merged PR. It also checks Cloudflare-specific safeguards and build artifacts on pull requests without deploying; the normal CI workflow owns the duplicate format, full-test, type and ordinary-build checks. Manual retries are available on `main`; other branches cannot publish. Superseded PR release checks are cancelled, while main and manual releases run serially and skip a commit superseded while checks ran.
+`.github/workflows/deploy.yml` publishes only when manually dispatched on `main` after explicit operator instruction. Merging a PR never starts a deployment. It also checks Cloudflare-specific safeguards and build artifacts on pull requests without deploying; the normal CI workflow owns the duplicate format, full-test, type and ordinary-build checks. Manual retries are available on `main`; other branches cannot publish. Superseded PR release checks are cancelled, while main and manual releases run serially and skip a commit superseded while checks ran.
 
 Publication is **fail-closed** until both a current hosted persistence acceptance receipt and a dedicated Cloudflare token are configured. Merging this workflow alone is not evidence of persistence acceptance and does not bypass the gate. This extends the manual-only release safeguards merged in PR #64 with automatic triggering and scope-bound acceptance.
 
