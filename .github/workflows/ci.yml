@@ -62,7 +62,16 @@ jobs:
       # Adding a workspace requires adding it to one of the test lanes below.
       - name: Assert all workspaces are covered by test lanes
         run: |
-          test "$(npm pkg get name --workspaces --json | node -e 'let s=""; process.stdin.on("data", d => s += d).on("end", () => console.log(Object.keys(JSON.parse(s)).join(",")))')" = "@fairshare/api,@fairshare/web,@fairshare/cloudflare-storage,@fairshare/contract-ai,@fairshare/domain,@fairshare/payments"
+          actual_workspaces="$(
+            npm pkg get name --workspaces --json |
+              node -p 'Object.keys(JSON.parse(require("node:fs").readFileSync(0, "utf8"))).join(",")'
+          )"
+          expected_workspaces="@fairshare/api,@fairshare/web,@fairshare/cloudflare-storage,@fairshare/contract-ai,@fairshare/domain,@fairshare/payments"
+          if [ "$actual_workspaces" != "$expected_workspaces" ]; then
+            echo "A workspace is missing from the CI test lanes."
+            echo "Found: $actual_workspaces"
+            exit 1
+          fi
       - run: npm run test --workspace @fairshare/web --if-present
       - run: npm run test --workspace @fairshare/cloudflare-storage --if-present
       - run: npm run test --workspace @fairshare/contract-ai --if-present
@@ -101,7 +110,15 @@ jobs:
 
   verify:
     if: ${{ always() }}
-    needs: [format, test_api_shard_1, test_api_shard_2, test_web_and_packages, typecheck, build]
+    needs:
+      [
+        format,
+        test_api_shard_1,
+        test_api_shard_2,
+        test_web_and_packages,
+        typecheck,
+        build,
+      ]
     runs-on: ubuntu-latest
     steps:
       - name: Require every check to succeed
