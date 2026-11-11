@@ -28,7 +28,10 @@ interface StoredDraft extends StoredAnswers {
 export const draftAnswersKey = (workspaceId: string, agreementId: string) =>
   `fairshare:wizard-answers:v${VERSION}:${workspaceId}:${agreementId}`;
 
-/** The unversioned key earlier builds wrote (no questions). Read once, then replaced. */
+/**
+ * The unversioned key earlier builds wrote: the answers flat, with answered choices (if any)
+ * under `questionAnswers`. Read once, then replaced.
+ */
 const legacyKey = (workspaceId: string, agreementId: string) =>
   `fairshare:wizard-draft:${workspaceId}:${agreementId}`;
 
@@ -94,8 +97,17 @@ export function loadDraftAnswers(
     }
     const legacy = localStorage.getItem(legacyKey(workspaceId, agreementId));
     if (!legacy) return undefined;
-    const { questions: _questions, ...answers } = JSON.parse(legacy);
-    return usable(answers) ? { answers, questions: [] } : undefined;
+    const {
+      questions: _questions,
+      questionAnswers,
+      ...answers
+    } = JSON.parse(legacy);
+    return usable(answers)
+      ? {
+          answers,
+          questions: Array.isArray(questionAnswers) ? questionAnswers : [],
+        }
+      : undefined;
   } catch {
     return undefined;
   }

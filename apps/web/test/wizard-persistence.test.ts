@@ -165,6 +165,25 @@ test("older unversioned saves still load; bad or other-version data is ignored",
       loadDraftAnswers("w", "a")?.answers.people.value[0].basisPoints,
       5000,
     );
+    // Saves that carried answered choices as `questionAnswers` keep them.
+    store.set(
+      "fairshare:wizard-draft:w:a",
+      JSON.stringify({
+        ...legacy,
+        questionAnswers: [
+          {
+            id: StandardQuestionId.FEES,
+            answeredChoiceId: FeeChoice.BEFORE_SPLIT,
+          },
+        ],
+      }),
+    );
+    assert.equal(
+      resumedAnswers(resume, self).answers.questions.find(
+        (q) => q.id === StandardQuestionId.FEES,
+      )?.answeredChoiceId,
+      FeeChoice.BEFORE_SPLIT,
+    );
     store.set(
       draftAnswersKey("w", "a"),
       JSON.stringify({ version: 2, answers: legacy, questions: [] }),

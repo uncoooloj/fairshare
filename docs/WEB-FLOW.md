@@ -38,7 +38,7 @@ Settings includes display preferences, a filtered read-only activity log, profil
 - The dispatch button is a sandbox technical step, not discretionary approval of shares. Opt-in sandbox
   automatic scheduling is gated by `PAYPAL_AUTOMATIC_PAYOUTS_ENABLED`, provider capability checks and
   reconciliation. It reserves a payout before submission and does not blindly retry an unknown outcome.
-- PDF and DOCX text must be reviewed. New PDF/DOCX originals are private authenticated downloads; legacy/text-only uploads have no original. Local OCR is off by default and only runs after an explicit user choice.
+- PDF and DOCX text must be reviewed. New PDF/DOCX originals are private authenticated downloads; legacy/text-only uploads have no original. Local OCR is off by default; when host-enabled, textless PDFs automatically fall back once after native extraction.
 - AI observations are displayed with source quotations; reviewed human rules are entered explicitly.
   Semantic correctness of clauses requires human review. No automatic legal signature.
 - A first agreement starts from its source, not an empty name form. The API saves its workspace, agreement and source together; an uncertain request can be retried with the same request ID. A filename, or a safe short pasted document heading, can supply the initial name without an AI request; unsafe text falls back to **Untitled agreement**. Names can be changed after creation.

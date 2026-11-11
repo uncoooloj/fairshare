@@ -51,6 +51,7 @@ test("reading screen renders the file, four steps, polite status and copy", () =
   assert.match(html, /role="status" aria-live="polite"/);
   assert.match(html, /Reading the document, step 1 of 4\./);
   assert.match(html, /Usually under a minute\./);
+  assert.match(html, /Set it up myself instead/);
   assert.doesNotMatch(html, /Keep this tab open/);
   assert.doesNotMatch(html, /Continue to rules/);
 });
@@ -176,7 +177,7 @@ test("readAgreement requires consent and posts the existing extract call", async
   }
 });
 
-test("component runs once under StrictMode, hands failures straight to Check and avoids motion when reduced", () => {
+test("component runs once under StrictMode, has a bounded manual fallback, and avoids motion when reduced", () => {
   const source = readFileSync(
     new URL("../components/reading-document.tsx", import.meta.url),
     "utf8",
@@ -187,6 +188,8 @@ test("component runs once under StrictMode, hands failures straight to Check and
     source,
     /request\.current\.then\(settle, \(\) => settle\(ReadingOutcome\.MANUAL\)\)/,
   );
+  assert.match(source, /event\.key !== "Escape"/);
+  assert.match(source, /onCancel\?\.\(\)/);
   assert.doesNotMatch(source, /Continue to rules|Add the terms yourself/);
   assert.doesNotMatch(source, /\/versions|activate/i);
   const css = readFileSync(

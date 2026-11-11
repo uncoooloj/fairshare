@@ -5,6 +5,9 @@ import { DomainError } from "@fairshare/domain";
 import { layoutPage, type LayoutLine } from "./textLayout.js";
 export const MAX_PDF_BYTES = 5 * 1024 * 1024;
 export const MAX_PDF_REQUEST_BYTES = Math.ceil(MAX_PDF_BYTES / 3) * 4 + 1024;
+// PDF geometry is larger than the reconstructed text because each line carries
+// coordinates. Keep the child protocol bounded independently of its text limit.
+export const MAX_PDF_PROTOCOL_BYTES = 8 * 1024 * 1024;
 export interface PdfExtraction {
   text: string;
   pages: Array<{ page: number; start: number; end: number }>;
@@ -136,8 +139,8 @@ export async function extractPdf(
     );
     child.stdout.on("data", (chunk: Buffer) => {
       size += chunk.length;
-      if (size > 300000) {
-        failure("PDF_TEXT_LIMIT");
+      if (size > MAX_PDF_PROTOCOL_BYTES) {
+        failure("PDF_EXTRACTION_FAILED");
         return;
       }
       chunks.push(chunk);
