@@ -378,3 +378,31 @@ test("emptyAnswers starts with just the organizer at 100%", () => {
   assert.equal(a.name.source, AnswerSource.PERSON);
   assert.deepEqual(a.questions, []);
 });
+
+test("rebalance never moves held people and can snap the rest to whole percents", () => {
+  const people = [person("a", 3334), person("b", 3333), person("c", 3333)];
+  // Only c is free: it takes exactly what is left.
+  assert.deepEqual(
+    rebalance(people, "b", 3000, ["a"]).map((p) => p.basisPoints),
+    [3334, 3000, 3666],
+  );
+  // Everyone else held: nobody else moves, so the total is off for the caller to show.
+  assert.deepEqual(
+    rebalance(people, "c", 2000, ["a", "b"]).map((p) => p.basisPoints),
+    [3334, 3333, 2000],
+  );
+  // Never negative when the held shares already pass 100%.
+  assert.deepEqual(
+    rebalance(people, "a", 9000, ["b"]).map((p) => p.basisPoints),
+    [9000, 3333, 0],
+  );
+  // step 100 keeps the movers on whole percents when what is left divides evenly.
+  assert.deepEqual(
+    rebalance(people, "a", 4700, [], 100).map((p) => p.basisPoints),
+    [4700, 2700, 2600],
+  );
+  assert.deepEqual(
+    rebalance(people, "a", 4750, [], 100).map((p) => p.basisPoints),
+    [4750, 2625, 2625],
+  );
+});

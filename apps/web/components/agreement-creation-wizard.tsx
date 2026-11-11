@@ -28,8 +28,9 @@ import { workspaceBase } from "../lib/workspace-base";
 import {
   clearDraftAnswers,
   loadDraftAnswers,
+  restoreQuestions,
   saveDraftAnswers,
-} from "../lib/wizard-draft-store";
+} from "../lib/wizard-persistence";
 import {
   DocumentMode,
   DocumentStep,
@@ -198,7 +199,7 @@ export function AgreementCreationWizard({
     node?.focus();
   }, [stage, questionIndex]);
 
-  // Check, Questions and People choices survive "Keep as draft" on this device.
+  // Check, Questions and People choices survive a reload or "Keep as draft" on this device.
   useEffect(() => {
     if (!answers || !created || stage === WizardStage.SENT) return;
     saveDraftAnswers(created.workspaceId, created.agreementId, answers);
@@ -828,7 +829,7 @@ export function resumedAnswers(
   const held = new Map(
     pendingMembers(agreement).map((m) => [m.pending.invitationId, m]),
   );
-  const people = stored.people.value.map((p) =>
+  const people = stored.answers.people.value.map((p) =>
     p.invitationId && !held.has(p.invitationId)
       ? { ...p, invitationId: undefined }
       : p,
@@ -845,15 +846,21 @@ export function resumedAnswers(
         isSelf: false,
       });
   const merged: AgreementAnswers = {
-    ...stored,
-    people: { ...stored.people, value: people },
+    ...stored.answers,
+    people: { ...stored.answers.people, value: people },
     questions: [],
   };
+  // Answered questions are rebuilt as they were asked (before their answer was applied).
+  const asked = questionsFor(
+    { ...merged, fees: undefined, refunds: undefined },
+    read.answers.questions,
+  );
+  const questions = restoreQuestions(stored.questions, [
+    ...asked,
+    ...read.answers.questions,
+  ]);
   return {
     ...read,
-    answers: withDraftName(
-      { ...merged, questions: questionsFor(merged) },
-      agreement,
-    ),
+    answers: withDraftName(mergeQuestions({ ...merged, questions }), agreement),
   };
 }
