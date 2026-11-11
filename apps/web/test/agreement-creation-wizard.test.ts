@@ -81,7 +81,7 @@ test("four progress dots: Upload · Check · People · Send", () => {
   assert.equal(STAGE_STEP[WizardStage.SENT], undefined);
 });
 
-test("the wizard opens on Upload with the spec's copy and one privacy line", () => {
+test("the wizard opens on Upload with the spec's copy and clear actions", () => {
   const html = renderToStaticMarkup(
     createElement(AgreementCreationWizard, {
       owner,
@@ -101,14 +101,7 @@ test("the wizard opens on Upload with the spec's copy and one privacy line", () 
   assert.match(html, /Paste the text instead/);
   assert.match(html, /Read my agreement/);
   assert.match(html, /Set it up myself/);
-  assert.equal(
-    (
-      html.match(
-        /Read my agreement sends it to AI \(Cloudflare Workers AI, with an Anthropic fallback\) to suggest the split\./g,
-      ) || []
-    ).length,
-    1,
-  );
+  assert.doesNotMatch(html, /Read my agreement sends it to AI/);
   assert.doesNotMatch(html, /sandbox|Agreement name|Details/i);
 });
 
