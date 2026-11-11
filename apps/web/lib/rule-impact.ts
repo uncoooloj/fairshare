@@ -10,6 +10,15 @@ import {
 } from "../../../packages/domain/src/index";
 import { parseCents, parseShare, type Agreement, type Rules } from "./model";
 
+export const isRulesDraftChange = (
+  target: {
+    dataset?: { illustrative?: string };
+    closest?: (selector: string) => unknown;
+  } | null,
+) =>
+  target?.dataset?.illustrative !== "true" &&
+  !target?.closest?.("[data-local-rule-edit]");
+
 /** Read only supported financial terms. Never infer missing shares or advances. */
 export function impactDraft(
   agreement: Agreement,
