@@ -20,7 +20,7 @@ Onest is the preferred font stack. The application bundles local Onest font asse
 
 ## Working routes
 
-Account/register/login/logout, capability-gated password-reset and verification request controls with confirmation routes retained, workspace setup and selection, private-link invite acceptance,
+Account/register/login/logout, capability-gated password-reset and verification request controls with confirmation routes retained, upload-first agreement setup and agreement selection, private-link invite acceptance,
 upload-first agreement intake (which creates a first workspace when needed), people/invitations, text/PDF/DOCX upload and extracted-text review, authenticated original
 downloads, review discussion, opt-in local OCR, opt-in Cloudflare suggestions, conditional authenticator MFA, manual source-bound proposal editing, neutral fee policy choices, exact version approval,
 preview, activation, incoming-payment status and traceable allocation breakdown, sandbox checkout,
@@ -52,3 +52,12 @@ BFF session/CSRF/path restrictions. An actual production-server HTTP journey pas
 agreement→source→proposal→send→approve→activate→preview→payment/payout reads→logout against the real API.
 No provider call was made in that journey. Browser visual QA was attempted but Chromium could not open
 its process socket in the cloud sandbox. Native/desktop browser verification remains outstanding.
+
+### Agreement-first navigation
+
+The app lists agreements across all groups the signed-in account may access.
+Selecting an agreement selects its internal tenant for scoped operations; tenant
+creation and naming are not exposed. No membership or permission is broadened.
+Payment settings name the agreements sharing a destination. New agreement
+invitations add the accepted person to that draft; legacy team invitations still
+require the organizer to add that person to an agreement separately.

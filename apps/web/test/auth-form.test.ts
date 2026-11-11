@@ -47,12 +47,11 @@ test("auth enforces API length limits without truncating password", () => {
     "",
   );
 });
-test("onboarding matches API workspace limit; auth mode switch dismisses stale errors and masks password", () => {
+test("auth mode switch dismisses stale errors and masks password", () => {
   const source = readFileSync(
     new URL("../components/designer-auth.tsx", import.meta.url),
     "utf8",
   );
-  assert.ok(source.includes("maxLength={100}"));
   assert.match(
     source,
     /setShowServerError\(false\);\s*setShowPassword\(false\)/,

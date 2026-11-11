@@ -55,7 +55,7 @@ test("creation saves actual participant and name changes, keeps consent boundary
   assert.match(wizard, /onAddMember\(person.id\)/);
   assert.match(wizard, /cause instanceof Error/);
   assert.match(wizard, /Next, choose whether AI may interpret/);
-  assert.match(wizard, /No email is sent\s+automatically/);
+  assert.match(wizard, /Share a private invitation to this agreement/);
   assert.match(
     wizard,
     /onDirtyChange\(name.trim\(\) !== agreement.value.name\)/,

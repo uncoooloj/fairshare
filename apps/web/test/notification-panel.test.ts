@@ -36,5 +36,5 @@ test("notification navigation preserves draft guards and accounts are isolated",
   assert.match(wiring, /openAgreement\(agreement\)/);
   assert.match(wiring, /setSettingsTab\("Notifications"\)/);
   assert.match(panel, /agreementIds.includes\(event.agreementId\)/);
-  assert.match(panel, /Switch to this agreement’s workspace/);
+  assert.match(panel, /no longer available to your account/);
 });

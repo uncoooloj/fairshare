@@ -49,9 +49,7 @@ export function OverviewDashboard({
   }
   return (
     <>
-      <p className="muted">
-        All-time · agreements visible to you in this workspace
-      </p>
+      <p className="muted">All-time · all agreements you can access</p>
       <div className="metrics">
         <Metric
           label="Recorded allocations"

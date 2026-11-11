@@ -12,7 +12,6 @@ import { AgreementAllocations } from "./agreement-allocations";
 import { allocationTrace } from "../lib/allocation-trace";
 import { NotificationPanel } from "./notification-panel";
 import { useEmailDelivery } from "../lib/email-capability";
-import { WorkspaceNameForm } from "./workspace-name-form";
 import {
   useDisplayPreferences,
   NotificationsSettings,
@@ -115,6 +114,7 @@ export default function FairshareApp() {
     [flowKind, setFlowKind] = useState("");
   const [draftDirty, setDraftDirty] = useState(false);
   const openRequest = useRef(0);
+  const listRequest = useRef(0);
   const rulesDirty = useRef(false);
   function mayLeaveDraft() {
     if (busy) return false;
@@ -151,8 +151,14 @@ export default function FairshareApp() {
       (v) => v.id === selected.value.activeVersionId,
     );
   const workspaceRole = workspaces.find((item) => item.id === workspace)?.role;
-  const canCreateAgreement =
-    workspaceRole === "OWNER" || workspaceRole === "MEMBER";
+  const creationWorkspace =
+    workspaces.find(
+      (item) =>
+        item.id === workspace &&
+        (item.role === "OWNER" || item.role === "MEMBER"),
+    ) ??
+    workspaces.find((item) => item.role === "OWNER" || item.role === "MEMBER");
+  const canCreateAgreement = Boolean(creationWorkspace);
   const isInvitationFlow = Boolean(flowToken && flowKind === "/invitation");
   const needsWorkspace = !workspace && section !== Section.Settings;
   const organizer =
@@ -224,31 +230,42 @@ export default function FairshareApp() {
           await loadWorkspace(result.workspace.id);
         } catch {
           setNotice(
-            "You joined this agreement. Refresh to reload the rest of your workspace.",
+            "You joined this agreement. Refresh to see all your agreements.",
           );
         }
       }
     } else
       setNotice(
-        "Workspace joined. The organizer must add you to the agreement before you can review and approve its rules.",
+        "Invitation accepted. The organizer still needs to add you to an agreement before you can review its rules.",
       );
   }
   async function loadWorkspace(id: string) {
     if (!id) return;
-    const [r, m] = await Promise.all([
-      api(`${workspaceBase(id)}/collaborations`),
+    const request = ++listRequest.current;
+    const [groups, m] = await Promise.all([
+      api("workspaces"),
       api(`${workspaceBase(id)}/members`),
     ]);
-    setAgreements(r.collaborations);
-    setMembers(m.members);
+    const lists = await Promise.all(
+      groups.workspaces.map((group: any) =>
+        api(`${workspaceBase(group.id)}/collaborations`),
+      ),
+    );
+    const visibleAgreements: Agreement[] = lists.flatMap(
+      (list) => list.collaborations,
+    );
     const all = await Promise.all(
-      r.collaborations.map(async (a: Agreement) => {
+      visibleAgreements.map(async (a: Agreement) => {
         const p = await api(
-          `${workspaceBase(id)}/collaborations/${a.id}/payouts`,
+          `${workspaceBase(a.workspaceId)}/collaborations/${a.id}/payouts`,
         );
         return p.payouts.map((v: any) => ({ ...v, agreement: a }));
       }),
     );
+    if (request !== listRequest.current) return;
+    setWorkspaces(groups.workspaces);
+    setAgreements(visibleAgreements);
+    setMembers(m.members);
     setPayouts(all.flat());
   }
   async function openAgreement(a: Agreement) {
@@ -262,6 +279,7 @@ export default function FairshareApp() {
     setDraftDirty(false);
     rulesDirty.current = false;
     setTab(AgreementTab.Overview);
+    setWorkspace(fresh.workspaceId);
     setSelected(fresh);
     setCreationAgreementId(
       !fresh.value.versions.length &&
@@ -298,7 +316,7 @@ export default function FairshareApp() {
     try {
       const result = await api("agreements/intake", "POST", {
         ...input,
-        ...(workspace ? { workspaceId: workspace } : {}),
+        ...(creationWorkspace ? { workspaceId: creationWorkspace.id } : {}),
       });
       // Adopt the committed result before any optional refresh. A lost response
       // is safe to retry with the intake component's original request ID.
@@ -421,7 +439,7 @@ export default function FairshareApp() {
     return (
       <main className="boot" aria-live="polite">
         <Logo />
-        <p>Opening your workspace…</p>
+        <p>Opening your agreements…</p>
       </main>
     );
   if (!user)
@@ -485,27 +503,31 @@ export default function FairshareApp() {
       </aside>
       <main className="main" id="main-content" tabIndex={-1}>
         <div className="workspace-bar">
-          <span>Workspace</span>
-          {workspaces.length > 1 ? (
+          <span>Agreement</span>
+          {agreements.length ? (
             <select
-              aria-label="Workspace"
-              value={workspace}
+              aria-label="Open agreement"
+              value={selected?.id ?? ""}
+              disabled={busy}
               onChange={(e) => {
-                if (!mayLeaveDraft()) return;
-                openRequest.current++;
-                setSelected(null);
-                setCreating(false);
-                setWorkspace(e.target.value);
+                const agreement = agreements.find(
+                  (item) => item.id === e.target.value,
+                );
+                if (!agreement || !mayLeaveDraft()) return;
+                void run(() => openAgreement(agreement));
               }}
             >
-              {workspaces.map((w) => (
-                <option key={w.id} value={w.id}>
-                  {w.name}
+              <option value="" disabled>
+                Choose an agreement
+              </option>
+              {agreements.map((agreement) => (
+                <option key={agreement.id} value={agreement.id}>
+                  {agreement.value.name}
                 </option>
               ))}
             </select>
           ) : (
-            <strong>{workspaces[0]?.name || "No workspace yet"}</strong>
+            <strong>Your agreements</strong>
           )}
           <span className="spacer" />
           <NotificationPanel
@@ -596,8 +618,7 @@ export default function FairshareApp() {
             )}
             <AgreementIntake first busy={busy} onCreate={createFromAgreement} />
             <p className="muted">
-              Already invited? Open Settings to accept your workspace
-              invitation.
+              Already invited? Open Settings to accept your invitation.
             </p>
           </>
         ) : (
@@ -906,7 +927,7 @@ export default function FairshareApp() {
                           />
                           {organizer && !selected.value.versions.length && (
                             <section className="section">
-                              <h3>Add an existing workspace member</h3>
+                              <h3>Add someone you already work with</h3>
                               {members
                                 .filter(
                                   (m) =>
@@ -1119,7 +1140,7 @@ export default function FairshareApp() {
                                     />
                                     <Field
                                       label="Agreement text"
-                                      hint="Use synthetic or authorized documents only. Text is stored privately in this workspace."
+                                      hint="Use synthetic or authorized documents only. Your document stays private."
                                     >
                                       <textarea
                                         rows={8}
@@ -1586,7 +1607,7 @@ export default function FairshareApp() {
                             )?.role === "ORGANIZER" && p.batch_id,
                         )) {
                           await api(
-                            `${workspaceBase(workspace)}/collaborations/${p.agreement.id}/payouts/${p.id}/reconcile`,
+                            `${workspaceBase(p.agreement.workspaceId)}/collaborations/${p.agreement.id}/payouts/${p.id}/reconcile`,
                             "POST",
                             {},
                           );
@@ -1626,18 +1647,29 @@ export default function FairshareApp() {
                 </nav>
                 {settingsTab === "Payment accounts" &&
                   (workspace ? (
-                    <PaymentAccountsSettings
-                      key={workspace}
-                      workspace={workspace}
-                      canEdit={
-                        workspaces.find((w) => w.id === workspace)?.role !==
-                        "VIEWER"
-                      }
-                    />
+                    <>
+                      <p className="muted">
+                        These payout details apply to{" "}
+                        {agreements
+                          .filter((item) => item.workspaceId === workspace)
+                          .map((item) => item.value.name)
+                          .join(", ") || "agreements shared with this team"}
+                        . To manage another agreement, open it using the
+                        agreement picker above, then return here.
+                      </p>
+                      <PaymentAccountsSettings
+                        key={workspace}
+                        workspace={workspace}
+                        canEdit={
+                          workspaces.find((w) => w.id === workspace)?.role !==
+                          "VIEWER"
+                        }
+                      />
+                    </>
                   ) : (
                     <Empty title="Start an agreement first">
-                      Payment accounts are scoped to a workspace. Create your
-                      first agreement to set up a payout destination.
+                      Upload your first agreement to set up a payout
+                      destination.
                     </Empty>
                   ))}
                 {settingsTab === "Notifications" && (
@@ -1727,41 +1759,6 @@ export default function FairshareApp() {
                         }
                       />
                     </section>
-                    {workspaces.find((w) => w.id === workspace)?.role ===
-                      "OWNER" && (
-                      <section className="panel">
-                        <h2>Workspace</h2>
-                        <p className="muted">
-                          Rename your workspace without changing its agreements
-                          or access.
-                        </p>
-                        <WorkspaceNameForm
-                          key={workspace}
-                          name={
-                            workspaces.find((w) => w.id === workspace)?.name ??
-                            ""
-                          }
-                          busy={busy}
-                          onSave={(name) =>
-                            run(async () => {
-                              const result = await api(
-                                `${workspaceBase(workspace)}/name`,
-                                "POST",
-                                { name },
-                              );
-                              setWorkspaces((current) =>
-                                current.map((item) =>
-                                  item.id === workspace
-                                    ? { ...item, name: result.workspace.name }
-                                    : item,
-                                ),
-                              );
-                              setNotice("Workspace name updated.");
-                            })
-                          }
-                        />
-                      </section>
-                    )}
                     <MfaSettings
                       onSignOut={() => {
                         setUser(null);
@@ -1769,7 +1766,7 @@ export default function FairshareApp() {
                       }}
                     />
                     <section className="panel">
-                      <h2>Workspace invitations</h2>
+                      <h2>Other invitations</h2>
                       {workspaces.find((w) => w.id === workspace)?.role ===
                         "OWNER" && (
                         <PrivateInvitation
@@ -1778,8 +1775,7 @@ export default function FairshareApp() {
                         />
                       )}
                       <p className="muted">
-                        Join a workspace using a private invitation shared with
-                        your account.
+                        Accept a private invitation shared with your account.
                       </p>
                       <SimpleForm
                         label="Invitation token (if shared manually)"
@@ -1833,10 +1829,10 @@ function PrivateInvitation({ workspace }: { workspace: string }) {
     <section className="section">
       <h3>Invite a collaborator</h3>
       <p className="muted">
-        Anyone holding this private link can join this workspace once as a
-        member after signing in. Share it only with your intended collaborator.
-        No email is sent, and joining does not approve an agreement or move
-        money.
+        Anyone holding this private link can join your team once as a member
+        after signing in. Share it only with your intended collaborator. No
+        email is sent. The organizer must still add them to an agreement;
+        joining does not approve rules or move money.
       </p>
       {!invitation ? (
         <Button

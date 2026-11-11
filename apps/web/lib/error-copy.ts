@@ -57,6 +57,8 @@ export function errorCopy(
     return "We couldn’t complete that request. Refresh to check what was saved before trying again.";
   if (status === 429)
     return "A few too many requests arrived at once. Wait a moment, then try again.";
+  if (message && /workspace/i.test(message))
+    return "We couldn’t complete that action. Check your access with the person who invited you, then try again.";
   if (message && !/^[A-Z][A-Z_\d]+$/.test(message)) return message;
   return "That didn’t go through. Check your details and try again.";
 }

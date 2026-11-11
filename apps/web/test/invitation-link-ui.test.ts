@@ -16,7 +16,7 @@ test("private invitation actions reject same-tick duplicate creation and release
     /finally\s*\{\s*pending\.current\s*=\s*false;\s*setBusy\(false\);/,
   );
   assert.match(source, /Anyone holding this private link/);
-  assert.match(source, /No email is sent/);
+  assert.match(source, /No\s+email is sent/);
 });
 
 test("acceptance adopts the returned workspace and consumes the link before background loading", () => {
@@ -50,5 +50,5 @@ test("refresh during sign-in retains the invitation fragment until acceptance", 
     new URL("../components/designer-auth.tsx", import.meta.url),
     "utf8",
   );
-  assert.match(prompt, /organizer must also add you to\s+the agreement/);
+  assert.match(prompt, /organizer must also add you\s+to\s+the\s+agreement/);
 });

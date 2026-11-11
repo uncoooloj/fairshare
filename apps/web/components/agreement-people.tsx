@@ -146,8 +146,8 @@ export function AgreementPeople({
                           : "Participants can be added before the first proposal. Removing participants or changing the organizer is not supported."}
                       </p>
                       <p className="muted">
-                        Workspace permissions cannot change while a person
-                        belongs to an agreement.
+                        Access permissions cannot change while a person belongs
+                        to an agreement.
                       </p>
                     </details>
                   </td>

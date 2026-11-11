@@ -161,7 +161,7 @@ export function NotificationPanel({
                     </Button>
                   ) : (
                     <small>
-                      Switch to this agreement’s workspace to open it.
+                      This agreement is no longer available to your account.
                     </small>
                   )}
                 </li>

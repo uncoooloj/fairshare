@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type ReactNode } from "react";
+import { useRef, useState } from "react";
 import { useEmailDelivery } from "../lib/email-capability";
 import { prepareAuthForm } from "../lib/auth-form";
 import styles from "./designer-auth.module.css";
@@ -188,126 +188,6 @@ export function Auth({
   );
 }
 
-function workspaceOnboardingCopy(section: string) {
-  switch (section) {
-    case "Agreements":
-      return {
-        title: "Your agreements start here",
-        description:
-          "Create a workspace to upload your first agreement, invite collaborators and agree how revenue is shared.",
-      };
-    case "Payouts":
-      return {
-        title: "No payouts yet",
-        description:
-          "Payouts will appear here when an agreement has approved rules and recorded payments. Start by creating your workspace.",
-      };
-    default:
-      return {
-        title: "Create your workspace",
-        description:
-          "A shared home for your agreements, collaborators and payment activity.",
-      };
-  }
-}
-
-/** Uses the existing POST /workspaces callback; never advances before API success. */
-export function WorkspaceOnboarding({
-  busy,
-  error,
-  onCreate,
-  section = "Overview",
-}: {
-  busy: boolean;
-  error?: string;
-  section?: string;
-  onCreate: (name: string) => void | Promise<void>;
-}) {
-  const [name, setName] = useState("");
-  const submitting = useRef(false);
-  const [creating, setCreating] = useState(false);
-  const { title, description } = workspaceOnboardingCopy(section);
-  return (
-    <section className={styles.welcome}>
-      <h1>{title}</h1>
-      <p className={styles.subtitle}>{description}</p>
-      <form
-        className={styles.setup}
-        aria-busy={busy}
-        onSubmit={async (event) => {
-          event.preventDefault();
-          if (busy || submitting.current || !name.trim()) return;
-          submitting.current = true;
-          setCreating(true);
-          try {
-            await onCreate(name.trim());
-          } finally {
-            submitting.current = false;
-            setCreating(false);
-          }
-        }}
-      >
-        {section !== "Overview" && <h2>Create your workspace</h2>}
-        {error && (
-          <p role="alert" className={styles.error}>
-            {error}
-          </p>
-        )}
-        <label>
-          Workspace name
-          <input
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            required
-            maxLength={100}
-            disabled={busy}
-            placeholder="Your team or studio"
-            autoComplete="organization"
-          />
-        </label>
-        <button className={styles.primary} disabled={busy || !name.trim()}>
-          {creating ? "Creating workspace…" : "Create workspace"}
-        </button>
-        <p className={styles.hint}>
-          Already invited? Open Settings to accept your workspace invitation.
-        </p>
-      </form>
-      <details className={styles.explainer}>
-        <summary>How Fairshare works</summary>
-        <div className={styles.steps}>
-          <Step number="1" title="Upload agreement">
-            Add the signed document. We read the revenue clauses.
-          </Step>
-          <Step number="2" title="Everyone approves">
-            Each person checks the rules against the clauses and approves.
-          </Step>
-          <Step number="3" title="Payments follow the rules">
-            Recorded revenue is allocated by the approved rules. Track payout
-            status separately.
-          </Step>
-        </div>
-      </details>
-    </section>
-  );
-}
-function Step({
-  number,
-  title,
-  children,
-}: {
-  number: string;
-  title: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className={styles.step}>
-      <span>{number}</span>
-      <h2>{title}</h2>
-      <p>{children}</p>
-    </div>
-  );
-}
-
 /** Confirmation only. The parent owns token validation, API errors and success. */
 export function AccessPrompt({
   kind,
@@ -338,8 +218,8 @@ export function AccessPrompt({
       </p>
       {isInvitation && (
         <p className={styles.hint}>
-          Joining adds you to the workspace. The organizer must also add you to
-          the agreement before you can review and approve its rules. It does not
+          Joining adds you to the team. The organizer must also add you to the
+          agreement before you can review and approve its rules. It does not
           approve an agreement or change anyone’s share.
         </p>
       )}

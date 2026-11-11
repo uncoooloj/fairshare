@@ -167,8 +167,8 @@ export function AgreementIntake({
         </div>
         <p className="muted">
           {first
-            ? "We’ll create your workspace automatically. No setup form needed. "
-            : "Saved in the selected workspace. "}
+            ? "Upload first. We’ll take care of the setup. "
+            : "Saved privately with your agreement. "}
           Documents stay private on this server. AI interpretation requires your
           confirmation on the next screen.
         </p>

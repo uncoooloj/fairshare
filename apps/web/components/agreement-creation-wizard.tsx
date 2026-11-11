@@ -221,7 +221,7 @@ export function AgreementCreationWizard({
             </div>
             {available.length > 0 && (
               <section className="creation-section">
-                <h3>Add from your workspace</h3>
+                <h3>Add someone you already work with</h3>
                 {available.map((person) => (
                   <div className="creation-person" key={person.id}>
                     <span>
@@ -242,13 +242,10 @@ export function AgreementCreationWizard({
             <details className="creation-section">
               <summary>Invite someone new</summary>
               <p className="muted">
-                Copy a private workspace invitation link. Once they accept it,
-                refresh and add them to this agreement. No email is sent
-                automatically.
+                Share a private invitation to this agreement. Once they accept,
+                refresh to see them here.
               </p>
-              {invitation || (
-                <p>Ask the workspace owner to create an invitation link.</p>
-              )}
+              {invitation || <p>Ask the organizer for an invitation link.</p>}
               <Button
                 variant="secondary"
                 disabled={pending}
