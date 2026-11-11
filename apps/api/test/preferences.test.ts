@@ -309,3 +309,120 @@ test("in-app notifications share the limited feed between audit events and payou
     await app.close();
   }
 });
+
+test("in-app notification copy describes events and payout outcomes accurately", async () => {
+  const app = await buildApp({ dbPath: ":memory:" });
+  try {
+    const owner = app.store.register({
+      name: "Owner",
+      email: "owner@example.test",
+      password,
+    });
+    const member = app.store.register({
+      name: "Member",
+      email: "member@example.test",
+      password,
+    });
+    const workspace = app.store.createWorkspace(owner.user.id, "My workspace");
+    app.store.db
+      .prepare("INSERT INTO memberships VALUES(?,?,?)")
+      .run(workspace.id, member.user.id, "MEMBER");
+    const agreement = {
+      id: "agreement-copy",
+      name: "Song",
+      members: [{ userId: owner.user.id }, { userId: member.user.id }],
+      versions: [
+        {
+          id: 2,
+          status: "AWAITING_APPROVAL",
+          // The organizer has already approved the version as part of send.
+          approvals: { [owner.user.id]: "2026-11-10T12:00:00Z" },
+        },
+      ],
+      audit: [
+        {
+          sequence: 1,
+          type: "VERSION_PROPOSED",
+          at: "2026-11-10T11:59:00Z",
+          details: { versionId: 2 },
+        },
+        {
+          sequence: 2,
+          type: "SENT_FOR_REVIEW",
+          at: "2026-11-10T12:00:00Z",
+          details: { versionId: 2 },
+        },
+      ],
+    };
+    app.store.db
+      .prepare("INSERT INTO fairshare_collaborations VALUES(?,?,?,?)")
+      .run(workspace.id, agreement.id, 2, JSON.stringify(agreement));
+    const insertPayout = app.store.db.prepare(
+      "INSERT INTO fairshare_payout_ops(id,workspace_id,collaboration_id,capture_id,user_id,recipient_id,amount,status) VALUES(?,?,?,?,?,?,?,?)",
+    );
+    for (const status of [
+      "SUCCESS",
+      "FAILED",
+      "BLOCKED",
+      "DENIED",
+      "RETURNED",
+      "REFUNDED",
+    ]) {
+      insertPayout.run(
+        `payout-copy-${status}`,
+        workspace.id,
+        agreement.id,
+        `capture-copy-${status}`,
+        owner.user.id,
+        "recipient",
+        100,
+        status,
+      );
+    }
+
+    const read = (token: string) =>
+      app.inject({
+        url: "/api/auth/notifications",
+        headers: { authorization: `Bearer ${token}` },
+      });
+    const ownerEvents = (await read(owner.token)).json().events;
+    const memberEvents = (await read(member.token)).json().events;
+    const ownerApproval = ownerEvents.find(
+      (event: any) => event.kind === "approvalRequests",
+    );
+    const memberApproval = memberEvents.find(
+      (event: any) => event.kind === "approvalRequests",
+    );
+    assert.ok(ownerApproval);
+    assert.ok(memberApproval);
+    assert.equal(
+      ownerApproval.message,
+      "An agreement version was sent for review",
+    );
+    assert.equal(memberApproval.message, ownerApproval.message);
+    assert.equal(
+      ownerEvents.find((event: any) => event.kind === "versionChanges")
+        ?.message,
+      "A new agreement version was proposed",
+    );
+
+    const expectedPayoutMessages: Record<string, string> = {
+      SUCCESS: "Your payout was sent",
+      FAILED: "Your payout was not completed",
+      BLOCKED: "Your payout was not completed",
+      DENIED: "Your payout was not completed",
+      RETURNED: "Your payout was returned after being sent",
+      REFUNDED: "Your payout was refunded after being sent",
+    };
+    for (const [status, message] of Object.entries(expectedPayoutMessages)) {
+      assert.equal(
+        ownerEvents.find(
+          (event: any) => event.id === `payout:payout-copy-${status}:${status}`,
+        )?.message,
+        message,
+      );
+    }
+  } finally {
+    await app.close();
+  }
+});

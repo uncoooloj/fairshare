@@ -39,6 +39,7 @@ test("automatic payout statuses show plain labels, never Unknown", () => {
     ["WAITING_RECIPIENT", "Waiting for Riley's PayPal email"],
     ["AUTO_HELD", "On hold"],
     ["HELD", "On hold"],
+    ["RESERVED", "Ready to send"],
     ["OUTCOME_UNKNOWN", "Checking with PayPal"],
   ];
   for (const [api, label] of cases) {
