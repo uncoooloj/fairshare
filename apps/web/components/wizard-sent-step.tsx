@@ -175,21 +175,24 @@ function InviteRow({ invite }: { invite: SentInvite }) {
   );
 }
 
-/** Step 7. The organizer explicitly copies, shares, or emails each link. */
+export function invitationInstructions(emailDelivery: boolean) {
+  return emailDelivery
+    ? "Share each person’s link or email their invitation so they can review and approve the split."
+    : "Share each person’s link so they can review and approve the split.";
+}
+
+/** Step 7. Invitations are ready, but the organizer still needs to share them. */
 export function WizardSentStep({ invites }: { invites: SentInvite[] }) {
   const emailDelivery = useEmailDelivery();
+  const names = joinNames(invites.map((invite) => firstName(invite.name)));
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => heading.current?.focus(), []);
   return (
     <section className="wiz-step" aria-labelledby="wiz-step-title">
       <h1 id="wiz-step-title" ref={heading} tabIndex={-1}>
-        Ready for {joinNames(invites.map((invite) => firstName(invite.name)))}
+        {names ? `Invite ${names}` : "Invite your collaborators"}
       </h1>
-      <p className="wiz-lede">
-        {emailDelivery
-          ? "Copy, share, or email each invitation below. Nothing is emailed automatically."
-          : "Send them their link. Email is unavailable here."}
-      </p>
+      <p className="wiz-lede">{invitationInstructions(emailDelivery)}</p>
       <ul className="wiz-invites">
         {invites.map((invite) => (
           <InviteRow
