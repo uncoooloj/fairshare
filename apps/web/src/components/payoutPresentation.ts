@@ -1,5 +1,5 @@
 import {
-  paymentStatusLabels,
+  paymentStatusLabel,
   PaymentGridStatus,
   validatePaymentRows,
   type PaymentGridRow,
@@ -17,6 +17,10 @@ export const payoutGuidance: Record<PaymentGridStatus, string> = {
     "The recipient has not claimed this payout. Unclaimed funds are not a completed transfer.",
   REVERSED:
     "The provider recorded a reversal. Do not count this payout as paid.",
+  WAITING_RECIPIENT:
+    "Nothing has been sent. This person needs to add the PayPal email they want to be paid at; their payout goes out after that.",
+  CHECKING:
+    "This payout may have reached PayPal. We are checking PayPal's record. Do not send it again.",
   UNKNOWN:
     "The outcome is uncertain. Verify existing provider evidence before any further action. Do not retry the transfer.",
 };
@@ -26,7 +30,7 @@ function payoutSearchText(row: PaymentGridRow) {
     row.agreementName,
     row.recipientName,
     row.providerReference ?? "",
-    paymentStatusLabels[row.status],
+    paymentStatusLabel(row),
   ]
     .join(" ")
     .toLocaleLowerCase();
@@ -58,7 +62,7 @@ export function payoutCsv(rows: readonly PaymentGridRow[]) {
     row.recipientName,
     `${Math.floor(row.amountCents / 100)}.${String(row.amountCents % 100).padStart(2, "0")}`,
     row.currency,
-    paymentStatusLabels[row.status],
+    paymentStatusLabel(row),
     row.createdAt ?? "",
     row.providerReference ?? "",
   ]);

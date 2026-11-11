@@ -33,7 +33,7 @@ export function AllocationCalculation({
       ? "No money remained to split after processing fees."
       : "No amount was allocated to this person from the recorded rules.";
   const waterfallDescription = [
-    `${money(trace.netCents)} received`,
+    `${money(trace.netCents)} after PayPal’s fee`,
     trace.advanceSource && trace.recoupedCents > 0
       ? `${money(trace.recoupedCents)} to the advance`
       : undefined,
@@ -212,7 +212,7 @@ export function AllocationCalculation({
           <dd>
             <code>{trace.captureId}</code>
           </dd>
-          <dt>Provider fee / net received</dt>
+          <dt>PayPal fee / left to split</dt>
           <dd>
             {money(trace.providerFeeCents)} / {money(trace.netCents)}
           </dd>

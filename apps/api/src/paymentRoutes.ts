@@ -12,7 +12,6 @@ import {
   holdReversedRevenue,
   DomainError,
   MemberRole,
-  AllocationStatus,
 } from "@fairshare/domain";
 import {
   PayPalSandbox,
@@ -21,6 +20,7 @@ import {
   canRepairRefundPlan,
   reconcileCapture,
   WebhookActionKind,
+  RecipientType,
 } from "@fairshare/payments";
 import { AggregateStore } from "./fairshare.js";
 import type { FairshareApp } from "./app.js";
@@ -30,6 +30,24 @@ import {
   ensurePayoutAccountSchema,
   readPayoutDestination,
 } from "./payoutAccounts.js";
+import {
+  PARKED_PAYOUT_STATUSES,
+  payoutHoldMessages,
+  payoutHoldReason,
+} from "./payoutHolds.js";
+
+/** Why a person's payout was not sent by a manual dispatch. */
+export enum PayoutWaitReason {
+  NEEDS_PAYOUT_EMAIL = "NEEDS_PAYOUT_EMAIL",
+  ON_HOLD = "ON_HOLD",
+}
+function payoutWaitReason(status: string): PayoutWaitReason | undefined {
+  if (status === "WAITING_RECIPIENT")
+    return PayoutWaitReason.NEEDS_PAYOUT_EMAIL;
+  if (status === "HELD" || status === "AUTO_HELD")
+    return PayoutWaitReason.ON_HOLD;
+  return undefined;
+}
 export type PaymentProvider = Pick<
   PayPalSandbox,
   | "createOrder"
@@ -39,12 +57,16 @@ export type PaymentProvider = Pick<
   | "getPayout"
   | "verifyWebhook"
 > &
-  Partial<Pick<PayPalSandbox, "refundCapture" | "getRefund">> &
+  Partial<
+    Pick<PayPalSandbox, "refundCapture" | "getRefund" | "webhookConfigured">
+  > &
   Partial<InvoiceProvider>;
 export interface PaymentOptions {
   provider?: PaymentProvider;
   publicOrigin?: string;
   automaticPayoutsEnabled?: boolean;
+  /** Receives one configuration error per process. Never passed secrets. */
+  onConfigurationError?: (code: string, message: string) => void;
   reconciliation?: {
     enabled: boolean;
     intervalMs?: number;
@@ -59,6 +81,14 @@ const str = (v: unknown) =>
     ? v
     : fail("INVALID_INPUT", "Bounded nonempty string required");
 const now = () => new Date().toISOString();
+/** Whether PayPal can tell Fairshare a payment or payout went through. */
+export enum PaymentConfirmation {
+  READY = "READY",
+  WEBHOOK_NOT_CONFIGURED = "WEBHOOK_NOT_CONFIGURED",
+  NOT_CONFIGURED = "NOT_CONFIGURED",
+}
+export const WEBHOOK_NOT_CONFIGURED_MESSAGE =
+  "PAYPAL_WEBHOOK_ID is not set. Every PayPal webhook is rejected with 503 until it is configured, so payments and payouts can't be confirmed automatically.";
 export function registerPaymentRoutes(
   app: FairshareApp,
   aggregates: AggregateStore,
@@ -89,6 +119,24 @@ export function registerPaymentRoutes(
   const provider = () =>
     options.provider ??
     fail("PAYPAL_NOT_CONFIGURED", "Sandbox provider is not configured");
+  let webhookErrorReported = false;
+  function reportWebhookNotConfigured() {
+    if (webhookErrorReported) return;
+    webhookErrorReported = true;
+    (
+      options.onConfigurationError ??
+      ((code, message) =>
+        console.error(`payments_configuration_error ${code}: ${message}`))
+    )("PAYPAL_WEBHOOK_NOT_CONFIGURED", WEBHOOK_NOT_CONFIGURED_MESSAGE);
+  }
+  function paymentConfirmation() {
+    if (!options.provider) return PaymentConfirmation.NOT_CONFIGURED;
+    return options.provider.webhookConfigured === false
+      ? PaymentConfirmation.WEBHOOK_NOT_CONFIGURED
+      : PaymentConfirmation.READY;
+  }
+  if (paymentConfirmation() === PaymentConfirmation.WEBHOOK_NOT_CONFIGURED)
+    reportWebhookNotConfigured();
   function access(req: FastifyRequest, organizer = false) {
     const p = req.params as any;
     const { user } = app.requireWorkspace(
@@ -427,53 +475,85 @@ export function registerPaymentRoutes(
         (r) => r.providerCaptureId === captureId,
       );
       if (!revenue) fail("NOT_FOUND", "Revenue not found");
-      return revenue!.allocations
-        .filter((a) => a.totalCents > 0)
-        .map((a) => {
-          if (a.status !== AllocationStatus.ALLOCATED)
-            fail("PAYMENT_HOLD", "Allocation held");
-          const prior = db
-            .prepare(
-              "SELECT * FROM fairshare_payout_ops WHERE capture_id=? AND user_id=?",
-            )
-            .get(captureId, a.userId) as any;
-          if (prior) return { op: prior, created: false };
-          const recipient = readPayoutDestination(db, a.userId, p.workspaceId);
-          if (!recipient)
-            fail(
-              "RECIPIENT_REQUIRED",
-              "All payout recipients must be configured",
-            );
-          const id = createHash("sha256")
-            .update(`${captureId}:${a.userId}`)
-            .digest("hex")
-            .slice(0, 30);
+      const allocations = revenue!.allocations.filter((a) => a.totalCents > 0);
+      // Agreement-wide holds (review, refund, adverse event, approvals) stop
+      // everyone. A missing payout email only parks that one person.
+      const hold = payoutHoldReason(
+        db,
+        row.value,
+        revenue!,
+        captureId,
+        allocations,
+      );
+      if (hold) fail("PAYMENT_HOLD", payoutHoldMessages[hold]);
+      const read = (id: string) =>
+        db
+          .prepare("SELECT * FROM fairshare_payout_ops WHERE id=?")
+          .get(id) as any;
+      return allocations.map((a) => {
+        const prior = db
+          .prepare(
+            "SELECT * FROM fairshare_payout_ops WHERE capture_id=? AND user_id=?",
+          )
+          .get(captureId, a.userId) as any;
+        // The unique (capture_id,user_id) row is the only reservation; anything
+        // past the parked states has reached, or may have reached, PayPal.
+        if (prior && !PARKED_PAYOUT_STATUSES.includes(prior.status))
+          return prior;
+        if (prior && prior.amount !== a.totalCents)
+          fail("PAYOUT_MISMATCH", "Reserved payout differs from allocation");
+        const recipient = readPayoutDestination(db, a.userId, p.workspaceId);
+        const status = recipient ? "RESERVED" : "WAITING_RECIPIENT";
+        if (prior) {
           db.prepare(
-            "INSERT INTO fairshare_payout_ops(id,workspace_id,collaboration_id,capture_id,user_id,recipient_type,recipient_id,amount,status) VALUES(?,?,?,?,?,?,?,?,?)",
+            `UPDATE fairshare_payout_ops SET status=?,recipient_type=?,recipient_id=? WHERE id=? AND status IN (${PARKED_PAYOUT_STATUSES.map(() => "?").join(",")})`,
           ).run(
-            id,
-            p.workspaceId,
-            p.collaborationId,
-            captureId,
-            a.userId,
-            recipient!.type,
-            recipient!.value,
-            a.totalCents,
-            "RESERVED",
+            status,
+            recipient?.type ?? prior.recipient_type,
+            recipient?.value ?? prior.recipient_id,
+            prior.id,
+            ...PARKED_PAYOUT_STATUSES,
           );
-          return {
-            op: db
-              .prepare("SELECT * FROM fairshare_payout_ops WHERE id=?")
-              .get(id) as any,
-            created: true,
-          };
-        });
+          return read(prior.id);
+        }
+        const id = createHash("sha256")
+          .update(`${captureId}:${a.userId}`)
+          .digest("hex")
+          .slice(0, 30);
+        db.prepare(
+          "INSERT INTO fairshare_payout_ops(id,workspace_id,collaboration_id,capture_id,user_id,recipient_type,recipient_id,amount,status) VALUES(?,?,?,?,?,?,?,?,?)",
+        ).run(
+          id,
+          p.workspaceId,
+          p.collaborationId,
+          captureId,
+          a.userId,
+          recipient?.type ?? RecipientType.PAYPAL_ID,
+          recipient?.value ?? "",
+          a.totalCents,
+          status,
+        );
+        return read(id);
+      });
     });
-    const results = [];
-    for (const item of ops) {
-      const op = item.op;
+    const results: {
+      id: string;
+      userId: string;
+      status: string;
+      reason?: PayoutWaitReason;
+    }[] = [];
+    const push = (op: any, status: string) =>
+      results.push({
+        id: op.id,
+        userId: op.user_id,
+        status,
+        ...(payoutWaitReason(status)
+          ? { reason: payoutWaitReason(status)! }
+          : {}),
+      });
+    for (const op of ops) {
       if (op.status !== "RESERVED") {
-        results.push({ id: op.id, status: op.status });
+        push(op, op.status);
         continue;
       } // No retry of an uncertain write.
       const permitted = tx(() => {
@@ -501,7 +581,7 @@ export function registerPaymentRoutes(
         const current = db
           .prepare("SELECT status FROM fairshare_payout_ops WHERE id=?")
           .get(op.id) as { status: string };
-        results.push({ id: op.id, status: current.status });
+        push(op, current.status);
         continue;
       }
       try {
@@ -519,7 +599,7 @@ export function registerPaymentRoutes(
           agreementId: op.collaboration_id,
           payoutId: op.id,
         });
-        results.push({ id: op.id, status: "PENDING" });
+        push(op, "PENDING");
       } catch (e) {
         if (e instanceof PayPalError && e.code === "PAYOUT_NOT_CONFIGURED") {
           // The adapter rejects this before any provider call. Keep the same
@@ -536,7 +616,7 @@ export function registerPaymentRoutes(
           agreementId: op.collaboration_id,
           payoutId: op.id,
         });
-        results.push({ id: op.id, status: "OUTCOME_UNKNOWN" });
+        push(op, "OUTCOME_UNKNOWN");
       }
     }
     return { payouts: results };
@@ -624,6 +704,12 @@ export function registerPaymentRoutes(
     try {
       planned = await verifyAndPlanWebhook(provider(), req.headers, req.body);
     } catch (e) {
+      // Still fail closed (503); only make the cause visible to operators.
+      if (
+        e instanceof PayPalError &&
+        e.code === "PAYPAL_WEBHOOK_NOT_CONFIGURED"
+      )
+        reportWebhookNotConfigured();
       paymentError(e);
     }
     tx(() => {
@@ -677,6 +763,13 @@ export function registerPaymentRoutes(
   const automatic = options.automaticPayoutsEnabled
     ? automaticPayouts(app, aggregates, provider())
     : undefined;
+  app.get(`${base}/payments/setup`, async (req) => {
+    access(req);
+    return {
+      automaticPayouts: Boolean(automatic),
+      paymentConfirmation: paymentConfirmation(),
+    };
+  });
   const worker = options.reconciliation?.enabled
     ? createReconciliationWorker({
         db,

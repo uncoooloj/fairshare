@@ -10,8 +10,12 @@ import {
   type User,
   type Version,
 } from "../../../lib/model";
-import { Badge, Button, Empty } from "../../ui";
+import { Badge, Button, Empty, Notice } from "../../ui";
 import type { Run } from "../types";
+import {
+  paymentConfirmationNotice,
+  usePaymentSetup,
+} from "../../../lib/payment-setup";
 
 export interface AgreementPaymentsTabProps {
   selected: Agreement;
@@ -41,6 +45,7 @@ export function AgreementPaymentsTab({
   refresh,
   setBreakdown,
 }: AgreementPaymentsTabProps) {
+  const setupNotice = paymentConfirmationNotice(usePaymentSetup(base));
   return (
     <>
       <Heading
@@ -48,6 +53,11 @@ export function AgreementPaymentsTab({
         title="Incoming payments"
         description="Payments appear here once PayPal confirms them. Each share follows the agreed terms."
       />
+      {organizer && setupNotice && (
+        <Notice warning announcement="polite">
+          {setupNotice}
+        </Notice>
+      )}
       <AgreementInvoices
         key={selected.id}
         base={base}

@@ -492,3 +492,24 @@ test("payout recipients are validated per type before any provider call", async 
   assert.equal(normalizePayoutEmail(`${"x".repeat(120)}@ex.test`), null);
   assert.equal(requests, 0);
 });
+
+test("webhook configuration is reported as a boolean and still fails closed without a request", async () => {
+  assert.equal(setup([]).client.webhookConfigured, true);
+  let requests = 0;
+  const client = new PayPalSandbox(
+    { clientId: "test-id", clientSecret: "test-secret", merchantId: "m" },
+    (async () => {
+      requests++;
+      return new Response("{}");
+    }) as typeof fetch,
+  );
+  assert.equal(client.webhookConfigured, false);
+  await assert.rejects(
+    client.verifyWebhook({}, { id: "evt" }),
+    (e: unknown) =>
+      e instanceof PayPalError &&
+      e.code === "PAYPAL_WEBHOOK_NOT_CONFIGURED" &&
+      e.status === 503,
+  );
+  assert.equal(requests, 0);
+});

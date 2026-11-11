@@ -518,6 +518,10 @@ export class PayPalSandbox {
       status: status as string,
     };
   }
+  /** True when webhook signatures can be verified. Exposes no configuration value. */
+  get webhookConfigured(): boolean {
+    return Boolean(this.config.webhookId);
+  }
   private requirePayouts() {
     if (!this.config.payoutsEnabled || !this.config.payoutsEligibilityConfirmed)
       throw new PayPalError("PAYOUT_NOT_CONFIGURED", 503);

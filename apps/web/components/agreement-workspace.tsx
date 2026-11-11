@@ -10,6 +10,7 @@ import {
 import { formatDay, formatExact } from "../lib/dates";
 import { toneInRoster } from "../lib/person";
 import { PaymentGridStatus } from "../src/components/paymentGridModel";
+import { RECEIVED_DEFINITION, receivedTotals } from "../lib/received";
 import { Avatar, AvatarSize, SplitBar } from "./person";
 import { overviewSummary, type OverviewPayout } from "../lib/overview-summary";
 
@@ -459,8 +460,8 @@ export function MoneyCard({
 }) {
   const revenue = agreement.value.revenue;
   const allocations = revenue.flatMap((r) => r.allocations);
-  const received = revenue.reduce((t, r) => t + r.grossCents, 0);
-  const fees = revenue.reduce((t, r) => t + r.feeCents, 0);
+  const { receivedCents: received, paypalFeeCents: fees } =
+    receivedTotals(revenue);
   const summary = overviewSummary(
     [agreement],
     payouts,
@@ -491,12 +492,12 @@ export function MoneyCard({
         <>
           <dl className="ag-money-lines">
             <div>
-              <dt>Agreement revenue</dt>
+              <dt title={RECEIVED_DEFINITION}>Received</dt>
               <dd className="numeric">{money(received)}</dd>
             </div>
             {fees > 0 && (
               <div>
-                <dt>Processing fees</dt>
+                <dt>PayPal fee</dt>
                 <dd className="numeric">{money(fees)}</dd>
               </div>
             )}
@@ -515,7 +516,7 @@ export function MoneyCard({
           </dl>
           <p className="muted ag-money-note">
             {personal
-              ? "Your shares only. Revenue and fees above describe the whole agreement."
+              ? "Your shares only. Received and PayPal fee above describe the whole agreement."
               : "Recorded shares, not an available balance."}
           </p>
           <h3 className="ag-eyebrow">By person</h3>
