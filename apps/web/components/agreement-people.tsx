@@ -23,11 +23,14 @@ export function AgreementPeople({
   version,
   userId,
   base,
+  onHandOver,
 }: {
   agreement: Agreement;
   version?: Version;
   userId: string;
   base: string;
+  /** Organizer only: offer the role to this joined person. */
+  onHandOver?: (memberId: string) => void;
 }) {
   const [destinations, setDestinations] = useState<Readiness[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -195,10 +198,21 @@ export function AgreementPeople({
                             Add or change my payout email
                           </Button>
                         )}
+                        {onHandOver &&
+                          member.userId !== userId &&
+                          !(member as { pending?: unknown }).pending && (
+                            <Button
+                              type="button"
+                              variant="quiet"
+                              onClick={() => onHandOver(member.userId)}
+                            >
+                              Hand over organizing
+                            </Button>
+                          )}
                         <p className="muted">
                           {agreement.value.versions.length
                             ? "This agreement’s participant list is locked because a proposal exists."
-                            : "Participants can be added before the first proposal. Removing participants or changing the organizer is not supported."}
+                            : "Participants can be added before the first proposal."}
                         </p>
                         <p className="muted">
                           Access permissions cannot change while a person

@@ -132,10 +132,13 @@ export function registerAgreementInvitations(
         "SELECT u.name,m.role FROM memberships m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=? AND m.user_id=?",
       )
       .get(row.workspace_id, row.created_by) as any;
+    // A named seat stays valid after its creator hands over organizing: the agreement still
+    // names that person. Open links stop working once their creator is no longer the organizer.
     if (
       creator?.role !== Role.OWNER ||
-      agreement.value.members.find((m) => m.userId === row.created_by)?.role !==
-        MemberRole.ORGANIZER
+      (!pendingSeat(agreement.value, row.id) &&
+        agreement.value.members.find((m) => m.userId === row.created_by)
+          ?.role !== MemberRole.ORGANIZER)
     )
       throw new ApiError(
         400,

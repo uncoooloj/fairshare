@@ -1,4 +1,5 @@
 import { registerAgreementInvitations } from "./agreementInvitations.js";
+import { registerOrganizerHandover } from "./organizerHandover.js";
 import type { DocumentReaders } from "./documentReaders.js";
 import type { DatabaseBackend } from "./database.js";
 import { registerProfileRoutes } from "./profileRoutes.js";
@@ -79,6 +80,7 @@ function domainErrorStatus(code: string): number {
       "ALREADY_MEMBER",
       "ADVANCE_RECIPIENT_CHANGED",
       "ADVANCE_BELOW_RECOUPED",
+      "NO_HANDOVER",
     ].includes(code)
   )
     return 409;
@@ -486,5 +488,6 @@ export async function buildApp(
   registerReviewCollaboration(app, domainRoutes.store, options);
   registerAccountSettings(app, !!options.payment?.provider);
   registerAgreementInvitations(app, domainRoutes.store);
+  registerOrganizerHandover(app, domainRoutes.store, domainRoutes.access);
   return app;
 }

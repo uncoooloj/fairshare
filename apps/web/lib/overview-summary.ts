@@ -41,6 +41,10 @@ const eventNames: Record<string, string> = {
   PERSON_REMOVED: "removed someone from the agreement",
   PERSON_JOINED: "joined the agreement",
   INVITE_REISSUED: "sent a new invite link",
+  ORGANIZER_HANDOVER_OFFERED: "asked someone to take over organizing",
+  ORGANIZER_HANDOVER_CANCELLED: "cancelled the organizing request",
+  ORGANIZER_HANDOVER_DECLINED: "said no to organizing",
+  ORGANIZER_HANDED_OVER: "took over organizing",
 };
 
 /** Events the system records on its own: no actor name in front. */
