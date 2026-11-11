@@ -44,6 +44,10 @@ export enum AuditType {
   PERSON_REMOVED = "PERSON_REMOVED",
   PERSON_JOINED = "PERSON_JOINED",
   INVITE_REISSUED = "INVITE_REISSUED",
+  ORGANIZER_HANDOVER_OFFERED = "ORGANIZER_HANDOVER_OFFERED",
+  ORGANIZER_HANDOVER_CANCELLED = "ORGANIZER_HANDOVER_CANCELLED",
+  ORGANIZER_HANDOVER_DECLINED = "ORGANIZER_HANDOVER_DECLINED",
+  ORGANIZER_HANDED_OVER = "ORGANIZER_HANDED_OVER",
 }
 /** A person named in the agreement who has not accepted their invitation yet. */
 export interface PendingInvite {
@@ -134,6 +138,12 @@ export interface AgreementDetailsPatch {
   effectiveFrom?: string;
   effectiveTo?: string | null;
 }
+/** The organizer's open offer to hand the role to another joined member. */
+export interface OrganizerHandover {
+  fromUserId: string;
+  toUserId: string;
+  at: string;
+}
 export interface Collaboration {
   id: string;
   name: string;
@@ -146,6 +156,8 @@ export interface Collaboration {
   recoupedByAdvance: Record<string, number>;
   reviewHold: boolean;
   audit: AuditEntry[];
+  /** At most one open offer; cleared when accepted, declined, cancelled or replaced. */
+  organizerHandover?: OrganizerHandover;
 }
 export class DomainError extends Error {
   constructor(
@@ -186,6 +198,20 @@ const actor = (c: Collaboration, id: string) => {
 };
 const organizer = (c: Collaboration, id: string) => {
   if (actor(c, id).role !== MemberRole.ORGANIZER)
+    fail("FORBIDDEN", "Organizer required");
+};
+/** Whoever handed over organizing keeps covering fees under ORGANIZER_SHARE: a handover
+ * never changes the money split, so the fee bearer may be the current or a former organizer. */
+const feeBearer = (c: Collaboration, id: string) => {
+  const m = actor(c, id);
+  if (
+    m.role !== MemberRole.ORGANIZER &&
+    !c.audit.some(
+      (e) =>
+        e.type === AuditType.ORGANIZER_HANDED_OVER &&
+        e.details.fromUserId === id,
+    )
+  )
     fail("FORBIDDEN", "Organizer required");
 };
 const noPendingMembers = (c: Collaboration) => {
@@ -245,7 +271,7 @@ export function validateRules(c: Collaboration, r: Rules): void {
     fail("INVALID_RULES", "Questions must be nonempty strings");
   if (r.feePolicy === FeePolicy.ORGANIZER_SHARE) {
     if (!r.feeBearerId) fail("INVALID_RULES", "Fee bearer required");
-    organizer(c, r.feeBearerId!);
+    feeBearer(c, r.feeBearerId!);
   }
   if (r.advance) {
     nonempty(r.advance.id, "Advance ID");
@@ -546,6 +572,8 @@ export function removeMember(
     fail("FORBIDDEN", "The organizer cannot be removed");
   const next = copy(c);
   next.members = next.members.filter((m) => m.userId !== userId);
+  if (next.organizerHandover?.toUserId === userId)
+    delete next.organizerHandover;
   audit(
     next,
     AuditType.PERSON_REMOVED,
@@ -639,6 +667,88 @@ export function bindPendingMember(
   delete joined.pending;
   joined.displayName = user.displayName;
   audit(next, AuditType.PERSON_JOINED, user.id, at, { invitationId });
+  return next;
+}
+/** Organizer offers the role to another joined member. Offering again replaces the open offer. */
+export function offerOrganizerHandover(
+  c: Collaboration,
+  toUserId: string,
+  actorId: string,
+  at: string,
+): Collaboration {
+  organizer(c, actorId);
+  timestamp(at);
+  if (toUserId === actorId)
+    fail("INVALID_INPUT", "You are already the organizer");
+  actor(c, toUserId);
+  const next = copy(c);
+  next.organizerHandover = { fromUserId: actorId, toUserId, at };
+  audit(next, AuditType.ORGANIZER_HANDOVER_OFFERED, actorId, at, {
+    toUserId,
+  });
+  return next;
+}
+function openHandover(c: Collaboration): OrganizerHandover {
+  return (
+    c.organizerHandover ??
+    fail("NO_HANDOVER", "There is no open offer to take over organizing")
+  );
+}
+/** Organizer withdraws the open offer. */
+export function cancelOrganizerHandover(
+  c: Collaboration,
+  actorId: string,
+  at: string,
+): Collaboration {
+  organizer(c, actorId);
+  const offer = openHandover(c);
+  const next = copy(c);
+  delete next.organizerHandover;
+  audit(next, AuditType.ORGANIZER_HANDOVER_CANCELLED, actorId, at, {
+    toUserId: offer.toUserId,
+  });
+  return next;
+}
+function offeredTo(c: Collaboration, actorId: string): OrganizerHandover {
+  actor(c, actorId);
+  const offer = openHandover(c);
+  if (offer.toUserId !== actorId)
+    fail("FORBIDDEN", "This offer was made to someone else");
+  return offer;
+}
+/** The person offered the role says no; nothing else changes. */
+export function declineOrganizerHandover(
+  c: Collaboration,
+  actorId: string,
+  at: string,
+): Collaboration {
+  const offer = offeredTo(c, actorId);
+  const next = copy(c);
+  delete next.organizerHandover;
+  audit(next, AuditType.ORGANIZER_HANDOVER_DECLINED, actorId, at, {
+    fromUserId: offer.fromUserId,
+  });
+  return next;
+}
+/** The person offered the role takes it: roles swap and nothing else changes. Shares,
+ * advance, fee bearer and approvals stay exactly as they were. */
+export function acceptOrganizerHandover(
+  c: Collaboration,
+  actorId: string,
+  at: string,
+): Collaboration {
+  const offer = offeredTo(c, actorId);
+  if (member(c, offer.fromUserId).role !== MemberRole.ORGANIZER)
+    fail("NO_HANDOVER", "This offer is no longer valid");
+  const next = copy(c);
+  for (const m of next.members)
+    if (m.userId === offer.fromUserId) m.role = MemberRole.COLLABORATOR;
+    else if (m.userId === actorId) m.role = MemberRole.ORGANIZER;
+  delete next.organizerHandover;
+  audit(next, AuditType.ORGANIZER_HANDED_OVER, actorId, at, {
+    fromUserId: offer.fromUserId,
+    toUserId: actorId,
+  });
   return next;
 }
 export function proposeVersion(

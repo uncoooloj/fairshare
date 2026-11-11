@@ -509,15 +509,21 @@ export default function FairshareApp() {
   async function mutateWithResult(
     action: string,
     extra: Record<string, unknown> = {},
+    method: "POST" | "DELETE" = "POST",
   ): Promise<boolean> {
     const workspaceRequestId = workspaceRequest.current;
     const openRequestId = openRequest.current;
     if (selected?.workspaceId !== currentWorkspace.current) return false;
     try {
-      const a = await api<Agreement>(base + action, "POST", {
-        expectedRevision: selected!.revision,
-        ...extra,
-      });
+      const a = await api<Agreement>(
+        method === "DELETE"
+          ? `${base + action}?expectedRevision=${selected!.revision}`
+          : base + action,
+        method,
+        method === "DELETE"
+          ? undefined
+          : { expectedRevision: selected!.revision, ...extra },
+      );
       if (
         workspaceRequestId !== workspaceRequest.current ||
         openRequestId !== openRequest.current
@@ -560,8 +566,12 @@ export default function FairshareApp() {
       throw cause;
     }
   }
-  async function mutate(action: string, extra: Record<string, unknown> = {}) {
-    await mutateWithResult(action, extra);
+  async function mutate(
+    action: string,
+    extra: Record<string, unknown> = {},
+    method: "POST" | "DELETE" = "POST",
+  ) {
+    await mutateWithResult(action, extra, method);
   }
   function onAgreementChange(next: Agreement) {
     setSelected((current) => {
