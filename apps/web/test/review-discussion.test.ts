@@ -265,6 +265,32 @@ test("a shared thread loads once, refreshes after the last comment, and posts on
     ["a", "c"],
   );
 });
+test("a shared thread merges every cursor page so later rule comments remain reachable", async () => {
+  const row = (id: string, sequence: number) =>
+    ({
+      id,
+      sequence,
+      ruleKey: CommentTopic.FEES,
+      parentId: null,
+    }) as ReviewComment;
+  const pages: CommentPage[] = [
+    { comments: [row("oldest", 1)], nextCursor: "1" },
+    { comments: [row("later", 2)], nextCursor: null },
+  ];
+  const calls: string[] = [];
+  const thread = new CommentThread("comments", async <T>(path: string) => {
+    calls.push(path);
+    return pages.shift() as T;
+  });
+  await thread.load();
+  await thread.load(thread.state.cursor!);
+  assert.deepEqual(
+    thread.state.comments.map((comment) => comment.id),
+    ["oldest", "later"],
+  );
+  assert.deepEqual(calls, ["comments", "comments?after=1"]);
+  assert.equal(thread.state.cursor, null);
+});
 test("background refresh failures stay quiet; visible loads report errors", async () => {
   const thread = new CommentThread("y", async () => {
     throw new Error("offline");
