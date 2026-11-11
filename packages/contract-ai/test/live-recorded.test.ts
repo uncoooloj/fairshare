@@ -27,13 +27,9 @@ const fixtures = loadFixtures(live);
 
 /** Fields the recorded reading is known to miss. 06: the model puts recoupment
  * in a different quote from the advance amount, so validation preserves it as
- * unknown; its start date also sits behind "the Effective Date". */
+ * unknown. Its start date sits behind "the Effective Date" and resolves to the defining sentence. */
 const KNOWN_MISSES: Record<string, ScoredField[]> = {
-  "06-messy-amended": [
-    ScoredField.ADVANCE,
-    ScoredField.TERM,
-    ScoredField.SECTIONS,
-  ],
+  "06-messy-amended": [ScoredField.ADVANCE, ScoredField.SECTIONS],
 };
 
 for (const fixture of fixtures) {

@@ -414,6 +414,109 @@ function monthIndex(name: string): number {
   return i + 1;
 }
 
+/** A date defined as a term, with the sentence that defines it as its citation. */
+export interface DefinedDate {
+  term: string;
+  /** The date exactly as written in the defining sentence. */
+  raw: string;
+  date: string;
+  citation: Citation;
+}
+const MONTH_NAME = `(?:${MONTHS.map((m) => `${m[0].toUpperCase()}${m.slice(1, 3)}(?:${m.slice(3)})?`).join("|")})\\.?`;
+const WRITTEN_DATE = `(?:${MONTH_NAME}\\s+\\d{1,2}(?:st|nd|rd|th)?,?\\s+\\d{4}|\\d{1,2}(?:st|nd|rd|th)?\\s+${MONTH_NAME},?\\s+\\d{4}|\\d{4}-\\d{2}-\\d{2})`;
+const OPEN_Q = `["“'‘]`;
+const CLOSE_Q = `["”'’]`;
+const TERM_NAME = `([A-Z][A-Za-z-]*(?:\\s+[A-Z][A-Za-z-]*){0,4})`;
+/** `dated October 1, 2026 (the "Effective Date")` */
+const DATE_THEN_TERM = new RegExp(
+  `(${WRITTEN_DATE})\\s*,?\\s*\\((?:the\\s+|this\\s+|hereinafter(?:\\s+referred\\s+to\\s+as)?(?:\\s+the)?\\s+)?${OPEN_Q}${TERM_NAME}${CLOSE_Q}\\)`,
+  "g",
+);
+/** `"Commencement Date" means October 1, 2026.` The date must end the clause, so
+ * "means the later of October 1, 2026 and first release" is not a definition of one date. */
+const TERM_MEANS_DATE = new RegExp(
+  `${OPEN_Q}${TERM_NAME}${CLOSE_Q}\\s+(?:means|shall\\s+mean|is|shall\\s+be)\\s+(?:(?:on|the\\s+date\\s+of)\\s+)?(${WRITTEN_DATE})(?=\\s*(?:[.;]|$))`,
+  "gm",
+);
+/** The sentence around [start, end): bounded by a sentence stop, a blank line, or a colon at a line end. */
+function sentenceAround(text: string, start: number, end: number): Citation {
+  const breaks = /[.!?](?=\s+["“(]?[A-Z0-9])|\n\s*\n|:(?=[ \t]*\n)/g;
+  let from = 0;
+  let to = text.length;
+  for (let m = breaks.exec(text); m; m = breaks.exec(text)) {
+    const stop = m[0][0] === "." ? m.index + 1 : m.index + m[0].length;
+    if (m[0][0] === "." && ABBREVIATION.test(text.slice(0, stop))) continue;
+    if (stop <= start) from = stop;
+    else if (m.index >= end) {
+      to = m[0][0] === "\n" ? m.index : m.index + 1;
+      break;
+    }
+  }
+  while (from < to && /\s/.test(text[from])) from++;
+  while (to > from && /\s/.test(text[to - 1])) to--;
+  return { start: from, end: to, quote: text.slice(from, to) };
+}
+/** Every date the document defines as a term. A term defined with two different dates is dropped
+ * as ambiguous. The citation is the defining sentence, or just its clause when the sentence is too long. */
+export function findDefinedDates(text: string): DefinedDate[] {
+  const found = new Map<string, DefinedDate | null>();
+  const add = (term: string, raw: string, at: number, end: number) => {
+    const date = parseDocumentDate(raw);
+    if (!date) return;
+    let citation = sentenceAround(text, at, end);
+    if (citation.quote.length > MAX_QUOTE_CHARS) {
+      const clauseStart = Math.max(
+        text.lastIndexOf(",", at),
+        text.lastIndexOf(";", at),
+        citation.start - 1,
+      );
+      let from = clauseStart + 1;
+      while (from < end && /\s/.test(text[from])) from++;
+      citation = { start: from, end, quote: text.slice(from, end) };
+    }
+    if (
+      citation.quote.length > MAX_QUOTE_CHARS ||
+      !isSingleSentence(citation.quote)
+    )
+      return;
+    const key = normalizeWhitespace(term).toLowerCase();
+    const prior = found.get(key);
+    if (prior === undefined)
+      found.set(key, {
+        term: normalizeWhitespace(term),
+        raw: normalizeWhitespace(raw),
+        date,
+        citation,
+      });
+    else if (prior && prior.date !== date) found.set(key, null);
+  };
+  for (const m of text.matchAll(DATE_THEN_TERM))
+    add(m[2], m[1], m.index, m.index + m[0].length);
+  for (const m of text.matchAll(TERM_MEANS_DATE))
+    add(m[1], m[2], m.index, m.index + m[0].length);
+  return [...found.values()].filter((d): d is DefinedDate => d !== null);
+}
+/** A TERM value whose quote only uses a defined term ("commence on the Effective Date") resolves to
+ * the sentence that defines it. The quote must name the term, and the value must be that term or
+ * its exact date; anything else (no definition, two candidates) stays unresolved. */
+export function resolveDefinedDate(
+  text: string,
+  quote: string,
+  value: string,
+): DefinedDate | null {
+  const q = normalizeWhitespace(quote).toLowerCase();
+  const asDate = parseDocumentDate(value);
+  const asTerm = normalizeWhitespace(quoteMarks(value).replace(/"/g, ""))
+    .replace(/^the\s+/i, "")
+    .toLowerCase();
+  const matches = findDefinedDates(text).filter(
+    (d) =>
+      q.includes(d.term.toLowerCase()) &&
+      (asDate ? d.date === asDate : d.term.toLowerCase() === asTerm),
+  );
+  return matches.length === 1 ? matches[0] : null;
+}
+
 const FACT_KEYS = [
   "kind",
   "subject",
@@ -453,6 +556,29 @@ function validateFact(raw: unknown, text: string): ExtractedFact {
     throw new Reject(RejectionReason.QUOTE_TOO_LONG);
   if (!isSingleSentence(citation.quote))
     throw new Reject(RejectionReason.QUOTE_MULTIPLE_SENTENCES);
+  const inQuote = (value: string) =>
+    includesNormalized(citation.quote.toLowerCase(), value.toLowerCase());
+  // "shall commence on the Effective Date" holds no date: cite the sentence that defines it instead.
+  if (
+    kind === FactKind.TERM &&
+    !(inQuote(subject) && inQuote(rawValue) && parseDocumentDate(rawValue))
+  ) {
+    const defined = [subject, rawValue].map((v) =>
+      resolveDefinedDate(text, citation.quote, v),
+    );
+    if (defined[0] && defined[1] && defined[0].term === defined[1].term) {
+      requireNull(f, ["recoupedBeforeSplit", "feePolicy", "refundStep"]);
+      const { raw, date, citation: definition } = defined[0];
+      return {
+        kind,
+        subject: raw,
+        rawValue: raw,
+        citation: definition,
+        boundary: enumValue(f.termBoundary, Object.values(TermBoundary)),
+        date,
+      };
+    }
+  }
   // Names may be written in a different case elsewhere ("KEMI ADEYEMI", "the Producer").
   if (!includesNormalized(citation.quote.toLowerCase(), subject.toLowerCase()))
     throw new Reject(RejectionReason.SUBJECT_NOT_IN_QUOTE);

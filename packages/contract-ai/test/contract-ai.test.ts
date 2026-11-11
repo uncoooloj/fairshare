@@ -8,6 +8,7 @@ import {
   feeResolutionOptions,
   locateQuote,
   parseDocumentDate,
+  findDefinedDates,
   ExtractionStatus,
   ExtractionProvider,
   ExtractionSection,
@@ -24,6 +25,7 @@ import {
   DiagnosticCategory,
   DEFAULT_ANTHROPIC_MODEL,
   DEFAULT_CLOUDFLARE_MODEL,
+  type ExtractedFact,
   type ExtractionResult,
 } from "../src/index.js";
 
@@ -442,6 +444,171 @@ test("term dates parse only unambiguous written dates", () => {
   assert.equal(
     r.sections[ExtractionSection.TERM].status,
     SectionStatus.NOT_FOUND,
+  );
+});
+
+test("defined dates resolve from several phrasings to the defining sentence", () => {
+  const cases: [string, string, string, string][] = [
+    [
+      'This Agreement is dated October 1, 2026 (the "Effective Date") between Maya and Jordan.',
+      "Effective Date",
+      "October 1, 2026",
+      "2026-10-01",
+    ],
+    [
+      "Made as of 1st March 2027 (the “Commencement Date”), by Maya.",
+      "Commencement Date",
+      "1st March 2027",
+      "2027-03-01",
+    ],
+    [
+      'Signed on 2026-02-28 ("Start Date") by both.',
+      "Start Date",
+      "2026-02-28",
+      "2026-02-28",
+    ],
+    [
+      'Definitions apply. "Effective Date" means June 1, 2026.\nOther terms follow.',
+      "Effective Date",
+      "June 1, 2026",
+      "2026-06-01",
+    ],
+  ];
+  for (const [text, term, raw, date] of cases) {
+    const [found] = findDefinedDates(text);
+    assert.equal(found?.term, term, text);
+    assert.equal(found.raw, raw);
+    assert.equal(found.date, date);
+    assert.equal(
+      text.slice(found.citation.start, found.citation.end),
+      found.citation.quote,
+    );
+    assert.ok(found.citation.quote.includes(raw));
+    assert.ok(!found.citation.quote.includes("follow"));
+  }
+  // A date that is not the whole definition, a numeric date, or two different dates: no definition.
+  assert.deepEqual(
+    findDefinedDates(
+      '"Effective Date" means the later of June 1, 2026 and the first release.',
+    ),
+    [],
+  );
+  assert.deepEqual(
+    findDefinedDates('Dated 03/04/2026 (the "Effective Date").'),
+    [],
+  );
+  assert.deepEqual(
+    findDefinedDates(
+      'Dated June 1, 2026 (the "Effective Date"). Dated July 1, 2026 (the "Effective Date").',
+    ),
+    [],
+  );
+});
+
+test("a term start given only as the Effective Date cites the defining sentence", () => {
+  const text = [
+    'This agreement is dated October 1, 2026 (the "Effective Date") between Maya and Jordan.',
+    "Maya receives 60% and Jordan receives 40% of gross revenue.",
+    "This agreement starts on the Effective Date and ends on December 31, 2027.",
+  ].join("\n");
+  const doc = { documentId: "doc_ed", revision: 1, text };
+  const usesTerm =
+    "This agreement starts on the Effective Date and ends on December 31, 2027.";
+  const start = { termBoundary: TermBoundary.START };
+  const r = validateDraft(
+    {
+      facts: [
+        fact(
+          FactKind.TERM,
+          "October 1, 2026",
+          "October 1, 2026",
+          usesTerm,
+          start,
+        ),
+        fact(
+          FactKind.TERM,
+          "December 31, 2027",
+          "December 31, 2027",
+          usesTerm,
+          {
+            termBoundary: TermBoundary.END,
+          },
+        ),
+      ],
+      issues: [],
+    },
+    doc,
+  );
+  assert.deepEqual(r.rejections, []);
+  const [s, e] = r.facts as Extract<ExtractedFact, { kind: FactKind.TERM }>[];
+  assert.equal(s.date, "2026-10-01");
+  assert.equal(s.rawValue, "October 1, 2026");
+  assert.equal(
+    s.citation.quote,
+    'This agreement is dated October 1, 2026 (the "Effective Date") between Maya and Jordan.',
+  );
+  assert.equal(e.citation.quote, usesTerm);
+  assert.equal(r.sections[ExtractionSection.TERM].status, SectionStatus.READ);
+
+  // The value may be the term itself.
+  const byName = validateDraft(
+    {
+      facts: [
+        fact(
+          FactKind.TERM,
+          "the Effective Date",
+          "the Effective Date",
+          usesTerm,
+          start,
+        ),
+      ],
+      issues: [],
+    },
+    doc,
+  );
+  assert.equal((byName.facts[0] as { date?: string }).date, "2026-10-01");
+
+  // A date that does not match the definition, or no definition at all, stays dropped.
+  for (const [source, value] of [
+    [text, "November 1, 2026"],
+    [text.replace(' (the "Effective Date")', ""), "October 1, 2026"],
+  ]) {
+    assert.throws(
+      () =>
+        validateDraft(
+          {
+            facts: [fact(FactKind.TERM, value, value, usesTerm, start)],
+            issues: [],
+          },
+          { ...doc, text: source },
+        ),
+      /empty extraction/,
+    );
+  }
+  // The quote must name the defined term.
+  const unrelated = validateDraft(
+    {
+      facts: [
+        fact(
+          FactKind.TERM,
+          "October 1, 2026",
+          "October 1, 2026",
+          "Maya receives 60% and Jordan receives 40% of gross revenue.",
+          start,
+        ),
+        share(
+          "Maya",
+          "60%",
+          "Maya receives 60% and Jordan receives 40% of gross revenue.",
+        ),
+      ],
+      issues: [],
+    },
+    doc,
+  );
+  assert.equal(
+    unrelated.rejections[0].reason,
+    RejectionReason.SUBJECT_NOT_IN_QUOTE,
   );
 });
 
