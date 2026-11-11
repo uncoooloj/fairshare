@@ -21,8 +21,6 @@ jobs:
     env:
       NEXT_TELEMETRY_DISABLED: "1"
       WRANGLER_SEND_METRICS: "false"
-      FAIRSHARE_API_URL: https://fairshare-api-sandbox.udaleamehoj.workers.dev
-      FAIRSHARE_WEB_ORIGIN: https://usefairshare.app
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

@@ -202,6 +202,8 @@ test("push-to-main releases retain gates while pull requests cannot publish", ()
     /github\.event_name != 'pull_request' && github\.ref == 'refs\/heads\/main'/,
   );
   assert.match(workflow, /cancel-in-progress: false/);
+  // Hosted origins belong in Wrangler bindings, not in the local test runner.
+  assert.doesNotMatch(workflow, /^\s+FAIRSHARE_(?:API_URL|WEB_ORIGIN):/m);
   assert.match(workflow, /--no-bundle --keep-vars/);
   assert.equal(
     workflow.match(/run: node deploy\/cloudflare\/persistence-gate.mjs/g)
