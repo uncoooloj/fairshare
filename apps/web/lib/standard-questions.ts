@@ -88,17 +88,17 @@ export function refundQuestion(
   });
   return {
     id: StandardQuestionId.REFUNDS,
-    text: "Do refunds come off the advance or the split?",
+    text: "How should we record this refund preference for review?",
     choices: [
       choice(
         RefundChoice.SPLIT,
-        "Off the split",
-        "Everyone shares a refund by their split.",
+        "Record a shared split",
+        "This note is for organizer review and does not change a refund amount.",
       ),
       choice(
         RefundChoice.ADVANCE,
-        "Off the advance",
-        `A refund counts against ${recipient}'s advance.`,
+        "Record the advance holder",
+        `This note names ${recipient}'s advance for organizer review and does not change a refund amount.`,
       ),
     ],
   };

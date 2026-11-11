@@ -118,7 +118,7 @@ test("extracted issues are capped at three, money questions first", () => {
   assert.equal(questions[1].clause, "§ 5.2");
   assert.equal(
     questions[1].text,
-    "Do refunds come off the advance or the split?",
+    "How should we record this refund preference for review?",
   );
   assert.equal(questions[1].choices.length, 2);
   const settled = midnight({
@@ -184,7 +184,10 @@ test("the step renders one question as radio cards with dollars", () => {
     }),
   );
   assert.match(html, /Question 2 of 2/);
-  assert.match(html, /Do refunds come off the advance or the split\?/);
+  assert.match(
+    html,
+    /How should we record this refund preference for review\?/,
+  );
   assert.match(html, /role="radiogroup"/);
   assert.equal(html.match(/role="radio"/g)?.length, 2);
   // Refunds: the choices and one plain line, no dollars.

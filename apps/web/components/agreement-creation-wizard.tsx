@@ -851,11 +851,31 @@ export function resumedAnswers(
     people: { ...stored.people, value: people },
     questions: [],
   };
+  // Local storage holds only question identifiers and selected choices. Rebuild
+  // source questions here so citations and closures stay tied to the current reading.
+  let restored: AgreementAnswers = {
+    ...merged,
+    questions: questionsFor(merged, read.answers.questions),
+  };
+  for (const saved of stored.questionAnswers ?? []) {
+    if (!saved.answeredChoiceId) continue;
+    const question = restored.questions.find((item) => item.id === saved.id);
+    const choice = question?.choices.find(
+      (item) => item.id === saved.answeredChoiceId,
+    );
+    if (!question || !choice) continue;
+    const applied = choice.apply(restored);
+    restored = {
+      ...applied,
+      questions: applied.questions.map((item) =>
+        item.id === question.id
+          ? { ...item, answeredChoiceId: saved.answeredChoiceId }
+          : item,
+      ),
+    };
+  }
   return {
     ...read,
-    answers: withDraftName(
-      { ...merged, questions: questionsFor(merged) },
-      agreement,
-    ),
+    answers: withDraftName(restored, agreement),
   };
 }
