@@ -165,9 +165,11 @@ nav {
 }
 .main {
   margin-left: var(--sidebar-width);
-  width: calc(100% - var(--sidebar-width));
-  max-width: var(--content-max);
-  padding: 0 var(--space-12) var(--space-16);
+  flex: 1 1 0;
+  min-width: 0;
+  width: auto;
+  max-width: none;
+  padding: 0;
 }
 .workspace-bar {
   height: 72px;
@@ -175,9 +177,13 @@ nav {
   align-items: center;
   gap: var(--space-3);
   border-bottom: 1px solid var(--color-line);
-  margin-bottom: var(--space-10);
+  padding: 0 40px;
   font-size: var(--text-sm);
   color: var(--color-muted);
+}
+.app-content {
+  max-width: var(--content-max);
+  padding: 32px 40px 56px;
 }
 .workspace-bar select {
   width: auto;
@@ -639,19 +645,12 @@ code {
   font-size: var(--text-xs);
 }
 @media (max-width: 1100px) {
-  .main {
-    padding: 0 var(--space-6) var(--space-10);
+  .app-content {
+    padding: 24px 24px 48px;
   }
   .detail-columns {
     grid-template-columns: 1fr;
     gap: var(--space-8);
-  }
-  .sidebar {
-    width: 190px;
-  }
-  .main {
-    margin-left: 190px;
-    width: calc(100% - 190px);
   }
 }
 @media (max-width: 720px) {
@@ -686,7 +685,9 @@ code {
   .main {
     margin: 0;
     width: 100%;
-    padding: 0 var(--space-4) var(--space-8);
+  }
+  .app-content {
+    padding: 20px var(--space-4) var(--space-8);
   }
   .heading {
     align-items: flex-start;
@@ -719,9 +720,6 @@ code {
   .auth form {
     margin: var(--space-12) auto;
   }
-  .workspace-bar {
-    margin-bottom: var(--space-6);
-  }
   .row {
     flex-wrap: wrap;
   }
@@ -735,10 +733,10 @@ code {
 
 /* Designer export: shared desktop shell and restrained, reusable surfaces. */
 .sidebar {
-  padding: 32px 16px 20px;
+  padding: 24px 16px 16px;
 }
 .sidebar .logo {
-  margin-bottom: 40px;
+  margin-bottom: 32px;
 }
 .nav-item {
   min-height: 42px;
@@ -757,11 +755,10 @@ code {
   font-size: 12px;
 }
 .main {
-  padding: 0 32px 64px;
+  padding: 0;
 }
 .workspace-bar {
   height: 64px;
-  margin-bottom: 32px;
 }
 .heading {
   margin: 0 0 28px;
@@ -946,8 +943,8 @@ td:last-child {
   font-variant-numeric: tabular-nums;
 }
 @media (max-width: 900px) {
-  .main {
-    padding: 0 24px 48px;
+  .app-content {
+    padding: 24px 24px 48px;
   }
   .metrics {
     gap: 12px;
@@ -960,8 +957,8 @@ td:last-child {
   }
 }
 @media (max-width: 640px) {
-  .main {
-    padding: 0 16px 32px;
+  .app-content {
+    padding: 20px 16px 32px;
   }
   .metrics {
     grid-template-columns: 1fr;

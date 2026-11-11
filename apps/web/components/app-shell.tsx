@@ -265,27 +265,29 @@ export function AppShell({
             </svg>
           </button>
         </div>
-        {error && (
-          <div className="message error" role="alert">
-            {error}
-            {error.includes("Reload") && (
-              <Button variant="quiet" onClick={guardedRefresh}>
-                Reload latest
-              </Button>
-            )}
-          </div>
-        )}
-        {notice && (
-          <div className="message" role="status">
-            {notice}
-          </div>
-        )}
-        {busy && (
-          <div className="progress" role="status">
-            Working…
-          </div>
-        )}
-        {children}
+        <div className="app-content">
+          {error && (
+            <div className="message error" role="alert">
+              {error}
+              {error.includes("Reload") && (
+                <Button variant="quiet" onClick={guardedRefresh}>
+                  Reload latest
+                </Button>
+              )}
+            </div>
+          )}
+          {notice && (
+            <div className="message" role="status">
+              {notice}
+            </div>
+          )}
+          {busy && (
+            <div className="progress" role="status">
+              Working…
+            </div>
+          )}
+          {children}
+        </div>
       </main>
     </div>
   );
