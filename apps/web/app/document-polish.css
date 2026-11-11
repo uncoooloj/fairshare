@@ -482,3 +482,13 @@
   color: var(--color-warning);
   white-space: normal;
 }
+
+/* The general thread under the rules: a small title, then the comments. */
+.ag-comments {
+  margin-top: var(--space-6);
+}
+.ag-comments > h3 {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-bold);
+}

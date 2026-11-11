@@ -81,3 +81,19 @@ test("the Agreement tab follows the design: no payment preview, versions beside 
   assert.match(detail, /label: "Upload amended agreement"/);
   assert.match(detail, /organizer && selected\.value\.versions\.length > 0/);
 });
+test("rule cards carry their own comments; Term shares the overall thread", () => {
+  const terms = readFileSync(
+    new URL(
+      "../components/sections/agreement-tabs/terms-tab.tsx",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  assert.match(terms, /\[RuleKind\.Fees\]: RuleStep\.FEES/);
+  assert.match(terms, /\[RuleKind\.Advance\]: RuleStep\.ADVANCE/);
+  assert.match(terms, /\[RuleKind\.Split\]: RuleStep\.SPLIT/);
+  assert.doesNotMatch(terms, /RuleKind\.Term\]/);
+  assert.doesNotMatch(terms, /<ReviewDiscussion/);
+  assert.equal(terms.match(/<AgreementComments/g)?.length, 2);
+  assert.equal(terms.match(/ruleSlot=\{ruleCommentSlot/g)?.length, 2);
+});

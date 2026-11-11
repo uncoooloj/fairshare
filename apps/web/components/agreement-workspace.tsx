@@ -212,10 +212,12 @@ function RuleSteps({
   agreement,
   steps,
   id,
+  slot,
 }: {
   agreement: Agreement;
   steps: RuleStep[];
   id: string;
+  slot?: (kind: RuleKind) => ReactNode;
 }) {
   const roster = agreement.value.members;
   return (
@@ -247,6 +249,7 @@ function RuleSteps({
             ) : (
               <p className="ag-rule-everyone">Everyone</p>
             )}
+            {slot?.(step.kind)}
           </div>
           <SourceChip source={step.source} />
         </li>
@@ -261,12 +264,15 @@ export function RevenueRulesCard({
   version,
   headingId,
   action,
+  ruleSlot,
 }: {
   agreement: Agreement;
   version: Version;
   /** Focus lands here after saving new rules. */
   headingId?: string;
   action?: ReactNode;
+  /** Shown at the foot of a rule, such as its comments. */
+  ruleSlot?: (kind: RuleKind) => ReactNode;
 }) {
   const [open, setOpen] = useState(true);
   const steps = ruleSteps(agreement, version.rules);
@@ -316,7 +322,12 @@ export function RevenueRulesCard({
         </div>
       </div>
       {open ? (
-        <RuleSteps agreement={agreement} steps={steps} id={listId} />
+        <RuleSteps
+          agreement={agreement}
+          steps={steps}
+          id={listId}
+          slot={ruleSlot}
+        />
       ) : (
         <div className="ag-rules-summary">
           <span>

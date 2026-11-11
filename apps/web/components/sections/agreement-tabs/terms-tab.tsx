@@ -1,8 +1,17 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import { PostApprovalPayout } from "../../post-approval-payout";
 import { CollaboratorTerms } from "../../collaborator-review";
-import { ReviewDiscussion } from "../../review-discussion";
-import { RecoupmentCard, RevenueRulesCard } from "../../agreement-workspace";
+import {
+  AgreementComments,
+  RuleComments,
+  RuleStep,
+  ruleStepTopic,
+} from "../../review-discussion";
+import {
+  RecoupmentCard,
+  RevenueRulesCard,
+  RuleKind,
+} from "../../agreement-workspace";
 import { Heading, AIReview, RulesEditor } from "../../agreement-widgets";
 import { AgreementTermsFlow } from "../../agreement-terms-flow";
 import { AgreementVersions } from "../../agreement-versions";
@@ -129,6 +138,32 @@ export function CollaboratorReviewCard({
   );
 }
 
+/** Which rule cards carry comments. Term has none: it shares the overall thread. */
+const RULE_COMMENT_STEP: Partial<Record<RuleKind, RuleStep>> = {
+  [RuleKind.Fees]: RuleStep.FEES,
+  [RuleKind.Advance]: RuleStep.ADVANCE,
+  [RuleKind.Split]: RuleStep.SPLIT,
+};
+
+/** Each rule's own comments, at the foot of its step in the rules card. */
+function ruleCommentSlot(
+  agreement: Agreement,
+  version: Version,
+  canWrite: boolean,
+) {
+  return (kind: RuleKind) => {
+    const step = RULE_COMMENT_STEP[kind];
+    return step ? (
+      <RuleComments
+        agreement={agreement}
+        version={version}
+        topic={ruleStepTopic[step]}
+        canWrite={canWrite}
+      />
+    ) : null;
+  };
+}
+
 /** Terms: the latest proposal and its review, or the source and rules draft. */
 export function AgreementTermsTab({
   selected,
@@ -172,6 +207,13 @@ export function AgreementTermsTab({
   const isOrganizer =
     selected.value.members.find((m) => m.userId === user.id)?.role ===
     "ORGANIZER";
+  const canWrite =
+    workspaces.find((w) => w.id === workspace)?.role !== "VIEWER";
+  const changeAgreement = () => {
+    setPreview(null);
+    if (onRevise) onRevise(requests.at(-1));
+    else setEditing(true);
+  };
   // Collaborators see what they get and approve; drafting, sending and
   // proposing revised terms stay with the organizer.
   if (!isOrganizer)
@@ -194,16 +236,34 @@ export function AgreementTermsTab({
           />
         )}
         {latest && (
-          <ReviewDiscussion
-            key={`${selected.id}:${latest.id}`}
-            base={base}
-            agreement={selected}
-            version={latest}
-            canWrite={
-              workspaces.find((w) => w.id === workspace)?.role !== "VIEWER"
-            }
-            onDirtyChange={setDraftDirty}
-          />
+          <>
+            <RevenueRulesCard
+              agreement={selected}
+              version={latest}
+              ruleSlot={ruleCommentSlot(selected, latest, canWrite)}
+            />
+            <section className="ag-comments" aria-label="Comments">
+              <h3>Comments</h3>
+              <AgreementComments
+                key={`${selected.id}:${latest.id}`}
+                base={base}
+                agreement={selected}
+                version={latest}
+                userId={user.id}
+                canWrite={canWrite}
+                compact
+                onDirtyChange={setDraftDirty}
+                onRequestChange={() => {
+                  const heading = reviewHeadingRef?.current;
+                  heading?.scrollIntoView({
+                    behavior: "smooth",
+                    block: "start",
+                  });
+                  heading?.focus({ preventScroll: true });
+                }}
+              />
+            </section>
+          </>
         )}
       </div>
     );
@@ -247,15 +307,12 @@ export function AgreementTermsTab({
               agreement={selected}
               version={latest}
               headingId="agreement-proposal-review"
+              ruleSlot={ruleCommentSlot(selected, latest, canWrite)}
               action={
                 <Button
                   variant="secondary"
                   disabled={busy}
-                  onClick={() => {
-                    setPreview(null);
-                    if (onRevise) onRevise(requests.at(-1));
-                    else setEditing(true);
-                  }}
+                  onClick={changeAgreement}
                 >
                   Change the agreement
                 </Button>
@@ -300,16 +357,20 @@ export function AgreementTermsTab({
                 onDone={() => setApprovedForPayout("")}
               />
             )}
-            <ReviewDiscussion
-              key={`${selected.id}:${latest.id}`}
-              base={base}
-              agreement={selected}
-              version={latest}
-              canWrite={
-                workspaces.find((w) => w.id === workspace)?.role !== "VIEWER"
-              }
-              onDirtyChange={setDraftDirty}
-            />
+            <section className="ag-comments" aria-label="Comments">
+              <h3>Comments</h3>
+              <AgreementComments
+                key={`${selected.id}:${latest.id}`}
+                base={base}
+                agreement={selected}
+                version={latest}
+                userId={user.id}
+                canWrite={canWrite}
+                compact
+                onDirtyChange={setDraftDirty}
+                onRequestChange={changeAgreement}
+              />
+            </section>
           </div>
           <aside className="ag-terms-rail">
             <AgreementVersions agreement={selected} />
