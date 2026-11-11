@@ -74,7 +74,12 @@ test("organizers still only get readiness labels", () => {
   // The member table renders status only; the verified line uses data.own.
   const table = settings.slice(settings.indexOf("Collaborator accounts"));
   assert.doesNotMatch(table, /Verified by PayPal|PayPalConnected|\.value/);
-  assert.match(settings, /data\.paypalConnect &&/);
+  // Connect with PayPal shows in the field step only when the server has it on.
+  assert.match(settings, /place=\{PayoutStepPlace\.SETTINGS\}/);
+  assert.match(
+    source("components/payout-email-step.tsx"),
+    /available=\{paypalConnect\}/,
+  );
 });
 
 test("return flag and paths stay on this site", () => {
