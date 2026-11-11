@@ -10,7 +10,8 @@ export const payoutGuidance: Record<PaymentGridStatus, string> = {
   PENDING: "Pending. Don’t send it again.",
   PROCESSING: "PayPal is processing this. Don’t send it again.",
   HELD: "Paused. Check the agreement before doing anything.",
-  FAILED: "This payout failed. Check the agreement and payout evidence before taking another action.",
+  FAILED:
+    "This payout failed. Check the agreement and payout evidence before taking another action.",
   UNCLAIMED: "They haven’t collected this in PayPal yet.",
   REVERSED: "PayPal reversed this, so it doesn’t count as paid.",
   UNKNOWN:

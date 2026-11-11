@@ -62,9 +62,7 @@ export function PaymentBreakdown({
                 captureId: breakdown.providerCaptureId,
               });
               await refresh();
-              setNotice(
-                "Payout dispatch recorded. Check Payouts for status.",
-              );
+              setNotice("Payout dispatch recorded. Check Payouts for status.");
             })
           }
         >

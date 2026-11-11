@@ -1206,8 +1206,7 @@ export function safePayPalUrl(url: string) {
 export function payoutStatus(status: string): PaymentGridStatus {
   if (status === "SUCCESS") return PaymentGridStatus.Paid;
   if (status === "UNCLAIMED") return PaymentGridStatus.Unclaimed;
-  if (status === "WAITING_RECIPIENT")
-    return PaymentGridStatus.WaitingRecipient;
+  if (status === "WAITING_RECIPIENT") return PaymentGridStatus.WaitingRecipient;
   if (["FAILED", "DENIED", "BLOCKED"].includes(status))
     return PaymentGridStatus.Failed;
   if (["HELD", "ONHOLD"].includes(status)) return PaymentGridStatus.Held;
