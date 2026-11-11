@@ -16,7 +16,7 @@ PUBLIC_APP_ORIGIN=https://your-fairshare-host
 RESEND_API_KEY=<server-only secret>
 ```
 
-`PUBLIC_APP_ORIGIN` must be an explicit HTTPS origin, without credentials, path, query or fragment. Loopback HTTP is allowed for development but recipients on other computers cannot use your localhost. Configuration does not create DNS records, verify a sender, provision a provider account or authorize fees.
+Real email delivery requires an explicit HTTPS `PUBLIC_APP_ORIGIN`, without credentials, path, query or fragment. Loopback HTTP remains available only for local development paths that do not send email; it must not be used for a configured delivery transport. Configuration does not create DNS records, verify a sender, provision a provider account or authorize fees.
 
 ## Acceptance checklist
 

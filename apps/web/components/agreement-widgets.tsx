@@ -2,12 +2,13 @@ import { sourceHighlights } from "../lib/source-highlights";
 import { HighlightedSource } from "./source-rule-context";
 import { SplitRuleEditor } from "./split-rule-editor";
 import { RuleImpactReview } from "./rule-impact-review";
+import { isRulesDraftChange } from "../lib/rule-impact";
 import { agreementEmptyState } from "../lib/agreement-empty-state";
 import { formatDate } from "../lib/preferences";
 import { ClarificationDecisions } from "./clarification-decisions";
 import { proposalQuestions } from "../lib/clarification-draft";
 import { suggestedShares } from "../lib/ai-draft";
-import { useState, useRef, type ReactNode } from "react";
+import { useEffect, useState, useRef, type ReactNode } from "react";
 import {
   money,
   sampleAgreement,
@@ -505,8 +506,8 @@ export function AIReview({
     <section className="section">
       <h3>Read the agreement</h3>
       <p className="muted">
-        Review the suggested terms alongside your agreement before sharing them
-        with everyone.
+        Suggestions are not active rules. Check every interpretation against the
+        original agreement before sharing it with everyone.
       </p>
       <label className="check">
         <input
@@ -514,7 +515,8 @@ export function AIReview({
           checked={consent}
           onChange={(e) => setConsent(e.target.checked)}
         />
-        Allow Fairshare to read this agreement and suggest terms.
+        I authorize Fairshare to send this agreement to Cloudflare AI to suggest
+        terms.
       </label>
       <Button
         variant="secondary"
@@ -523,6 +525,11 @@ export function AIReview({
       >
         Suggest terms
       </Button>
+      <p className="visually-hidden" role="status">
+        {extraction
+          ? "Suggestions ready. Review the extracted terms before using them."
+          : ""}
+      </p>
       {extraction && (
         <div className="panel">
           <Badge value={extraction.status || "REVIEW_REQUIRED"} />
@@ -559,9 +566,14 @@ export function AIReview({
               )}
             </Notice>
           ))}
+          <small>
+            {extraction.provider
+              ? `Provider: ${extraction.provider} · ${extraction.model}`
+              : "Manual review required"}
+          </small>
           <p className="muted">
-            Check and edit the terms below. Everyone will review them before
-            they take effect.
+            Check and edit the terms below. AI never activates or approves a
+            version.
           </p>
         </div>
       )}
@@ -592,6 +604,9 @@ export function RulesEditor({
   const [splitDraft, setSplitDraft] = useState<Record<string, string> | null>(
     null,
   );
+  useEffect(() => {
+    setSplitDraft(null);
+  }, [agreement.revision]);
   const selectedFact = highlights.find((fact) => fact.id === selectedCitation);
   function editSplit() {
     if (!formRef.current) return;
@@ -628,7 +643,8 @@ export function RulesEditor({
         <h3>Source agreement</h3>
         <p className="muted">
           Compare each proposed term with the saved text. This is extracted
-          text; the original file is available in Document.
+          text; Document shows its saved provenance and any retained original
+          file.
         </p>
         <p className="muted">
           Select a highlighted clause to review its extracted term on the right.
@@ -657,8 +673,13 @@ export function RulesEditor({
       <form
         ref={formRef}
         inert={busy}
-        onChange={onDirty}
-        onChangeCapture={() => setDraftRevision((value) => value + 1)}
+        onChange={(event) => {
+          if (isRulesDraftChange(event.target)) onDirty?.();
+        }}
+        onChangeCapture={(event) => {
+          if (isRulesDraftChange(event.target))
+            setDraftRevision((value) => value + 1);
+        }}
         className="section rules-editor"
         onSubmit={(e) => {
           e.preventDefault();
@@ -706,14 +727,25 @@ export function RulesEditor({
                 new Set(f.getAll("resolvedAiQuestion").map(String)),
               ),
             };
-            if (advance)
+            if (advance) {
+              const id = old?.advance?.id || crypto.randomUUID();
+              const recipientId = String(f.get("recipient"));
+              const amountCents = parseCents(String(f.get("advance")));
+              const advanceSource =
+                old?.advance &&
+                old.advance.id === id &&
+                old.advance.recipientId === recipientId &&
+                old.advance.amountCents === amountCents
+                  ? old.advance.source
+                  : ref;
               rules.advance = {
-                id: old?.advance?.id || crypto.randomUUID(),
-                recipientId: String(f.get("recipient")),
-                amountCents: parseCents(String(f.get("advance"))),
+                id,
+                recipientId,
+                amountCents,
                 verified: f.get("verified") === "on",
-                source: ref,
+                source: advanceSource,
               };
+            }
             onSave(rules);
           } catch (e) {
             setError((e as Error).message);
@@ -902,7 +934,11 @@ export function RulesEditor({
             )}
           </Notice>
         )}
-        {error && <Notice warning>{error}</Notice>}
+        {error && (
+          <Notice warning announcement="assertive">
+            {error}
+          </Notice>
+        )}
         <div className="form-grid">
           {agreement.value.members.map((m) => (
             <Field key={m.userId} label={`${m.displayName} · share %`}>

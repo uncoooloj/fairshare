@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { AllocationStatus, DomainError } from "@fairshare/domain";
+import { PayPalError } from "@fairshare/payments";
 import type { AggregateStore } from "./fairshare.js";
 import type { FairshareApp } from "./app.js";
 import type { PaymentProvider } from "./paymentRoutes.js";
@@ -154,8 +155,20 @@ export function automaticPayouts(
         amountCents: op.amount,
         currency: "USD",
       });
-    } catch {
+    } catch (error) {
       assertLease();
+      if (
+        error instanceof PayPalError &&
+        error.code === "PAYOUT_NOT_CONFIGURED"
+      ) {
+        db.prepare(
+          "UPDATE fairshare_payout_ops SET status='AUTO_HELD' WHERE id=? AND status='SUBMITTING'",
+        ).run(op.id);
+        app.store.audit("system", op.workspace_id, "PAYOUT_AUTOMATIC_HELD", {
+          payoutId: op.id,
+        });
+        return;
+      }
       db.prepare(
         "UPDATE fairshare_payout_ops SET status='OUTCOME_UNKNOWN' WHERE id=? AND status='SUBMITTING'",
       ).run(op.id);
