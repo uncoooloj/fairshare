@@ -1,24 +1,21 @@
 name: Deploy Fairshare
 
 on:
+  push:
+    branches: [main]
+  pull_request:
   workflow_dispatch:
-    inputs:
-      persistence_acceptance:
-        description: Confirm restart, redeploy, restore, and rollback acceptance for the hosted sandbox.
-        required: true
-        type: boolean
-        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: fairshare-hosted-release
+  group: ${{ github.event_name == 'pull_request' && format('fairshare-release-pr-{0}', github.event.pull_request.number) || 'fairshare-hosted-release' }}
   cancel-in-progress: false
 
 jobs:
   release:
-    if: github.ref == 'refs/heads/main'
+    name: Check and release Cloudflare
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -26,27 +23,35 @@ jobs:
       WRANGLER_SEND_METRICS: "false"
       FAIRSHARE_API_URL: https://fairshare-api-sandbox.udaleamehoj.workers.dev
       FAIRSHARE_WEB_ORIGIN: https://usefairshare.app
-      FAIRSHARE_API_PERSISTENCE_VERIFIED: ${{ inputs.persistence_acceptance && 'true' || 'false' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "22.16.0"
           cache: npm
-      - name: Require explicit persistence acceptance
-        run: node deploy/cloudflare/preflight.mjs
+      - name: Test hosted release safeguards
+        run: node --test deploy/cloudflare/*.test.mjs
+      - name: Record persistence scope
+        run: |
+          scope=$(node deploy/cloudflare/persistence-gate.mjs --fingerprint)
+          echo "Persistence scope SHA-256: $scope" >> "$GITHUB_STEP_SUMMARY"
+      - name: Require current hosted persistence acceptance
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          FAIRSHARE_PERSISTENCE_ACCEPTANCE: ${{ vars.FAIRSHARE_PERSISTENCE_ACCEPTANCE }}
+        run: node deploy/cloudflare/persistence-gate.mjs
       - run: npm ci
       - run: npm run format:check
       - run: npm test
       - run: npm run typecheck
       - run: npm run build
       - run: npm run check:cloudflare -w @fairshare/api
-      - run: node --test deploy/cloudflare/hosted.test.mjs
       - name: Record checked API bundle
         id: api_bundle
         run: echo "sha256=$(sha256sum apps/api/dist-cloudflare/worker.mjs | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
       - run: npm run cloudflare:build -w @fairshare/web
       - name: Skip superseded releases
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         id: current
         run: |
           latest=$(git ls-remote origin refs/heads/main | cut -f1)
@@ -59,15 +64,17 @@ jobs:
         if: steps.current.outputs.deploy == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          FAIRSHARE_PERSISTENCE_ACCEPTANCE: ${{ vars.FAIRSHARE_PERSISTENCE_ACCEPTANCE }}
         run: |
           test -n "$CLOUDFLARE_API_TOKEN" || { echo 'Missing CLOUDFLARE_API_TOKEN repository secret'; exit 1; }
+          node deploy/cloudflare/persistence-gate.mjs
           actual=$(sha256sum apps/api/dist-cloudflare/worker.mjs | cut -d ' ' -f1)
           test "$actual" = "${{ steps.api_bundle.outputs.sha256 }}" || { echo 'Checked API bundle changed before deployment'; exit 1; }
-          (cd apps/api && npx --no-install wrangler deploy --config wrangler.hosted.json --no-bundle)
+          (cd apps/api && npx --no-install wrangler deploy --config wrangler.hosted.json --no-bundle --keep-vars)
           (cd apps/web && npx --no-install wrangler deploy --keep-vars)
       - name: Verify public release
         if: steps.current.outputs.deploy == 'true'
         run: node deploy/cloudflare/verify-live.mjs
       - name: Record release
         if: steps.current.outputs.deploy == 'true' && success()
-        run: echo "Deployed commit $GITHUB_SHA to https://usefairshare.app with optional money features disabled. No provider or private-account acceptance was executed." >> "$GITHUB_STEP_SUMMARY"
+        run: echo "Deployed commit $GITHUB_SHA to https://usefairshare.app while preserving existing PayPal capability settings. No provider or private-account acceptance was executed." >> "$GITHUB_STEP_SUMMARY"
