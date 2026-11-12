@@ -1816,3 +1816,59 @@ test("invalid or ungrounded title suggestions are omitted without losing facts",
   );
   assert.equal(Object.hasOwn(result, "suggestedTitle"), false);
 });
+
+test("onboarding percentage-to-person list keeps exact shares despite repeated party names", () => {
+  const text =
+    "Maya, Jordan and Riley agree that eligible revenue is split 50% to Maya, 30% to Jordan and 20% to Riley, after recouping a previously paid $2,000 advance to Maya.";
+  const draft = validateDraft(
+    {
+      facts: [
+        share("Maya", "50%", text),
+        share("Jordan", "30%", text),
+        share("Riley", "20%", text),
+      ],
+      issues: [],
+    },
+    { documentId: "sample", revision: 1, text },
+  );
+  assert.deepEqual(
+    draft.facts.map((f) => [
+      f.subject,
+      f.kind === FactKind.SHARE && f.basisPoints,
+    ]),
+    [
+      ["Maya", 5000],
+      ["Jordan", 3000],
+      ["Riley", 2000],
+    ],
+  );
+  assert.equal(draft.sections.SPLIT.status, SectionStatus.READ);
+  assert.deepEqual(draft.rejections, []);
+});
+
+test("percentage-to-person lists reject swapped shares, partial names and conflicting pairings", () => {
+  for (const text of [
+    "Split 50% to Maya, 30% to Jordan and 20% to Riley.",
+    "Split 50% to Maya Okafor, 30% to Jordan and 20% to Riley.",
+    "Split 50% to Maya, 30% to Maya and 20% to Riley.",
+  ]) {
+    const draft = validateDraft(
+      {
+        facts: [
+          share("Maya", "30%", text),
+          fact(FactKind.PERSON, "Riley", "Riley", text),
+        ],
+        issues: [],
+      },
+      { documentId: "sample", revision: 1, text },
+    );
+    assert.equal(
+      draft.rejections[0].reason,
+      RejectionReason.SHARE_PAIRING_UNCLEAR,
+    );
+    assert.equal(
+      draft.facts.some((f) => f.kind === FactKind.SHARE),
+      false,
+    );
+  }
+});
