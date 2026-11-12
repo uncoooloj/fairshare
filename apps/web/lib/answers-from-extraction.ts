@@ -389,6 +389,9 @@ export function answersFromExtraction(
   const splitAsked = split.status === DraftStatus.ASK && !!split.question;
   if (
     e?.status === "REVIEW_REQUIRED" &&
+    // Rejected evidence means we could not verify the reading, not that the
+    // source is a different kind of document. Keep the manual review path.
+    (!Array.isArray(e.rejections) || e.rejections.length === 0) &&
     e.sections?.[RulesSection.SPLIT]?.status !== ServerSection.READ &&
     split.status !== DraftStatus.SHOWN &&
     !shareNames.length &&

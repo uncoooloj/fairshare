@@ -350,14 +350,34 @@ function percentToBasisPoints(raw: string): number | null {
   const bp = Number(m[1]) * 100 + Number((m[2] ?? "").padEnd(2, "0"));
   return bp > 0 && bp <= 10_000 ? bp : null;
 }
-/** A quote with several percentages must pair this person with this number unambiguously:
- * the name appears once and the first percentage after it is this one. "Respectively" is never paired. */
+/** A quote with several percentages must pair this person with this number unambiguously.
+ * Accept explicit percentage-to-person lists as well as the name-first form.
+ * "Respectively" is never paired. */
 function shareIsPaired(quote: string, subject: string, rawValue: string) {
   const q = normalizeWhitespace(quote);
   const percents = [...q.matchAll(PERCENT)];
   if (percents.length <= 1) return true;
   if (/respectively/i.test(q)) return false;
   const name = normalizeWhitespace(subject);
+  // The onboarding sample uses "50% to Maya, 30% to Jordan". Names may also
+  // occur in the opening party list, so adjacency, not global uniqueness, is
+  // the evidence here. Never fall through and assign the next person's number.
+  if (/\d{1,3}(?:\.\d{1,2})?\s?%\s+to\s+/i.test(q)) {
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const pairs = [
+      ...q.matchAll(
+        new RegExp(
+          `(\\d{1,3}(?:\\.\\d{1,2})?\\s?%)\\s+to\\s+${escaped}(?=\\s*(?:,|and\\b|after\\b|before\\b|[.;:]|$))`,
+          "gi",
+        ),
+      ),
+    ];
+    const expected = normalizeWhitespace(rawValue).replace(/\s/g, "");
+    return (
+      pairs.length > 0 &&
+      pairs.every((pair) => pair[1].replace(/\s/g, "") === expected)
+    );
+  }
   const at = q.indexOf(name);
   if (at < 0 || q.indexOf(name, at + 1) !== -1) return false;
   const next = percents.find((p) => p.index! >= at + name.length);

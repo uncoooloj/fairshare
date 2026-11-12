@@ -486,3 +486,17 @@ test("clause numbers come from the nearest numbered line", () => {
   assert.equal(clauseFor(MIDNIGHT, "not in it"), undefined);
   assert.ok(person(MIDNIGHT, "Riley Chen", "Riley Chen").citation.start > 0);
 });
+
+test("rejected extraction evidence is not classified as a non-agreement", () => {
+  const { doc, extraction } = briefReading();
+  const read = answersFromExtraction(
+    {
+      ...extraction,
+      rejections: [{ item: "FACT", index: 0, reason: "SHARE_PAIRING_UNCLEAR" }],
+    },
+    doc,
+    self,
+  );
+  assert.notEqual(read.mode, CheckMode.NOT_AGREEMENT);
+  assert.equal(read.answers.people.source, AnswerSource.PERSON);
+});
