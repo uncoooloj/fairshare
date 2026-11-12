@@ -122,7 +122,12 @@ export function questionsFor(
   for (const q of extractedIssues) {
     if (!q.choices.length || seen.has(q.id)) continue;
     if (q.id === StandardQuestionId.REFUNDS) continue;
-    if (q.id === StandardQuestionId.FEES && answers.fees) continue;
+    if (
+      q.id === StandardQuestionId.FEES &&
+      answers.fees &&
+      !q.requiresExplicitAnswer
+    )
+      continue;
     seen.add(q.id);
     all.push(q);
   }

@@ -16,6 +16,7 @@ export interface PdfClause {
   quote: string;
   /** The page our extraction recorded, if one. */
   page?: number;
+  attention?: boolean;
 }
 
 interface Placed {
@@ -23,6 +24,7 @@ interface Placed {
   boxes: Box[];
   hit?: boolean;
   current?: boolean;
+  attention?: boolean;
 }
 
 const SEARCH_ID = "pdf-search-";
@@ -264,7 +266,12 @@ export function PdfPages({
     const next: Placed[] = [];
     for (const clause of clauses) {
       const spans = locateQuote(items, clause.quote);
-      if (spans.length) next.push({ id: clause.id, boxes: boxesOf(spans) });
+      if (spans.length)
+        next.push({
+          id: clause.id,
+          boxes: boxesOf(spans),
+          attention: clause.attention,
+        });
     }
     locateAll(items, search.query).forEach((spans, index) =>
       next.push({
@@ -371,8 +378,10 @@ function PdfClauseMark({
         <button
           key={index}
           type="button"
-          className="dv-pdf-mark"
-          aria-label="Cited clause"
+          className={`dv-pdf-mark${mark.attention ? " is-ambiguous" : ""}`}
+          aria-label={
+            mark.attention ? "Clause needing clarification" : "Cited clause"
+          }
           // Only the first band is a tab stop; the rest are the same clause.
           tabIndex={index ? -1 : 0}
           data-ids={mark.id}

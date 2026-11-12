@@ -864,6 +864,25 @@ test("an issue already answered by an accepted fact is suppressed", async () => 
   assert.equal(r.sections[ExtractionSection.FEES].status, SectionStatus.READ);
 });
 
+test("a cited ambiguity survives a same-topic fact and requires a human choice", async () => {
+  const unclear =
+    "Processing fees may instead be charged to Maya where appropriate.";
+  const document = { ...full, text: `${full.text}\n${unclear}` };
+  const r = await invoke(
+    {
+      ...fullDraft,
+      issues: [{ ...feesIssue, quote: unclear }],
+    },
+    document,
+  );
+  assert.equal(r.issues.length, 1);
+  assert.equal(r.issues[0].citation?.quote, unclear);
+  assert.equal(r.sections[ExtractionSection.FEES].status, SectionStatus.ASK);
+  assert.ok(r.sections[ExtractionSection.FEES].factIndexes.length);
+  assert.equal(r.sections[ExtractionSection.FEES].issueIndex, 0);
+  assert.equal(r.executable, false);
+});
+
 test("a real gap returns a plain question, its quote and 2-3 readings mapped to exact settings", async () => {
   const r = await invoke(grossDraft, gross);
   assert.equal(r.sections[ExtractionSection.SPLIT].status, SectionStatus.READ);
@@ -1313,7 +1332,7 @@ test("Claude request: Sonnet 5.5, bounded output, same prompt, structured JSON, 
     },
   });
   assert.equal(r.status, ExtractionStatus.REVIEW_REQUIRED);
-  assert.equal(r.promptVersion, "contract-extraction-v5");
+  assert.equal(r.promptVersion, "contract-extraction-v6");
   assert.equal(body.model, "claude-sonnet-5-5");
   assert.equal(body.max_tokens, 16_000);
   // Same system prompt and user payload as the Cloudflare path.

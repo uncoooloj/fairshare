@@ -244,7 +244,7 @@ export interface CloudflareConfig {
 export const DEFAULT_CLOUDFLARE_MODEL =
   "@cf/deepseek-ai/deepseek-v4.1-flash-1017";
 export const DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-5-5";
-export const PROMPT_VERSION = "contract-extraction-v5";
+export const PROMPT_VERSION = "contract-extraction-v6";
 export const MAX_DOCUMENT_CHARS = 40_000;
 export const MAX_QUOTE_CHARS = 300;
 export const MAX_QUESTION_CHARS = 90;
@@ -1083,7 +1083,12 @@ export function validateDraft(
   data.issues.forEach((entry, index) => {
     try {
       const issue = validateIssue(entry, document.text);
-      if (sections[TOPIC_SECTION[issue.topic]].status === SectionStatus.READ)
+      // A fact can state one reading while another cited clause qualifies or conflicts
+      // with it. Only a question about missing information is answered by that fact.
+      if (
+        !issue.citation &&
+        sections[TOPIC_SECTION[issue.topic]].status === SectionStatus.READ
+      )
         throw new Reject(RejectionReason.ANSWERED_BY_FACT);
       if (candidates.some((c) => c.issue.topic === issue.topic))
         throw new Reject(RejectionReason.DUPLICATE_TOPIC);
@@ -1248,9 +1253,9 @@ const SYSTEM_PROMPT = [
   "CURRENCY: subject = rawValue = the currency word or code as written.",
   "PERSON: every person or party who shares revenue, named as written (subject = rawValue = the name). Quote the clause that names them.",
   "Set every field that does not apply to the kind to null.",
-  "QUESTIONS (issues). Raise one only when the document is silent or genuinely ambiguous about something the payment rules need: the split (SPLIT), whether an advance is paid back before the split (ADVANCE), or who bears fees (FEES). Never ask about something you already extracted as a fact. At most 3 questions, most money-relevant first, one per topic.",
+  "QUESTIONS (issues). Raise one only when the document is silent or genuinely ambiguous about something the payment rules need: the split (SPLIT), whether an advance is paid back before the split (ADVANCE), or who bears fees (FEES). Do not ask a missing-information question already answered by a fact. If a cited clause qualifies, conflicts with, or leaves a material part of a fact unclear, keep that fact and raise the question with the unclear clause; a fact is not proof the ambiguity is resolved. At most 3 questions, most money-relevant first, one per topic.",
   "question: plain everyday words, at most 90 characters, no legal jargon. quote: the exact words of one sentence that cause the question, or null if the document is silent.",
-  "readings: 2 or 3 sensible ways to read it. Each has a short plain label, a one-line explanation, and the exact setting it means. FEES readings set feePolicy (and feeBearer, a name from the document, only for ORGANIZER_SHARE). ADVANCE readings set advanceRecoupedBeforeSplit. SPLIT readings set shares as [{name, percent}] using names from the document, adding up to exactly 100 (for three equal people use 34, 33, 33; round other splits so they still total 100). Leave other setting fields null.",
+  "readings: 2 or 3 possible clarifications for the people to review. These are proposals, not facts or a claim that one choice is fair to everyone. Explain the tradeoffs plainly. Do not claim an option benefits everyone when it shifts money between them. Each has a short plain label, a one-line explanation, and the exact setting it means. FEES readings set feePolicy (and feeBearer, a name from the document, only for ORGANIZER_SHARE). ADVANCE readings set advanceRecoupedBeforeSplit. SPLIT readings set shares as [{name, percent}] using names from the document, adding up to exactly 100 (for three equal people use 34, 33, 33; round other splits so they still total 100). Leave other setting fields null.",
   "Optionally include suggestedTitle: a short standalone heading copied verbatim from the first 4000 characters, or null. Do not invent one.",
   "No approvals, tools, URLs or payment actions.",
 ].join("\n");

@@ -5,6 +5,7 @@ import {
   FeeChoice,
   TOTAL_BASIS_POINTS,
   exampleSplit,
+  reopenChangedQuestions,
 } from "../lib/rules-answers";
 import { StandardQuestionId, feeQuestion } from "../lib/standard-questions";
 import type {
@@ -21,6 +22,7 @@ import { DocumentCitationView } from "./document-citation-view";
 import { SplitBar } from "./person";
 import { SplitDrawer, percentText, rosterTone } from "./split-drawer";
 import { WizardDrawer } from "./wizard-drawer";
+import { WizardQuestionsStep } from "./wizard-questions-step";
 
 /** How much the AI managed to read; picks the headline. */
 export enum CheckMode {
@@ -242,6 +244,7 @@ export function wizardCitations(
     summary: string;
     cited?: Cited<unknown>;
     documentId?: string;
+    ambiguity?: boolean;
   }> = [
     {
       id: "wizard-agreement",
@@ -284,6 +287,24 @@ export function wizardCitations(
       documentId: sourceDocumentIds?.advance,
     },
   ];
+  // Unclear clauses deserve a source link before any choice is made. Keep the
+  // question's producing document identity even after its answer becomes a proposal.
+  for (const question of answers.questions) {
+    if (!question.quote) continue;
+    candidates.push({
+      id: `wizard-question-${question.id}`,
+      label: "Needs clarification",
+      summary: question.text,
+      cited: {
+        value: question.text,
+        source: AnswerSource.DOCUMENT,
+        quote: question.quote,
+        clause: question.clause,
+      },
+      documentId: question.documentId,
+      ambiguity: true,
+    });
+  }
   const exact = candidates.flatMap((candidate) => {
     const { cited, documentId } = candidate;
     const quote =
@@ -299,10 +320,16 @@ export function wizardCitations(
     return [{ candidate, quote, start, end: start + quote.length }];
   });
   return exact.flatMap(
-    ({ candidate: { id, label, summary, cited }, quote, start, end }) => {
+    ({
+      candidate: { id, label, summary, cited, ambiguity },
+      quote,
+      start,
+      end,
+    }) => {
       // A shared or intersecting span cannot tell which rule the person selected.
       // Leave every owner uncited instead of making one rule masquerade as another.
       if (
+        !ambiguity &&
         exact.filter((other) => other.start < end && other.end > start)
           .length !== 1
       )
@@ -326,6 +353,7 @@ export function wizardCitations(
           id,
           label,
           summary,
+          ...(ambiguity ? { attention: true } : {}),
           reference: {
             origin: "SOURCE_CLAUSE",
             documentId: document.documentId,
@@ -335,7 +363,7 @@ export function wizardCitations(
           highlight: {
             id,
             label,
-            kind: "SAVED_RULE",
+            kind: ambiguity ? "AMBIGUITY" : "SAVED_RULE",
             rawValue: quote,
             quote,
             start,
@@ -454,6 +482,7 @@ export function WizardCheckStep({
       : givenMode;
   const [drawer, setDrawer] = useState<OpenDrawer>();
   const [splitTouched, setSplitTouched] = useState(false);
+  const [reviewQuestion, setReviewQuestion] = useState<string>();
   const headingId = useId();
   const paidName = useId();
   const { title, lede } = checkHeadline(mode);
@@ -483,6 +512,9 @@ export function WizardCheckStep({
         : id === "wizard-fees"
           ? "wizard-split"
           : id;
+    globalThis.document
+      .getElementById(`wc-rule-${target}`)
+      ?.focus({ preventScroll: true });
     globalThis.document
       .getElementById(`wc-rule-${target}`)
       ?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -561,6 +593,72 @@ export function WizardCheckStep({
       ) : null}
 
       <div className="wc-rules">
+        {answers.questions.length > 0 && (
+          <section className="wc-ambiguities" aria-label="Terms to clarify">
+            <h2>Let's clear these up</h2>
+            <p className="muted">
+              These points may change who gets paid. Review the wording and the
+              possible fixes before sending your proposal to everyone.
+            </p>
+            {answers.questions.map((question) => {
+              const id = `wizard-question-${question.id}`;
+              const located = citations.some((citation) => citation.id === id);
+              const chosen = question.choices.find(
+                (choice) => choice.id === question.answeredChoiceId,
+              );
+              return (
+                <article
+                  className="wc-card wc-ambiguity"
+                  key={id}
+                  id={`wc-rule-${id}`}
+                  tabIndex={-1}
+                >
+                  <span className="wc-ambiguity-status">
+                    {chosen
+                      ? "Proposed fix · everyone still reviews"
+                      : "Needs clarification"}
+                  </span>
+                  <h3>{question.text}</h3>
+                  {question.quote ? (
+                    <blockquote>{question.quote}</blockquote>
+                  ) : (
+                    <p className="muted">
+                      We couldn't locate a clear answer in the source.
+                    </p>
+                  )}
+                  {located && (
+                    <button
+                      type="button"
+                      className="wc-link"
+                      onClick={() => openCitation(id)}
+                    >
+                      Show unclear clause
+                      {question.clause ? ` · § ${question.clause}` : ""}
+                    </button>
+                  )}
+                  {question.quote && !located && (
+                    <p className="muted">
+                      We couldn't locate this quote uniquely in the saved
+                      document. Check the original before choosing.
+                    </p>
+                  )}
+                  {chosen && <p>Proposed: {chosen.label}</p>}
+                  <button
+                    type="button"
+                    className="button secondary"
+                    disabled={busy}
+                    onClick={() => setReviewQuestion(question.id)}
+                  >
+                    {chosen ? "Review proposed fix" : "Compare possible fixes"}
+                  </button>
+                </article>
+              );
+            })}
+            <p className="muted">
+              This check can miss unclear terms. It isn't a full legal review.
+            </p>
+          </section>
+        )}
         <article className="wc-card" id="wc-rule-wizard-agreement">
           <CardHead
             title="The agreement"
@@ -740,10 +838,27 @@ export function WizardCheckStep({
           answers={answers}
           onCancel={close}
           onSave={(next) => {
-            onChange(next);
+            onChange(reopenChangedQuestions(answers, next));
             close();
           }}
         />
+      ) : null}
+      {reviewQuestion &&
+      answers.questions.some((q) => q.id === reviewQuestion) ? (
+        <WizardDrawer
+          title="Clarify this term"
+          hideFooter
+          onSave={() => {}}
+          onCancel={() => setReviewQuestion(undefined)}
+        >
+          <WizardQuestionsStep
+            answers={answers}
+            onChange={onChange}
+            index={answers.questions.findIndex((q) => q.id === reviewQuestion)}
+            onBack={() => setReviewQuestion(undefined)}
+            onNext={() => setReviewQuestion(undefined)}
+          />
+        </WizardDrawer>
       ) : null}
       {drawer === OpenDrawer.SPLIT ? (
         <SplitDrawer
@@ -759,7 +874,12 @@ export function WizardCheckStep({
           onCancel={close}
           onSave={(next) => {
             setSplitTouched(true);
-            onChange({ ...answers, people: edited(answers.people, next) });
+            onChange(
+              reopenChangedQuestions(answers, {
+                ...answers,
+                people: edited(answers.people, next),
+              }),
+            );
             close();
           }}
         />
@@ -769,7 +889,7 @@ export function WizardCheckStep({
           answers={answers}
           onCancel={close}
           onSave={(next) => {
-            onChange(next);
+            onChange(reopenChangedQuestions(answers, next));
             close();
           }}
         />
@@ -779,7 +899,7 @@ export function WizardCheckStep({
           answers={answers}
           onCancel={close}
           onSave={(next) => {
-            onChange(next);
+            onChange(reopenChangedQuestions(answers, next));
             close();
           }}
         />

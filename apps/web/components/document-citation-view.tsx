@@ -14,6 +14,7 @@ import {
   type DocumentCitation,
   pageBlocks,
   pageIndexOf,
+  nextCitationId,
   SEARCH_PREFIX,
   searchHighlights,
 } from "../lib/document-citations";
@@ -161,6 +162,7 @@ export function DocumentCitationView({
                 id: citation.id,
                 quote: citation.highlight.quote,
                 page: citation.page,
+                attention: citation.attention,
               },
             ]
           : [],
@@ -213,8 +215,21 @@ export function DocumentCitationView({
     onCitationSelect?.(id);
   }
   function select(id: string) {
-    setSelected(id);
-    onCitationSelect?.(id);
+    // PDF bands can overlap too. Keep every related question reachable.
+    const current = cited.find((item) => item.id === id)?.highlight;
+    const owners = current
+      ? cited
+          .filter(
+            (item) =>
+              item.highlight &&
+              item.highlight.start < current.end &&
+              item.highlight.end > current.start,
+          )
+          .map((item) => item.id)
+      : [id];
+    const next = nextCitationId(owners, selected) ?? id;
+    setSelected(next);
+    onCitationSelect?.(next);
   }
   useEffect(() => {
     if (
@@ -436,11 +451,23 @@ export function DocumentCitationView({
                             <button
                               type="button"
                               key={segment.start}
-                              className={`dv-mark${searchHit ? " is-hit" : ""}`}
+                              className={`dv-mark${cited.some((item) => segment.ids.includes(item.id) && item.attention) ? " is-ambiguous" : ""}${searchHit ? " is-hit" : ""}`}
                               data-ids={ids}
-                              data-selected={selected === clauseId}
-                              aria-pressed={selected === clauseId}
-                              onClick={() => select(clauseId)}
+                              data-selected={segment.ids.includes(
+                                selected ?? "",
+                              )}
+                              aria-pressed={segment.ids.includes(
+                                selected ?? "",
+                              )}
+                              onClick={() => {
+                                const next = nextCitationId(
+                                  segment.ids,
+                                  selected,
+                                );
+                                if (!next) return;
+                                setSelected(next);
+                                onCitationSelect?.(next);
+                              }}
                             >
                               {segment.text}
                             </button>

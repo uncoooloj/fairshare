@@ -44,7 +44,7 @@ The Anthropic call uses the official SDK (`@anthropic-ai/sdk`, pinned) with stru
 - `issues[]` (max 3, one per topic, `SPLIT` > `ADVANCE` > `FEES`): `{ topic, question (≤ 90 chars, plain words), citation | null, readings[2–3] }`. Each reading is `{ label (≤ 40), explanation (one line), setting }`, where `setting` is the exact Rules change: `{ feePolicy, feeBearer? }`, `{ advanceRecoupedBeforeSplit }` or `{ shares: [{ name, basisPoints }] }` summing to 10,000. Names in readings must appear in the document.
 - `sections`: per `SPLIT | ADVANCE | FEES | REFUNDS | TERM | PEOPLE`, `{ status: READ | ASK | NOT_FOUND, factIndexes, issueIndex }`. `SPLIT` is `READ` only when every share is consistent and they add up to exactly 100%.
 - `rejections[]`: internal `{ item, index, reason }` codes for dropped facts/issues. Never show them verbatim to users.
-- `provider`, `model`, `fallbackFrom`, `promptVersion` (`contract-extraction-v5`): internal metadata.
+- `provider`, `model`, `fallbackFrom`, `promptVersion` (`contract-extraction-v6`): internal metadata.
 - Constants `requiresHumanReview: true`, `executable: false`.
 
 ## Validation rules
@@ -53,7 +53,8 @@ Every fact and issue is validated independently. Invalid ones are dropped with a
 
 - Quotes must be one sentence or clause, at most 300 characters, and found verbatim in the source after collapsing whitespace. The stored citation is the exact original range. No fuzzy matching.
 - `subject` and `rawValue` must both appear inside the quote. Kind-specific evidence is required (e.g. "recoup" for a recouped advance, "fee"/"net" for fee policy).
-- Issues whose section is already `READ` from accepted facts are dropped. Questions with legal jargon or over 90 characters are dropped.
+- Missing-information questions (`citation: null`) are dropped when accepted facts already answer the section. A cited ambiguity is retained even when the same section has accepted facts: a qualifying or conflicting clause still needs a human choice. Questions with legal jargon or over 90 characters are dropped.
+- The setup wizard shows open questions beside their exact source clauses and offers possible fixes with per-person payment examples. Choices are human proposals, not claims of fairness; unchanged source text and all-party approval remain mandatory. Manual edits reopen affected decisions. The model only covers split, advance and fee questions, not every possible legal ambiguity.
 - Both providers go through the same `validateDraft`.
 
 ## Integration contract
